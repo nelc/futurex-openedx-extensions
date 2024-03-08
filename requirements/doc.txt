@@ -30,9 +30,9 @@ click==8.1.7
     # via
     #   -r requirements/test.txt
     #   code-annotations
-code-annotations==1.6.0
+code-annotations==1.7.0
     # via -r requirements/test.txt
-coverage[toml]==7.4.3
+coverage[toml]==7.4.4
     # via
     #   -r requirements/test.txt
     #   pytest-cov
@@ -42,8 +42,19 @@ django==4.2.11
     # via
     #   -c https://raw.githubusercontent.com/edx/edx-lint/master/edx_lint/files/common_constraints.txt
     #   -r requirements/test.txt
+    #   django-crum
     #   django-model-utils
+    #   django-mysql
+    #   djangorestframework
+    #   jsonfield
+    #   openedx-filters
+django-crum==0.7.9
+    # via -r requirements/test.txt
 django-model-utils==4.4.0
+    # via -r requirements/test.txt
+django-mysql==4.12.0
+    # via -r requirements/test.txt
+djangorestframework==3.15.0
     # via -r requirements/test.txt
 doc8==1.1.1
     # via -r requirements/doc.in
@@ -54,7 +65,9 @@ docutils==0.20.1
     #   readme-renderer
     #   restructuredtext-lint
     #   sphinx
-eox-tenant==11.0.1
+edx-opaque-keys[django]==2.5.1
+    # via -r requirements/test.txt
+eox-tenant==11.0.2
     # via -r requirements/test.txt
 exceptiongroup==1.2.0
     # via
@@ -64,8 +77,9 @@ idna==3.6
     # via requests
 imagesize==1.4.1
     # via sphinx
-importlib-metadata==7.0.2
+importlib-metadata==6.11.0
     # via
+    #   -c https://raw.githubusercontent.com/edx/edx-lint/master/edx_lint/files/common_constraints.txt
     #   keyring
     #   twine
 iniconfig==2.0.0
@@ -83,6 +97,8 @@ jinja2==3.1.3
     #   -r requirements/test.txt
     #   code-annotations
     #   sphinx
+jsonfield==3.1.0
+    # via -r requirements/test.txt
 keyring==24.3.1
     # via twine
 markdown-it-py==3.0.0
@@ -97,7 +113,9 @@ more-itertools==10.2.0
     # via jaraco-classes
 nh3==0.2.15
     # via readme-renderer
-packaging==23.2
+openedx-filters==1.6.0
+    # via -r requirements/test.txt
+packaging==24.0
     # via
     #   -r requirements/test.txt
     #   build
@@ -126,9 +144,13 @@ pygments==2.17.2
     #   readme-renderer
     #   rich
     #   sphinx
+pymongo==3.13.0
+    # via
+    #   -r requirements/test.txt
+    #   edx-opaque-keys
 pyproject-hooks==1.0.0
     # via build
-pytest==8.0.2
+pytest==8.1.1
     # via
     #   -r requirements/test.txt
     #   pytest-cov
@@ -162,6 +184,8 @@ rich==13.7.1
     # via twine
 secretstorage==3.3.3
     # via keyring
+six==1.16.0
+    # via -r requirements/test.txt
 snowballstemmer==2.2.0
     # via sphinx
 soupsieve==2.5
@@ -194,6 +218,7 @@ stevedore==5.2.0
     #   -r requirements/test.txt
     #   code-annotations
     #   doc8
+    #   edx-opaque-keys
 text-unidecode==1.3
     # via
     #   -r requirements/test.txt
@@ -212,10 +237,11 @@ typing-extensions==4.10.0
     # via
     #   -r requirements/test.txt
     #   asgiref
+    #   edx-opaque-keys
     #   pydata-sphinx-theme
 urllib3==2.2.1
     # via
     #   requests
     #   twine
-zipp==3.17.0
+zipp==3.18.1
     # via importlib-metadata
