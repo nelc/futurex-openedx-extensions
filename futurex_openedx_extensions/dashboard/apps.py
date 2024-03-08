@@ -6,7 +6,7 @@ from django.apps import AppConfig
 class DashboardConfig(AppConfig):
     """Configuration for the dashboard Django application"""
 
-    name = 'dashboard'
+    name = 'futurex_openedx_extensions.dashboard'
 
     plugin_app = {
         'settings_config': {
@@ -23,7 +23,7 @@ class DashboardConfig(AppConfig):
         },
         'url_config': {
             'lms.djangoapp': {
-                'namespace': 'dashboard',
+                'namespace': 'fx_dashboard',
             },
         },
     }

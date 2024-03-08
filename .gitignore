@@ -63,3 +63,6 @@ docs/futurex_openedx_extensions.*.rst
 # Private requirements
 requirements/private.in
 requirements/private.txt
+
+# temporary tests migration files
+/test_utils/edx_platform_mocks/fake_models/migrations/

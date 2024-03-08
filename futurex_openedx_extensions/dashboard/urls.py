@@ -1,10 +1,12 @@
 """
 URLs for dashboard.
 """
-from django.urls import re_path  # pylint: disable=unused-import
-from django.views.generic import TemplateView  # pylint: disable=unused-import
+from django.urls import re_path
+
+from futurex_openedx_extensions.dashboard.views import TotalCountsView
+
+app_name = 'fx_dashboard'
 
 urlpatterns = [
-    # TODO: Fill in URL patterns and views here.
-    # re_path(r'', TemplateView.as_view(template_name="dashboard/base.html")),
+    re_path(r'^api/fx/statistics/v1/total_counts', TotalCountsView.as_view(), name='total-counts'),
 ]
