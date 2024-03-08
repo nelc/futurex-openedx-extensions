@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-"""
-Package metadata for futurex_edx_extensions.
-"""
+"""Package metadata for futurex_openedx_extensions."""
 import os
 import re
 import sys
@@ -117,7 +115,7 @@ def is_requirement(line):
     return line and line.strip() and not line.startswith(("-r", "#", "-e", "git+", "-c"))
 
 
-VERSION = get_version('futurex_edx_extensions', '__init__.py')
+VERSION = get_version('futurex_openedx_extensions', '__init__.py')
 
 if sys.argv[-1] == 'tag':
     print("Tagging the version on github:")
@@ -129,15 +127,18 @@ README = open(os.path.join(os.path.dirname(__file__), 'README.rst'), encoding="u
 CHANGELOG = open(os.path.join(os.path.dirname(__file__), 'CHANGELOG.rst'), encoding="utf8").read()
 
 setup(
-    name='futurex-edx-extensions',
+    name='futurex-openedx-extensions',
     version=VERSION,
     description="""One-line description for README and other doc files.""",
     long_description=README + '\n\n' + CHANGELOG,
     author='ZeitLabs',
     author_email='info@zeitlabs.com',
-    url='https://github.com/futurex/futurex-edx-extensions',
+    url='https://github.com/futurex/futurex-openedx-extensions',
     packages=find_packages(
-        include=['futurex_edx_extensions', 'futurex_edx_extensions.*'],
+        include=[
+            'futurex_openedx_extensions', 'futurex_openedx_extensions.*',
+            'futurex_openedx_extensions.dashboard', 'futurex_openedx_extensions.dashboard.*',
+        ],
         exclude=["*tests"],
     ),
 
@@ -156,4 +157,9 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.8',
     ],
+    entry_points={
+        'lms.djangoapp': [
+            'dashboard = futurex_openedx_extensions.dashboard.apps:DashboardConfig',
+        ],
+    },
 )

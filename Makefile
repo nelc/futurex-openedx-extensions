@@ -56,9 +56,6 @@ upgrade: ## update the requirements/*.txt files with the latest packages satisfy
 quality: ## check coding style with pycodestyle and pylint
 	tox -e quality
 
-pii_check: ## check for PII annotations on all Django models
-	tox -e pii_check
-
 piptools: ## install pinned version of pip-compile and pip-sync
 	pip install -r requirements/pip.txt
 	pip install -r requirements/pip-tools.txt
@@ -72,9 +69,8 @@ test: clean ## run tests in the current virtualenv
 diff_cover: test ## find diff lines that need test coverage
 	diff-cover coverage.xml
 
-test-all: quality pii_check ## run tests on every supported Python/Django combination
+test-all: quality ## run tests on every supported Python/Django combination
 	tox
-	tox -e docs
 
 validate: quality pii_check test ## run tests and quality checks
 
@@ -85,13 +81,13 @@ selfcheck: ## check that the Makefile is well-formed
 
 extract_translations: ## extract strings to be translated, outputting .mo files
 	rm -rf docs/_build
-	cd futurex_edx_extensions && i18n_tool extract --no-segment
+	cd futurex_openedx_extensions && i18n_tool extract --no-segment
 
 compile_translations: ## compile translation files, outputting .po files for each supported language
-	cd futurex_edx_extensions && i18n_tool generate
+	cd futurex_openedx_extensions && i18n_tool generate
 
 detect_changed_source_translations:
-	cd futurex_edx_extensions && i18n_tool changed
+	cd futurex_openedx_extensions && i18n_tool changed
 
 ifeq ($(OPENEDX_ATLAS_PULL),)
 pull_translations: ## Pull translations from Transifex
@@ -99,8 +95,8 @@ pull_translations: ## Pull translations from Transifex
 else
 # Experimental: OEP-58 Pulls translations using atlas
 pull_translations:
-	find futurex_edx_extensions/conf/locale -mindepth 1 -maxdepth 1 -type d -exec rm -r {} \;
-	atlas pull $(OPENEDX_ATLAS_ARGS) translations/futurex-edx-extensions/futurex_edx_extensions/conf/locale:futurex_edx_extensions/conf/locale
+	find futurex_openedx_extensions/conf/locale -mindepth 1 -maxdepth 1 -type d -exec rm -r {} \;
+	atlas pull $(OPENEDX_ATLAS_ARGS) translations/futurex-openedx-extensions/futurex_openedx_extensions/conf/locale:futurex_openedx_extensions/conf/locale
 	python manage.py compilemessages
 
 	@echo "Translations have been pulled via Atlas and compiled."
@@ -110,7 +106,7 @@ push_translations: ## push source translation files (.po) from Transifex
 	tx push -s
 
 dummy_translations: ## generate dummy translation (.po) files
-	cd futurex_edx_extensions && i18n_tool dummy
+	cd futurex_openedx_extensions && i18n_tool dummy
 
 build_dummy_translations: extract_translations dummy_translations compile_translations ## generate and compile dummy translation files
 

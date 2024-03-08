@@ -32,14 +32,12 @@ INSTALLED_APPS = (
     'django.contrib.contenttypes',
     'django.contrib.messages',
     'django.contrib.sessions',
-    'futurex_edx_extensions',
+    'futurex_openedx_extensions',
 )
 
 LOCALE_PATHS = [
-    root('futurex_edx_extensions', 'conf', 'locale'),
+    root('futurex_openedx_extensions', 'conf', 'locale'),
 ]
-
-ROOT_URLCONF = 'futurex_edx_extensions.urls'
 
 SECRET_KEY = 'insecure-secret-key'
 
