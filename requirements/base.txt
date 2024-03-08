@@ -13,7 +13,7 @@ django==4.2.11
     #   django-model-utils
 django-model-utils==4.4.0
     # via -r requirements/base.in
-openedx-atlas==0.6.0
+eox-tenant==11.0.1
     # via -r requirements/base.in
 sqlparse==0.4.4
     # via django

@@ -39,6 +39,8 @@ django-model-utils==4.4.0
     # via -r requirements/test.txt
 edx-lint==5.3.6
     # via -r requirements/quality.in
+eox-tenant==11.0.1
+    # via -r requirements/test.txt
 exceptiongroup==1.2.0
     # via
     #   -r requirements/test.txt
@@ -61,8 +63,6 @@ markupsafe==2.1.5
     #   jinja2
 mccabe==0.7.0
     # via pylint
-openedx-atlas==0.6.0
-    # via -r requirements/test.txt
 packaging==23.2
     # via
     #   -r requirements/test.txt

@@ -3,12 +3,25 @@ name: Python CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches:
-    - '**'
-
+  issue_comment:
+    types: [created]
 
 jobs:
+  check_comment:
+    runs-on: ubuntu-latest
+    if: github.event.issue.pull_request != '' # Only runs if the comment is on a PR
+    outputs:
+      should_run: ${{ steps.comment_check.outputs.should_run }}
+    steps:
+      - name: Check for 'run tests' comment
+        id: comment_check
+        uses: actions/github-script@v5
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const isRunTestsComment = '${{ github.event.comment.body }}'.trim() === 'run tests';
+            core.setOutput('should_run', isRunTestsComment ? 'true' : 'false');
+
   run_tests:
     name: tests
     runs-on: ${{ matrix.os }}
