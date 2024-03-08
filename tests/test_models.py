@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Tests for the `futurex-edx-extensions` models module.
+Tests for the `futurex-openedx-extensions` models module.
 """
 
 import pytest

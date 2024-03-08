@@ -1,1 +1,1 @@
-# futurex-edx-extensions
+# futurex-openedx-extensions

@@ -3,4 +3,4 @@ include LICENSE.txt
 include README.rst
 include requirements/base.in
 include requirements/constraints.txt
-recursive-include futurex_edx_extensions *.html *.png *.gif *.js *.css *.jpg *.jpeg *.svg
+recursive-include futurex_openedx_extensions *.html *.png *.gif *.js *.css *.jpg *.jpeg *.svg

@@ -1,4 +1,4 @@
-futurex-edx-extensions
+futurex-openedx-extensions
 #############################
 
 .. note::
@@ -35,7 +35,7 @@ commands? Is there a larger how-to that should be linked here?
 
 PLACEHOLDER: For details on how to deploy this component, see the `deployment how-to`_
 
-.. _deployment how-to: https://docs.openedx.org/projects/futurex-edx-extensions/how-tos/how-to-deploy-this-component.html
+.. _deployment how-to: https://docs.openedx.org/projects/futurex-openedx-extensions/how-tos/how-to-deploy-this-component.html
 
 Getting Help
 ************
@@ -45,7 +45,7 @@ Documentation
 
 PLACEHOLDER: Start by going through `the documentation`_.  If you need more help see below.
 
-.. _the documentation: https://docs.openedx.org/projects/futurex-edx-extensions
+.. _the documentation: https://docs.openedx.org/projects/futurex-openedx-extensions
 
 (TODO: `Set up documentation <https://openedx.atlassian.net/wiki/spaces/DOC/pages/21627535/Publish+Documentation+on+Read+the+Docs>`_)
 
@@ -63,7 +63,7 @@ For anything non-trivial, the best path is to open an issue in this
 repository with as many details about the issue you are facing as you
 can provide.
 
-https://github.com/futurex/futurex-edx-extensions/issues
+https://github.com/futurex/futurex-openedx-extensions/issues
 
 For more information about these options, see the `Getting Help <https://openedx.org/getting-help>`__ page.
 
@@ -105,35 +105,35 @@ The assigned maintainers for this component and other project details may be
 found in `Backstage`_. Backstage pulls this data from the ``catalog-info.yaml``
 file in this repo.
 
-.. _Backstage: https://backstage.openedx.org/catalog/default/component/futurex-edx-extensions
+.. _Backstage: https://backstage.openedx.org/catalog/default/component/futurex-openedx-extensions
 
 Reporting Security Issues
 *************************
 
 Please do not report security issues in public. Please email security@openedx.org.
 
-.. |pypi-badge| image:: https://img.shields.io/pypi/v/futurex-edx-extensions.svg
-    :target: https://pypi.python.org/pypi/futurex-edx-extensions/
+.. |pypi-badge| image:: https://img.shields.io/pypi/v/futurex-openedx-extensions.svg
+    :target: https://pypi.python.org/pypi/futurex-openedx-extensions/
     :alt: PyPI
 
-.. |ci-badge| image:: https://github.com/futurex/futurex-edx-extensions/workflows/Python%20CI/badge.svg?branch=main
-    :target: https://github.com/futurex/futurex-edx-extensions/actions
+.. |ci-badge| image:: https://github.com/futurex/futurex-openedx-extensions/workflows/Python%20CI/badge.svg?branch=main
+    :target: https://github.com/futurex/futurex-openedx-extensions/actions
     :alt: CI
 
-.. |codecov-badge| image:: https://codecov.io/github/futurex/futurex-edx-extensions/coverage.svg?branch=main
-    :target: https://codecov.io/github/futurex/futurex-edx-extensions?branch=main
+.. |codecov-badge| image:: https://codecov.io/github/futurex/futurex-openedx-extensions/coverage.svg?branch=main
+    :target: https://codecov.io/github/futurex/futurex-openedx-extensions?branch=main
     :alt: Codecov
 
-.. |doc-badge| image:: https://readthedocs.org/projects/futurex-edx-extensions/badge/?version=latest
-    :target: https://docs.openedx.org/projects/futurex-edx-extensions
+.. |doc-badge| image:: https://readthedocs.org/projects/futurex-openedx-extensions/badge/?version=latest
+    :target: https://docs.openedx.org/projects/futurex-openedx-extensions
     :alt: Documentation
 
-.. |pyversions-badge| image:: https://img.shields.io/pypi/pyversions/futurex-edx-extensions.svg
-    :target: https://pypi.python.org/pypi/futurex-edx-extensions/
+.. |pyversions-badge| image:: https://img.shields.io/pypi/pyversions/futurex-openedx-extensions.svg
+    :target: https://pypi.python.org/pypi/futurex-openedx-extensions/
     :alt: Supported Python versions
 
-.. |license-badge| image:: https://img.shields.io/github/license/futurex/futurex-edx-extensions.svg
-    :target: https://github.com/futurex/futurex-edx-extensions/blob/main/LICENSE.txt
+.. |license-badge| image:: https://img.shields.io/github/license/futurex/futurex-openedx-extensions.svg
+    :target: https://github.com/futurex/futurex-openedx-extensions/blob/main/LICENSE.txt
     :alt: License
 
 .. TODO: Choose one of the statuses below and remove the other status-badge lines.
