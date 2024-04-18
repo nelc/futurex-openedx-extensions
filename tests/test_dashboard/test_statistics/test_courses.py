@@ -1,15 +1,15 @@
 """Tests for courses statistics."""
 import pytest
-from django.utils.timezone import now, timedelta
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.dashboard.statistics import courses
+from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list
 from tests.base_test_data import _base_data
 
 
 @pytest.mark.django_db
-def test_get_courses_count(base_data):
+def test_get_courses_count(base_data):  # pylint: disable=unused-argument
     """Verify get_courses_count function."""
     all_tenants = _base_data["tenant_config"].keys()
     result = courses.get_courses_count(all_tenants)
@@ -28,30 +28,11 @@ def test_get_courses_count(base_data):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('start_diff, end_diff, expected_org1_count', [
-    (None, None, 5),
-    (None, 1, 5),
-    (None, -1, 4),
-    (1, None, 4),
-    (-1, None, 5),
-    (1, 2, 4),
-    (-1, 1, 5),
-    (-2, -1, 4),
-])
-def test_get_courses_count_only_active(base_data, start_diff, end_diff, expected_org1_count):
+def test_get_courses_count_only_active(base_data):  # pylint: disable=unused-argument
     """Verify get_courses_count function with only_active=True."""
-    course = CourseOverview.objects.filter(org="ORG1").first()
-    assert course.start is None
-    assert course.end is None
-
-    if start_diff is not None:
-        course.start = now() + timedelta(days=start_diff)
-    if end_diff is not None:
-        course.end = now() + timedelta(days=end_diff)
-    course.save()
     expected_result = [
-        {'org': 'ORG1', 'courses_count': expected_org1_count},
-        {'org': 'ORG2', 'courses_count': 7},
+        {'org': 'ORG1', 'courses_count': 3},
+        {'org': 'ORG2', 'courses_count': 4},
     ]
 
     result = courses.get_courses_count([1], only_active=True)
@@ -59,7 +40,7 @@ def test_get_courses_count_only_active(base_data, start_diff, end_diff, expected
 
 
 @pytest.mark.django_db
-def test_get_courses_count_only_visible(base_data):
+def test_get_courses_count_only_visible(base_data):  # pylint: disable=unused-argument
     """Verify get_courses_count function with only_visible=True."""
     course = CourseOverview.objects.filter(org="ORG1").first()
     assert course.visible_to_staff_only is False
@@ -72,3 +53,15 @@ def test_get_courses_count_only_visible(base_data):
 
     result = courses.get_courses_count([1], only_visible=True)
     assert expected_result == list(result), f'Wrong result: {result}'
+
+
+@pytest.mark.django_db
+def test_get_courses_count_by_status(base_data):  # pylint: disable=unused-argument
+    """Verify get_courses_count_by_status function."""
+    result = courses.get_courses_count_by_status([1])
+    assert list(result) == [
+        {'self_paced': False, 'status': COURSE_STATUSES['active'], 'courses_count': 6},
+        {'self_paced': False, 'status': COURSE_STATUSES['archived'], 'courses_count': 3},
+        {'self_paced': False, 'status': COURSE_STATUSES['upcoming'], 'courses_count': 2},
+        {'self_paced': True, 'status': COURSE_STATUSES['active'], 'courses_count': 1}
+    ]

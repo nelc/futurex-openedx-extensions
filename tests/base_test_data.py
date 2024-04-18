@@ -106,6 +106,41 @@ _base_data = {
         "ORG6": 1,  # This is an org with no tenant
         "ORG8": 2,
     },
+    "course_attributes": {  # org id, course id
+        "course-v1:ORG1+1+1": {
+            "start": "F",
+        },
+        "course-v1:ORG1+2+2": {
+            "start": "F",
+            "end": "F",
+        },
+
+        "course-v1:ORG2+3+3": {
+            "end": "P",
+        },
+        "course-v1:ORG2+4+4": {
+            "end": "P",
+        },
+        "course-v1:ORG2+5+5": {
+            "start": "P",
+            "end": "P",
+        },
+
+        "course-v1:ORG2+1+1": {
+            "start": "P",
+        },
+        "course-v1:ORG2+2+2": {
+            "start": "P",
+            "end": "F",
+        },
+        "course-v1:ORG1+3+3": {
+            "end": "F",
+        },
+
+        "course-v1:ORG1+4+4": {
+            "self_paced": True,
+        },
+    },
     "course_enrollments": {  # org id, course id, user ids
         "ORG1": {
             1: [4, 5],

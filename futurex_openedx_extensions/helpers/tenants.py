@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef
 from django.db.models.query import QuerySet
 from eox_tenant.models import Route, TenantConfig
+from rest_framework.request import Request
 
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, ids_string_to_list
 
@@ -225,3 +226,31 @@ def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple
         )
 
     return True, {}
+
+
+def get_tenants_by_org(org: str) -> List[int]:
+    """
+    Get the tenants that have <org> in their course org filter
+
+    :param org: The org to check
+    :type org: str
+    :return: List of tenant IDs
+    :rtype: List[int]
+    """
+    tenant_configs = get_all_course_org_filter_list()
+    return [t_id for t_id, course_org_filter in tenant_configs.items() if org in course_org_filter]
+
+
+def get_selected_tenants(request: Request) -> List[int]:
+    """
+    Get the tenant IDs from the request
+
+    :param request: The request
+    :type request: Request
+    :return: List of tenant IDs
+    :rtype: List[int]
+    """
+    tenant_ids = request.query_params.get('tenant_ids')
+    if tenant_ids is None:
+        return get_accessible_tenant_ids(request.user)
+    return ids_string_to_list(tenant_ids)
