@@ -26,7 +26,7 @@ def set_user(request, user_id):
     ('GET', '?tenant_ids=1,2,3', 2),
     ('GET', '', 1),
 ])
-def test_has_tenant_access(base_data, method, query_params, user_id):
+def test_has_tenant_access(base_data, method, query_params, user_id):  # pylint: disable=unused-argument
     """Verify that HasTenantAccess returns True when user has access to all tenants."""
     permission = HasTenantAccess()
     request = APIRequestFactory().generic(method, f'/dummy/{query_params}')
@@ -40,7 +40,9 @@ def test_has_tenant_access(base_data, method, query_params, user_id):
     ('GET', '?tenant_ids=1,2,3', 6, 'denied', [1, 2, 3]),
     ('GET', '?tenant_ids=1,2,3,4,9', 1, 'invalid', [9, 4]),
 ])
-def test_has_tenant_access_no_access(base_data, method, query_params, user_id, reason, bad_tenant_ids):
+def test_has_tenant_access_no_access(
+    base_data, method, query_params, user_id, reason, bad_tenant_ids
+):  # pylint: disable=unused-argument
     """Verify that PermissionDenied is raised when user does not have access to one of the tenants."""
     permission = HasTenantAccess()
     request = APIRequestFactory().generic(method, f'/dummy/{query_params}')
@@ -63,7 +65,7 @@ def test_has_tenant_access_no_access(base_data, method, query_params, user_id, r
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('user_id', [0, None])
-def test_has_tenant_access_not_authenticated(base_data, user_id):
+def test_has_tenant_access_not_authenticated(base_data, user_id):  # pylint: disable=unused-argument
     """Verify that NotAuthenticated is raised when user is not authenticated."""
     permission = HasTenantAccess()
     request = APIRequestFactory().generic('GET', '/dummy/')

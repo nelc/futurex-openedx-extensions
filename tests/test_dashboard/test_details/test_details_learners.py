@@ -1,9 +1,7 @@
 """Tests for learner details collectors"""
 import pytest
-from django.db.models import Sum
 
 from futurex_openedx_extensions.dashboard.details.learners import get_learners_queryset
-from tests.base_test_data import expected_statistics
 
 
 @pytest.mark.django_db
@@ -16,6 +14,6 @@ from tests.base_test_data import expected_statistics
     ([7], 'user6', 0),
     ([4], None, 0),
 ])
-def test_get_learners_queryset(base_data, tenant_ids, search_text, expected_count):
+def test_get_learners_queryset(base_data, tenant_ids, search_text, expected_count):  # pylint: disable=unused-argument
     """Verify that get_learners_queryset returns the correct QuerySet."""
     assert get_learners_queryset(tenant_ids, search_text).count() == expected_count
