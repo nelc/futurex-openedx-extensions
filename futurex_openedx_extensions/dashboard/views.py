@@ -4,15 +4,18 @@ from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from futurex_openedx_extensions.dashboard.details.courses import get_courses_queryset
 from futurex_openedx_extensions.dashboard.details.learners import get_learners_queryset
-from futurex_openedx_extensions.dashboard.serializers import LearnerDetailsSerializer
+from futurex_openedx_extensions.dashboard.serializers import CourseDetailsSerializer, LearnerDetailsSerializer
 from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
-from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count
+from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count, get_courses_count_by_status
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
-from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, ids_string_to_list
+from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREFIX, COURSE_STATUSES
+from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
+from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import HasTenantAccess
-from futurex_openedx_extensions.helpers.tenants import get_accessible_tenant_ids
+from futurex_openedx_extensions.helpers.tenants import get_selected_tenants
 
 
 class TotalCountsView(APIView):
@@ -76,11 +79,7 @@ class TotalCountsView(APIView):
         if invalid_stats:
             return Response(error_details_to_dictionary(reason="Invalid stats type", invalid=invalid_stats), status=400)
 
-        tenant_ids = request.query_params.get('tenant_ids')
-        if tenant_ids is None:
-            tenant_ids = get_accessible_tenant_ids(request.user)
-        else:
-            tenant_ids = ids_string_to_list(tenant_ids)
+        tenant_ids = get_selected_tenants(request)
 
         result = dict({tenant_id: {} for tenant_id in tenant_ids})
         result.update({
@@ -103,9 +102,63 @@ class LearnersView(ListAPIView):
 
     def get_queryset(self):
         """Get the list of learners"""
-        tenant_ids = self.request.query_params.get('tenant_ids')
+        tenant_ids = get_selected_tenants(self.request)
         search_text = self.request.query_params.get('search_text')
         return get_learners_queryset(
-            tenant_ids=ids_string_to_list(tenant_ids) if tenant_ids else get_accessible_tenant_ids(self.request.user),
+            tenant_ids=tenant_ids,
             search_text=search_text,
         )
+
+
+class CoursesView(ListAPIView):
+    """View to get the list of courses"""
+    serializer_class = CourseDetailsSerializer
+    permission_classes = [HasTenantAccess]
+    pagination_class = DefaultPagination
+    filter_backends = [DefaultOrderingFilter]
+    ordering_fields = [
+        'id', 'self_paced', 'enrolled_count', 'active_count',
+        'certificates_count', 'display_name', 'org',
+    ]
+    ordering = ['display_name']
+
+    def get_queryset(self):
+        """Get the list of learners"""
+        tenant_ids = get_selected_tenants(self.request)
+        search_text = self.request.query_params.get('search_text')
+        return get_courses_queryset(
+            tenant_ids=tenant_ids,
+            search_text=search_text,
+        )
+
+
+class CourseStatusesView(APIView):
+    """View to get the course statuses"""
+    permission_classes = [HasTenantAccess]
+
+    @staticmethod
+    def to_json(result):
+        """Convert the result to JSON format"""
+        dict_result = {
+            f"{COURSE_STATUS_SELF_PREFIX if self_paced else ''}{status}": 0
+            for status in COURSE_STATUSES
+            for self_paced in [False, True]
+        }
+
+        for item in result:
+            status = f"{COURSE_STATUS_SELF_PREFIX if item['self_paced'] else ''}{item['status']}"
+            dict_result[status] = item['courses_count']
+        return dict_result
+
+    def get(self, request, *args, **kwargs):
+        """
+        GET /api/fx/statistics/v1/course_statuses/?tenant_ids=<tenantIds>
+
+        <tenantIds> (optional): a comma-separated list of the tenant IDs to get the information for. If not provided,
+            the API will assume the list of all accessible tenants by the user
+        """
+        tenant_ids = get_selected_tenants(request)
+
+        result = get_courses_count_by_status(tenant_ids=tenant_ids)
+
+        return JsonResponse(self.to_json(result))

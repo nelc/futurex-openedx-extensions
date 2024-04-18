@@ -2,6 +2,7 @@
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from eox_tenant.models import Route, TenantConfig
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
@@ -84,7 +85,29 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
                     id=f"course-v1:{org}+{i}+{i}",
                     org=org,
                     visible_to_staff_only=False,
+                    display_name=f"Course {i} of {org}",
                 )
+
+        now_time = timezone.now()
+        for course_id, data in _base_data["course_attributes"].items():
+            course = CourseOverview.objects.get(id=course_id)
+            for field, value in data.items():
+                if field in ("start", "end"):
+                    assert value in ("F", "P"), f"Bad value for {field} in course_attributes testing data: {value}"
+                if field == "start":
+                    if value == "F":
+                        course.start = now_time + timezone.timedelta(days=1)
+                    else:
+                        course.start = now_time - timezone.timedelta(days=10)
+                    continue
+                if field == "end":
+                    if value == "F":
+                        course.end = now_time + timezone.timedelta(days=10)
+                    else:
+                        course.end = now_time - timezone.timedelta(days=1)
+                    continue
+                setattr(course, field, value)
+            course.save()
 
     def _create_course_enrollments():
         """Create course enrollments."""
