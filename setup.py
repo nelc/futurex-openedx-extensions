@@ -138,6 +138,7 @@ setup(
         include=[
             'futurex_openedx_extensions', 'futurex_openedx_extensions.*',
             'futurex_openedx_extensions.dashboard', 'futurex_openedx_extensions.dashboard.*',
+            'futurex_openedx_extensions.helpers', 'futurex_openedx_extensions.helpers.*',
         ],
         exclude=["*tests"],
     ),
@@ -159,7 +160,8 @@ setup(
     ],
     entry_points={
         'lms.djangoapp': [
-            'dashboard = futurex_openedx_extensions.dashboard.apps:DashboardConfig',
+            'fx_dashboard = futurex_openedx_extensions.dashboard.apps:DashboardConfig',
+            'fx_helpers = futurex_openedx_extensions.helpers.apps:HelpersConfig',
         ],
     },
 )

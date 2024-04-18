@@ -6,3 +6,12 @@
 pytest-cov                # pytest extension for code coverage statistics
 pytest-django             # pytest extension for better Django support
 code-annotations          # provides commands used by the pii_check make target.
+
+# eox-tenant requirements
+six
+djangorestframework
+django-crum
+django-mysql
+jsonfield
+edx-opaque-keys[django]
+openedx_filters

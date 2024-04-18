@@ -7,6 +7,8 @@ Django applications, so these settings will not be used.
 
 from os.path import abspath, dirname, join
 
+from test_utils.eox_settings import *
+
 
 def root(*args):
     """
@@ -32,7 +34,10 @@ INSTALLED_APPS = (
     'django.contrib.contenttypes',
     'django.contrib.messages',
     'django.contrib.sessions',
-    'futurex_openedx_extensions',
+    'eox_tenant',
+    'common',
+    'fake_models',
+    'openedx',
 )
 
 LOCALE_PATHS = [
@@ -41,10 +46,12 @@ LOCALE_PATHS = [
 
 SECRET_KEY = 'insecure-secret-key'
 
+ROOT_URLCONF = 'tests.test_urls'
+
 MIDDLEWARE = (
+    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
 )
 
 TEMPLATES = [{
@@ -53,7 +60,11 @@ TEMPLATES = [{
     'OPTIONS': {
         'context_processors': [
             'django.contrib.auth.context_processors.auth',  # this is required for admin
+            'django.template.context_processors.request',
             'django.contrib.messages.context_processors.messages',  # this is required for admin
         ],
     },
 }]
+
+# Avoid warnings about migrations
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
