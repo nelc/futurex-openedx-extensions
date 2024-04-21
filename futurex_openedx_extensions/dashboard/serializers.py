@@ -15,7 +15,7 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
     username = serializers.CharField()
     email = serializers.EmailField()
     mobile_no = serializers.SerializerMethodField()
-    date_of_birth = serializers.SerializerMethodField()
+    year_of_birth = serializers.SerializerMethodField()
     gender = serializers.SerializerMethodField()
     date_joined = serializers.DateTimeField()
     last_login = serializers.DateTimeField()
@@ -30,7 +30,7 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
             'username',
             'email',
             'mobile_no',
-            'date_of_birth',
+            'year_of_birth',
             'gender',
             'date_joined',
             'last_login',
@@ -55,10 +55,6 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
         """Return mobile number."""
         return self._get_profile_field(obj, 'phone_number')
 
-    def get_date_of_birth(self, obj):  # pylint: disable=unused-argument
-        """Return date of birth."""
-        return None
-
     def get_gender(self, obj):
         """Return gender."""
         return self._get_profile_field(obj, 'gender')
@@ -70,6 +66,10 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
     def get_enrolled_courses_count(self, obj):
         """Return enrolled courses count."""
         return obj.courses_count
+
+    def get_year_of_birth(self, obj):
+        """Return year of birth."""
+        return self._get_profile_field(obj, 'year_of_birth')
 
 
 class CourseDetailsSerializer(serializers.ModelSerializer):
