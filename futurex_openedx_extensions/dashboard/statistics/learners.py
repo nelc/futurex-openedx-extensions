@@ -7,44 +7,35 @@ from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment,
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Exists, OuterRef, Q, Subquery
 from django.db.models.query import QuerySet
-from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
+from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
 from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list, get_tenant_site
 
 
-def get_learners_count_having_enrollment_per_org(tenant_id) -> QuerySet:
+def get_learners_count_having_enrollment_per_org(
+    tenant_id: int, only_visible_courses: bool = True, only_active_courses: bool = False
+) -> QuerySet:
     """
     TODO: Cache the result of this function
     Get the count of learners with enrollments per organization. Admins and staff are excluded from the count. This
     function takes one tenant ID for performance reasons.
 
-
-    SELECT coc.org, COUNT(DISTINCT au.id)
-    FROM edxapp.auth_user au
-    INNER JOIN edxapp.student_courseenrollment sc ON
-        au.id = sc.user_id
-    INNER JOIN edxapp.course_overviews_courseoverview coc ON
-        sc.course_id = coc.id AND
-        coc.org IN ('ORG1', 'ORG2')  -- course_org_filter_list
-    WHERE au.id NOT IN (
-            SELECT DISTINCT cr.user_id
-            FROM edxapp.student_courseaccessrole cr
-            WHERE cr.org = coc.org
-        ) AND
-        au.is_superuser = 0 AND
-        au.is_staff = 0 AND
-        au.is_active = 1
-    GROUP BY coc.org
-
-
+    :param tenant_id: Tenant ID to get the count for
+    :type tenant_id: int
+    :param only_visible_courses: Whether to only count courses that are visible in the catalog
+    :type only_visible_courses: bool
+    :param only_active_courses: Whether to only count active courses (according to dates)
+    :type only_active_courses: bool
     :return: QuerySet of learners count per organization
     :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list([tenant_id])['course_org_filter_list']
 
-    return CourseOverview.objects.filter(
-        org__in=course_org_filter_list
-    ).values('org').annotate(
+    queryset = get_base_queryset_courses(
+        course_org_filter_list, only_visible=only_visible_courses, only_active=only_active_courses,
+    )
+
+    return queryset.values('org').annotate(
         learners_count=Count(
             'courseenrollment__user_id',
             filter=~Exists(
@@ -61,29 +52,19 @@ def get_learners_count_having_enrollment_per_org(tenant_id) -> QuerySet:
     )
 
 
-def get_learners_count_having_enrollment_for_tenant(tenant_id) -> QuerySet:
+def get_learners_count_having_enrollment_for_tenant(
+    tenant_id: int, only_visible_courses: bool = True, only_active_courses: bool = False
+) -> QuerySet:
     """
     TODO: Cache the result of this function
     Get the count of learners with enrollments per organization. Admins and staff are excluded from the count
 
-
-    SELECT COUNT(DISTINCT au.id)
-    FROM edxapp.auth_user au
-    INNER JOIN edxapp.student_courseenrollment sc ON
-        au.id = sc.user_id
-    INNER JOIN edxapp.course_overviews_courseoverview coc ON
-        sc.course_id = coc.id AND
-        coc.org IN ('ORG1', 'ORG2')  -- course_org_filter_list
-    WHERE au.id NOT IN (
-            SELECT DISTINCT cr.user_id
-            FROM edxapp.student_courseaccessrole cr
-            WHERE cr.org = coc.org
-        ) AND
-        au.is_superuser = 0 AND
-        au.is_staff = 0 AND
-        au.is_active = 1
-
-
+    :param tenant_id: Tenant ID to get the count for
+    :type tenant_id: int
+    :param only_visible_courses: Whether to only count courses that are visible in the catalog
+    :type only_visible_courses: bool
+    :param only_active_courses: Whether to only count active courses (according to dates)
+    :type only_active_courses: bool
     :return: QuerySet of learners count per organization
     :rtype: QuerySet
     """
@@ -93,7 +74,11 @@ def get_learners_count_having_enrollment_for_tenant(tenant_id) -> QuerySet:
         is_superuser=False,
         is_staff=False,
         is_active=True,
-        courseenrollment__course__org__in=course_org_filter_list,
+        courseenrollment__course_id__in=get_base_queryset_courses(
+            course_org_filter_list,
+            only_visible=only_visible_courses,
+            only_active=only_active_courses,
+        ),
     ).exclude(
         Exists(
             CourseAccessRole.objects.filter(
@@ -104,7 +89,9 @@ def get_learners_count_having_enrollment_for_tenant(tenant_id) -> QuerySet:
     ).values('id').distinct().count()
 
 
-def get_learners_count_having_no_enrollment(tenant_id) -> QuerySet:
+def get_learners_count_having_no_enrollment(
+    tenant_id: int, only_visible_courses: bool = True, only_active_courses: bool = False
+) -> QuerySet:
     """
     TODO: Cache the result of this function
     Get the count of learners with no enrollments per organization. Admins and staff are excluded from the count.
@@ -112,31 +99,14 @@ def get_learners_count_having_no_enrollment(tenant_id) -> QuerySet:
 
     The function returns the count for one tenant for performance reasons.
 
-    SELECT COUNT(distinct su.id)
-    FROM edxapp.student_usersignupsource su
-    WHERE su.site = 'demo.example.com' -- tenant_site
-        AND su.user_id not in (
-            SELECT distinct au.id
-            FROM edxapp.auth_user au
-            INNER JOIN edxapp.student_courseenrollment sc ON
-                au.id = sc.user_id
-            INNER JOIN edxapp.course_overviews_courseoverview coc ON
-                sc.course_id = coc.id AND
-                coc.org IN ('ORG1', 'ORG2') -- course_org_filter_list
-            WHERE au.id NOT IN (
-                    SELECT DISTINCT cr.user_id
-                    FROM edxapp.student_courseaccessrole cr
-                    WHERE cr.org = coc.org
-                ) AND
-                au.is_superuser = 0 AND
-                au.is_staff = 0 AND
-                au.is_active = 1 AND
-        ) AND su.user_id NOT IN (
-            SELECT DISTINCT cr.user_id
-            FROM edxapp.student_courseaccessrole cr
-            WHERE cr.org IN ('ORG1', 'ORG2') -- course_org_filter_list
-        )
-
+    :param tenant_id: Tenant ID to get the count for
+    :type tenant_id: int
+    :param only_visible_courses: Whether to only count courses that are visible in the catalog
+    :type only_visible_courses: bool
+    :param only_active_courses: Whether to only count active courses (according to dates)
+    :type only_active_courses: bool
+    :return: QuerySet of learners count per organization
+    :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list([tenant_id])['course_org_filter_list']
     tenant_site = get_tenant_site(tenant_id)
@@ -147,7 +117,11 @@ def get_learners_count_having_no_enrollment(tenant_id) -> QuerySet:
         user_id__in=Subquery(
             CourseEnrollment.objects.filter(
                 user_id=OuterRef('user_id'),
-                course__org__in=course_org_filter_list,
+                course_id__in=get_base_queryset_courses(
+                    course_org_filter_list,
+                    only_visible=only_visible_courses,
+                    only_active=only_active_courses,
+                ),
                 user__is_superuser=False,
                 user__is_staff=False,
                 user__is_active=True,

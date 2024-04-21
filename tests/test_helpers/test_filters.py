@@ -1,4 +1,4 @@
-"""Tests for pagination helpers"""
+"""Tests for filters helpers"""
 from rest_framework.filters import OrderingFilter
 
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter

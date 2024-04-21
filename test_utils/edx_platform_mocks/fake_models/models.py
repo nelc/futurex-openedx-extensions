@@ -8,7 +8,7 @@ class CourseOverview(models.Model):
     """Mock"""
     id = models.CharField(max_length=255, primary_key=True)
     org = models.CharField(max_length=255)
-    visible_to_staff_only = models.BooleanField()
+    catalog_visibility = models.TextField(null=True)
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True)
     display_name = models.TextField(null=True)

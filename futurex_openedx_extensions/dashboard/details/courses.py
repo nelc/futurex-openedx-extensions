@@ -9,12 +9,14 @@ from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
-from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
+from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
 from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list, get_tenant_site
 
 
-def get_courses_queryset(tenant_ids: List, search_text: str = None) -> QuerySet:
+def get_courses_queryset(
+    tenant_ids: List, search_text: str = None, only_visible: bool = True, only_active: bool = False
+) -> QuerySet:
     """
     Get the courses queryset for the given tenant IDs and search text.
 
@@ -22,6 +24,12 @@ def get_courses_queryset(tenant_ids: List, search_text: str = None) -> QuerySet:
     :type tenant_ids: List
     :param search_text: Search text to filter the courses by
     :type search_text: str
+    :param only_visible: Whether to only include courses that are visible in the catalog
+    :type only_visible: bool
+    :param only_active: Whether to only include active courses
+    :type only_active: bool
+    :return: QuerySet of courses
+    :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
     tenant_sites = []
@@ -29,9 +37,8 @@ def get_courses_queryset(tenant_ids: List, search_text: str = None) -> QuerySet:
         if site := get_tenant_site(tenant_id):
             tenant_sites.append(site)
 
-    queryset = CourseOverview.objects.filter(
-        org__in=course_org_filter_list,
-    )
+    queryset = get_base_queryset_courses(course_org_filter_list, only_visible=only_visible, only_active=only_active)
+
     search_text = (search_text or '').strip()
     if search_text:
         queryset = queryset.filter(
