@@ -84,7 +84,7 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
                 CourseOverview.objects.create(
                     id=f"course-v1:{org}+{i}+{i}",
                     org=org,
-                    visible_to_staff_only=False,
+                    catalog_visibility="both",
                     display_name=f"Course {i} of {org}",
                 )
 
