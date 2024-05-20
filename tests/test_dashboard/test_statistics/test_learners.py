@@ -15,7 +15,9 @@ from futurex_openedx_extensions.dashboard.statistics import learners
     (7, {'ORG3': 13}),
     (8, {'ORG8': 6}),
 ])
-def test_get_learners_count_having_enrollment_per_org(base_data, tenant_id, expected_result):
+def test_get_learners_count_having_enrollment_per_org(
+    base_data, tenant_id, expected_result
+):  # pylint: disable=unused-argument
     """Test get_learners_count_having_enrollment_per_org function."""
     result = learners.get_learners_count_having_enrollment_per_org(tenant_id)
     assert result.count() == len(expected_result), 'Wrong number of organizations returned'
@@ -37,7 +39,9 @@ def test_get_learners_count_having_enrollment_per_org(base_data, tenant_id, expe
     (7, 13),
     (8, 6),
 ])
-def test_get_learners_count_having_enrollment_for_tenant(base_data, tenant_id, expected_result):
+def test_get_learners_count_having_enrollment_for_tenant(
+    base_data, tenant_id, expected_result
+):  # pylint: disable=unused-argument
     """Test get_learners_count_having_enrollment_for_tenant function."""
     result = learners.get_learners_count_having_enrollment_for_tenant(tenant_id)
     assert result == expected_result, f'Wrong learners count: {result} for tenant: {tenant_id}'
@@ -54,14 +58,16 @@ def test_get_learners_count_having_enrollment_for_tenant(base_data, tenant_id, e
     (7, 4),
     (8, 3),
 ])
-def test_get_learners_count_having_no_enrollment(base_data, tenant_id, expected_result):
+def test_get_learners_count_having_no_enrollment(
+    base_data, tenant_id, expected_result
+):  # pylint: disable=unused-argument
     """Test get_learners_count_having_no_enrollment function."""
     result = learners.get_learners_count_having_no_enrollment(tenant_id)
     assert result == expected_result, f'Wrong learners count: {result} for tenant: {tenant_id}'
 
 
 @pytest.mark.django_db
-def test_get_learners_count(base_data):
+def test_get_learners_count(base_data):  # pylint: disable=unused-argument
     """Test get_learners_count function."""
     result = learners.get_learners_count([1, 2, 4])
     assert result == {

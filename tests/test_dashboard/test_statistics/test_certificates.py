@@ -19,7 +19,7 @@ from futurex_openedx_extensions.dashboard.statistics import certificates
     ([2, 7], {'ORG3': 7, 'ORG8': 2}),
     ([7, 8], {'ORG3': 7, 'ORG8': 2}),
 ])
-def test_get_certificates_count(base_data, tenant_ids, expected_result):
+def test_get_certificates_count(base_data, tenant_ids, expected_result):  # pylint: disable=unused-argument
     """Verify get_certificates_count function."""
     result = certificates.get_certificates_count(tenant_ids)
     assert result == expected_result, \
@@ -27,7 +27,7 @@ def test_get_certificates_count(base_data, tenant_ids, expected_result):
 
 
 @pytest.mark.django_db
-def test_get_certificates_count_not_downloadable(base_data):
+def test_get_certificates_count_not_downloadable(base_data):  # pylint: disable=unused-argument
     """Verify get_certificates_count function with empty tenant_ids."""
     result = certificates.get_certificates_count([1])
     assert result == {'ORG1': 4, 'ORG2': 10}, f'Wrong certificates result. expected: {result}'

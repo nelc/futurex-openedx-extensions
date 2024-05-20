@@ -7,12 +7,14 @@ from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Exists, OuterRef, Q, Subquery
 from django.db.models.query import QuerySet
-from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
+from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
 from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list, get_tenant_site
 
 
-def get_learners_queryset(tenant_ids: List, search_text: str = None) -> QuerySet:
+def get_learners_queryset(
+    tenant_ids: List, search_text: str = None, only_visible_courses: bool = True, only_active_courses: bool = False
+) -> QuerySet:
     """
     Get the learners queryset for the given tenant IDs and search text.
 
@@ -20,6 +22,12 @@ def get_learners_queryset(tenant_ids: List, search_text: str = None) -> QuerySet
     :type tenant_ids: List
     :param search_text: Search text to filter the learners by
     :type search_text: str
+    :param only_visible_courses: Whether to only count courses that are visible in the catalog
+    :type only_visible_courses: bool
+    :param only_active_courses: Whether to only count active courses
+    :type only_active_courses: bool
+    :return: QuerySet of learners
+    :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
     tenant_sites = []
@@ -44,7 +52,11 @@ def get_learners_queryset(tenant_ids: List, search_text: str = None) -> QuerySet
         courses_count=Count(
             'courseenrollment',
             filter=(
-                Q(courseenrollment__course__org__in=course_org_filter_list) &
+                Q(courseenrollment__course_id__in=get_base_queryset_courses(
+                    course_org_filter_list,
+                    only_visible=only_visible_courses,
+                    only_active=only_active_courses,
+                )) &
                 ~Exists(
                     CourseAccessRole.objects.filter(
                         user_id=OuterRef('id'),
@@ -59,8 +71,10 @@ def get_learners_queryset(tenant_ids: List, search_text: str = None) -> QuerySet
             'generatedcertificate',
             filter=(
                 Q(generatedcertificate__course_id__in=Subquery(
-                    CourseOverview.objects.filter(
-                        org__in=course_org_filter_list
+                    get_base_queryset_courses(
+                        course_org_filter_list,
+                        only_visible=only_visible_courses,
+                        only_active=only_active_courses
                     ).values_list('id', flat=True)
                 )) &
                 Q(generatedcertificate__status='downloadable')

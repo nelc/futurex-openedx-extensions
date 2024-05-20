@@ -24,7 +24,7 @@ def test_learner_details_serializer_no_profile():
     assert data[0]['user_id'] == 10
     assert data[0]['full_name'] is None
     assert data[0]['mobile_no'] is None
-    assert data[0]['date_of_birth'] is None
+    assert data[0]['year_of_birth'] is None
     assert data[0]['gender'] is None
 
 
@@ -36,6 +36,7 @@ def test_learner_details_serializer_with_profile():
         name='Test User',
         phone_number='1234567890',
         gender='m',
+        year_of_birth=1988,
     )
     queryset = get_dummy_queryset()
     data = LearnerDetailsSerializer(queryset, many=True).data
@@ -43,5 +44,5 @@ def test_learner_details_serializer_with_profile():
     assert data[0]['user_id'] == 10
     assert data[0]['full_name'] == 'Test User'
     assert data[0]['mobile_no'] == '1234567890'
-    assert data[0]['date_of_birth'] is None
+    assert data[0]['year_of_birth'] == 1988
     assert data[0]['gender'] == 'm'

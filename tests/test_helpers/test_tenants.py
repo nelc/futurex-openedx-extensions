@@ -10,14 +10,14 @@ from tests.base_test_data import _base_data
 
 
 @pytest.mark.django_db
-def test_get_excluded_tenant_ids(base_data):
+def test_get_excluded_tenant_ids(base_data):  # pylint: disable=unused-argument
     """Verify get_excluded_tenant_ids function."""
     result = tenants.get_excluded_tenant_ids()
     assert result == [4, 5, 6]
 
 
 @pytest.mark.django_db
-def test_get_all_tenants(base_data):
+def test_get_all_tenants(base_data):  # pylint: disable=unused-argument
     """Verify get_all_tenants function."""
     result = tenants.get_all_tenants()
     assert TenantConfig.objects.count() == 8
@@ -27,14 +27,14 @@ def test_get_all_tenants(base_data):
 
 
 @pytest.mark.django_db
-def test_get_all_tenant_ids(base_data):
+def test_get_all_tenant_ids(base_data):  # pylint: disable=unused-argument
     """Verify get_all_tenant_ids function."""
     result = tenants.get_all_tenant_ids()
     assert result == [1, 2, 3, 7, 8]
 
 
 @pytest.mark.django_db
-def test_get_accessible_tenant_ids_none(base_data):
+def test_get_accessible_tenant_ids_none(base_data):  # pylint: disable=unused-argument
     """Verify that get_accessible_tenant_ids returns an empty list when user is None."""
     result = tenants.get_accessible_tenant_ids(None)
     assert result == []
@@ -44,7 +44,7 @@ def test_get_accessible_tenant_ids_none(base_data):
 @pytest.mark.parametrize("user_id, expected", [
     (1, [1, 2, 3, 7, 8]),
 ])
-def test_get_accessible_tenant_ids_super_users(base_data, user_id, expected):
+def test_get_accessible_tenant_ids_super_users(base_data, user_id, expected):  # pylint: disable=unused-argument
     """Verify get_accessible_tenant_ids function for super users."""
     user = get_user_model().objects.get(id=user_id)
     assert user.is_superuser, 'only super users allowed in this test'
@@ -56,7 +56,7 @@ def test_get_accessible_tenant_ids_super_users(base_data, user_id, expected):
 @pytest.mark.parametrize("user_id, expected", [
     (2, [1, 2, 3, 7, 8]),
 ])
-def test_get_accessible_tenant_ids_staff(base_data, user_id, expected):
+def test_get_accessible_tenant_ids_staff(base_data, user_id, expected):  # pylint: disable=unused-argument
     """Verify get_accessible_tenant_ids function for staff users."""
     user = get_user_model().objects.get(id=user_id)
     assert user.is_staff, 'only staff users allowed in this test'
@@ -71,7 +71,9 @@ def test_get_accessible_tenant_ids_staff(base_data, user_id, expected):
     (9, [1]),
     (23, [2, 3, 8]),
 ])
-def test_get_accessible_tenant_ids_no_staff_no_sueperuser(base_data, user_id, expected):
+def test_get_accessible_tenant_ids_no_staff_no_sueperuser(
+    base_data, user_id, expected
+):  # pylint: disable=unused-argument
     """Verify get_accessible_tenant_ids function for users with no staff and no superuser."""
     user = get_user_model().objects.get(id=user_id)
     assert not user.is_staff and not user.is_superuser, 'only users with no staff and no superuser allowed in this test'
@@ -80,7 +82,7 @@ def test_get_accessible_tenant_ids_no_staff_no_sueperuser(base_data, user_id, ex
 
 
 @pytest.mark.django_db
-def test_get_accessible_tenant_ids_complex(base_data):
+def test_get_accessible_tenant_ids_complex(base_data):  # pylint: disable=unused-argument
     """Verify get_accessible_tenant_ids function for complex cases"""
     user = get_user_model().objects.get(id=10)
     user_access_role = 'org_course_creator_group'
@@ -143,7 +145,7 @@ def test_get_accessible_tenant_ids_complex(base_data):
         }
     )),
 ])
-def test_check_tenant_access(base_data, user_id, ids_to_check, expected):
+def test_check_tenant_access(base_data, user_id, ids_to_check, expected):  # pylint: disable=unused-argument
     """Verify check_tenant_access function."""
     user = get_user_model().objects.get(id=user_id)
     result = tenants.check_tenant_access(user, ids_to_check)
@@ -151,7 +153,7 @@ def test_check_tenant_access(base_data, user_id, ids_to_check, expected):
 
 
 @pytest.mark.django_db
-def test_get_all_course_org_filter_list(base_data):
+def test_get_all_course_org_filter_list(base_data):  # pylint: disable=unused-argument
     """Verify get_all_course_org_filter_list function."""
     result = tenants.get_all_course_org_filter_list()
     assert result == {
@@ -198,7 +200,7 @@ def test_get_all_course_org_filter_list(base_data):
         'invalid': [],
     }),
 ])
-def test_get_course_org_filter_list(base_data, tenant_ids, expected):
+def test_get_course_org_filter_list(base_data, tenant_ids, expected):  # pylint: disable=unused-argument
     """Verify get_course_org_filter_list function."""
     result = tenants.get_course_org_filter_list(tenant_ids)
     assert result == expected
@@ -210,7 +212,7 @@ def test_get_course_org_filter_list(base_data, tenant_ids, expected):
     (2, [1, 2, 3, 7, 8]),
     (3, []),
 ])
-def test_get_accessible_tenant_ids(base_data, user_id, expected):
+def test_get_accessible_tenant_ids(base_data, user_id, expected):  # pylint: disable=unused-argument
     """Verify get_accessible_tenant_ids function."""
     user = get_user_model().objects.get(id=user_id)
     result = tenants.get_accessible_tenant_ids(user)
@@ -218,7 +220,7 @@ def test_get_accessible_tenant_ids(base_data, user_id, expected):
 
 
 @pytest.mark.django_db
-def test_get_all_tenants_info(base_data):
+def test_get_all_tenants_info(base_data):  # pylint: disable=unused-argument
     """Verify get_all_tenants_info function."""
     result = tenants.get_all_tenants_info()
     assert result['tenant_ids'] == [1, 2, 3, 7, 8]
@@ -242,6 +244,20 @@ def test_get_all_tenants_info(base_data):
     (7, 's7.sample.com'),
     (8, 's8.sample.com'),
 ])
-def test_get_tenant_site(base_data, tenant_id, expected):
+def test_get_tenant_site(base_data, tenant_id, expected):  # pylint: disable=unused-argument
     """Verify get_tenant_site function."""
     assert expected == tenants.get_tenant_site(tenant_id)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("org, expected", [
+    ('ORG1', [1]),
+    ('ORG2', [1]),
+    ('ORG3', [2, 7]),
+    ('ORG4', [3]),
+    ('ORG5', [3]),
+    ('ORG8', [2, 8]),
+])
+def test_get_tenants_by_org(base_data, org, expected):  # pylint: disable=unused-argument
+    """Verify get_tenants_by_org function."""
+    assert expected == tenants.get_tenants_by_org(org)

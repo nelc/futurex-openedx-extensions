@@ -8,9 +8,14 @@ class CourseOverview(models.Model):
     """Mock"""
     id = models.CharField(max_length=255, primary_key=True)
     org = models.CharField(max_length=255)
-    visible_to_staff_only = models.BooleanField()
+    catalog_visibility = models.TextField(null=True)
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True)
+    display_name = models.TextField(null=True)
+    enrollment_start = models.DateTimeField(null=True)
+    enrollment_end = models.DateTimeField(null=True)
+    self_paced = models.BooleanField(default=False)
+    course_image_url = models.TextField()
 
     class Meta:
         app_label = "fake_models"
@@ -89,3 +94,35 @@ class UserProfile(models.Model):
     class Meta:
         app_label = "fake_models"
         db_table = "auth_userprofile"
+
+
+class BaseFeedback(models.Model):
+    """Mock"""
+    RATING_OPTIONS = [
+        (0, '0'),
+        (1, '1'),
+        (2, '2'),
+        (3, '3'),
+        (4, '4'),
+        (5, '5')
+    ]
+    author = models.ForeignKey(get_user_model(), null=True, on_delete=models.SET_NULL)
+    rating_content = models.IntegerField(blank=True, null=True, choices=RATING_OPTIONS)
+    feedback = models.CharField(max_length=500, blank=True, null=True)
+    public = models.BooleanField(null=True, default=False)
+    course_id = models.ForeignKey(CourseOverview, null=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        """Set model abstract"""
+        abstract = True
+
+
+class FeedbackCourse(BaseFeedback):
+    """Mock"""
+    rating_instructors = models.IntegerField(blank=True, null=True, choices=BaseFeedback.RATING_OPTIONS)
+    recommended = models.BooleanField(null=True, default=True)
+
+    class Meta:
+        """Set constrain for author an course id"""
+        unique_together = [["author", "course_id"]]
+        db_table = "eox_nelp_feedbackcourse"
