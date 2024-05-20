@@ -15,7 +15,7 @@ from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_lis
 
 
 def get_courses_queryset(
-    tenant_ids: List, search_text: str = None, only_visible: bool = True, only_active: bool = False
+    tenant_ids: List, search_text: str = None, visible_filter: bool = True, active_filter: bool = None
 ) -> QuerySet:
     """
     Get the courses queryset for the given tenant IDs and search text.
@@ -24,16 +24,18 @@ def get_courses_queryset(
     :type tenant_ids: List
     :param search_text: Search text to filter the courses by
     :type search_text: str
-    :param only_visible: Whether to only include courses that are visible in the catalog
-    :type only_visible: bool
-    :param only_active: Whether to only include active courses
-    :type only_active: bool
+    :param visible_filter: Whether to only include courses that are visible in the catalog
+    :type visible_filter: bool
+    :param active_filter: Whether to only include active courses
+    :type active_filter: bool
     :return: QuerySet of courses
     :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
 
-    queryset = get_base_queryset_courses(course_org_filter_list, only_visible=only_visible, only_active=only_active)
+    queryset = get_base_queryset_courses(
+        course_org_filter_list, visible_filter=visible_filter, active_filter=active_filter,
+    )
 
     search_text = (search_text or '').strip()
     if search_text:

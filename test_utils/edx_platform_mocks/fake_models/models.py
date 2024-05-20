@@ -16,6 +16,7 @@ class CourseOverview(models.Model):
     enrollment_end = models.DateTimeField(null=True)
     self_paced = models.BooleanField(default=False)
     course_image_url = models.TextField()
+    visible_to_staff_only = models.BooleanField(default=False)
 
     class Meta:
         app_label = "fake_models"

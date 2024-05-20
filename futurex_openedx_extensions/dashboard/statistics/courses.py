@@ -12,22 +12,24 @@ from futurex_openedx_extensions.helpers.querysets import get_base_queryset_cours
 from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list
 
 
-def get_courses_count(tenant_ids: List[int], only_visible: bool = True, only_active: bool = False) -> QuerySet:
+def get_courses_count(tenant_ids: List[int], visible_filter: bool = True, active_filter: bool = None) -> QuerySet:
     """
     Get the count of courses in the given tenants
 
     :param tenant_ids: List of tenant IDs to get the count for
     :type tenant_ids: List[int]
-    :param only_visible: Whether to only count courses that are visible in the catalog
-    :type only_visible: bool
-    :param only_active: Whether to only count active courses (according to dates)
-    :type only_active: bool
+    :param visible_filter: Value to filter courses on catalog visibility. None means no filter.
+    :type visible_filter: bool
+    :param active_filter: Value to filter courses on active status. None means no filter.
+    :type active_filter: bool
     :return: QuerySet of courses count per organization
     :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
 
-    q_set = get_base_queryset_courses(course_org_filter_list, only_visible=only_visible, only_active=only_active)
+    q_set = get_base_queryset_courses(
+        course_org_filter_list, visible_filter=visible_filter, active_filter=active_filter
+    )
 
     return q_set.values('org').annotate(
         courses_count=Count('id')
@@ -35,23 +37,25 @@ def get_courses_count(tenant_ids: List[int], only_visible: bool = True, only_act
 
 
 def get_courses_count_by_status(
-    tenant_ids: List[int], only_visible: bool = True, only_active: bool = False
+    tenant_ids: List[int], visible_filter: bool = True, active_filter: bool = None
 ) -> QuerySet:
     """
     Get the count of courses in the given tenants by status
 
     :param tenant_ids: List of tenant IDs to get the count for
     :type tenant_ids: List[int]
-    :param only_visible: Whether to only count courses that are visible in the catalog
-    :type only_visible: bool
-    :param only_active: Whether to only count active courses (according to dates)
-    :type only_active: bool
+    :param visible_filter: Whether to only count courses that are visible in the catalog
+    :type visible_filter: bool
+    :param active_filter: Whether to only count active courses (according to dates)
+    :type active_filter: bool
     :return: QuerySet of courses count per organization and status
     :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
 
-    q_set = get_base_queryset_courses(course_org_filter_list, only_visible=only_visible, only_active=only_active)
+    q_set = get_base_queryset_courses(
+        course_org_filter_list, visible_filter=visible_filter, active_filter=active_filter
+    )
 
     q_set = q_set.annotate(
         status=Case(

@@ -254,3 +254,22 @@ def get_selected_tenants(request: Request) -> List[int]:
     if tenant_ids is None:
         return get_accessible_tenant_ids(request.user)
     return ids_string_to_list(tenant_ids)
+
+
+def get_tenants_sites(tenant_ids: List[int]) -> List[str]:
+    """
+    Get the sites for the given tenant IDs
+
+    :param tenant_ids: List of tenant IDs
+    :type tenant_ids: List[int]
+    :return: List of sites
+    :rtype: List[str]
+    """
+    if not tenant_ids:
+        return []
+
+    tenant_sites = []
+    for tenant_id in tenant_ids:
+        if site := get_tenant_site(tenant_id):
+            tenant_sites.append(site)
+    return tenant_sites

@@ -12,7 +12,7 @@ from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_lis
 
 
 def get_certificates_count(
-    tenant_ids: List[int], only_visible_courses: bool = True, only_active_courses: bool = False
+    tenant_ids: List[int], visible_courses_filter: bool = True, active_courses_filter: bool = None
 ) -> Dict[str, int]:
     """
     Get the count of issued certificates in the given tenants. The count is grouped by organization. Certificates
@@ -20,10 +20,10 @@ def get_certificates_count(
 
     :param tenant_ids: List of tenant IDs to get the count for
     :type tenant_ids: List[int]
-    :param only_visible_courses: Whether to only count courses that are visible in the catalog
-    :type only_visible_courses: bool
-    :param only_active_courses: Whether to only count active courses (according to dates)
-    :type only_active_courses: bool
+    :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
+    :type visible_courses_filter: bool
+    :param active_courses_filter: Value to filter courses on active status. None means no filter.
+    :type active_courses_filter: bool
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
@@ -33,8 +33,8 @@ def get_certificates_count(
         status='downloadable',
         course_id__in=get_base_queryset_courses(
             course_org_filter_list,
-            only_visible=only_visible_courses,
-            only_active=only_active_courses,
+            visible_filter=visible_courses_filter,
+            active_filter=active_courses_filter,
         ),
     ).annotate(course_org=Subquery(
         CourseOverview.objects.filter(

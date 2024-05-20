@@ -261,3 +261,27 @@ def test_get_tenant_site(base_data, tenant_id, expected):  # pylint: disable=unu
 def test_get_tenants_by_org(base_data, org, expected):  # pylint: disable=unused-argument
     """Verify get_tenants_by_org function."""
     assert expected == tenants.get_tenants_by_org(org)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("tenant_ids, expected", [
+    ([1], ['s1.sample.com']),
+    ([2, 3], ['s2.sample.com', 's3.sample.com']),
+    ([2, 3, 4], ['s2.sample.com', 's3.sample.com']),
+    ([2, 3, 7, 8], ['s2.sample.com', 's3.sample.com', 's7.sample.com', 's8.sample.com']),
+])
+def test_get_tenants_sites(base_data, tenant_ids, expected):  # pylint: disable=unused-argument
+    """Verify get_tenants_sites function."""
+    assert expected == tenants.get_tenants_sites(tenant_ids)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("tenant_ids", [
+    [],
+    None,
+    [99],
+])
+def test_get_tenants_sites_bad_tenants(base_data, tenant_ids):  # pylint: disable=unused-argument
+    """Verify get_tenants_sites function."""
+    result = tenants.get_tenants_sites(tenant_ids)
+    assert result is not None and len(result) == 0
