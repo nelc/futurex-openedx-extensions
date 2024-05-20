@@ -66,3 +66,5 @@ requirements/private.txt
 
 # temporary tests migration files
 /test_utils/edx_platform_mocks/fake_models/migrations/
+
+default.db

@@ -40,6 +40,8 @@ INSTALLED_APPS = (
     'openedx',
 )
 
+USE_TZ = True
+
 LOCALE_PATHS = [
     root('futurex_openedx_extensions', 'conf', 'locale'),
 ]

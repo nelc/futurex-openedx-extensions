@@ -117,9 +117,9 @@ def test_get_accessible_tenant_ids_complex(base_data):  # pylint: disable=unused
             ), (f'test data is not as expected, user {user.id} should be only in {user_access_role} for {user_access}. '
                 f'Found in {role} for {org}' if user.id in users else f'Found in {role} for {org}')
 
-    expected_to_not_include_tenant_8 = [2, 7]
+    tenant_8_not_expected = [2, 7]
     result = tenants.get_accessible_tenant_ids(user)
-    assert result == expected_to_not_include_tenant_8
+    assert result == tenant_8_not_expected
 
 
 @pytest.mark.django_db

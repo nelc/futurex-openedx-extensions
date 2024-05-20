@@ -42,7 +42,7 @@ def test_has_tenant_access(base_data, method, query_params, user_id):  # pylint:
 ])
 def test_has_tenant_access_no_access(
     base_data, method, query_params, user_id, reason, bad_tenant_ids
-):  # pylint: disable=unused-argument
+):  # pylint: disable=unused-argument, too-many-arguments
     """Verify that PermissionDenied is raised when user does not have access to one of the tenants."""
     permission = HasTenantAccess()
     request = APIRequestFactory().generic(method, f'/dummy/{query_params}')

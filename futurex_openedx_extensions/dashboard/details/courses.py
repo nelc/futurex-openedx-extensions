@@ -11,7 +11,7 @@ from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
 
 from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
-from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list, get_tenant_site
+from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list
 
 
 def get_courses_queryset(
@@ -32,10 +32,6 @@ def get_courses_queryset(
     :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
-    tenant_sites = []
-    for tenant_id in tenant_ids:
-        if site := get_tenant_site(tenant_id):
-            tenant_sites.append(site)
 
     queryset = get_base_queryset_courses(course_org_filter_list, only_visible=only_visible, only_active=only_active)
 

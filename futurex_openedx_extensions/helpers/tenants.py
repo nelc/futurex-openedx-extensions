@@ -205,10 +205,10 @@ def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple
     """
     try:
         tenant_ids = set(ids_string_to_list(tenant_ids_string))
-    except ValueError as e:
+    except ValueError as exc:
         return False, error_details_to_dictionary(
             reason="Invalid tenant IDs provided. It must be a comma-separated list of integers",
-            error=str(e)
+            error=str(exc)
         )
 
     wrong_tenant_ids = tenant_ids - set(get_all_tenant_ids())
