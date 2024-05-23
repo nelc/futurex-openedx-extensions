@@ -83,6 +83,9 @@ class UserProfile(models.Model):
     )
     profile_image_uploaded_at = models.DateTimeField(null=True, blank=True)
     phone_number = models.CharField(blank=True, null=True, max_length=50)
+    bio = models.CharField(blank=True, null=True, max_length=3000, db_index=False)
+    level_of_education = models.CharField(blank=True, null=True, max_length=6, db_index=True)
+    city = models.TextField(blank=True, null=True)
 
     @property
     def has_profile_image(self):
@@ -92,9 +95,32 @@ class UserProfile(models.Model):
         """
         return self.profile_image_uploaded_at is not None
 
+    @property
+    def gender_display(self):
+        """ Convenience method that returns the human readable gender. """
+        if self.gender:
+            return 'Male' if self.gender == 'm' else 'Female'
+        return None
+
+    @property
+    def level_of_education_display(self):
+        """ Convenience method that returns the human readable level of education. """
+        return self.level_of_education
+
     class Meta:
         app_label = "fake_models"
         db_table = "auth_userprofile"
+
+
+class SocialLink(models.Model):
+    """Mock"""
+    user_profile = models.ForeignKey(UserProfile, db_index=True, related_name='social_links', on_delete=models.CASCADE)
+    platform = models.CharField(max_length=30)
+    social_link = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        app_label = "fake_models"
+        db_table = "student_social_link"
 
 
 class BaseFeedback(models.Model):

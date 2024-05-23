@@ -1,8 +1,9 @@
 """Test views for the dashboard app"""
 import json
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
+from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from django.urls import resolve, reverse
@@ -10,6 +11,7 @@ from django.utils.timezone import now, timedelta
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework.test import APITestCase
 
+from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from tests.base_test_data import expected_statistics
@@ -20,8 +22,14 @@ class BaseTextViewMixin(APITestCase):
     VIEW_NAME = 'view name is not set!'
 
     def setUp(self):
-        self.url = reverse(self.VIEW_NAME)
+        """Setup"""
+        self.url_args = []
         self.staff_user = 2
+
+    @property
+    def url(self):
+        """Get the URL"""
+        return reverse(self.VIEW_NAME, args=self.url_args)
 
     def login_user(self, user_id):
         """Helper to login user"""
@@ -196,3 +204,71 @@ class TesttCourseCourseStatusesView(BaseTextViewMixin):
             "self_archived": 0,
             "self_upcoming": 0,
         })
+
+
+@pytest.mark.usefixtures('base_data')
+class TesttLearnerInfoView(BaseTextViewMixin):
+    """Tests for CourseStatusesView"""
+    VIEW_NAME = 'fx_dashboard:learner-info'
+
+    def setUp(self):
+        """Setup"""
+        super().setUp()
+        self.url_args = ['user10']
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        user = get_user_model().objects.get(username='user10')
+        user.courses_count = 3
+        user.certificates_count = 1
+        self.url_args = [user.username]
+
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_get_info:
+            mock_get_info.return_value = Mock(first=Mock(return_value=user))
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        assert data == serializers.LearnerDetailsExtendedSerializer(user).data
+
+    def test_user_not_found(self):
+        """Verify that the view returns 404 when the user is not found"""
+        user_name = 'user10x'
+        self.url_args = [user_name]
+        assert not get_user_model().objects.filter(username=user_name).exists(), 'bad test data'
+
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {'reason': 'User not found user10x', 'details': {}})
+
+    def _get_test_users(self, org3_admin_id, org3_learner_id):
+        """Helper to get test users for the test_not_staff_user test"""
+        admin_user = get_user_model().objects.get(id=org3_admin_id)
+        learner_user = get_user_model().objects.get(id=org3_learner_id)
+
+        assert not admin_user.is_staff, 'bad test data'
+        assert not admin_user.is_superuser, 'bad test data'
+        assert not learner_user.is_staff, 'bad test data'
+        assert not learner_user.is_superuser, 'bad test data'
+        assert not CourseAccessRole.objects.filter(user_id=org3_learner_id).exists(), 'bad test data'
+
+        self.login_user(org3_admin_id)
+
+    def test_org_admin_user_with_allowed_learner(self):
+        """Verify that the view returns 200 when the user is an admin on the learner's organization"""
+        self._get_test_users(4, 45)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_org_admin_user_with_not_allowed_learner(self):
+        """Verify that the view returns 404 when the user is an org admin but the learner belongs to another org"""
+        self._get_test_users(9, 45)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 404)

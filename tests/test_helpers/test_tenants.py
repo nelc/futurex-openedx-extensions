@@ -1,6 +1,7 @@
 """Tests for tenants helpers."""
 
 import pytest
+from common.djangoapps.student.models import CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
 from eox_tenant.models import TenantConfig
 
@@ -285,3 +286,55 @@ def test_get_tenants_sites_bad_tenants(base_data, tenant_ids):  # pylint: disabl
     """Verify get_tenants_sites function."""
     result = tenants.get_tenants_sites(tenant_ids)
     assert result is not None and len(result) == 0
+
+
+@pytest.mark.django_db
+def test_get_user_id_from_username_tenants_non_existent_username(base_data):  # pylint: disable=unused-argument
+    """Verify get_user_id_from_username_tenants function for non-existent username."""
+    username = 'non_existent_username'
+    tenant_ids = [1, 2, 3, 7, 8]
+    assert not get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
+    assert TenantConfig.objects.filter(id__in=tenant_ids).count() == len(tenant_ids), 'test data is not as expected'
+
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("tenant_ids", [
+    [],
+    None,
+    [99],
+])
+def test_get_user_id_from_username_tenants_bad_tenant(base_data, tenant_ids):  # pylint: disable=unused-argument
+    """Verify get_user_id_from_username_tenants function for non-existent tenant."""
+    username = 'user1'
+    assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
+
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("username, tenant_ids, orgs, sites, is_enrolled, is_signup", [
+    ('user15', [1], ['ORG1', 'ORG2'], ['s1.sample.com'], True, False),
+    ('user50', [7], ['ORG3'], ['s7.sample.com'], False, True),
+    ('user4', [1], ['ORG1', 'ORG2'], ['s1.sample.com'], True, True),
+])
+def test_get_user_id_from_username_tenants(
+    base_data, username, tenant_ids, orgs, sites, is_enrolled, is_signup
+):  # pylint: disable=unused-argument, too-many-arguments
+    """Verify get_user_id_from_username_tenants function for a user enrolled in a course but not in the site signup."""
+    username = 'user15'
+    tenant_ids = [1]
+    assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
+    assert TenantConfig.objects.filter(id__in=tenant_ids).count() == len(tenant_ids), 'test data is not as expected'
+
+    assert CourseEnrollment.objects.filter(
+        user__username=username,
+        course__org__in=['ORG1', 'ORG2'],
+    ).exists(), 'test data is not as expected'
+    assert not UserSignupSource.objects.filter(
+        user__username=username,
+        site='s1.sample.com',
+    ).exists(), 'test data is not as expected'
+
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len("user"):])

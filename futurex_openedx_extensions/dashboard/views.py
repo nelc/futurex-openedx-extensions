@@ -4,9 +4,9 @@ from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_courses_queryset
-from futurex_openedx_extensions.dashboard.details.learners import get_learners_queryset
-from futurex_openedx_extensions.dashboard.serializers import CourseDetailsSerializer, LearnerDetailsSerializer
+from futurex_openedx_extensions.dashboard.details.learners import get_learner_info_queryset, get_learners_queryset
 from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
 from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count, get_courses_count_by_status
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
@@ -15,7 +15,7 @@ from futurex_openedx_extensions.helpers.converters import error_details_to_dicti
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import HasTenantAccess
-from futurex_openedx_extensions.helpers.tenants import get_selected_tenants
+from futurex_openedx_extensions.helpers.tenants import get_selected_tenants, get_user_id_from_username_tenants
 
 
 class TotalCountsView(APIView):
@@ -96,7 +96,7 @@ class TotalCountsView(APIView):
 
 class LearnersView(ListAPIView):
     """View to get the list of learners"""
-    serializer_class = LearnerDetailsSerializer
+    serializer_class = serializers.LearnerDetailsSerializer
     permission_classes = [HasTenantAccess]
     pagination_class = DefaultPagination
 
@@ -112,7 +112,7 @@ class LearnersView(ListAPIView):
 
 class CoursesView(ListAPIView):
     """View to get the list of courses"""
-    serializer_class = CourseDetailsSerializer
+    serializer_class = serializers.CourseDetailsSerializer
     permission_classes = [HasTenantAccess]
     pagination_class = DefaultPagination
     filter_backends = [DefaultOrderingFilter]
@@ -162,3 +162,24 @@ class CourseStatusesView(APIView):
         result = get_courses_count_by_status(tenant_ids=tenant_ids)
 
         return JsonResponse(self.to_json(result))
+
+
+class LearnerInfoView(APIView):
+    """View to get the information of a learner"""
+    permission_classes = [HasTenantAccess]
+
+    def get(self, request, username, *args, **kwargs):  # pylint: disable=no-self-use
+        """
+        GET /api/fx/learners/v1/learner/<username>/
+        """
+        tenant_ids = get_selected_tenants(request)
+        user_id = get_user_id_from_username_tenants(username, tenant_ids)
+
+        if not user_id:
+            return Response(error_details_to_dictionary(reason=f"User not found {username}"), status=404)
+
+        user = get_learner_info_queryset(tenant_ids, user_id).first()
+
+        return JsonResponse(
+            serializers.LearnerDetailsExtendedSerializer(user, context={'request': request}).data
+        )

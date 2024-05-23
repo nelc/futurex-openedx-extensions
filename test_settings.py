@@ -70,3 +70,5 @@ TEMPLATES = [{
 
 # Avoid warnings about migrations
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
+USERNAME_PATTERN = r'(?P<username>[\w.@+-]+)'

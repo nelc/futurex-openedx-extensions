@@ -133,3 +133,39 @@ def get_learners_queryset(
     ).select_related('profile').order_by('id')
 
     return queryset
+
+
+def get_learner_info_queryset(
+    tenant_ids: List, user_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
+) -> QuerySet:
+    """
+    Get the learner queryset for the given user ID. This method assumes a valid user ID.
+
+    :param tenant_ids: List of tenant IDs to get the learner for
+    :type tenant_ids: List
+    :param user_id: The user ID to get the learner for
+    :type user_id: int
+    :param visible_courses_filter: Whether to only count courses that are visible in the catalog
+    :type visible_courses_filter: bool
+    :param active_courses_filter: Whether to only count active courses
+    :type active_courses_filter: bool
+    :return: QuerySet of learners
+    :rtype: QuerySet
+    """
+    course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
+
+    queryset = get_user_model().objects.filter(id=user_id).annotate(
+        courses_count=get_courses_count_for_learner_queryset(
+            course_org_filter_list,
+            visible_courses_filter=visible_courses_filter,
+            active_courses_filter=active_courses_filter,
+        )
+    ).annotate(
+        certificates_count=get_certificates_count_for_learner_queryset(
+            course_org_filter_list,
+            visible_courses_filter=visible_courses_filter,
+            active_courses_filter=active_courses_filter,
+        )
+    ).select_related('profile')
+
+    return queryset

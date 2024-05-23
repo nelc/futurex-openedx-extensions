@@ -3,14 +3,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment
 from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef
-from django.db.models.query import QuerySet
+from django.db.models.query import Q, QuerySet
 from eox_tenant.models import Route, TenantConfig
 from rest_framework.request import Request
 
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, ids_string_to_list
+from futurex_openedx_extensions.helpers.querysets import get_has_site_login_queryset
 
 TENANT_LIMITED_ADMIN_ROLES = ['org_course_creator_group']
 
@@ -273,3 +274,34 @@ def get_tenants_sites(tenant_ids: List[int]) -> List[str]:
         if site := get_tenant_site(tenant_id):
             tenant_sites.append(site)
     return tenant_sites
+
+
+def get_user_id_from_username_tenants(username: str, tenant_ids: List[int]) -> int:
+    """
+    Check if the given username is in any of the given tenants. Returns the user ID if found, and zero otherwise.
+
+    :param username: The username to check
+    :type username: str
+    :param tenant_ids: List of tenant IDs to check
+    :type tenant_ids: List[int]
+    :return: The user ID if found, and zero otherwise
+    :rtype: int
+    """
+    if not tenant_ids or not username:
+        return 0
+
+    course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
+    tenant_sites = get_tenants_sites(tenant_ids)
+
+    user_id = get_user_model().objects.filter(username=username).annotate(
+        courseenrollment_count=Exists(
+            CourseEnrollment.objects.filter(
+                user_id=OuterRef('id'),
+                course__org__in=course_org_filter_list,
+            )
+        )
+    ).annotate(
+        has_site_login=get_has_site_login_queryset(tenant_sites)
+    ).filter(Q(courseenrollment_count=True) | Q(has_site_login=True)).values_list('id', flat=True)
+
+    return user_id[0] if user_id else 0

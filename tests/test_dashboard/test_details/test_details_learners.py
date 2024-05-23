@@ -1,10 +1,13 @@
 """Tests for learner details collectors"""
+from unittest.mock import patch
+
 import pytest
 from django.contrib.auth import get_user_model
 
 from futurex_openedx_extensions.dashboard.details.learners import (
     get_certificates_count_for_learner_queryset,
     get_courses_count_for_learner_queryset,
+    get_learner_info_queryset,
     get_learners_queryset,
 )
 
@@ -37,6 +40,26 @@ def test_count_for_learner_queryset(
     )
 
     assert queryset.all()[0].result == expected_count, f"{assert_error_message} +. Check the test data for details."
+
+
+@pytest.mark.django_db
+def test_get_learner_info_queryset(base_data):  # pylint: disable=unused-argument
+    """Verify that get_learners_queryset returns the correct QuerySet."""
+    queryset = get_learner_info_queryset([1], 3)
+    assert queryset.count() == 1, "bad test data, user id (3) should be in the queryset"
+
+    info = queryset.first()
+    assert info.username == "user3", "invalid data fetched!"
+    assert hasattr(info, "courses_count"), "courses_count should be in the queryset"
+    assert hasattr(info, "certificates_count"), "certificates_count should be in the queryset"
+
+
+@pytest.mark.django_db
+def test_get_learner_info_queryset_selecting_profile(base_data):  # pylint: disable=unused-argument
+    """Verify that get_learners_queryset returns the correct QuerySet along with the related profile record."""
+    with patch('django.db.models.query.QuerySet.select_related') as mocked_select_related:
+        get_learner_info_queryset([1], 3)
+    mocked_select_related.assert_called_once_with('profile')
 
 
 @pytest.mark.django_db

@@ -1,7 +1,10 @@
 """Serializers for the dashboard details API."""
+from urllib.parse import urljoin
+
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
 from rest_framework import serializers
 
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREFIX, COURSE_STATUSES
@@ -12,11 +15,13 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
     """Serializer for learner details."""
     user_id = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
+    alternative_full_name = serializers.SerializerMethodField()
     username = serializers.CharField()
     email = serializers.EmailField()
     mobile_no = serializers.SerializerMethodField()
     year_of_birth = serializers.SerializerMethodField()
     gender = serializers.SerializerMethodField()
+    gender_display = serializers.SerializerMethodField()
     date_joined = serializers.DateTimeField()
     last_login = serializers.DateTimeField()
     enrolled_courses_count = serializers.SerializerMethodField()
@@ -27,16 +32,50 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
         fields = [
             "user_id",
             "full_name",
+            "alternative_full_name",
             "username",
             "email",
             "mobile_no",
             "year_of_birth",
             "gender",
+            "gender_display",
             "date_joined",
             "last_login",
             "enrolled_courses_count",
             "certificates_count",
         ]
+
+    def _get_names(self, obj, alternative=False):
+        """
+        Calculate the full name and alternative full name. We have two issues in the data:
+        1. The first and last names in auth.user contain many records with identical values (redundant data).
+        2. The name field in the profile sometimes contains data while the first and last names are empty.
+        """
+        first_name = obj.first_name.strip()
+        last_name = obj.last_name.strip()
+        alt_name = (self._get_profile_field(obj, "name") or "").strip()
+
+        if not last_name:
+            full_name = first_name
+        elif not first_name:
+            full_name = last_name
+        elif first_name == last_name and " " in first_name:
+            full_name = first_name
+        else:
+            full_name = f"{first_name} {last_name}"
+
+        if alt_name == full_name:
+            alt_name = ""
+
+        if not full_name and alt_name:
+            full_name = alt_name
+            alt_name = ""
+
+        if alt_name and ord(alt_name[0]) > 127 >= ord(full_name[0]):
+            names = alt_name, full_name
+        else:
+            names = full_name, alt_name
+        return names[0] if not alternative else names[1]
 
     @staticmethod
     def _get_profile_field(obj, field_name):
@@ -49,7 +88,11 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         """Return full name."""
-        return self._get_profile_field(obj, "name")
+        return self._get_names(obj)
+
+    def get_alternative_full_name(self, obj):
+        """Return alternative full name."""
+        return self._get_names(obj, alternative=True)
 
     def get_mobile_no(self, obj):
         """Return mobile number."""
@@ -58,6 +101,10 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
     def get_gender(self, obj):
         """Return gender."""
         return self._get_profile_field(obj, "gender")
+
+    def get_gender_display(self, obj):
+        """Return readable text for gender"""
+        return self._get_profile_field(obj, "gender_display")
 
     def get_certificates_count(self, obj):  # pylint: disable=no-self-use
         """Return certificates count."""
@@ -70,6 +117,65 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
     def get_year_of_birth(self, obj):
         """Return year of birth."""
         return self._get_profile_field(obj, "year_of_birth")
+
+
+class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):
+    """Serializer for extended learner details."""
+    city = serializers.SerializerMethodField()
+    bio = serializers.SerializerMethodField()
+    level_of_education = serializers.SerializerMethodField()
+    social_links = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
+    profile_link = serializers.SerializerMethodField()
+
+    class Meta:
+        model = get_user_model()
+        fields = LearnerDetailsSerializer.Meta.fields + [
+            "city",
+            "bio",
+            "level_of_education",
+            "social_links",
+            "image",
+            "profile_link",
+        ]
+
+    def get_city(self, obj):
+        """Return city."""
+        return self._get_profile_field(obj, "city")
+
+    def get_bio(self, obj):
+        """Return bio."""
+        return self._get_profile_field(obj, "bio")
+
+    def get_level_of_education(self, obj):
+        """Return level of education."""
+        return self._get_profile_field(obj, "level_of_education_display")
+
+    def get_social_links(self, obj):  # pylint: disable=no-self-use
+        """Return social links."""
+        result = {}
+        profile = obj.profile if hasattr(obj, "profile") else None
+        if profile:
+            links = profile.social_links.all().order_by('platform')
+            for link in links:
+                result[link.platform] = link.social_link
+        return result
+
+    def get_image(self, obj):
+        """Return image."""
+        if hasattr(obj, "profile") and obj.profile:
+            return AccountLegacyProfileSerializer.get_profile_image(
+                obj.profile, obj, self.context.get('request')
+            )["image_url_large"]
+
+        return None
+
+    def get_profile_link(self, obj):
+        """Return profile link."""
+        request = self.context.get('request')
+        if request and hasattr(request, 'site') and request.site:
+            return urljoin(request.site.domain, f"/u/{obj.username}")
+        return None
 
 
 class CourseDetailsSerializer(serializers.ModelSerializer):
