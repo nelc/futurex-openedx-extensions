@@ -1,13 +1,17 @@
 """Serializers for the dashboard details API."""
-from urllib.parse import urljoin
-
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
+from lms.djangoapps.certificates.api import get_certificates_for_user_by_course_keys
+from lms.djangoapps.courseware.courses import get_course_blocks_completion_summary
+from lms.djangoapps.grades.api import CourseGradeFactory
+from opaque_keys.edx.keys import CourseKey
+from openedx.core.djangoapps.content.block_structure.api import get_block_structure_manager
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
 from rest_framework import serializers
 
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREFIX, COURSE_STATUSES
+from futurex_openedx_extensions.helpers.converters import relative_url_to_absolute_url
 from futurex_openedx_extensions.helpers.tenants import get_tenants_by_org
 
 
@@ -75,6 +79,7 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
             names = alt_name, full_name
         else:
             names = full_name, alt_name
+
         return names[0] if not alternative else names[1]
 
     @staticmethod
@@ -172,19 +177,12 @@ class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):
 
     def get_profile_link(self, obj):
         """Return profile link."""
-        request = self.context.get('request')
-        if request and hasattr(request, 'site') and request.site:
-            return urljoin(request.site.domain, f"/u/{obj.username}")
-        return None
+        return relative_url_to_absolute_url(f"/u/{obj.username}/", self.context.get('request'))
 
 
-class CourseDetailsSerializer(serializers.ModelSerializer):
+class CourseDetailsBaseSerializer(serializers.ModelSerializer):
     """Serializer for course details."""
     status = serializers.SerializerMethodField()
-    rating = serializers.SerializerMethodField()
-    enrolled_count = serializers.IntegerField()
-    active_count = serializers.IntegerField()
-    certificates_count = serializers.IntegerField()
     start_date = serializers.SerializerMethodField()
     end_date = serializers.SerializerMethodField()
     start_enrollment_date = serializers.SerializerMethodField()
@@ -201,10 +199,6 @@ class CourseDetailsSerializer(serializers.ModelSerializer):
             "id",
             "status",
             "self_paced",
-            "rating",
-            "enrolled_count",
-            "active_count",
-            "certificates_count",
             "start_date",
             "end_date",
             "start_enrollment_date",
@@ -227,10 +221,6 @@ class CourseDetailsSerializer(serializers.ModelSerializer):
             status = COURSE_STATUSES["active"]
 
         return f'{COURSE_STATUS_SELF_PREFIX if obj.self_paced else ""}{status}'
-
-    def get_rating(self, obj):  # pylint: disable=no-self-use
-        """Return the course rating."""
-        return round(obj.rating_total / obj.rating_count if obj.rating_count else 0, 1)
 
     def get_start_enrollment_date(self, obj):  # pylint: disable=no-self-use
         """Return the start enrollment date."""
@@ -259,3 +249,85 @@ class CourseDetailsSerializer(serializers.ModelSerializer):
     def get_author_name(self, obj):  # pylint: disable=unused-argument,no-self-use
         """Return the author name."""
         return None
+
+
+class CourseDetailsSerializer(CourseDetailsBaseSerializer):
+    """Serializer for course details."""
+    rating = serializers.SerializerMethodField()
+    enrolled_count = serializers.IntegerField()
+    active_count = serializers.IntegerField()
+    certificates_count = serializers.IntegerField()
+
+    class Meta:
+        model = CourseOverview
+        fields = CourseDetailsBaseSerializer.Meta.fields + [
+            "rating",
+            "enrolled_count",
+            "active_count",
+            "certificates_count",
+        ]
+
+    def get_rating(self, obj):  # pylint: disable=no-self-use
+        """Return the course rating."""
+        return round(obj.rating_total / obj.rating_count if obj.rating_count else 0, 1)
+
+
+class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
+    """Serializer for learner's courses details."""
+    enrollment_date = serializers.DateTimeField()
+    last_activity = serializers.DateTimeField()
+    certificate_url = serializers.SerializerMethodField()
+    progress_url = serializers.SerializerMethodField()
+    grades_url = serializers.SerializerMethodField()
+    progress = serializers.SerializerMethodField()
+    grade = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CourseOverview
+        fields = CourseDetailsBaseSerializer.Meta.fields + [
+            "enrollment_date",
+            "last_activity",
+            "certificate_url",
+            "progress_url",
+            "grades_url",
+            "progress",
+            "grade",
+        ]
+
+    def get_certificate_url(self, obj):  # pylint: disable=no-self-use
+        """Return the certificate URL."""
+        certificate = get_certificates_for_user_by_course_keys(obj.related_user_id, [obj.id])
+        if certificate and obj.id in certificate:
+            return certificate[obj.id].get("download_url")
+
+        return None
+
+    def get_progress_url(self, obj):
+        """Return the certificate URL."""
+        return relative_url_to_absolute_url(
+            f"/learning/course/{obj.id}/progress/{obj.related_user_id}/",
+            self.context.get('request')
+        )
+
+    def get_grades_url(self, obj):
+        """Return the certificate URL."""
+        return relative_url_to_absolute_url(
+            f"/gradebook/{obj.id}/",
+            self.context.get('request')
+        )
+
+    def get_progress(self, obj):  # pylint: disable=no-self-use
+        """Return the certificate URL."""
+        return get_course_blocks_completion_summary(obj.id, obj.related_user_id)
+
+    def get_grade(self, obj):  # pylint: disable=no-self-use
+        """Return the certificate URL."""
+        course_key = CourseKey.from_string(obj.id)
+        collected_block_structure = get_block_structure_manager(course_key).get_collected()
+        course_grade = CourseGradeFactory().read(
+            get_user_model().objects.get(id=obj.related_user_id),
+            collected_block_structure=collected_block_structure
+        )
+        course_grade.update(visible_grades_only=True, has_staff_access=False)
+
+        return course_grade
