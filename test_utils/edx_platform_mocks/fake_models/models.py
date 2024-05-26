@@ -39,6 +39,7 @@ class CourseEnrollment(models.Model):
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
     course = models.ForeignKey(CourseOverview, on_delete=models.CASCADE)
     is_active = models.BooleanField()
+    created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         app_label = "fake_models"
@@ -153,3 +154,28 @@ class FeedbackCourse(BaseFeedback):
         """Set constrain for author an course id"""
         unique_together = [["author", "course_id"]]
         db_table = "eox_nelp_feedbackcourse"
+
+
+class BlockCompletion(models.Model):
+    """Mock"""
+    id = models.BigAutoField(primary_key=True)  # pylint: disable=invalid-name
+    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
+    context_key = models.CharField(max_length=255, null=False, blank=False, db_column="course_key")
+    modified = models.DateTimeField()
+
+
+class CourseGradeFactory:  # pylint: disable=too-few-public-methods
+    """Mock"""
+    def read(self, *args, **kwargs):  # pylint: disable=no-self-use
+        """Mock read"""
+        class Dummy:
+            """dummy class"""
+            def update(self, *args, **kwargs):  # pylint: disable=no-self-use
+                """update"""
+                return None
+
+            def __iter__(self):
+                """__iter__"""
+                return iter([("letter_grade", "Fail"), ("percent", 0.4), ("is_passing", False)])
+
+        return Dummy()

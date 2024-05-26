@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
-from futurex_openedx_extensions.dashboard.details.courses import get_courses_queryset
+from futurex_openedx_extensions.dashboard.details.courses import get_courses_queryset, get_learner_courses_info_queryset
 from futurex_openedx_extensions.dashboard.details.learners import get_learner_info_queryset, get_learners_queryset
 from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
 from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count, get_courses_count_by_status
@@ -183,3 +183,22 @@ class LearnerInfoView(APIView):
         return JsonResponse(
             serializers.LearnerDetailsExtendedSerializer(user, context={'request': request}).data
         )
+
+
+class LearnerCoursesView(APIView):
+    """View to get the list of courses for a learner"""
+    permission_classes = [HasTenantAccess]
+
+    def get(self, request, username, *args, **kwargs):  # pylint: disable=no-self-use
+        """
+        GET /api/fx/learners/v1/learner_courses/<username>/
+        """
+        tenant_ids = get_selected_tenants(request)
+        user_id = get_user_id_from_username_tenants(username, tenant_ids)
+
+        if not user_id:
+            return Response(error_details_to_dictionary(reason=f"User not found {username}"), status=404)
+
+        courses = get_learner_courses_info_queryset(tenant_ids, user_id)
+
+        return Response(serializers.LearnerCoursesDetailsSerializer(courses, many=True).data)
