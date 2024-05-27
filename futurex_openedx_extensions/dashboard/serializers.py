@@ -324,8 +324,7 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 
     def get_grade(self, obj):  # pylint: disable=no-self-use
         """Return the certificate URL."""
-        course_key = CourseKey.from_string(obj.id)
-        collected_block_structure = get_block_structure_manager(course_key).get_collected()
+        collected_block_structure = get_block_structure_manager(obj.id).get_collected()
         course_grade = CourseGradeFactory().read(
             get_user_model().objects.get(id=obj.related_user_id),
             collected_block_structure=collected_block_structure

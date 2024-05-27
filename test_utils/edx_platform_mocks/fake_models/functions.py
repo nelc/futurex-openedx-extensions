@@ -12,6 +12,9 @@ def get_course_blocks_completion_summary(course_key, user):  # pylint: disable=u
 
 def get_block_structure_manager(course_key):  # pylint: disable=unused-argument
     """get_block_structure_manager Mock"""
+    if not isinstance(course_key, str):
+        raise Exception(f'Expects a coruse_key as string but got "{course_key}" of type "{type(course_key)}"')
+
     class Dummy:  # pylint: disable=too-few-public-methods
         """dummy class"""
         def get_collected(self):  # pylint: disable=no-self-use
