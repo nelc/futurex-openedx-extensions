@@ -323,12 +323,15 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
         return get_course_blocks_completion_summary(obj.id, user)
 
     def get_grade(self, obj):  # pylint: disable=no-self-use
-        """Return the certificate URL."""
+        """Return the grade summary."""
         collected_block_structure = get_block_structure_manager(obj.id).get_collected()
         course_grade = CourseGradeFactory().read(
             get_user_model().objects.get(id=obj.related_user_id),
             collected_block_structure=collected_block_structure
         )
-        course_grade.update(visible_grades_only=True, has_staff_access=False)
 
-        return course_grade
+        return {
+            'percent': course_grade.percent,
+            'letter_grade': course_grade.letter_grade,
+            'is_passing': course_grade.passed,
+        }
