@@ -296,7 +296,8 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 
     def get_certificate_url(self, obj):  # pylint: disable=no-self-use
         """Return the certificate URL."""
-        certificate = get_certificates_for_user_by_course_keys(obj.related_user_id, [obj.id])
+        user = get_user_model().objects.get(id=obj.related_user_id)
+        certificate = get_certificates_for_user_by_course_keys(user, [obj.id])
         if certificate and obj.id in certificate:
             return certificate[obj.id].get("download_url")
 
@@ -318,7 +319,8 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 
     def get_progress(self, obj):  # pylint: disable=no-self-use
         """Return the certificate URL."""
-        return get_course_blocks_completion_summary(obj.id, obj.related_user_id)
+        user = get_user_model().objects.get(id=obj.related_user_id)
+        return get_course_blocks_completion_summary(obj.id, user)
 
     def get_grade(self, obj):  # pylint: disable=no-self-use
         """Return the certificate URL."""
