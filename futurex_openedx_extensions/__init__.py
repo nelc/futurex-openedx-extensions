@@ -1,3 +1,3 @@
 """One-line description for README and other doc files."""
 
-__version__ = '0.3.2'
+__version__ = '0.3.5'
