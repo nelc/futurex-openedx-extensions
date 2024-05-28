@@ -9,7 +9,7 @@ from django.http import JsonResponse
 from django.urls import resolve, reverse
 from django.utils.timezone import now, timedelta
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
-from rest_framework.test import APITestCase
+from rest_framework.test import APIRequestFactory, APITestCase
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
@@ -35,6 +35,17 @@ class BaseTestViewMixin(APITestCase):
     def login_user(self, user_id):
         """Helper to login user"""
         self.client.force_login(get_user_model().objects.get(id=user_id))
+
+    def _get_request_view_class(self):
+        """Helper to get the view class and a request"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        factory = APIRequestFactory()
+        request = factory.get(self.url)
+        request.query_params = {}
+        request.user = get_user_model().objects.get(id=self.staff_user)
+
+        return request, view_class
 
 
 @pytest.mark.usefixtures('base_data')
@@ -284,6 +295,21 @@ class TestLearnerInfoView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMix
         data = json.loads(response.content)
         self.assertDictEqual(data, serializers.LearnerDetailsExtendedSerializer(user).data)
 
+    @patch('futurex_openedx_extensions.dashboard.views.serializers.LearnerDetailsExtendedSerializer')
+    def test_request_in_context(self, mock_serializer):
+        """Verify that the view calls the serializer with the correct context"""
+        request, view_class = self._get_request_view_class()
+        mock_serializer.return_value = Mock(data={})
+
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_get_info:
+            mock_get_info.return_value = Mock()
+            view_class.get(self, request, 'user10')
+
+        mock_serializer.assert_called_once_with(
+            mock_get_info.return_value.first(),
+            context={'request': request},
+        )
+
 
 @patch.object(
     serializers.LearnerCoursesDetailsSerializer,
@@ -316,3 +342,18 @@ class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseT
         data = json.loads(response.content)
         self.assertEqual(len(data), 2)
         self.assertEqual(list(data), list(serializers.LearnerCoursesDetailsSerializer(courses, many=True).data))
+
+    @patch('futurex_openedx_extensions.dashboard.views.serializers.LearnerCoursesDetailsSerializer')
+    def test_request_in_context(self, mock_serializer):
+        """Verify that the view uses the correct serializer"""
+        request, view_class = self._get_request_view_class()
+
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_courses_info_queryset') as mock_get_info:
+            mock_get_info.return_value = Mock()
+            view_class.get(self, request, 'user10')
+
+        mock_serializer.assert_called_once_with(
+            mock_get_info.return_value,
+            context={'request': request},
+            many=True,
+        )

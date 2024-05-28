@@ -188,6 +188,7 @@ class LearnerInfoView(APIView):
 class LearnerCoursesView(APIView):
     """View to get the list of courses for a learner"""
     permission_classes = [HasTenantAccess]
+    pagination_class = DefaultPagination
 
     def get(self, request, username, *args, **kwargs):  # pylint: disable=no-self-use
         """
@@ -201,4 +202,6 @@ class LearnerCoursesView(APIView):
 
         courses = get_learner_courses_info_queryset(tenant_ids, user_id)
 
-        return Response(serializers.LearnerCoursesDetailsSerializer(courses, many=True).data)
+        return Response(serializers.LearnerCoursesDetailsSerializer(
+            courses, context={'request': request}, many=True
+        ).data)

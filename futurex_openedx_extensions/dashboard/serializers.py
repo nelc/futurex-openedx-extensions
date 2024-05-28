@@ -4,7 +4,6 @@ from django.utils.timezone import now
 from lms.djangoapps.certificates.api import get_certificates_for_user_by_course_keys
 from lms.djangoapps.courseware.courses import get_course_blocks_completion_summary
 from lms.djangoapps.grades.api import CourseGradeFactory
-from opaque_keys.edx.keys import CourseKey
 from openedx.core.djangoapps.content.block_structure.api import get_block_structure_manager
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
