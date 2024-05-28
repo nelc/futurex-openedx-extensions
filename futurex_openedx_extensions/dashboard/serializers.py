@@ -296,7 +296,8 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 
     def get_certificate_url(self, obj):  # pylint: disable=no-self-use
         """Return the certificate URL."""
-        certificate = get_certificates_for_user_by_course_keys(obj.related_user_id, [obj.id])
+        user = get_user_model().objects.get(id=obj.related_user_id)
+        certificate = get_certificates_for_user_by_course_keys(user, [obj.id])
         if certificate and obj.id in certificate:
             return certificate[obj.id].get("download_url")
 
@@ -318,16 +319,19 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 
     def get_progress(self, obj):  # pylint: disable=no-self-use
         """Return the certificate URL."""
-        return get_course_blocks_completion_summary(obj.id, obj.related_user_id)
+        user = get_user_model().objects.get(id=obj.related_user_id)
+        return get_course_blocks_completion_summary(obj.id, user)
 
     def get_grade(self, obj):  # pylint: disable=no-self-use
-        """Return the certificate URL."""
-        course_key = CourseKey.from_string(obj.id)
-        collected_block_structure = get_block_structure_manager(course_key).get_collected()
+        """Return the grade summary."""
+        collected_block_structure = get_block_structure_manager(obj.id).get_collected()
         course_grade = CourseGradeFactory().read(
             get_user_model().objects.get(id=obj.related_user_id),
             collected_block_structure=collected_block_structure
         )
-        course_grade.update(visible_grades_only=True, has_staff_access=False)
 
-        return course_grade
+        return {
+            'percent': course_grade.percent,
+            'letter_grade': course_grade.letter_grade,
+            'is_passing': course_grade.passed,
+        }

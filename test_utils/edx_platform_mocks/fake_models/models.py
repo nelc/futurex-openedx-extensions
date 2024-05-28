@@ -168,14 +168,15 @@ class CourseGradeFactory:  # pylint: disable=too-few-public-methods
     """Mock"""
     def read(self, *args, **kwargs):  # pylint: disable=no-self-use
         """Mock read"""
-        class Dummy:
-            """dummy class"""
+        class DummyGrade:
+            """dummy grade class"""
+
+            letter_grade = "Fail"
+            percent = 0.4
+            passed = False
+
             def update(self, *args, **kwargs):  # pylint: disable=no-self-use
                 """update"""
                 return None
 
-            def __iter__(self):
-                """__iter__"""
-                return iter([("letter_grade", "Fail"), ("percent", 0.4), ("is_passing", False)])
-
-        return Dummy()
+        return DummyGrade()
