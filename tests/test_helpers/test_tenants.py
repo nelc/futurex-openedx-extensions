@@ -3,6 +3,8 @@
 import pytest
 from common.djangoapps.student.models import CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import override_settings
 from eox_tenant.models import TenantConfig
 
 from futurex_openedx_extensions.helpers import tenants
@@ -166,6 +168,15 @@ def test_get_all_course_org_filter_list(base_data):  # pylint: disable=unused-ar
     }
 
 
+@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+@pytest.mark.django_db
+def test_get_all_course_org_filter_list_is_being_cached():
+    """Verify that get_all_course_org_filter_list is being cached."""
+    assert cache.get('all_course_org_filter_list') is None
+    result = tenants.get_all_course_org_filter_list()
+    assert cache.get('all_course_org_filter_list') == result
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("tenant_ids, expected", [
     ([1, 2, 3, 7], {
@@ -232,6 +243,15 @@ def test_get_all_tenants_info(base_data):  # pylint: disable=unused-argument
         7: 's7.sample.com',
         8: 's8.sample.com',
     }
+
+
+@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+@pytest.mark.django_db
+def test_get_all_tenants_info_is_being_cached():
+    """Verify that get_all_tenants_info is being cached."""
+    assert cache.get('all_tenants_info') is None
+    result = tenants.get_all_tenants_info()
+    assert cache.get('all_tenants_info') == result
 
 
 @pytest.mark.django_db

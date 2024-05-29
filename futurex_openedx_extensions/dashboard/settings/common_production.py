@@ -1,8 +1,13 @@
 """Common Settings"""
 
 
-def plugin_settings(settings):  # pylint: disable=unused-argument
+def plugin_settings(settings):
     """
     plugin settings
     """
-    # Nothing to do here yet
+    # Cache timeout for tenants info
+    settings.FX_CACHE_TIMEOUT_TENANTS_INFO = getattr(
+        settings,
+        "FX_CACHE_TIMEOUT_TENANTS_INFO",
+        60 * 60 * 2,  # 2 hours
+    )

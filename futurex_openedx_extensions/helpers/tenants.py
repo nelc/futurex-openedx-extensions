@@ -4,12 +4,14 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef
 from django.db.models.query import Q, QuerySet
 from eox_tenant.models import Route, TenantConfig
 from rest_framework.request import Request
 
+from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, ids_string_to_list
 from futurex_openedx_extensions.helpers.querysets import get_has_site_login_queryset
 
@@ -50,9 +52,9 @@ def get_all_tenants() -> QuerySet:
     return TenantConfig.objects.exclude(id__in=get_excluded_tenant_ids())
 
 
+@cache_dict(timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name='all_tenants_info')
 def get_all_tenants_info() -> Dict[str, Any]:
     """
-    TODO: Cache the result of this function
     Get all tenants in the system that are exposed in the route table, and with a valid config
 
     Note: a tenant is a TenantConfig object
@@ -92,9 +94,9 @@ def get_tenant_site(tenant_id: int) -> str:
     return get_all_tenants_info()['sites'].get(tenant_id)
 
 
+@cache_dict(timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name='all_course_org_filter_list')
 def get_all_course_org_filter_list() -> Dict[int, List[str]]:
     """
-    TODO: Cache the result of this function
     Get all course org filters for all tenants.
 
     :return: Dictionary of tenant IDs and their course org filters
