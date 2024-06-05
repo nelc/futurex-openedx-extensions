@@ -48,7 +48,16 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
             "certificates_count",
         ]
 
-    def _get_names(self, obj, alternative=False):
+    @staticmethod
+    def _is_english(text):
+        """
+        Checks if a string consists only of characters in the ASCII range (a-z, A-Z, 0-9, and common symbols).
+
+        This method is very basic and may miss valid English text with non-ASCII characters.
+        """
+        return all(ord(char) < 128 for char in text)
+
+    def _get_name(self, obj, alternative=False):
         """
         Calculate the full name and alternative full name. We have two issues in the data:
         1. The first and last names in auth.user contain many records with identical values (redundant data).
@@ -56,30 +65,21 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
         """
         first_name = obj.first_name.strip()
         last_name = obj.last_name.strip()
-        alt_name = (self._get_profile_field(obj, "name") or "").strip()
 
-        if not last_name:
-            full_name = first_name
-        elif not first_name:
-            full_name = last_name
-        elif first_name == last_name and " " in first_name:
-            full_name = first_name
-        else:
-            full_name = f"{first_name} {last_name}"
+        full_name = first_name or last_name
+        if first_name and last_name and not (first_name == last_name and " " in first_name):
+            full_name = " ".join(filter(None, (first_name, last_name)))
 
-        if alt_name == full_name:
-            alt_name = ""
+        profile_name = self._get_profile_field(obj, "name")
+        alt_name = profile_name.strip() if profile_name else ""
 
-        if not full_name and alt_name:
-            full_name = alt_name
-            alt_name = ""
+        if not full_name:
+            full_name, alt_name = alt_name, ""
 
-        if alt_name and ord(alt_name[0]) > 127 >= ord(full_name[0]):
-            names = alt_name, full_name
-        else:
-            names = full_name, alt_name
+        if alt_name and not self._is_english(alt_name):
+            full_name, alt_name = alt_name, full_name
 
-        return names[0] if not alternative else names[1]
+        return alt_name if alternative else full_name
 
     @staticmethod
     def _get_profile_field(obj, field_name):
@@ -92,11 +92,11 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         """Return full name."""
-        return self._get_names(obj)
+        return self._get_name(obj)
 
     def get_alternative_full_name(self, obj):
         """Return alternative full name."""
-        return self._get_names(obj, alternative=True)
+        return self._get_name(obj, alternative=True)
 
     def get_mobile_no(self, obj):
         """Return mobile number."""
