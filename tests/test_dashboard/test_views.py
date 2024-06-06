@@ -14,7 +14,7 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.permissions import HasTenantAccess
+from futurex_openedx_extensions.helpers.permissions import HasTenantAccess, IsSystemStaff
 from tests.base_test_data import expected_statistics
 
 
@@ -357,3 +357,27 @@ class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseT
             context={'request': request},
             many=True,
         )
+
+
+class TestVersionInfoView(BaseTestViewMixin):
+    """Tests for VersionInfoView"""
+    VIEW_NAME = 'fx_dashboard:version-info'
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        self.assertEqual(view_class.permission_classes, [IsSystemStaff])
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.__version__', new='0.1.dummy'):
+            response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.content), {'version': '0.1.dummy'})

@@ -85,7 +85,7 @@ _base_data = {
             "config_id": 8,
         },
     },
-    "users_count": 55,
+    "users_count": 60,
     "user_signup_source__users": {
         "s1.sample.com": [1, 2, 3, 4, 5],
         "s2.sample.com": [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
@@ -173,8 +173,8 @@ _base_data = {
             2: [23, 52, 53, 54],
         },
     },
-    "super_users": [1],
-    "staff_users": [2],
+    "super_users": [1, 60],
+    "staff_users": [2, 60],
     "course_access_roles": {  # roles, user ids per org
         "staff": {  # at least one role that is not in TENANT_LIMITED_ADMIN_ROLES
             "ORG1": [3],

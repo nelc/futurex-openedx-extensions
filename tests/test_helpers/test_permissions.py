@@ -7,7 +7,7 @@ from django.contrib.auth.models import AnonymousUser
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.test import APIRequestFactory
 
-from futurex_openedx_extensions.helpers.permissions import HasTenantAccess
+from futurex_openedx_extensions.helpers.permissions import HasTenantAccess, IsSystemStaff
 
 
 def set_user(request, user_id):
@@ -71,4 +71,36 @@ def test_has_tenant_access_not_authenticated(base_data, user_id):  # pylint: dis
     request = APIRequestFactory().generic('GET', '/dummy/')
     set_user(request, user_id)
     with pytest.raises(NotAuthenticated):
+        permission.has_permission(request, None)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id', [1, 2, 60])
+def test_is_system_staff_ok(base_data, user_id):  # pylint: disable=unused-argument
+    """Verify that IsSystemStaff returns True when user is a system staff member."""
+    permission = IsSystemStaff()
+    request = APIRequestFactory().generic('GET', '/dummy/')
+    set_user(request, user_id)
+    assert permission.has_permission(request, None) is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id', [None, 0])
+def test_is_system_staff_not_authenticated(base_data, user_id):  # pylint: disable=unused-argument
+    """Verify that NotAuthenticated is raised when user is not authenticated."""
+    permission = IsSystemStaff()
+    request = APIRequestFactory().generic('GET', '/dummy/')
+    set_user(request, user_id)
+    with pytest.raises(NotAuthenticated):
+        permission.has_permission(request, None)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id', [3, 4])
+def test_is_system_staff_not_staff(base_data, user_id):  # pylint: disable=unused-argument
+    """Verify that PermissionDenied is raised when user is not a system staff member."""
+    permission = IsSystemStaff()
+    request = APIRequestFactory().generic('GET', '/dummy/')
+    set_user(request, user_id)
+    with pytest.raises(PermissionDenied):
         permission.has_permission(request, None)

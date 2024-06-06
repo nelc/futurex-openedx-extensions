@@ -14,7 +14,7 @@ from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREF
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
-from futurex_openedx_extensions.helpers.permissions import HasTenantAccess
+from futurex_openedx_extensions.helpers.permissions import HasTenantAccess, IsSystemStaff
 from futurex_openedx_extensions.helpers.tenants import get_selected_tenants, get_user_id_from_username_tenants
 
 
@@ -205,3 +205,17 @@ class LearnerCoursesView(APIView):
         return Response(serializers.LearnerCoursesDetailsSerializer(
             courses, context={'request': request}, many=True
         ).data)
+
+
+class VersionInfoView(APIView):
+    """View to get the version information"""
+    permission_classes = [IsSystemStaff]
+
+    def get(self, request, *args, **kwargs):  # pylint: disable=no-self-use
+        """
+        GET /api/fx/version/v1/info/
+        """
+        import futurex_openedx_extensions  # pylint: disable=import-outside-toplevel
+        return JsonResponse({
+            'version': futurex_openedx_extensions.__version__,
+        })
