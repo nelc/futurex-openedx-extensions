@@ -23,4 +23,5 @@ urlpatterns = [
     ),
     re_path(r'^api/fx/statistics/v1/course_statuses/$', views.CourseStatusesView.as_view(), name='course-statuses'),
     re_path(r'^api/fx/statistics/v1/total_counts/$', views.TotalCountsView.as_view(), name='total-counts'),
+    re_path(r'^api/fx/version/v1/info/$', views.VersionInfoView.as_view(), name='version-info'),
 ]

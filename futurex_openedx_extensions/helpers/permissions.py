@@ -21,3 +21,16 @@ class HasTenantAccess(IsAuthenticated):
                 raise PermissionDenied(detail=json.dumps(details))
 
         return True
+
+
+class IsSystemStaff(IsAuthenticated):
+    """Permission class to check if the user is a staff member."""
+    def has_permission(self, request, view):
+        """Check if the user is a staff member"""
+        if not super().has_permission(request, view):
+            raise NotAuthenticated()
+
+        if not request.user.is_staff and not request.user.is_superuser:
+            raise PermissionDenied(detail=json.dumps({"reason": "User is not a system staff member"}))
+
+        return True
