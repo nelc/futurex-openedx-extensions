@@ -3,14 +3,17 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef
-from django.db.models.query import QuerySet
+from django.db.models.query import Q, QuerySet
 from eox_tenant.models import Route, TenantConfig
 from rest_framework.request import Request
 
+from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, ids_string_to_list
+from futurex_openedx_extensions.helpers.querysets import get_has_site_login_queryset
 
 TENANT_LIMITED_ADMIN_ROLES = ['org_course_creator_group']
 
@@ -49,9 +52,9 @@ def get_all_tenants() -> QuerySet:
     return TenantConfig.objects.exclude(id__in=get_excluded_tenant_ids())
 
 
+@cache_dict(timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name='all_tenants_info')
 def get_all_tenants_info() -> Dict[str, Any]:
     """
-    TODO: Cache the result of this function
     Get all tenants in the system that are exposed in the route table, and with a valid config
 
     Note: a tenant is a TenantConfig object
@@ -91,9 +94,9 @@ def get_tenant_site(tenant_id: int) -> str:
     return get_all_tenants_info()['sites'].get(tenant_id)
 
 
+@cache_dict(timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name='all_course_org_filter_list')
 def get_all_course_org_filter_list() -> Dict[int, List[str]]:
     """
-    TODO: Cache the result of this function
     Get all course org filters for all tenants.
 
     :return: Dictionary of tenant IDs and their course org filters
@@ -205,10 +208,10 @@ def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple
     """
     try:
         tenant_ids = set(ids_string_to_list(tenant_ids_string))
-    except ValueError as e:
+    except ValueError as exc:
         return False, error_details_to_dictionary(
             reason="Invalid tenant IDs provided. It must be a comma-separated list of integers",
-            error=str(e)
+            error=str(exc)
         )
 
     wrong_tenant_ids = tenant_ids - set(get_all_tenant_ids())
@@ -254,3 +257,53 @@ def get_selected_tenants(request: Request) -> List[int]:
     if tenant_ids is None:
         return get_accessible_tenant_ids(request.user)
     return ids_string_to_list(tenant_ids)
+
+
+def get_tenants_sites(tenant_ids: List[int]) -> List[str]:
+    """
+    Get the sites for the given tenant IDs
+
+    :param tenant_ids: List of tenant IDs
+    :type tenant_ids: List[int]
+    :return: List of sites
+    :rtype: List[str]
+    """
+    if not tenant_ids:
+        return []
+
+    tenant_sites = []
+    for tenant_id in tenant_ids:
+        if site := get_tenant_site(tenant_id):
+            tenant_sites.append(site)
+    return tenant_sites
+
+
+def get_user_id_from_username_tenants(username: str, tenant_ids: List[int]) -> int:
+    """
+    Check if the given username is in any of the given tenants. Returns the user ID if found, and zero otherwise.
+
+    :param username: The username to check
+    :type username: str
+    :param tenant_ids: List of tenant IDs to check
+    :type tenant_ids: List[int]
+    :return: The user ID if found, and zero otherwise
+    :rtype: int
+    """
+    if not tenant_ids or not username:
+        return 0
+
+    course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
+    tenant_sites = get_tenants_sites(tenant_ids)
+
+    user_id = get_user_model().objects.filter(username=username).annotate(
+        courseenrollment_count=Exists(
+            CourseEnrollment.objects.filter(
+                user_id=OuterRef('id'),
+                course__org__in=course_org_filter_list,
+            )
+        )
+    ).annotate(
+        has_site_login=get_has_site_login_queryset(tenant_sites)
+    ).filter(Q(courseenrollment_count=True) | Q(has_site_login=True)).values_list('id', flat=True)
+
+    return user_id[0] if user_id else 0

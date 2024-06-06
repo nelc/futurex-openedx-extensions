@@ -1,4 +1,5 @@
 """Tests for the apps module of the helpers app"""
+# pylint: disable=duplicate-code
 from futurex_openedx_extensions.dashboard.apps import DashboardConfig
 from futurex_openedx_extensions.dashboard.settings import common_production
 

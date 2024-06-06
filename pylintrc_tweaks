@@ -1,11 +1,18 @@
 # pylintrc tweaks for use with edx_lint.
 [MASTER]
 ignore = migrations
-load-plugins = edx_lint.pylint,pylint_django,pylint_celery
+load-plugins = edx_lint.pylint,pylint_django,pylint_celery,pylint.extensions.no_self_use
 
 [MESSAGES CONTROL]
-disable+=
-    invalid-name,
+disable =
     django-not-configured,
-    consider-using-with,
-    bad-option-value,
+
+[BASIC]
+# Removing test_.+ from no-docstring-rgx to allow for test methods to be documented.
+no-docstring-rgx = __.*__$|setUp$|setUpClass$|tearDown$|tearDownClass$|Meta$
+
+# Set a limit of 50 characters for function names instead of 40
+function-rgx = ([a-z_][a-z0-9_]{2,50}|test_[a-z0-9_]+)$
+
+[SIMILARITIES]
+ignore-imports = yes

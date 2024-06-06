@@ -1,7 +1,10 @@
 """Tests for tenants helpers."""
 
 import pytest
+from common.djangoapps.student.models import CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import override_settings
 from eox_tenant.models import TenantConfig
 
 from futurex_openedx_extensions.helpers import tenants
@@ -117,9 +120,9 @@ def test_get_accessible_tenant_ids_complex(base_data):  # pylint: disable=unused
             ), (f'test data is not as expected, user {user.id} should be only in {user_access_role} for {user_access}. '
                 f'Found in {role} for {org}' if user.id in users else f'Found in {role} for {org}')
 
-    expected_to_not_include_tenant_8 = [2, 7]
+    tenant_8_not_expected = [2, 7]
     result = tenants.get_accessible_tenant_ids(user)
-    assert result == expected_to_not_include_tenant_8
+    assert result == tenant_8_not_expected
 
 
 @pytest.mark.django_db
@@ -163,6 +166,15 @@ def test_get_all_course_org_filter_list(base_data):  # pylint: disable=unused-ar
         7: ['ORG3'],
         8: ['ORG8'],
     }
+
+
+@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+@pytest.mark.django_db
+def test_get_all_course_org_filter_list_is_being_cached():
+    """Verify that get_all_course_org_filter_list is being cached."""
+    assert cache.get('all_course_org_filter_list') is None
+    result = tenants.get_all_course_org_filter_list()
+    assert cache.get('all_course_org_filter_list') == result
 
 
 @pytest.mark.django_db
@@ -233,6 +245,15 @@ def test_get_all_tenants_info(base_data):  # pylint: disable=unused-argument
     }
 
 
+@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+@pytest.mark.django_db
+def test_get_all_tenants_info_is_being_cached():
+    """Verify that get_all_tenants_info is being cached."""
+    assert cache.get('all_tenants_info') is None
+    result = tenants.get_all_tenants_info()
+    assert cache.get('all_tenants_info') == result
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("tenant_id, expected", [
     (1, 's1.sample.com'),
@@ -261,3 +282,79 @@ def test_get_tenant_site(base_data, tenant_id, expected):  # pylint: disable=unu
 def test_get_tenants_by_org(base_data, org, expected):  # pylint: disable=unused-argument
     """Verify get_tenants_by_org function."""
     assert expected == tenants.get_tenants_by_org(org)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("tenant_ids, expected", [
+    ([1], ['s1.sample.com']),
+    ([2, 3], ['s2.sample.com', 's3.sample.com']),
+    ([2, 3, 4], ['s2.sample.com', 's3.sample.com']),
+    ([2, 3, 7, 8], ['s2.sample.com', 's3.sample.com', 's7.sample.com', 's8.sample.com']),
+])
+def test_get_tenants_sites(base_data, tenant_ids, expected):  # pylint: disable=unused-argument
+    """Verify get_tenants_sites function."""
+    assert expected == tenants.get_tenants_sites(tenant_ids)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("tenant_ids", [
+    [],
+    None,
+    [99],
+])
+def test_get_tenants_sites_bad_tenants(base_data, tenant_ids):  # pylint: disable=unused-argument
+    """Verify get_tenants_sites function."""
+    result = tenants.get_tenants_sites(tenant_ids)
+    assert result is not None and len(result) == 0
+
+
+@pytest.mark.django_db
+def test_get_user_id_from_username_tenants_non_existent_username(base_data):  # pylint: disable=unused-argument
+    """Verify get_user_id_from_username_tenants function for non-existent username."""
+    username = 'non_existent_username'
+    tenant_ids = [1, 2, 3, 7, 8]
+    assert not get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
+    assert TenantConfig.objects.filter(id__in=tenant_ids).count() == len(tenant_ids), 'test data is not as expected'
+
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("tenant_ids", [
+    [],
+    None,
+    [99],
+])
+def test_get_user_id_from_username_tenants_bad_tenant(base_data, tenant_ids):  # pylint: disable=unused-argument
+    """Verify get_user_id_from_username_tenants function for non-existent tenant."""
+    username = 'user1'
+    assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
+
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("username, tenant_ids, orgs, sites, is_enrolled, is_signup", [
+    ('user15', [1], ['ORG1', 'ORG2'], ['s1.sample.com'], True, False),
+    ('user50', [7], ['ORG3'], ['s7.sample.com'], False, True),
+    ('user4', [1], ['ORG1', 'ORG2'], ['s1.sample.com'], True, True),
+])
+def test_get_user_id_from_username_tenants(
+    base_data, username, tenant_ids, orgs, sites, is_enrolled, is_signup
+):  # pylint: disable=unused-argument, too-many-arguments
+    """Verify get_user_id_from_username_tenants function for a user enrolled in a course but not in the site signup."""
+    username = 'user15'
+    tenant_ids = [1]
+    assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
+    assert TenantConfig.objects.filter(id__in=tenant_ids).count() == len(tenant_ids), 'test data is not as expected'
+
+    assert CourseEnrollment.objects.filter(
+        user__username=username,
+        course__org__in=['ORG1', 'ORG2'],
+    ).exists(), 'test data is not as expected'
+    assert not UserSignupSource.objects.filter(
+        user__username=username,
+        site='s1.sample.com',
+    ).exists(), 'test data is not as expected'
+
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len("user"):])

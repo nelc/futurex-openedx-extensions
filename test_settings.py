@@ -40,6 +40,8 @@ INSTALLED_APPS = (
     'openedx',
 )
 
+USE_TZ = True
+
 LOCALE_PATHS = [
     root('futurex_openedx_extensions', 'conf', 'locale'),
 ]
@@ -68,3 +70,15 @@ TEMPLATES = [{
 
 # Avoid warnings about migrations
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
+USERNAME_PATTERN = r'(?P<username>[\w.@+-]+)'
+
+# Ensure that the cache is volatile in tests
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+    }
+}
+
+# Non-default dashboard settings
+FX_CACHE_TIMEOUT_TENANTS_INFO = 60 * 60 * 3  # 3 hours

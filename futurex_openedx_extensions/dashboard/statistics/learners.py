@@ -13,7 +13,7 @@ from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_lis
 
 
 def get_learners_count_having_enrollment_per_org(
-    tenant_id: int, only_visible_courses: bool = True, only_active_courses: bool = False
+    tenant_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
 ) -> QuerySet:
     """
     TODO: Cache the result of this function
@@ -22,17 +22,17 @@ def get_learners_count_having_enrollment_per_org(
 
     :param tenant_id: Tenant ID to get the count for
     :type tenant_id: int
-    :param only_visible_courses: Whether to only count courses that are visible in the catalog
-    :type only_visible_courses: bool
-    :param only_active_courses: Whether to only count active courses (according to dates)
-    :type only_active_courses: bool
+    :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
+    :type visible_courses_filter: bool
+    :param active_courses_filter: Value to filter courses on active status. None means no filter.
+    :type active_courses_filter: bool
     :return: QuerySet of learners count per organization
     :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list([tenant_id])['course_org_filter_list']
 
     queryset = get_base_queryset_courses(
-        course_org_filter_list, only_visible=only_visible_courses, only_active=only_active_courses,
+        course_org_filter_list, visible_filter=visible_courses_filter, active_filter=active_courses_filter,
     )
 
     return queryset.values('org').annotate(
@@ -53,7 +53,7 @@ def get_learners_count_having_enrollment_per_org(
 
 
 def get_learners_count_having_enrollment_for_tenant(
-    tenant_id: int, only_visible_courses: bool = True, only_active_courses: bool = False
+    tenant_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
 ) -> QuerySet:
     """
     TODO: Cache the result of this function
@@ -61,10 +61,10 @@ def get_learners_count_having_enrollment_for_tenant(
 
     :param tenant_id: Tenant ID to get the count for
     :type tenant_id: int
-    :param only_visible_courses: Whether to only count courses that are visible in the catalog
-    :type only_visible_courses: bool
-    :param only_active_courses: Whether to only count active courses (according to dates)
-    :type only_active_courses: bool
+    :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
+    :type visible_courses_filter: bool
+    :param active_courses_filter: Value to filter courses on active status. None means no filter.
+    :type active_courses_filter: bool
     :return: QuerySet of learners count per organization
     :rtype: QuerySet
     """
@@ -76,8 +76,8 @@ def get_learners_count_having_enrollment_for_tenant(
         is_active=True,
         courseenrollment__course_id__in=get_base_queryset_courses(
             course_org_filter_list,
-            only_visible=only_visible_courses,
-            only_active=only_active_courses,
+            visible_filter=visible_courses_filter,
+            active_filter=active_courses_filter,
         ),
     ).exclude(
         Exists(
@@ -90,7 +90,7 @@ def get_learners_count_having_enrollment_for_tenant(
 
 
 def get_learners_count_having_no_enrollment(
-    tenant_id: int, only_visible_courses: bool = True, only_active_courses: bool = False
+    tenant_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
 ) -> QuerySet:
     """
     TODO: Cache the result of this function
@@ -101,10 +101,10 @@ def get_learners_count_having_no_enrollment(
 
     :param tenant_id: Tenant ID to get the count for
     :type tenant_id: int
-    :param only_visible_courses: Whether to only count courses that are visible in the catalog
-    :type only_visible_courses: bool
-    :param only_active_courses: Whether to only count active courses (according to dates)
-    :type only_active_courses: bool
+    :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
+    :type visible_courses_filter: bool
+    :param active_courses_filter: Value to filter courses on active status. None means no filter.
+    :type active_courses_filter: bool
     :return: QuerySet of learners count per organization
     :rtype: QuerySet
     """
@@ -119,8 +119,8 @@ def get_learners_count_having_no_enrollment(
                 user_id=OuterRef('user_id'),
                 course_id__in=get_base_queryset_courses(
                     course_org_filter_list,
-                    only_visible=only_visible_courses,
-                    only_active=only_active_courses,
+                    visible_filter=visible_courses_filter,
+                    active_filter=active_courses_filter,
                 ),
                 user__is_superuser=False,
                 user__is_staff=False,

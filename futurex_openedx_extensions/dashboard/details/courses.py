@@ -4,18 +4,33 @@ from __future__ import annotations
 from typing import List
 
 from common.djangoapps.student.models import CourseAccessRole
-from django.db.models import Count, Exists, IntegerField, OuterRef, Q, Subquery, Sum
+from completion.models import BlockCompletion
+from django.db.models import (
+    Case,
+    Count,
+    DateTimeField,
+    Exists,
+    F,
+    IntegerField,
+    Max,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
 
 from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
-from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list, get_tenant_site
+from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list
 
 
 def get_courses_queryset(
-    tenant_ids: List, search_text: str = None, only_visible: bool = True, only_active: bool = False
+    tenant_ids: List, search_text: str = None, visible_filter: bool = True, active_filter: bool = None
 ) -> QuerySet:
     """
     Get the courses queryset for the given tenant IDs and search text.
@@ -24,20 +39,18 @@ def get_courses_queryset(
     :type tenant_ids: List
     :param search_text: Search text to filter the courses by
     :type search_text: str
-    :param only_visible: Whether to only include courses that are visible in the catalog
-    :type only_visible: bool
-    :param only_active: Whether to only include active courses
-    :type only_active: bool
+    :param visible_filter: Whether to only include courses that are visible in the catalog
+    :type visible_filter: bool
+    :param active_filter: Whether to only include active courses
+    :type active_filter: bool
     :return: QuerySet of courses
     :rtype: QuerySet
     """
     course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
-    tenant_sites = []
-    for tenant_id in tenant_ids:
-        if site := get_tenant_site(tenant_id):
-            tenant_sites.append(site)
 
-    queryset = get_base_queryset_courses(course_org_filter_list, only_visible=only_visible, only_active=only_active)
+    queryset = get_base_queryset_courses(
+        course_org_filter_list, visible_filter=visible_filter, active_filter=active_filter,
+    )
 
     search_text = (search_text or '').strip()
     if search_text:
@@ -102,6 +115,68 @@ def get_courses_queryset(
             ).values('course_id').annotate(count=Count('id')).values('count'),
             output_field=IntegerField(),
         ), 0),
+    )
+
+    return queryset
+
+
+def get_learner_courses_info_queryset(
+    tenant_ids: List, user_id: int, visible_filter: bool = True, active_filter: bool = None
+) -> QuerySet:
+    """
+    Get the learner's courses queryset for the given user ID. This method assumes a valid user ID.
+
+    :param tenant_ids: List of tenant IDs to get the learner for
+    :type tenant_ids: List
+    :param user_id: The user ID to get the learner for
+    :type user_id: int
+    :param visible_filter: Whether to only count courses that are visible in the catalog
+    :type visible_filter: bool
+    :param active_filter: Whether to only count active courses
+    :type active_filter: bool
+    :return: QuerySet of learners
+    :rtype: QuerySet
+    """
+    course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
+
+    queryset = get_base_queryset_courses(
+        course_org_filter_list, visible_filter=visible_filter, active_filter=active_filter,
+    ).filter(
+        courseenrollment__user_id=user_id,
+        courseenrollment__is_active=True,
+    ).annotate(
+        related_user_id=Value(user_id, output_field=IntegerField()),
+    ).annotate(
+        enrollment_date=Case(
+            When(
+                courseenrollment__user_id=user_id,
+                then=F('courseenrollment__created'),
+            ),
+            default=None,
+            output_field=DateTimeField(),
+        )
+    ).annotate(
+        last_activity=Case(
+            When(
+                Exists(
+                    BlockCompletion.objects.filter(
+                        user_id=user_id,
+                        context_key=OuterRef('id'),
+                    ),
+                ),
+                then=Subquery(
+                    BlockCompletion.objects.filter(
+                        user_id=user_id,
+                        context_key=OuterRef('id'),
+                    ).values('context_key').annotate(
+                        last_activity=Max('modified'),
+                    ).values('last_activity'),
+                    output_field=DateTimeField(),
+                ),
+            ),
+            default=F('enrollment_date'),
+            output_field=DateTimeField(),
+        )
     )
 
     return queryset
