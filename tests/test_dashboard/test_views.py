@@ -381,3 +381,42 @@ class TestVersionInfoView(BaseTestViewMixin):
             response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.content), {'version': '0.1.dummy'})
+
+
+@pytest.mark.usefixtures("base_data")
+class TestAccessibleTenantsInfoView(BaseTestViewMixin):
+    """Tests for AccessibleTenantsInfoView"""
+    VIEW_NAME = "fx_dashboard:accessible-info"
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        self.assertEqual(view_class.permission_classes, [])
+
+    @patch("futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email")
+    def test_success(self, mock_get_user):
+        """Verify that the view returns the correct response"""
+        mock_get_user.return_value = get_user_model().objects.get(username="user4")
+        response = self.client.get(self.url, data={"username_or_email": "dummy, the user loader function is mocked"})
+        self.assertEqual(response.status_code, 200)
+        self.assertDictEqual(json.loads(response.content), {
+            '1': {'lms_root_url': 'https://s1.sample.com', 'platform_name': '', 'logo_image_url': ''},
+            '2': {'lms_root_url': 'https://s2.sample.com', 'platform_name': '', 'logo_image_url': ''},
+            '7': {'lms_root_url': 'https://s7.sample.com', 'platform_name': '', 'logo_image_url': ''}
+        })
+
+    @patch("futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email")
+    def test_no_username_or_email(self, mock_get_user):
+        """Verify that the view returns the correct response"""
+        mock_get_user.side_effect = get_user_model().DoesNotExist()
+        response = self.client.get(self.url)
+        mock_get_user.assert_called_once_with(None)
+        self.assertEqual(response.status_code, 200)
+        self.assertDictEqual(json.loads(response.content), {})
+
+    def test_not_existing_username_or_email(self):
+        """Verify that the view returns the correct response"""
+        response = self.client.get(self.url, data={"username_or_email": "dummy"})
+        self.assertEqual(response.status_code, 200)
+        self.assertDictEqual(json.loads(response.content), {})

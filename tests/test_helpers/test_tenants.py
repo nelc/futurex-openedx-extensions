@@ -1,4 +1,5 @@
 """Tests for tenants helpers."""
+from unittest.mock import patch
 
 import pytest
 from common.djangoapps.student.models import CourseEnrollment, UserSignupSource
@@ -7,8 +8,8 @@ from django.core.cache import cache
 from django.test import override_settings
 from eox_tenant.models import TenantConfig
 
+from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
-from futurex_openedx_extensions.helpers.tenants import TENANT_LIMITED_ADMIN_ROLES
 from tests.base_test_data import _base_data
 
 
@@ -100,7 +101,7 @@ def test_get_accessible_tenant_ids_complex(base_data):  # pylint: disable=unused
 
     for role, orgs in _base_data["course_access_roles"].items():
         for org, users in orgs.items():
-            if role not in TENANT_LIMITED_ADMIN_ROLES:
+            if role not in cs.TENANT_LIMITED_ADMIN_ROLES:
                 continue
             if role != user_access_role or org != user_access:
                 assert user.id not in users, (
@@ -113,7 +114,7 @@ def test_get_accessible_tenant_ids_complex(base_data):  # pylint: disable=unused
                     f'{user_access_role} for {user_access}'
                 )
             assert (
-                (role not in TENANT_LIMITED_ADMIN_ROLES) or
+                (role not in cs.TENANT_LIMITED_ADMIN_ROLES) or
                 (role != user_access_role and user.id not in users) or
                 (org != user_access and user.id not in users) or
                 (role == user_access_role and org == user_access and user.id in users)
@@ -172,9 +173,9 @@ def test_get_all_course_org_filter_list(base_data):  # pylint: disable=unused-ar
 @pytest.mark.django_db
 def test_get_all_course_org_filter_list_is_being_cached():
     """Verify that get_all_course_org_filter_list is being cached."""
-    assert cache.get('all_course_org_filter_list') is None
+    assert cache.get(cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST) is None
     result = tenants.get_all_course_org_filter_list()
-    assert cache.get('all_course_org_filter_list') == result
+    assert cache.get(cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST) == result
 
 
 @pytest.mark.django_db
@@ -245,13 +246,65 @@ def test_get_all_tenants_info(base_data):  # pylint: disable=unused-argument
     }
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize("config_key, info_key, test_value, expected_result", [
+    ("LMS_BASE", "lms_root_url", "lms.example.com", "https://lms.example.com"),
+    ("LMS_ROOT_URL", "lms_root_url", "https://lms.example.com", "https://lms.example.com"),
+    ("SITE_NAME", "lms_root_url", "lms.example.com", "https://lms.example.com"),
+    ("PLATFORM_NAME", "platform_name", "Test Platform", "Test Platform"),
+    ("platform_name", "platform_name", "Test Platform", "Test Platform"),
+    ("logo_image_url", "logo_image_url", "https://img.example.com/dummy.jpg", "https://img.example.com/dummy.jpg"),
+])
+@patch('futurex_openedx_extensions.helpers.tenants.get_excluded_tenant_ids', return_value=[])
+def test_get_all_tenants_info_configs(
+    base_data, config_key, info_key, test_value, expected_result
+):  # pylint: disable=unused-argument
+    """Verify get_all_tenants_info function returning the correct logo_url."""
+    tenant_config = TenantConfig.objects.create()
+    assert tenant_config.lms_configs.get(config_key) is None
+
+    result = tenants.get_all_tenants_info()
+    assert result["info"][tenant_config.id][info_key] == ""
+
+    tenant_config.lms_configs[config_key] = test_value
+    tenant_config.save()
+    result = tenants.get_all_tenants_info()
+    assert result["info"][tenant_config.id][info_key] == expected_result
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("config_keys, data_prefix, call_index", [
+    (["LMS_ROOT_URL", "LMS_BASE", "SITE_NAME"], "https://", 0),
+    (["PLATFORM_NAME", "platform_name"], "", 1),
+])
+@patch(
+    'futurex_openedx_extensions.helpers.tenants.get_excluded_tenant_ids',
+    return_value=[1, 2, 3, 4, 5, 6, 7, 8]
+)
+@patch('futurex_openedx_extensions.helpers.tenants.get_first_not_empty_item')
+def test_get_all_tenants_info_config_priorities(
+    mock_get_first_not_empty_item, base_data, config_keys, data_prefix, call_index
+):  # pylint: disable=unused-argument
+    """Verify get_all_tenants_info is respecting the priority of the config keys."""
+    assert not tenants.get_all_tenants_info()["tenant_ids"]
+    tenant_config = TenantConfig.objects.create()
+    for config_key in config_keys:
+        tenant_config.lms_configs[config_key] = f"{data_prefix}{config_key}_value"
+    tenant_config.save()
+
+    _ = tenants.get_all_tenants_info()
+    assert mock_get_first_not_empty_item.call_args_list[call_index][0][0] == [
+        f"{data_prefix}{config_key}_value" for config_key in config_keys
+    ]
+
+
 @override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @pytest.mark.django_db
 def test_get_all_tenants_info_is_being_cached():
     """Verify that get_all_tenants_info is being cached."""
-    assert cache.get('all_tenants_info') is None
+    assert cache.get(cs.CACHE_NAME_ALL_TENANTS_INFO) is None
     result = tenants.get_all_tenants_info()
-    assert cache.get('all_tenants_info') == result
+    assert cache.get(cs.CACHE_NAME_ALL_TENANTS_INFO) == result
 
 
 @pytest.mark.django_db

@@ -1,4 +1,6 @@
 """Views for the dashboard app"""
+from common.djangoapps.student.models import get_user_by_username_or_email
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
@@ -15,7 +17,12 @@ from futurex_openedx_extensions.helpers.converters import error_details_to_dicti
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import HasTenantAccess, IsSystemStaff
-from futurex_openedx_extensions.helpers.tenants import get_selected_tenants, get_user_id_from_username_tenants
+from futurex_openedx_extensions.helpers.tenants import (
+    get_accessible_tenant_ids,
+    get_selected_tenants,
+    get_tenants_info,
+    get_user_id_from_username_tenants,
+)
 
 
 class TotalCountsView(APIView):
@@ -219,3 +226,24 @@ class VersionInfoView(APIView):
         return JsonResponse({
             'version': futurex_openedx_extensions.__version__,
         })
+
+
+class AccessibleTenantsInfoView(APIView):
+    """View to get the list of accessible tenants"""
+    permission_classes = []
+
+    def get(self, request, *args, **kwargs):  # pylint: disable=no-self-use
+        """
+        GET /api/fx/tenants/v1/accessible_tenants/?username_or_email=<usernameOrEmail>
+        """
+        username_or_email = request.query_params.get("username_or_email")
+        try:
+            user = get_user_by_username_or_email(username_or_email)
+        except ObjectDoesNotExist:
+            user = None
+
+        if not user:
+            return JsonResponse({})
+
+        tenant_ids = get_accessible_tenant_ids(user)
+        return JsonResponse(get_tenants_info(tenant_ids))
