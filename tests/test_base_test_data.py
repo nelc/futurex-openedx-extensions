@@ -1,5 +1,5 @@
 """Test integrity of base test data."""
-from futurex_openedx_extensions.helpers.tenants import TENANT_LIMITED_ADMIN_ROLES
+from futurex_openedx_extensions.helpers.constants import TENANT_LIMITED_ADMIN_ROLES
 from tests.base_test_data import _base_data
 
 
