@@ -29,12 +29,14 @@ class TotalCountsView(APIView):
     """View to get the total count statistics"""
     STAT_CERTIFICATES = 'certificates'
     STAT_COURSES = 'courses'
+    STAT_HIDDEN_COURSES = 'hidden_courses'
     STAT_LEARNERS = 'learners'
 
-    valid_stats = [STAT_CERTIFICATES, STAT_COURSES, STAT_LEARNERS]
+    valid_stats = [STAT_CERTIFICATES, STAT_COURSES, STAT_HIDDEN_COURSES, STAT_LEARNERS]
     STAT_RESULT_KEYS = {
         STAT_CERTIFICATES: 'certificates_count',
         STAT_COURSES: 'courses_count',
+        STAT_HIDDEN_COURSES: 'hidden_courses_count',
         STAT_LEARNERS: 'learners_count'
     }
 
@@ -47,9 +49,9 @@ class TotalCountsView(APIView):
         return sum(certificate_count for certificate_count in collector_result.values())
 
     @staticmethod
-    def _get_courses_count_data(tenant_id):
+    def _get_courses_count_data(tenant_id, visible_filter):
         """Get the count of courses for the given tenant"""
-        collector_result = get_courses_count([tenant_id])
+        collector_result = get_courses_count([tenant_id], visible_filter=visible_filter)
         return sum(org_count['courses_count'] for org_count in collector_result)
 
     @staticmethod
@@ -65,7 +67,10 @@ class TotalCountsView(APIView):
             return self._get_certificates_count_data(tenant_id)
 
         if stat == self.STAT_COURSES:
-            return self._get_courses_count_data(tenant_id)
+            return self._get_courses_count_data(tenant_id, visible_filter=True)
+
+        if stat == self.STAT_HIDDEN_COURSES:
+            return self._get_courses_count_data(tenant_id, visible_filter=False)
 
         return self._get_learners_count_data(tenant_id)
 
@@ -136,6 +141,7 @@ class CoursesView(ListAPIView):
         return get_courses_queryset(
             tenant_ids=tenant_ids,
             search_text=search_text,
+            visible_filter=None,
         )
 
 
@@ -207,7 +213,7 @@ class LearnerCoursesView(APIView):
         if not user_id:
             return Response(error_details_to_dictionary(reason=f"User not found {username}"), status=404)
 
-        courses = get_learner_courses_info_queryset(tenant_ids, user_id)
+        courses = get_learner_courses_info_queryset(tenant_ids, user_id, visible_filter=None)
 
         return Response(serializers.LearnerCoursesDetailsSerializer(
             courses, context={'request': request}, many=True

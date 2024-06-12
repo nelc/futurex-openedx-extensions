@@ -44,9 +44,9 @@ def get_courses_count_by_status(
 
     :param tenant_ids: List of tenant IDs to get the count for
     :type tenant_ids: List[int]
-    :param visible_filter: Whether to only count courses that are visible in the catalog
+    :param visible_filter: Value to filter courses on catalog visibility. None means no filter
     :type visible_filter: bool
-    :param active_filter: Whether to only count active courses (according to dates)
+    :param active_filter: Value to filter courses on active status. None means no filter (according to dates)
     :type active_filter: bool
     :return: QuerySet of courses count per organization and status
     :rtype: QuerySet

@@ -68,7 +68,7 @@ class TestTotalCountsView(BaseTestViewMixin):
     def test_all_stats(self):
         """Test get method"""
         self.login_user(self.staff_user)
-        response = self.client.get(self.url + '?stats=certificates,courses,learners')
+        response = self.client.get(self.url + '?stats=certificates,courses,hidden_courses,learners')
         self.assertTrue(isinstance(response, JsonResponse))
         self.assertEqual(response.status_code, 200)
         self.assertDictEqual(json.loads(response.content), expected_statistics)
@@ -137,14 +137,14 @@ class TestCoursesView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
             self.client.get(self.url)
-            mock_queryset.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8], search_text=None)
+            mock_queryset.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8], search_text=None, visible_filter=None)
 
     def test_search(self):
         """Verify that the view filters the courses by search text"""
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
             self.client.get(self.url + '?tenant_ids=1&search_text=course')
-            mock_queryset.assert_called_once_with(tenant_ids=[1], search_text='course')
+            mock_queryset.assert_called_once_with(tenant_ids=[1], search_text='course', visible_filter=None)
 
     def helper_test_success(self, response):
         """Verify that the view returns the correct response"""
@@ -318,7 +318,7 @@ class TestLearnerInfoView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMix
 )
 @pytest.mark.usefixtures('base_data')
 class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMixin):
-    """Tests for CourseStatusesView"""
+    """Tests for LearnerCoursesView"""
     VIEW_NAME = 'fx_dashboard:learner-courses'
 
     def test_success(self):
@@ -338,6 +338,7 @@ class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseT
             mock_get_info.return_value = courses
             response = self.client.get(self.url)
 
+        mock_get_info.assert_called_once_with([1, 2, 3, 7, 8], 10, visible_filter=None)
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(len(data), 2)

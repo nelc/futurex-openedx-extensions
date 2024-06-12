@@ -91,9 +91,9 @@ def get_learners_queryset(
     :type tenant_ids: List
     :param search_text: Search text to filter the learners by
     :type search_text: str
-    :param visible_courses_filter: Whether to only count courses that are visible in the catalog
+    :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter
     :type visible_courses_filter: bool
-    :param active_courses_filter: Whether to only count active courses
+    :param active_courses_filter: Value to filter courses on active status. None means no filter
     :type active_courses_filter: bool
     :return: QuerySet of learners
     :rtype: QuerySet
@@ -145,9 +145,9 @@ def get_learner_info_queryset(
     :type tenant_ids: List
     :param user_id: The user ID to get the learner for
     :type user_id: int
-    :param visible_courses_filter: Whether to only count courses that are visible in the catalog
+    :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter
     :type visible_courses_filter: bool
-    :param active_courses_filter: Whether to only count active courses
+    :param active_courses_filter: Value to filter courses on active status. None means no filter
     :type active_courses_filter: bool
     :return: QuerySet of learners
     :rtype: QuerySet

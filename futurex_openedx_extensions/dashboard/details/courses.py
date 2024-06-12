@@ -30,7 +30,7 @@ from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_lis
 
 
 def get_courses_queryset(
-    tenant_ids: List, search_text: str = None, visible_filter: bool = True, active_filter: bool = None
+    tenant_ids: List, search_text: str = None, visible_filter: bool | None = True, active_filter: bool | None = None
 ) -> QuerySet:
     """
     Get the courses queryset for the given tenant IDs and search text.
@@ -39,10 +39,10 @@ def get_courses_queryset(
     :type tenant_ids: List
     :param search_text: Search text to filter the courses by
     :type search_text: str
-    :param visible_filter: Whether to only include courses that are visible in the catalog
-    :type visible_filter: bool
-    :param active_filter: Whether to only include active courses
-    :type active_filter: bool
+    :param visible_filter: Value to filter courses on catalog visibility. None means no filter
+    :type visible_filter: bool | None
+    :param active_filter: Value to filter courses on active status. None means no filter
+    :type active_filter: bool | None
     :return: QuerySet of courses
     :rtype: QuerySet
     """
@@ -121,7 +121,7 @@ def get_courses_queryset(
 
 
 def get_learner_courses_info_queryset(
-    tenant_ids: List, user_id: int, visible_filter: bool = True, active_filter: bool = None
+    tenant_ids: List, user_id: int, visible_filter: bool | None = True, active_filter: bool | None = None
 ) -> QuerySet:
     """
     Get the learner's courses queryset for the given user ID. This method assumes a valid user ID.
@@ -130,10 +130,10 @@ def get_learner_courses_info_queryset(
     :type tenant_ids: List
     :param user_id: The user ID to get the learner for
     :type user_id: int
-    :param visible_filter: Whether to only count courses that are visible in the catalog
-    :type visible_filter: bool
-    :param active_filter: Whether to only count active courses
-    :type active_filter: bool
+    :param visible_filter: Value to filter courses on catalog visibility. None means no filter
+    :type visible_filter: bool | None
+    :param active_filter: Value to filter courses on active status. None means no filter
+    :type active_filter: bool | None
     :return: QuerySet of learners
     :rtype: QuerySet
     """
