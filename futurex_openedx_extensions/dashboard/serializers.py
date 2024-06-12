@@ -190,7 +190,6 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     org = serializers.CharField()
     tenant_ids = serializers.SerializerMethodField()
-    author_name = serializers.SerializerMethodField()
 
     class Meta:
         model = CourseOverview
@@ -206,7 +205,6 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
             "image_url",
             "org",
             "tenant_ids",
-            "author_name",
         ]
 
     def get_status(self, obj):  # pylint: disable=no-self-use
@@ -244,10 +242,6 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
     def get_end_date(self, obj):  # pylint: disable=no-self-use
         """Return the end date."""
         return obj.end
-
-    def get_author_name(self, obj):  # pylint: disable=unused-argument,no-self-use
-        """Return the author name."""
-        return None
 
 
 class CourseDetailsSerializer(CourseDetailsBaseSerializer):
