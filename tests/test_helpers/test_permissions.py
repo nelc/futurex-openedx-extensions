@@ -7,7 +7,7 @@ from django.contrib.auth.models import AnonymousUser
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.test import APIRequestFactory
 
-from futurex_openedx_extensions.helpers.permissions import HasTenantAccess, IsSystemStaff
+from futurex_openedx_extensions.helpers.permissions import HasCourseAccess, HasTenantAccess, IsSystemStaff
 
 
 def set_user(request, user_id):
@@ -102,5 +102,57 @@ def test_is_system_staff_not_staff(base_data, user_id):  # pylint: disable=unuse
     permission = IsSystemStaff()
     request = APIRequestFactory().generic('GET', '/dummy/')
     set_user(request, user_id)
+    with pytest.raises(PermissionDenied):
+        permission.has_permission(request, None)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id', [1, 2, 60, 4])
+def test_has_course_access_true(base_data, user_id):  # pylint: disable=unused-argument
+    """Verify that HasCourseAccess returns True when user has access to the course."""
+    permission = HasCourseAccess()
+    request = APIRequestFactory().generic('GET', '/dummy/course-v1:ORG1+1+1/')
+    set_user(request, user_id)
+    assert permission.has_permission(request, None) is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id', [15, 21])
+def test_has_course_access_false(base_data, user_id):  # pylint: disable=unused-argument
+    """Verify that HasCourseAccess raises PermissionDenied when user does not have access to the course."""
+    permission = HasCourseAccess()
+    request = APIRequestFactory().generic('GET', '/dummy/course-v1:ORG1+1+1/')
+    set_user(request, user_id)
+    with pytest.raises(PermissionDenied):
+        permission.has_permission(request, None)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id', [None, 0])
+def test_has_course_access_not_authenticated(base_data, user_id):  # pylint: disable=unused-argument
+    """Verify that HasCourseAccess raises NotAuthenticated when user is not authenticated."""
+    permission = HasCourseAccess()
+    request = APIRequestFactory().generic('GET', '/dummy/course-v1:ORG1+1+1/')
+    set_user(request, user_id)
+    with pytest.raises(NotAuthenticated):
+        permission.has_permission(request, None)
+
+
+@pytest.mark.django_db
+def test_has_course_access_no_course(base_data):  # pylint: disable=unused-argument
+    """Verify that HasCourseAccess raises NotAuthenticated when there is no course in the request."""
+    permission = HasCourseAccess()
+    request = APIRequestFactory().generic('GET', '/dummy/')
+    set_user(request, 1)
+    with pytest.raises(PermissionDenied):
+        permission.has_permission(request, None)
+
+
+@pytest.mark.django_db
+def test_has_course_access_bad_course(base_data):  # pylint: disable=unused-argument
+    """Verify that HasCourseAccess raises PermissionDenied when the course dose not exist."""
+    permission = HasCourseAccess()
+    request = APIRequestFactory().generic('GET', '/dummy/course-v1:ORG9+9+9/')
+    set_user(request, 1)
     with pytest.raises(PermissionDenied):
         permission.has_permission(request, None)

@@ -1,12 +1,17 @@
 """Learners details collectors"""
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import List
 
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Exists, OuterRef, Q, Subquery
+from django.db.models import BooleanField, Case, Count, Exists, OuterRef, Q, Subquery, Value, When
 from django.db.models.query import QuerySet
+from django.utils import timezone
+from lms.djangoapps.certificates.models import GeneratedCertificate
+from lms.djangoapps.courseware.models import StudentModule
+from lms.djangoapps.grades.models import PersistentCourseGrade
 
 from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses, get_has_site_login_queryset
 from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list, get_tenants_sites
@@ -81,6 +86,46 @@ def get_certificates_count_for_learner_queryset(
     )
 
 
+def get_learners_search_queryset(
+    search_text: str = None,
+    superuser_filter: bool | None = False,
+    staff_filter: bool | None = False,
+    active_filter: bool | None = True
+) -> QuerySet:
+    """
+    Get the learners queryset for the given search text.
+
+    :param search_text: Search text to filter the learners by
+    :type search_text: str
+    :param superuser_filter: Value to filter superusers. None means no filter
+    :type superuser_filter: bool
+    :param staff_filter: Value to filter staff users. None means no filter
+    :type staff_filter: bool
+    :param active_filter: Value to filter active users. None means no filter
+    :type active_filter: bool
+    :return: QuerySet of learners
+    :rtype: QuerySet
+    """
+    queryset = get_user_model().objects.all()
+
+    if superuser_filter is not None:
+        queryset = queryset.filter(is_superuser=superuser_filter)
+    if staff_filter is not None:
+        queryset = queryset.filter(is_staff=staff_filter)
+    if active_filter is not None:
+        queryset = queryset.filter(is_active=active_filter)
+
+    search_text = (search_text or '').strip()
+    if search_text:
+        queryset = queryset.filter(
+            Q(username__icontains=search_text) |
+            Q(email__icontains=search_text) |
+            Q(profile__name__icontains=search_text)
+        )
+
+    return queryset
+
+
 def get_learners_queryset(
     tenant_ids: List, search_text: str = None, visible_courses_filter: bool = True, active_courses_filter: bool = None
 ) -> QuerySet:
@@ -101,18 +146,7 @@ def get_learners_queryset(
     course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
     tenant_sites = get_tenants_sites(tenant_ids)
 
-    queryset = get_user_model().objects.filter(
-        is_superuser=False,
-        is_staff=False,
-        is_active=True,
-    )
-    search_text = (search_text or '').strip()
-    if search_text:
-        queryset = queryset.filter(
-            Q(username__icontains=search_text) |
-            Q(email__icontains=search_text) |
-            Q(profile__name__icontains=search_text)
-        )
+    queryset = get_learners_search_queryset(search_text)
 
     queryset = queryset.annotate(
         courses_count=get_courses_count_for_learner_queryset(
@@ -130,6 +164,62 @@ def get_learners_queryset(
         has_site_login=get_has_site_login_queryset(tenant_sites)
     ).filter(
         Q(courses_count__gt=0) | Q(has_site_login=True)
+    ).select_related('profile').order_by('id')
+
+    return queryset
+
+
+def get_learners_by_course_queryset(course_id: str, search_text: str = None) -> QuerySet:
+    """
+    Get the learners queryset for the given course ID.
+
+    :param course_id: The course ID to get the learners for
+    :type course_id: str
+    :param search_text: Search text to filter the learners by
+    :type search_text: str
+    :return: QuerySet of learners
+    :rtype: QuerySet
+    """
+    queryset = get_learners_search_queryset(search_text)
+    queryset = queryset.filter(
+        courseenrollment__course_id=course_id
+    ).filter(
+        ~Exists(
+            CourseAccessRole.objects.filter(
+                user_id=OuterRef('id'),
+                org=OuterRef('courseenrollment__course__org')
+            )
+        )
+    ).annotate(
+        certificate_available=Exists(
+            GeneratedCertificate.objects.filter(
+                user_id=OuterRef('id'),
+                course_id=course_id,
+                status='downloadable'
+            )
+        )
+    ).annotate(
+        course_score=Subquery(
+            PersistentCourseGrade.objects.filter(
+                user_id=OuterRef('id'),
+                course_id=course_id
+            ).values('percent_grade')[:1]
+        )
+    ).annotate(
+        active_in_course=Case(
+            When(
+                Exists(
+                    StudentModule.objects.filter(
+                        student_id=OuterRef('id'),
+                        course_id=course_id,
+                        modified__gte=timezone.now() - timedelta(days=30)
+                    )
+                ),
+                then=Value(True),
+            ),
+            default=Value(False),
+            output_field=BooleanField(),
+        )
     ).select_related('profile').order_by('id')
 
     return queryset

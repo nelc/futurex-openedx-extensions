@@ -14,7 +14,7 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.permissions import HasTenantAccess, IsSystemStaff
+from futurex_openedx_extensions.helpers.permissions import HasCourseAccess, HasTenantAccess, IsSystemStaff
 from tests.base_test_data import expected_statistics
 
 
@@ -421,3 +421,33 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
         response = self.client.get(self.url, data={"username_or_email": "dummy"})
         self.assertEqual(response.status_code, 200)
         self.assertDictEqual(json.loads(response.content), {})
+
+
+@pytest.mark.usefixtures('base_data')
+class TestLearnersDetailsForCourseView(BaseTestViewMixin):
+    """Tests for LearnersDetailsForCourseView"""
+    VIEW_NAME = 'fx_dashboard:learners-course'
+
+    def setUp(self):
+        """Setup"""
+        super().setUp()
+        self.url_args = ['course-v1:ORG1+5+5']
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        self.assertEqual(view_class.permission_classes, [HasCourseAccess])
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 3)
+        self.assertGreater(len(response.data['results']), 0)

@@ -14,7 +14,7 @@ from rest_framework.request import Request
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, ids_string_to_list
-from futurex_openedx_extensions.helpers.helpers import get_first_not_empty_item
+from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
 from futurex_openedx_extensions.helpers.querysets import get_has_site_login_queryset
 
 

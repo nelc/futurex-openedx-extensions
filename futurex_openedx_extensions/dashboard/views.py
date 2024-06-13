@@ -8,7 +8,11 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_courses_queryset, get_learner_courses_info_queryset
-from futurex_openedx_extensions.dashboard.details.learners import get_learner_info_queryset, get_learners_queryset
+from futurex_openedx_extensions.dashboard.details.learners import (
+    get_learner_info_queryset,
+    get_learners_by_course_queryset,
+    get_learners_queryset,
+)
 from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
 from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count, get_courses_count_by_status
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
@@ -16,7 +20,7 @@ from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREF
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
-from futurex_openedx_extensions.helpers.permissions import HasTenantAccess, IsSystemStaff
+from futurex_openedx_extensions.helpers.permissions import HasCourseAccess, HasTenantAccess, IsSystemStaff
 from futurex_openedx_extensions.helpers.tenants import (
     get_accessible_tenant_ids,
     get_selected_tenants,
@@ -253,3 +257,20 @@ class AccessibleTenantsInfoView(APIView):
 
         tenant_ids = get_accessible_tenant_ids(user)
         return JsonResponse(get_tenants_info(tenant_ids))
+
+
+class LearnersDetailsForCourseView(ListAPIView):
+    """View to get the list of learners for a course"""
+    serializer_class = serializers.LearnerDetailsForCourseSerializer
+    permission_classes = [HasCourseAccess]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self, *args, **kwargs):
+        """Get the list of learners for a course"""
+        search_text = self.request.query_params.get('search_text')
+        course_id = self.kwargs.get('course_id')
+
+        return get_learners_by_course_queryset(
+            course_id=course_id,
+            search_text=search_text,
+        )

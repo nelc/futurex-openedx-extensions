@@ -2,13 +2,17 @@
 from unittest.mock import patch
 
 import pytest
+from common.djangoapps.student.models import UserProfile
 from django.contrib.auth import get_user_model
+from lms.djangoapps.grades.models import PersistentCourseGrade
 
 from futurex_openedx_extensions.dashboard.details.learners import (
     get_certificates_count_for_learner_queryset,
     get_courses_count_for_learner_queryset,
     get_learner_info_queryset,
+    get_learners_by_course_queryset,
     get_learners_queryset,
+    get_learners_search_queryset,
 )
 
 
@@ -44,7 +48,7 @@ def test_count_for_learner_queryset(
 
 @pytest.mark.django_db
 def test_get_learner_info_queryset(base_data):  # pylint: disable=unused-argument
-    """Verify that get_learners_queryset returns the correct QuerySet."""
+    """Verify that get_learner_info_queryset returns the correct QuerySet."""
     queryset = get_learner_info_queryset([1], 3)
     assert queryset.count() == 1, "bad test data, user id (3) should be in the queryset"
 
@@ -56,22 +60,78 @@ def test_get_learner_info_queryset(base_data):  # pylint: disable=unused-argumen
 
 @pytest.mark.django_db
 def test_get_learner_info_queryset_selecting_profile(base_data):  # pylint: disable=unused-argument
-    """Verify that get_learners_queryset returns the correct QuerySet along with the related profile record."""
+    """Verify that get_learner_info_queryset returns the correct QuerySet along with the related profile record."""
     with patch('django.db.models.query.QuerySet.select_related') as mocked_select_related:
         get_learner_info_queryset([1], 3)
     mocked_select_related.assert_called_once_with('profile')
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("tenant_ids, search_text, expected_count", [
-    ([7, 8], None, 22),
-    ([7], None, 17),
-    ([7], "user", 17),
-    ([7], "user4", 10),
-    ([7], "user5", 1),
-    ([7], "user6", 0),
-    ([4], None, 0),
+@pytest.mark.parametrize("search_text, expected_count", [
+    (None, 64),
+    ("user", 64),
+    ("user4", 11),
+    ("example", 64),
 ])
-def test_get_learners_queryset(base_data, tenant_ids, search_text, expected_count):  # pylint: disable=unused-argument
+def test_get_learners_search_queryset(base_data, search_text, expected_count):  # pylint: disable=unused-argument
+    """Verify that get_learners_search_queryset returns the correct QuerySet."""
+    assert get_learners_search_queryset(search_text=search_text).count() == expected_count
+
+
+@pytest.mark.django_db
+def test_get_learners_search_queryset_name(base_data):  # pylint: disable=unused-argument
+    """Verify that get_learners_search_queryset returns the correct QuerySet when searching in profile name."""
+    assert get_learners_search_queryset(search_text="hn D").count() == 0
+    UserProfile.objects.create(user_id=10, name="John Doe")
+    assert get_learners_search_queryset(search_text="hn D").count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("filter_name, true_count", [
+    ("superuser_filter", 2),
+    ("staff_filter", 2),
+    ("active_filter", 67),
+])
+def test_get_learners_search_queryset_active_filter(
+    base_data, filter_name, true_count
+):  # pylint: disable=unused-argument
+    """Verify that get_learners_search_queryset returns the correct QuerySet when active_filters is used"""
+    kwargs = {
+        "superuser_filter": None,
+        "staff_filter": None,
+        "active_filter": None,
+    }
+    assert get_learners_search_queryset(**kwargs).count() == 70, "unexpected test data"
+    kwargs[filter_name] = True
+    assert get_learners_search_queryset(**kwargs).count() == true_count
+    kwargs[filter_name] = False
+    assert get_learners_search_queryset(**kwargs).count() == 70 - true_count
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("tenant_ids, expected_count", [
+    ([7, 8], 22),
+    ([7], 17),
+    ([4], 0),
+])
+def test_get_learners_queryset(base_data, tenant_ids, expected_count):  # pylint: disable=unused-argument
     """Verify that get_learners_queryset returns the correct QuerySet."""
-    assert get_learners_queryset(tenant_ids, search_text).count() == expected_count
+    result = get_learners_queryset(tenant_ids)
+    assert result.count() == expected_count
+    if expected_count > 0:
+        assert result.first().courses_count is not None, "courses_count should be in the queryset"
+        assert result.first().certificates_count is not None, "certificates_count should be in the queryset"
+        assert result.first().has_site_login is not None, "has_site_login should be in the queryset"
+
+
+@pytest.mark.django_db
+def test_get_learners_by_course_queryset(base_data):  # pylint: disable=unused-argument
+    """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
+    queryset = get_learners_by_course_queryset("course-v1:ORG1+5+5")
+    assert queryset.count() == 3, "unexpected test data"
+    PersistentCourseGrade.objects.create(user_id=15, course_id="course-v1:ORG1+5+5", percent_grade=0.67)
+    assert queryset.first().certificate_available is not None, "certificate_available should be in the queryset"
+    assert queryset.first().course_score == 0.67, \
+        "course_score should be in the queryset with value 0.67 for the first record (user15)"
+    assert queryset.first().active_in_course is False, \
+        "active_in_course should be in the queryset with value True for the first record (user15)"
