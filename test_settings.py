@@ -82,3 +82,9 @@ CACHES = {
 
 # Non-default dashboard settings
 FX_CACHE_TIMEOUT_TENANTS_INFO = 60 * 60 * 3  # 3 hours
+
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_RATES': {
+        'fx_anonymous_data_retrieve': '5/hour',
+    },
+}
