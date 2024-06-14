@@ -20,13 +20,19 @@ from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREF
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
-from futurex_openedx_extensions.helpers.permissions import HasCourseAccess, HasTenantAccess, IsSystemStaff
+from futurex_openedx_extensions.helpers.permissions import (
+    HasCourseAccess,
+    HasTenantAccess,
+    IsAnonymousOrSystemStaff,
+    IsSystemStaff,
+)
 from futurex_openedx_extensions.helpers.tenants import (
     get_accessible_tenant_ids,
     get_selected_tenants,
     get_tenants_info,
     get_user_id_from_username_tenants,
 )
+from futurex_openedx_extensions.helpers.throttles import AnonymousDataRetrieveRateThrottle
 
 
 class TotalCountsView(APIView):
@@ -240,7 +246,8 @@ class VersionInfoView(APIView):
 
 class AccessibleTenantsInfoView(APIView):
     """View to get the list of accessible tenants"""
-    permission_classes = []
+    permission_classes = [IsAnonymousOrSystemStaff]
+    throttle_classes = [AnonymousDataRetrieveRateThrottle]
 
     def get(self, request, *args, **kwargs):  # pylint: disable=no-self-use
         """

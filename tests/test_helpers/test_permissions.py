@@ -7,7 +7,12 @@ from django.contrib.auth.models import AnonymousUser
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.test import APIRequestFactory
 
-from futurex_openedx_extensions.helpers.permissions import HasCourseAccess, HasTenantAccess, IsSystemStaff
+from futurex_openedx_extensions.helpers.permissions import (
+    HasCourseAccess,
+    HasTenantAccess,
+    IsAnonymousOrSystemStaff,
+    IsSystemStaff,
+)
 
 
 def set_user(request, user_id):
@@ -156,3 +161,21 @@ def test_has_course_access_bad_course(base_data):  # pylint: disable=unused-argu
     set_user(request, 1)
     with pytest.raises(PermissionDenied):
         permission.has_permission(request, None)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id, expected_result, error_msg', [
+    (None, True, 'anonymous users should be allowed!'),
+    (0, True, 'anonymous users should be allowed!'),
+    (1, True, 'superusers should be allowed!'),
+    (2, True, 'system staff should be allowed!'),
+    (15, False, 'non-staff users should not be allowed!'),
+])
+def test_is_anonymous_or_system_staff(
+    base_data, user_id, expected_result, error_msg
+):  # pylint: disable=unused-argument
+    """Verify that IsAnonymousOrSystemStaff returns True when user is anonymous."""
+    permission = IsAnonymousOrSystemStaff()
+    request = APIRequestFactory().generic('GET', '/dummy/')
+    set_user(request, user_id)
+    assert permission.has_permission(request, None) is expected_result, error_msg

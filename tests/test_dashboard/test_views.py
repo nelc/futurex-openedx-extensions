@@ -14,7 +14,12 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.permissions import HasCourseAccess, HasTenantAccess, IsSystemStaff
+from futurex_openedx_extensions.helpers.permissions import (
+    HasCourseAccess,
+    HasTenantAccess,
+    IsAnonymousOrSystemStaff,
+    IsSystemStaff,
+)
 from tests.base_test_data import expected_statistics
 
 
@@ -393,7 +398,7 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
         """Verify that the view has the correct permission classes"""
         view_func, _, _ = resolve(self.url)
         view_class = view_func.view_class
-        self.assertEqual(view_class.permission_classes, [])
+        self.assertEqual(view_class.permission_classes, [IsAnonymousOrSystemStaff])
 
     @patch("futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email")
     def test_success(self, mock_get_user):
