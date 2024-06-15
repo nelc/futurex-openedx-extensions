@@ -177,7 +177,7 @@ _base_data = {
     "staff_users": [2, 60],
     "inactive_users": [61, 62, 63],
     "course_access_roles": {  # roles, user ids per org
-        "staff": {  # at least one role that is not in TENANT_LIMITED_ADMIN_ROLES
+        "staff": {
             "ORG1": [3],
             "ORG2": [8, 9],
             "ORG3": [9, 18],

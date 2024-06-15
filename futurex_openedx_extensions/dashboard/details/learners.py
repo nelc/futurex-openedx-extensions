@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import List
 
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
@@ -14,19 +13,19 @@ from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
 from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses, get_has_site_login_queryset
-from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list, get_tenants_sites
+from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 
 
 def get_courses_count_for_learner_queryset(
-    course_org_filter_list: List[str],
+    fx_permission_info: dict,
     visible_courses_filter: bool = True,
     active_courses_filter: bool = None,
 ) -> QuerySet:
     """
-    Get the courses count for the given learner.
+    Annotate the given queryset with the courses count for the learner.
 
-    :param course_org_filter_list: List of course organizations to filter by
-    :type course_org_filter_list: List[str]
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
     :type visible_courses_filter: bool
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
@@ -38,7 +37,7 @@ def get_courses_count_for_learner_queryset(
         'courseenrollment',
         filter=(
             Q(courseenrollment__course_id__in=get_base_queryset_courses(
-                course_org_filter_list,
+                fx_permission_info,
                 visible_filter=visible_courses_filter,
                 active_filter=active_courses_filter,
             )) &
@@ -54,15 +53,15 @@ def get_courses_count_for_learner_queryset(
 
 
 def get_certificates_count_for_learner_queryset(
-    course_org_filter_list: List[str],
+    fx_permission_info: dict,
     visible_courses_filter: bool = True,
     active_courses_filter: bool = None,
 ) -> QuerySet:
     """
     Annotate the given queryset with the certificate counts.
 
-    :param course_org_filter_list: List of course organizations to filter by
-    :type course_org_filter_list: List[str]
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
     :type visible_courses_filter: bool
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
@@ -75,7 +74,7 @@ def get_certificates_count_for_learner_queryset(
         filter=(
             Q(generatedcertificate__course_id__in=Subquery(
                 get_base_queryset_courses(
-                    course_org_filter_list,
+                    fx_permission_info,
                     visible_filter=visible_courses_filter,
                     active_filter=active_courses_filter
                 ).values_list('id', flat=True)
@@ -127,13 +126,16 @@ def get_learners_search_queryset(
 
 
 def get_learners_queryset(
-    tenant_ids: List, search_text: str = None, visible_courses_filter: bool = True, active_courses_filter: bool = None
+    fx_permission_info: dict,
+    search_text: str = None,
+    visible_courses_filter: bool = True,
+    active_courses_filter: bool = None
 ) -> QuerySet:
     """
     Get the learners queryset for the given tenant IDs and search text.
 
-    :param tenant_ids: List of tenant IDs to get the learners for
-    :type tenant_ids: List
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
     :param search_text: Search text to filter the learners by
     :type search_text: str
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter
@@ -143,20 +145,19 @@ def get_learners_queryset(
     :return: QuerySet of learners
     :rtype: QuerySet
     """
-    course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
-    tenant_sites = get_tenants_sites(tenant_ids)
+    tenant_sites = get_tenants_sites(fx_permission_info['permitted_tenant_ids'])
 
     queryset = get_learners_search_queryset(search_text)
 
     queryset = queryset.annotate(
         courses_count=get_courses_count_for_learner_queryset(
-            course_org_filter_list,
+            fx_permission_info,
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
         )
     ).annotate(
         certificates_count=get_certificates_count_for_learner_queryset(
-            course_org_filter_list,
+            fx_permission_info,
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
         )
@@ -226,13 +227,13 @@ def get_learners_by_course_queryset(course_id: str, search_text: str = None) -> 
 
 
 def get_learner_info_queryset(
-    tenant_ids: List, user_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
+    fx_permission_info: dict, user_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
 ) -> QuerySet:
     """
     Get the learner queryset for the given user ID. This method assumes a valid user ID.
 
-    :param tenant_ids: List of tenant IDs to get the learner for
-    :type tenant_ids: List
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
     :param user_id: The user ID to get the learner for
     :type user_id: int
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter
@@ -242,17 +243,15 @@ def get_learner_info_queryset(
     :return: QuerySet of learners
     :rtype: QuerySet
     """
-    course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
-
     queryset = get_user_model().objects.filter(id=user_id).annotate(
         courses_count=get_courses_count_for_learner_queryset(
-            course_org_filter_list,
+            fx_permission_info,
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
         )
     ).annotate(
         certificates_count=get_certificates_count_for_learner_queryset(
-            course_org_filter_list,
+            fx_permission_info,
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
         )
