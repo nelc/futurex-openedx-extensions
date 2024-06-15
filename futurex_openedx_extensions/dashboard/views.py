@@ -21,21 +21,25 @@ from futurex_openedx_extensions.helpers.converters import error_details_to_dicti
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
-    HasCourseAccess,
-    HasTenantAccess,
+    FXHasTenantCourseAccess,
     IsAnonymousOrSystemStaff,
     IsSystemStaff,
+    get_tenant_limited_fx_permission_info,
 )
+from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
 from futurex_openedx_extensions.helpers.tenants import (
     get_accessible_tenant_ids,
-    get_selected_tenants,
     get_tenants_info,
     get_user_id_from_username_tenants,
 )
 
 
-class TotalCountsView(APIView):
-    """View to get the total count statistics"""
+class TotalCountsView(APIView, FXViewRoleInfoMixin):
+    """
+    View to get the total count statistics
+
+    TODO: there is a better way to get info per tenant without iterating over all tenants
+    """
     STAT_CERTIFICATES = 'certificates'
     STAT_COURSES = 'courses'
     STAT_HIDDEN_COURSES = 'hidden_courses'
@@ -49,39 +53,43 @@ class TotalCountsView(APIView):
         STAT_LEARNERS: 'learners_count'
     }
 
-    permission_classes = [HasTenantAccess]
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'total_counts_statistics'
+    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_view_description = 'api/fx/statistics/v1/total_counts/: Get the total count statistics'
 
     @staticmethod
-    def _get_certificates_count_data(tenant_id):
+    def _get_certificates_count_data(one_tenant_permission_info):
         """Get the count of certificates for the given tenant"""
-        collector_result = get_certificates_count([tenant_id])
+        collector_result = get_certificates_count(one_tenant_permission_info)
         return sum(certificate_count for certificate_count in collector_result.values())
 
     @staticmethod
-    def _get_courses_count_data(tenant_id, visible_filter):
+    def _get_courses_count_data(one_tenant_permission_info, visible_filter):
         """Get the count of courses for the given tenant"""
-        collector_result = get_courses_count([tenant_id], visible_filter=visible_filter)
+        collector_result = get_courses_count(one_tenant_permission_info, visible_filter=visible_filter)
         return sum(org_count['courses_count'] for org_count in collector_result)
 
     @staticmethod
-    def _get_learners_count_data(tenant_id):
+    def _get_learners_count_data(one_tenant_permission_info, tenant_id):
         """Get the count of learners for the given tenant"""
-        collector_result = get_learners_count([tenant_id])
+        collector_result = get_learners_count(one_tenant_permission_info)
         return collector_result[tenant_id]['learners_count'] + \
             collector_result[tenant_id]['learners_count_no_enrollment']
 
     def _get_stat_count(self, stat, tenant_id):
         """Get the count of the given stat for the given tenant"""
+        one_tenant_permission_info = get_tenant_limited_fx_permission_info(self.fx_permission_info, tenant_id)
         if stat == self.STAT_CERTIFICATES:
-            return self._get_certificates_count_data(tenant_id)
+            return self._get_certificates_count_data(one_tenant_permission_info)
 
         if stat == self.STAT_COURSES:
-            return self._get_courses_count_data(tenant_id, visible_filter=True)
+            return self._get_courses_count_data(one_tenant_permission_info, visible_filter=True)
 
         if stat == self.STAT_HIDDEN_COURSES:
-            return self._get_courses_count_data(tenant_id, visible_filter=False)
+            return self._get_courses_count_data(one_tenant_permission_info, visible_filter=False)
 
-        return self._get_learners_count_data(tenant_id)
+        return self._get_learners_count_data(one_tenant_permission_info, tenant_id)
 
     def get(self, request, *args, **kwargs):
         """
@@ -100,7 +108,7 @@ class TotalCountsView(APIView):
         if invalid_stats:
             return Response(error_details_to_dictionary(reason="Invalid stats type", invalid=invalid_stats), status=400)
 
-        tenant_ids = get_selected_tenants(request)
+        tenant_ids = self.fx_permission_info['permitted_tenant_ids']
 
         result = dict({tenant_id: {} for tenant_id in tenant_ids})
         result.update({
@@ -115,26 +123,28 @@ class TotalCountsView(APIView):
         return JsonResponse(result)
 
 
-class LearnersView(ListAPIView):
+class LearnersView(ListAPIView, FXViewRoleInfoMixin):
     """View to get the list of learners"""
     serializer_class = serializers.LearnerDetailsSerializer
-    permission_classes = [HasTenantAccess]
+    permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
+    fx_view_name = 'learners_list'
+    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_view_description = 'api/fx/learners/v1/learners/: Get the list of learners'
 
     def get_queryset(self):
         """Get the list of learners"""
-        tenant_ids = get_selected_tenants(self.request)
         search_text = self.request.query_params.get('search_text')
         return get_learners_queryset(
-            tenant_ids=tenant_ids,
+            fx_permission_info=self.fx_permission_info,
             search_text=search_text,
         )
 
 
-class CoursesView(ListAPIView):
+class CoursesView(ListAPIView, FXViewRoleInfoMixin):
     """View to get the list of courses"""
     serializer_class = serializers.CourseDetailsSerializer
-    permission_classes = [HasTenantAccess]
+    permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
     filter_backends = [DefaultOrderingFilter]
     ordering_fields = [
@@ -142,21 +152,26 @@ class CoursesView(ListAPIView):
         'certificates_count', 'display_name', 'org',
     ]
     ordering = ['display_name']
+    fx_view_name = 'courses_list'
+    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_view_description = 'api/fx/courses/v1/courses/: Get the list of courses'
 
     def get_queryset(self):
         """Get the list of learners"""
-        tenant_ids = get_selected_tenants(self.request)
         search_text = self.request.query_params.get('search_text')
         return get_courses_queryset(
-            tenant_ids=tenant_ids,
+            fx_permission_info=self.fx_permission_info,
             search_text=search_text,
             visible_filter=None,
         )
 
 
-class CourseStatusesView(APIView):
+class CourseStatusesView(APIView, FXViewRoleInfoMixin):
     """View to get the course statuses"""
-    permission_classes = [HasTenantAccess]
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'course_statuses'
+    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_view_description = 'api/fx/statistics/v1/course_statuses/: Get the course statuses'
 
     @staticmethod
     def to_json(result):
@@ -179,50 +194,58 @@ class CourseStatusesView(APIView):
         <tenantIds> (optional): a comma-separated list of the tenant IDs to get the information for. If not provided,
             the API will assume the list of all accessible tenants by the user
         """
-        tenant_ids = get_selected_tenants(request)
-
-        result = get_courses_count_by_status(tenant_ids=tenant_ids)
+        result = get_courses_count_by_status(fx_permission_info=self.fx_permission_info)
 
         return JsonResponse(self.to_json(result))
 
 
-class LearnerInfoView(APIView):
+class LearnerInfoView(APIView, FXViewRoleInfoMixin):
     """View to get the information of a learner"""
-    permission_classes = [HasTenantAccess]
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'learner_detailed_info'
+    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_view_description = 'api/fx/learners/v1/learner/: Get the information of a learner'
 
-    def get(self, request, username, *args, **kwargs):  # pylint: disable=no-self-use
+    def get(self, request, username, *args, **kwargs):
         """
         GET /api/fx/learners/v1/learner/<username>/
         """
-        tenant_ids = get_selected_tenants(request)
+        tenant_ids = self.fx_permission_info['permitted_tenant_ids']
         user_id = get_user_id_from_username_tenants(username, tenant_ids)
 
         if not user_id:
             return Response(error_details_to_dictionary(reason=f"User not found {username}"), status=404)
 
-        user = get_learner_info_queryset(tenant_ids, user_id).first()
+        user = get_learner_info_queryset(self.fx_permission_info, user_id).first()
 
         return JsonResponse(
             serializers.LearnerDetailsExtendedSerializer(user, context={'request': request}).data
         )
 
 
-class LearnerCoursesView(APIView):
+class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
     """View to get the list of courses for a learner"""
-    permission_classes = [HasTenantAccess]
+    permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
+    fx_view_name = 'learner_courses'
+    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_view_description = 'api/fx/learners/v1/learner_courses/: Get the list of courses for a learner'
 
-    def get(self, request, username, *args, **kwargs):  # pylint: disable=no-self-use
+    def get(self, request, username, *args, **kwargs):
         """
         GET /api/fx/learners/v1/learner_courses/<username>/
         """
-        tenant_ids = get_selected_tenants(request)
+        tenant_ids = self.fx_permission_info['permitted_tenant_ids']
         user_id = get_user_id_from_username_tenants(username, tenant_ids)
 
         if not user_id:
             return Response(error_details_to_dictionary(reason=f"User not found {username}"), status=404)
 
-        courses = get_learner_courses_info_queryset(tenant_ids, user_id, visible_filter=None)
+        courses = get_learner_courses_info_queryset(
+            fx_permission_info=self.fx_permission_info,
+            user_id=user_id,
+            visible_filter=None,
+        )
 
         return Response(serializers.LearnerCoursesDetailsSerializer(
             courses, context={'request': request}, many=True
@@ -264,11 +287,14 @@ class AccessibleTenantsInfoView(APIView):
         return JsonResponse(get_tenants_info(tenant_ids))
 
 
-class LearnersDetailsForCourseView(ListAPIView):
+class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
     """View to get the list of learners for a course"""
     serializer_class = serializers.LearnerDetailsForCourseSerializer
-    permission_classes = [HasCourseAccess]
+    permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
+    fx_view_name = 'learners_with_details_for_course'
+    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_view_description = 'api/fx/learners/v1/learners/<course-id>: Get the list of learners for a course'
 
     def get_queryset(self, *args, **kwargs):
         """Get the list of learners for a course"""

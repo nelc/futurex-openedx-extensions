@@ -1,55 +1,134 @@
 """Permission classes for FutureX Open edX Extensions."""
+from __future__ import annotations
+
 import json
 
-from common.djangoapps.student.models import CourseAccessRole
-from django.db.models import Subquery
-from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.permissions import BasePermission, IsAuthenticated
 
-from futurex_openedx_extensions.helpers.constants import TENANT_LIMITED_ADMIN_ROLES
-from futurex_openedx_extensions.helpers.extractors import get_course_id_from_uri
-from futurex_openedx_extensions.helpers.tenants import check_tenant_access
+from futurex_openedx_extensions.helpers.roles import check_tenant_access, get_all_course_access_roles
+from futurex_openedx_extensions.helpers.tenants import get_accessible_tenant_ids, get_course_org_filter_list
 
 
-class HasCourseAccess(IsAuthenticated):
-    """Permission class to check if the user has access to the course."""
+def get_tenant_limited_fx_permission_info(fx_permission_info: dict, tenant_id: int) -> dict:
+    """
+    Get a copy of the permission info limited to a single tenant.
+
+    :param fx_permission_info: Permission information
+    :type fx_permission_info: dict
+    :param tenant_id: Tenant ID
+    :type tenant_id: int
+    :return: Permission information limited to the tenant
+    :rtype: dict
+    """
+    filtered_orgs = set(get_course_org_filter_list([tenant_id])['course_org_filter_list'])
+
+    fx_permission_info_one_tenant = {
+        'user': fx_permission_info['user'],
+        'user_roles': fx_permission_info['user_roles'],
+        'is_system_staff_user': fx_permission_info['is_system_staff_user'],
+        'permitted_tenant_ids': [tenant_id],
+        'view_allowed_roles': fx_permission_info['view_allowed_roles'],
+        'view_allowed_full_access_orgs': list(filtered_orgs.intersection(
+            set(fx_permission_info['view_allowed_full_access_orgs'])
+        )),
+        'view_allowed_course_access_orgs': list(filtered_orgs.intersection(
+            set(fx_permission_info['view_allowed_course_access_orgs'])
+        )),
+    }
+
+    return fx_permission_info_one_tenant
+
+
+class FXBaseAuthenticatedPermission(IsAuthenticated):
+    """Base permission class for FutureX Open edX Extensions."""
+    allow_non_system_staff = True
+
+    def verify_access_roles(self, request, view):
+        """Verify access roles."""
+        raise NotImplementedError(f'(verify_access_roles) is not implemented ({self.__class__.__name__})')
+
     def has_permission(self, request, view):
-        """Check if the user has access to the course."""
+        """Check if the user is authenticated."""
+        if not hasattr(view, 'get_allowed_roles_all_views'):
+            raise TypeError(
+                f'View ({view.__class__.__name__}) does not have (get_allowed_roles_all_views) method! '
+                'Fix this by adding (FXViewRoleInfoMixin) to the view class definition, or avoid using '
+                f'permission class ({self.__class__.__name__})'
+            )
+
         if not super().has_permission(request, view):
             raise NotAuthenticated()
 
-        course_id = get_course_id_from_uri(request.build_absolute_uri())
-        if not course_id or not CourseOverview.objects.filter(id=course_id).exists():
-            raise PermissionDenied(detail=json.dumps({"reason": "Invalid course_id"}))
+        is_system_staff_user = request.user.is_staff or request.user.is_superuser
+        if not self.allow_non_system_staff and not is_system_staff_user:
+            raise PermissionDenied(detail=json.dumps({"reason": "User is not a system staff member"}))
 
-        if request.user.is_staff or request.user.is_superuser:
+        view_allowed_roles = view.get_allowed_roles_all_views()[view.fx_view_name]
+        tenant_ids_string = request.GET.get('tenant_ids')
+        user_roles = None if is_system_staff_user else get_all_course_access_roles().get(request.user.id, {})
+        if tenant_ids_string:
+            has_access, details = check_tenant_access(request.user, tenant_ids_string)
+            if not has_access:
+                raise PermissionDenied(detail=json.dumps(details))
+            tenant_ids = details['tenant_ids']
+        else:
+            tenant_ids = get_accessible_tenant_ids(request.user, roles_filter=user_roles)
+
+        request.fx_permission_info = {
+            'user': request.user,
+            'user_roles': user_roles,
+            'is_system_staff_user': is_system_staff_user,
+            'permitted_tenant_ids': tenant_ids,
+            'view_allowed_roles': view_allowed_roles,
+        }
+
+        if is_system_staff_user:
+            request.fx_permission_info.update({
+                'view_allowed_full_access_orgs': get_course_org_filter_list(tenant_ids)['course_org_filter_list'],
+                'view_allowed_course_access_orgs': [],
+            })
             return True
 
-        if not CourseAccessRole.objects.filter(
-            user=request.user,
-            org=Subquery(
-                CourseOverview.objects.filter(id=course_id).values('org')
-            ),
-            role__in=TENANT_LIMITED_ADMIN_ROLES,
-        ).exists():
-            raise PermissionDenied(detail=json.dumps({"reason": "User does not have access to the course"}))
+        permitted_orgs = set(get_course_org_filter_list(tenant_ids)['course_org_filter_list'])
+        full_access_orgs = set()
+        course_access_orgs = set()
+        for role in view_allowed_roles:
+            if role in user_roles:
+                full_access_orgs.update(
+                    permitted_orgs.intersection(set(user_roles[role]['orgs_full_access']))
+                )
+                course_access_orgs.update(
+                    permitted_orgs.intersection(set(user_roles[role]['orgs_of_courses']))
+                )
+
+        request.fx_permission_info.update({
+            'view_allowed_full_access_orgs': list(full_access_orgs),
+            'view_allowed_course_access_orgs': list(course_access_orgs),
+        })
+
+        return self.verify_access_roles(request, view)
+
+
+class FXHasTenantAllCoursesAccess(FXBaseAuthenticatedPermission):
+    """Permission class to check if the user has access to all courses in the tenants."""
+    def verify_access_roles(self, request, view):
+        """Verify access roles."""
+        if not request.fx_permission_info['view_allowed_full_access_orgs']:
+            raise PermissionDenied(detail=json.dumps({"reason": "User does not have full access to any organization"}))
 
         return True
 
 
-class HasTenantAccess(IsAuthenticated):
-    """Permission class to check if the user is a tenant admin."""
-    def has_permission(self, request, view):
-        """Check if the user is a permission to the tenant"""
-        if not super().has_permission(request, view):
-            raise NotAuthenticated()
-
-        tenant_ids = request.GET.get('tenant_ids')
-        if tenant_ids:
-            has_access, details = check_tenant_access(request.user, tenant_ids)
-            if not has_access:
-                raise PermissionDenied(detail=json.dumps(details))
+class FXHasTenantCourseAccess(FXBaseAuthenticatedPermission):
+    """Permission class to check if the user has access to one or more courses in the tenants."""
+    def verify_access_roles(self, request, view):
+        """Verify access roles."""
+        if (
+            not request.fx_permission_info['view_allowed_full_access_orgs'] and
+            not request.fx_permission_info['view_allowed_course_access_orgs']
+        ):
+            raise PermissionDenied(detail=json.dumps({"reason": "User does not have course access to the tenant"}))
 
         return True
 

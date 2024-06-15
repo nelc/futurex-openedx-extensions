@@ -34,6 +34,8 @@ INSTALLED_APPS = (
     'django.contrib.contenttypes',
     'django.contrib.messages',
     'django.contrib.sessions',
+    # 'futurex_openedx_extensions.dashboard',
+    'futurex_openedx_extensions.helpers',
     'eox_tenant',
     'common',
     'fake_models',
@@ -81,11 +83,13 @@ CACHES = {
 }
 
 # Non-default dashboard settings
+FX_CACHE_TIMEOUT_COURSE_ACCESS_ROLES = 60 * 31  # 31 minutes
 FX_CACHE_TIMEOUT_TENANTS_INFO = 60 * 60 * 3  # 3 hours
+FX_CACHE_TIMEOUT_VIEW_ROLES = 60 * 31  # 31 minutes
 
 REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
-        'fx_anonymous_data_retrieve': '5/hour',
+        'fx_anonymous_data_retrieve': '60/minute',
     },
 }
 

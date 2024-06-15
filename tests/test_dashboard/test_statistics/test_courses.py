@@ -8,10 +8,13 @@ from tests.base_test_data import _base_data
 
 
 @pytest.mark.django_db
-def test_get_courses_count(base_data):  # pylint: disable=unused-argument
+def test_get_courses_count(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_courses_count function."""
     all_tenants = _base_data["tenant_config"].keys()
-    result = courses.get_courses_count(all_tenants)
+    fx_permission_info['view_allowed_full_access_orgs'] = get_course_org_filter_list(
+        list(all_tenants)
+    )["course_org_filter_list"]
+    result = courses.get_courses_count(fx_permission_info)
     orgs_in_result = [org["org"] for org in result]
 
     for tenant_id in all_tenants:
@@ -27,9 +30,9 @@ def test_get_courses_count(base_data):  # pylint: disable=unused-argument
 
 
 @pytest.mark.django_db
-def test_get_courses_count_by_status(base_data):  # pylint: disable=unused-argument
+def test_get_courses_count_by_status(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_courses_count_by_status function."""
-    result = courses.get_courses_count_by_status([1])
+    result = courses.get_courses_count_by_status(fx_permission_info)
     assert list(result) == [
         {'self_paced': False, 'status': COURSE_STATUSES['active'], 'courses_count': 6},
         {'self_paced': False, 'status': COURSE_STATUSES['archived'], 'courses_count': 3},
