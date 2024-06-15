@@ -19,4 +19,4 @@ def plugin_settings(settings):
     )
 
     if settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].get("fx_anonymous_data_retrieve") is None:
-        settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["fx_anonymous_data_retrieve"] = "5/hour"
+        settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["fx_anonymous_data_retrieve"] = "60/minute"
