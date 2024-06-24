@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 from common.djangoapps.student.models import SocialLink, UserProfile
 from django.contrib.auth import get_user_model
-from django.db.models import Count
+from django.db.models import Value
 from django.utils.timezone import get_current_timezone, now, timedelta
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
@@ -12,8 +12,10 @@ from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyP
 from futurex_openedx_extensions.dashboard.serializers import (
     CourseDetailsBaseSerializer,
     CourseDetailsSerializer,
+    LearnerBasicDetailsSerializer,
     LearnerCoursesDetailsSerializer,
     LearnerDetailsExtendedSerializer,
+    LearnerDetailsForCourseSerializer,
     LearnerDetailsSerializer,
 )
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREFIX, COURSE_STATUSES
@@ -24,16 +26,19 @@ def get_dummy_queryset(users_list=None):
     if users_list is None:
         users_list = [10]
     return get_user_model().objects.filter(id__in=users_list).annotate(
-        courses_count=Count('id'),
-        certificates_count=Count('id'),
+        courses_count=Value(6),
+        certificates_count=Value(2),
+        certificate_available=Value(True),
+        course_score=Value(0.67),
+        active_in_course=Value(True),
     ).select_related('profile')
 
 
 @pytest.mark.django_db
-def test_learner_details_serializer_no_profile(base_data):  # pylint: disable=unused-argument
-    """Verify that the LearnerDetailsSerializer is correctly defined."""
+def test_learner_basic_details_serializer_no_profile(base_data):  # pylint: disable=unused-argument
+    """Verify that the LearnerBasicDetailsSerializer is correctly defined."""
     queryset = get_dummy_queryset()
-    data = LearnerDetailsSerializer(queryset, many=True).data
+    data = LearnerBasicDetailsSerializer(queryset, many=True).data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
     assert data[0]['full_name'] == ""
@@ -43,8 +48,8 @@ def test_learner_details_serializer_no_profile(base_data):  # pylint: disable=un
 
 
 @pytest.mark.django_db
-def test_learner_details_serializer_with_profile(base_data):  # pylint: disable=unused-argument
-    """Verify that the LearnerDetailsSerializer processes the profile fields."""
+def test_learner_basic_details_serializer_with_profile(base_data):  # pylint: disable=unused-argument
+    """Verify that the LearnerBasicDetailsSerializer processes the profile fields."""
     UserProfile.objects.create(
         user_id=10,
         name='Test User',
@@ -53,7 +58,7 @@ def test_learner_details_serializer_with_profile(base_data):  # pylint: disable=
         year_of_birth=1988,
     )
     queryset = get_dummy_queryset()
-    data = LearnerDetailsSerializer(queryset, many=True).data
+    data = LearnerBasicDetailsSerializer(queryset, many=True).data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
     assert data[0]['full_name'] == 'Test User'
@@ -74,10 +79,10 @@ def test_learner_details_serializer_with_profile(base_data):  # pylint: disable=
     ("عربي", "Doe", "Alt John", "عربي Doe", "Alt John", "Arabic name"),
     ("John", "Doe", "عربي", "عربي", "John Doe", "Arabic alternative name"),
 ])
-def test_learner_details_serializer_full_name_alt_name(
+def test_learner_basic_details_serializer_full_name_alt_name(
     base_data, first_name, last_name, profile_name, expected_full_name, expected_alt_name, use_case
 ):  # pylint: disable=unused-argument, too-many-arguments
-    """Verify that the LearnerDetailsSerializer processes names as expected."""
+    """Verify that the LearnerBasicDetailsSerializer processes names as expected."""
     queryset = get_dummy_queryset()
     UserProfile.objects.create(
         user_id=10,
@@ -88,12 +93,33 @@ def test_learner_details_serializer_full_name_alt_name(
     user.last_name = last_name
     user.save()
 
-    serializer = LearnerDetailsSerializer(queryset, many=True)
+    serializer = LearnerBasicDetailsSerializer(queryset, many=True)
     data = serializer.data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
     assert data[0]['full_name'] == expected_full_name, f"checking ({use_case}) failed"
     assert data[0]['alternative_full_name'] == expected_alt_name, f"checking ({use_case}) failed"
+
+
+@pytest.mark.django_db
+def test_learner_details_serializer(base_data):  # pylint: disable=unused-argument
+    """Verify that the LearnerDetailsSerializer returns the needed fields"""
+    queryset = get_dummy_queryset()
+    data = LearnerDetailsSerializer(queryset, many=True).data
+    assert len(data) == 1
+    assert data[0]['enrolled_courses_count'] == 6
+    assert data[0]['certificates_count'] == 2
+
+
+@pytest.mark.django_db
+def test_learner_details_for_course_serializer(base_data):  # pylint: disable=unused-argument
+    """Verify that the LearnerDetailsForCourseSerializer returns the needed fields."""
+    queryset = get_dummy_queryset()
+    data = LearnerDetailsForCourseSerializer(queryset, many=True).data
+    assert len(data) == 1
+    assert data[0]['certificate_available'] is True
+    assert data[0]['course_score'] == '0.67'
+    assert data[0]['active_in_course'] is True
 
 
 @pytest.mark.django_db

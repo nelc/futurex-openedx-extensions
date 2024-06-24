@@ -21,9 +21,9 @@ def get_base_queryset_courses(
     :param course_org_filter_list: List of course organizations to filter by
     :type course_org_filter_list: List[str]
     :param visible_filter: Value to filter courses on catalog visibility. None means no filter.
-    :type visible_filter: bool
+    :type visible_filter: bool | None
     :param active_filter: Value to filter courses on active status. None means no filter.
-    :type active_filter: bool
+    :type active_filter: bool | None
     :return: QuerySet of courses
     :rtype: QuerySet
     """

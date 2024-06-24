@@ -26,6 +26,8 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
             user.objects.filter(id=user_id).update(is_superuser=True)
         for user_id in _base_data["staff_users"]:
             user.objects.filter(id=user_id).update(is_staff=True)
+        for user_id in _base_data["inactive_users"]:
+            user.objects.filter(id=user_id).update(is_active=False)
 
     def _create_tenants():
         """Create tenants."""

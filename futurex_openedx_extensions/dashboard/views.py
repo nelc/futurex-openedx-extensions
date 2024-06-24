@@ -1,4 +1,6 @@
 """Views for the dashboard app"""
+from common.djangoapps.student.models import get_user_by_username_or_email
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
@@ -6,7 +8,11 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_courses_queryset, get_learner_courses_info_queryset
-from futurex_openedx_extensions.dashboard.details.learners import get_learner_info_queryset, get_learners_queryset
+from futurex_openedx_extensions.dashboard.details.learners import (
+    get_learner_info_queryset,
+    get_learners_by_course_queryset,
+    get_learners_queryset,
+)
 from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
 from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count, get_courses_count_by_status
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
@@ -14,20 +20,33 @@ from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREF
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
-from futurex_openedx_extensions.helpers.permissions import HasTenantAccess, IsSystemStaff
-from futurex_openedx_extensions.helpers.tenants import get_selected_tenants, get_user_id_from_username_tenants
+from futurex_openedx_extensions.helpers.permissions import (
+    HasCourseAccess,
+    HasTenantAccess,
+    IsAnonymousOrSystemStaff,
+    IsSystemStaff,
+)
+from futurex_openedx_extensions.helpers.tenants import (
+    get_accessible_tenant_ids,
+    get_selected_tenants,
+    get_tenants_info,
+    get_user_id_from_username_tenants,
+)
+from futurex_openedx_extensions.helpers.throttles import AnonymousDataRetrieveRateThrottle
 
 
 class TotalCountsView(APIView):
     """View to get the total count statistics"""
     STAT_CERTIFICATES = 'certificates'
     STAT_COURSES = 'courses'
+    STAT_HIDDEN_COURSES = 'hidden_courses'
     STAT_LEARNERS = 'learners'
 
-    valid_stats = [STAT_CERTIFICATES, STAT_COURSES, STAT_LEARNERS]
+    valid_stats = [STAT_CERTIFICATES, STAT_COURSES, STAT_HIDDEN_COURSES, STAT_LEARNERS]
     STAT_RESULT_KEYS = {
         STAT_CERTIFICATES: 'certificates_count',
         STAT_COURSES: 'courses_count',
+        STAT_HIDDEN_COURSES: 'hidden_courses_count',
         STAT_LEARNERS: 'learners_count'
     }
 
@@ -40,9 +59,9 @@ class TotalCountsView(APIView):
         return sum(certificate_count for certificate_count in collector_result.values())
 
     @staticmethod
-    def _get_courses_count_data(tenant_id):
+    def _get_courses_count_data(tenant_id, visible_filter):
         """Get the count of courses for the given tenant"""
-        collector_result = get_courses_count([tenant_id])
+        collector_result = get_courses_count([tenant_id], visible_filter=visible_filter)
         return sum(org_count['courses_count'] for org_count in collector_result)
 
     @staticmethod
@@ -58,7 +77,10 @@ class TotalCountsView(APIView):
             return self._get_certificates_count_data(tenant_id)
 
         if stat == self.STAT_COURSES:
-            return self._get_courses_count_data(tenant_id)
+            return self._get_courses_count_data(tenant_id, visible_filter=True)
+
+        if stat == self.STAT_HIDDEN_COURSES:
+            return self._get_courses_count_data(tenant_id, visible_filter=False)
 
         return self._get_learners_count_data(tenant_id)
 
@@ -129,6 +151,7 @@ class CoursesView(ListAPIView):
         return get_courses_queryset(
             tenant_ids=tenant_ids,
             search_text=search_text,
+            visible_filter=None,
         )
 
 
@@ -200,7 +223,7 @@ class LearnerCoursesView(APIView):
         if not user_id:
             return Response(error_details_to_dictionary(reason=f"User not found {username}"), status=404)
 
-        courses = get_learner_courses_info_queryset(tenant_ids, user_id)
+        courses = get_learner_courses_info_queryset(tenant_ids, user_id, visible_filter=None)
 
         return Response(serializers.LearnerCoursesDetailsSerializer(
             courses, context={'request': request}, many=True
@@ -219,3 +242,42 @@ class VersionInfoView(APIView):
         return JsonResponse({
             'version': futurex_openedx_extensions.__version__,
         })
+
+
+class AccessibleTenantsInfoView(APIView):
+    """View to get the list of accessible tenants"""
+    permission_classes = [IsAnonymousOrSystemStaff]
+    throttle_classes = [AnonymousDataRetrieveRateThrottle]
+
+    def get(self, request, *args, **kwargs):  # pylint: disable=no-self-use
+        """
+        GET /api/fx/tenants/v1/accessible_tenants/?username_or_email=<usernameOrEmail>
+        """
+        username_or_email = request.query_params.get("username_or_email")
+        try:
+            user = get_user_by_username_or_email(username_or_email)
+        except ObjectDoesNotExist:
+            user = None
+
+        if not user:
+            return JsonResponse({})
+
+        tenant_ids = get_accessible_tenant_ids(user)
+        return JsonResponse(get_tenants_info(tenant_ids))
+
+
+class LearnersDetailsForCourseView(ListAPIView):
+    """View to get the list of learners for a course"""
+    serializer_class = serializers.LearnerDetailsForCourseSerializer
+    permission_classes = [HasCourseAccess]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self, *args, **kwargs):
+        """Get the list of learners for a course"""
+        search_text = self.request.query_params.get('search_text')
+        course_id = self.kwargs.get('course_id')
+
+        return get_learners_by_course_queryset(
+            course_id=course_id,
+            search_text=search_text,
+        )

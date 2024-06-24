@@ -11,11 +11,11 @@ from django.db.models.query import Q, QuerySet
 from eox_tenant.models import Route, TenantConfig
 from rest_framework.request import Request
 
+from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, ids_string_to_list
+from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
 from futurex_openedx_extensions.helpers.querysets import get_has_site_login_queryset
-
-TENANT_LIMITED_ADMIN_ROLES = ['org_course_creator_group']
 
 
 def get_excluded_tenant_ids() -> List[int]:
@@ -52,7 +52,7 @@ def get_all_tenants() -> QuerySet:
     return TenantConfig.objects.exclude(id__in=get_excluded_tenant_ids())
 
 
-@cache_dict(timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name='all_tenants_info')
+@cache_dict(timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name=cs.CACHE_NAME_ALL_TENANTS_INFO)
 def get_all_tenants_info() -> Dict[str, Any]:
     """
     Get all tenants in the system that are exposed in the route table, and with a valid config
@@ -62,13 +62,33 @@ def get_all_tenants_info() -> Dict[str, Any]:
     :return: Dictionary of tenant IDs and Sites
     :rtype: Dict[str, Any]
     """
+    def _fix_lms_base(domain_name: str) -> str:
+        """Fix the LMS base URL"""
+        if not domain_name:
+            return ''
+        return f'https://{domain_name}' if not domain_name.startswith('http') else domain_name
+
     tenant_ids = list(get_all_tenants().values_list('id', flat=True))
-    info = TenantConfig.objects.filter(id__in=tenant_ids).values('id', 'route__domain')
+    info = TenantConfig.objects.filter(id__in=tenant_ids).values('id', 'route__domain', 'lms_configs')
     return {
         'tenant_ids': tenant_ids,
         'sites': {
             tenant['id']: tenant['route__domain'] for tenant in info
-        }
+        },
+        'info': {
+            tenant['id']: {
+                'lms_root_url': get_first_not_empty_item([
+                    (tenant['lms_configs'].get('LMS_ROOT_URL') or '').strip(),
+                    _fix_lms_base((tenant['lms_configs'].get('LMS_BASE') or '').strip()),
+                    _fix_lms_base((tenant['lms_configs'].get('SITE_NAME') or '').strip()),
+                    ], default=''),
+                'platform_name': get_first_not_empty_item([
+                    (tenant['lms_configs'].get('PLATFORM_NAME') or '').strip(),
+                    (tenant['lms_configs'].get('platform_name') or '').strip(),
+                ], default=''),
+                'logo_image_url': (tenant['lms_configs'].get('logo_image_url') or '').strip(),
+            } for tenant in info
+        },
     }
 
 
@@ -80,6 +100,19 @@ def get_all_tenant_ids() -> List[int]:
     :rtype: List[int]
     """
     return get_all_tenants_info()['tenant_ids']
+
+
+def get_tenants_info(tenant_ids: List[int]) -> Dict[int, Any]:
+    """
+    Get the information for the given tenant IDs
+
+    :param tenant_ids: List of tenant IDs to get the information for
+    :type tenant_ids: List[int]
+    :return: Dictionary of tenant information
+    :rtype: Dict[str, Any]
+    """
+    all_tenants_info = get_all_tenants_info()
+    return {t_id: all_tenants_info['info'].get(t_id) for t_id in tenant_ids}
 
 
 def get_tenant_site(tenant_id: int) -> str:
@@ -94,7 +127,9 @@ def get_tenant_site(tenant_id: int) -> str:
     return get_all_tenants_info()['sites'].get(tenant_id)
 
 
-@cache_dict(timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name='all_course_org_filter_list')
+@cache_dict(
+    timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name=cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST
+)
 def get_all_course_org_filter_list() -> Dict[int, List[str]]:
     """
     Get all course org filters for all tenants.
@@ -188,7 +223,7 @@ def get_accessible_tenant_ids(user: get_user_model()) -> List[int]:
     course_org_filter_list = get_all_course_org_filter_list()
     accessible_orgs = CourseAccessRole.objects.filter(
         user_id=user.id,
-        role__in=TENANT_LIMITED_ADMIN_ROLES,
+        role__in=cs.TENANT_LIMITED_ADMIN_ROLES,
     ).values_list('org', flat=True).distinct()
 
     return [t_id for t_id, course_org_filter in course_org_filter_list.items() if any(

@@ -14,8 +14,8 @@ from futurex_openedx_extensions.helpers.converters import relative_url_to_absolu
 from futurex_openedx_extensions.helpers.tenants import get_tenants_by_org
 
 
-class LearnerDetailsSerializer(serializers.ModelSerializer):
-    """Serializer for learner details."""
+class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
+    """Serializer for learner's basic details."""
     user_id = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
     alternative_full_name = serializers.SerializerMethodField()
@@ -27,8 +27,6 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
     gender_display = serializers.SerializerMethodField()
     date_joined = serializers.DateTimeField()
     last_login = serializers.DateTimeField()
-    enrolled_courses_count = serializers.SerializerMethodField()
-    certificates_count = serializers.SerializerMethodField()
 
     class Meta:
         model = get_user_model()
@@ -44,8 +42,6 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
             "gender_display",
             "date_joined",
             "last_login",
-            "enrolled_courses_count",
-            "certificates_count",
         ]
 
     @staticmethod
@@ -110,6 +106,23 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
         """Return readable text for gender"""
         return self._get_profile_field(obj, "gender_display")
 
+    def get_year_of_birth(self, obj):
+        """Return year of birth."""
+        return self._get_profile_field(obj, "year_of_birth")
+
+
+class LearnerDetailsSerializer(LearnerBasicDetailsSerializer):
+    """Serializer for learner details."""
+    enrolled_courses_count = serializers.SerializerMethodField()
+    certificates_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = get_user_model()
+        fields = LearnerBasicDetailsSerializer.Meta.fields + [
+            "enrolled_courses_count",
+            "certificates_count",
+        ]
+
     def get_certificates_count(self, obj):  # pylint: disable=no-self-use
         """Return certificates count."""
         return obj.certificates_count
@@ -118,9 +131,20 @@ class LearnerDetailsSerializer(serializers.ModelSerializer):
         """Return enrolled courses count."""
         return obj.courses_count
 
-    def get_year_of_birth(self, obj):
-        """Return year of birth."""
-        return self._get_profile_field(obj, "year_of_birth")
+
+class LearnerDetailsForCourseSerializer(LearnerBasicDetailsSerializer):
+    """Serializer for learner details for a course."""
+    certificate_available = serializers.BooleanField()
+    course_score = serializers.DecimalField(max_digits=5, decimal_places=2)
+    active_in_course = serializers.BooleanField()
+
+    class Meta:
+        model = get_user_model()
+        fields = LearnerBasicDetailsSerializer.Meta.fields + [
+            "certificate_available",
+            "course_score",
+            "active_in_course",
+        ]
 
 
 class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):
@@ -190,7 +214,6 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     org = serializers.CharField()
     tenant_ids = serializers.SerializerMethodField()
-    author_name = serializers.SerializerMethodField()
 
     class Meta:
         model = CourseOverview
@@ -206,7 +229,6 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
             "image_url",
             "org",
             "tenant_ids",
-            "author_name",
         ]
 
     def get_status(self, obj):  # pylint: disable=no-self-use
@@ -244,10 +266,6 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
     def get_end_date(self, obj):  # pylint: disable=no-self-use
         """Return the end date."""
         return obj.end
-
-    def get_author_name(self, obj):  # pylint: disable=unused-argument,no-self-use
-        """Return the author name."""
-        return None
 
 
 class CourseDetailsSerializer(CourseDetailsBaseSerializer):

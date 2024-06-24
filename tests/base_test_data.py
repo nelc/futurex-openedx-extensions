@@ -85,7 +85,7 @@ _base_data = {
             "config_id": 8,
         },
     },
-    "users_count": 60,
+    "users_count": 70,
     "user_signup_source__users": {
         "s1.sample.com": [1, 2, 3, 4, 5],
         "s2.sample.com": [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
@@ -175,6 +175,7 @@ _base_data = {
     },
     "super_users": [1, 60],
     "staff_users": [2, 60],
+    "inactive_users": [61, 62, 63],
     "course_access_roles": {  # roles, user ids per org
         "staff": {  # at least one role that is not in TENANT_LIMITED_ADMIN_ROLES
             "ORG1": [3],
@@ -223,13 +224,15 @@ _base_data = {
     },
 }
 
+
 expected_statistics = {
-    '1': {'certificates_count': 14, 'courses_count': 12, 'learners_count': 17},
-    '2': {'certificates_count': 9, 'courses_count': 5, 'learners_count': 21},
-    '3': {'certificates_count': 0, 'courses_count': 1, 'learners_count': 6},
-    '7': {'certificates_count': 7, 'courses_count': 3, 'learners_count': 17},
-    '8': {'certificates_count': 2, 'courses_count': 2, 'learners_count': 9},
+    '1': {'certificates_count': 14, 'courses_count': 12, 'hidden_courses_count': 0, 'learners_count': 17},
+    '2': {'certificates_count': 9, 'courses_count': 5, 'hidden_courses_count': 0, 'learners_count': 21},
+    '3': {'certificates_count': 0, 'courses_count': 1, 'hidden_courses_count': 0, 'learners_count': 6},
+    '7': {'certificates_count': 7, 'courses_count': 3, 'hidden_courses_count': 0, 'learners_count': 17},
+    '8': {'certificates_count': 2, 'courses_count': 2, 'hidden_courses_count': 0, 'learners_count': 9},
     'total_certificates_count': 32,
     'total_courses_count': 23,
+    'total_hidden_courses_count': 0,
     'total_learners_count': 70
 }

@@ -29,3 +29,8 @@ def get_certificates_for_user_by_course_keys(user, course_keys):  # pylint: disa
     if not isinstance(user, get_user_model()):
         raise TypeError(f'Expects a user object but got "{user}" of type "{type(user)}"')
     return {}
+
+
+def get_user_by_username_or_email(username_or_email):
+    """get_user_by_username_or_email Mock"""
+    raise get_user_model().DoesNotExist('Dummy function always returns DoesNotExist, mock it you need it')

@@ -14,7 +14,12 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.permissions import HasTenantAccess, IsSystemStaff
+from futurex_openedx_extensions.helpers.permissions import (
+    HasCourseAccess,
+    HasTenantAccess,
+    IsAnonymousOrSystemStaff,
+    IsSystemStaff,
+)
 from tests.base_test_data import expected_statistics
 
 
@@ -68,7 +73,7 @@ class TestTotalCountsView(BaseTestViewMixin):
     def test_all_stats(self):
         """Test get method"""
         self.login_user(self.staff_user)
-        response = self.client.get(self.url + '?stats=certificates,courses,learners')
+        response = self.client.get(self.url + '?stats=certificates,courses,hidden_courses,learners')
         self.assertTrue(isinstance(response, JsonResponse))
         self.assertEqual(response.status_code, 200)
         self.assertDictEqual(json.loads(response.content), expected_statistics)
@@ -137,14 +142,14 @@ class TestCoursesView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
             self.client.get(self.url)
-            mock_queryset.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8], search_text=None)
+            mock_queryset.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8], search_text=None, visible_filter=None)
 
     def test_search(self):
         """Verify that the view filters the courses by search text"""
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
             self.client.get(self.url + '?tenant_ids=1&search_text=course')
-            mock_queryset.assert_called_once_with(tenant_ids=[1], search_text='course')
+            mock_queryset.assert_called_once_with(tenant_ids=[1], search_text='course', visible_filter=None)
 
     def helper_test_success(self, response):
         """Verify that the view returns the correct response"""
@@ -318,7 +323,7 @@ class TestLearnerInfoView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMix
 )
 @pytest.mark.usefixtures('base_data')
 class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMixin):
-    """Tests for CourseStatusesView"""
+    """Tests for LearnerCoursesView"""
     VIEW_NAME = 'fx_dashboard:learner-courses'
 
     def test_success(self):
@@ -338,6 +343,7 @@ class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseT
             mock_get_info.return_value = courses
             response = self.client.get(self.url)
 
+        mock_get_info.assert_called_once_with([1, 2, 3, 7, 8], 10, visible_filter=None)
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(len(data), 2)
@@ -381,3 +387,72 @@ class TestVersionInfoView(BaseTestViewMixin):
             response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.content), {'version': '0.1.dummy'})
+
+
+@pytest.mark.usefixtures("base_data")
+class TestAccessibleTenantsInfoView(BaseTestViewMixin):
+    """Tests for AccessibleTenantsInfoView"""
+    VIEW_NAME = "fx_dashboard:accessible-info"
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        self.assertEqual(view_class.permission_classes, [IsAnonymousOrSystemStaff])
+
+    @patch("futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email")
+    def test_success(self, mock_get_user):
+        """Verify that the view returns the correct response"""
+        mock_get_user.return_value = get_user_model().objects.get(username="user4")
+        response = self.client.get(self.url, data={"username_or_email": "dummy, the user loader function is mocked"})
+        self.assertEqual(response.status_code, 200)
+        self.assertDictEqual(json.loads(response.content), {
+            '1': {'lms_root_url': 'https://s1.sample.com', 'platform_name': '', 'logo_image_url': ''},
+            '2': {'lms_root_url': 'https://s2.sample.com', 'platform_name': '', 'logo_image_url': ''},
+            '7': {'lms_root_url': 'https://s7.sample.com', 'platform_name': '', 'logo_image_url': ''}
+        })
+
+    @patch("futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email")
+    def test_no_username_or_email(self, mock_get_user):
+        """Verify that the view returns the correct response"""
+        mock_get_user.side_effect = get_user_model().DoesNotExist()
+        response = self.client.get(self.url)
+        mock_get_user.assert_called_once_with(None)
+        self.assertEqual(response.status_code, 200)
+        self.assertDictEqual(json.loads(response.content), {})
+
+    def test_not_existing_username_or_email(self):
+        """Verify that the view returns the correct response"""
+        response = self.client.get(self.url, data={"username_or_email": "dummy"})
+        self.assertEqual(response.status_code, 200)
+        self.assertDictEqual(json.loads(response.content), {})
+
+
+@pytest.mark.usefixtures('base_data')
+class TestLearnersDetailsForCourseView(BaseTestViewMixin):
+    """Tests for LearnersDetailsForCourseView"""
+    VIEW_NAME = 'fx_dashboard:learners-course'
+
+    def setUp(self):
+        """Setup"""
+        super().setUp()
+        self.url_args = ['course-v1:ORG1+5+5']
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        self.assertEqual(view_class.permission_classes, [HasCourseAccess])
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 3)
+        self.assertGreater(len(response.data['results']), 0)

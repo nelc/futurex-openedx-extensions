@@ -1,7 +1,8 @@
 """edx-platform models mocks for testing purposes."""
 from django.contrib.auth import get_user_model
 from django.db import models
-from opaque_keys.edx.django.models import CourseKeyField
+from django.db.models.fields import AutoField
+from opaque_keys.edx.django.models import CourseKeyField, LearningContextKeyField, UsageKeyField
 
 
 class CourseOverview(models.Model):
@@ -28,6 +29,7 @@ class CourseAccessRole(models.Model):
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
     role = models.CharField(max_length=255)
     org = models.CharField(blank=True, max_length=255)
+    course_id = CourseKeyField(max_length=255, db_index=True, blank=True)
 
     class Meta:
         app_label = "fake_models"
@@ -180,3 +182,32 @@ class CourseGradeFactory:  # pylint: disable=too-few-public-methods
                 return None
 
         return DummyGrade()
+
+
+class PersistentCourseGrade(models.Model):
+    """Mock"""
+    id = AutoField(primary_key=True)  # pylint: disable=invalid-name
+    user_id = models.IntegerField(blank=False, db_index=True)
+    course_id = CourseKeyField(blank=False, max_length=255)
+
+    percent_grade = models.FloatField(blank=False)
+
+    class Meta:
+        app_label = "fake_models"
+        unique_together = [
+            ('course_id', 'user_id'),
+        ]
+        db_table = "persistentcoursegrade"
+
+
+class StudentModule(models.Model):
+    """Mock"""
+    id = AutoField(primary_key=True)  # pylint: disable=invalid-name
+    student = models.ForeignKey(get_user_model(), db_index=True, db_constraint=False, on_delete=models.CASCADE)
+    course_id = LearningContextKeyField(max_length=255, db_index=True)
+    modified = models.DateTimeField(auto_now=True, db_index=True)
+    module_state_key = UsageKeyField(max_length=255, db_column='module_id')
+
+    class Meta:
+        app_label = "fake_models"
+        unique_together = (('student', 'module_state_key', 'course_id'),)
