@@ -32,7 +32,6 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_tenants_info,
     get_user_id_from_username_tenants,
 )
-from futurex_openedx_extensions.helpers.throttles import AnonymousDataRetrieveRateThrottle
 
 
 class TotalCountsView(APIView):
@@ -247,7 +246,6 @@ class VersionInfoView(APIView):
 class AccessibleTenantsInfoView(APIView):
     """View to get the list of accessible tenants"""
     permission_classes = [IsAnonymousOrSystemStaff]
-    # throttle_classes = [AnonymousDataRetrieveRateThrottle]  #  TODO: fix this or remove it
 
     def get(self, request, *args, **kwargs):  # pylint: disable=no-self-use
         """

@@ -82,6 +82,7 @@ def get_all_tenants_info() -> Dict[str, Any]:
                     _fix_lms_base((tenant['lms_configs'].get('LMS_BASE') or '').strip()),
                     _fix_lms_base((tenant['lms_configs'].get('SITE_NAME') or '').strip()),
                     ], default=''),
+                'studio_root_url': settings.CMS_ROOT_URL,
                 'platform_name': get_first_not_empty_item([
                     (tenant['lms_configs'].get('PLATFORM_NAME') or '').strip(),
                     (tenant['lms_configs'].get('platform_name') or '').strip(),
