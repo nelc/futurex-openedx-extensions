@@ -247,7 +247,7 @@ class VersionInfoView(APIView):
 class AccessibleTenantsInfoView(APIView):
     """View to get the list of accessible tenants"""
     permission_classes = [IsAnonymousOrSystemStaff]
-    throttle_classes = [AnonymousDataRetrieveRateThrottle]
+    # throttle_classes = [AnonymousDataRetrieveRateThrottle]  #  TODO: fix this or remove it
 
     def get(self, request, *args, **kwargs):  # pylint: disable=no-self-use
         """
