@@ -407,9 +407,21 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
         response = self.client.get(self.url, data={"username_or_email": "dummy, the user loader function is mocked"})
         self.assertEqual(response.status_code, 200)
         self.assertDictEqual(json.loads(response.content), {
-            '1': {'lms_root_url': 'https://s1.sample.com', 'platform_name': '', 'logo_image_url': ''},
-            '2': {'lms_root_url': 'https://s2.sample.com', 'platform_name': '', 'logo_image_url': ''},
-            '7': {'lms_root_url': 'https://s7.sample.com', 'platform_name': '', 'logo_image_url': ''}
+            '1': {
+                'lms_root_url': 'https://s1.sample.com',
+                'studio_root_url': 'http://studio.example.com',
+                'platform_name': '', 'logo_image_url': ''
+            },
+            '2': {
+                'lms_root_url': 'https://s2.sample.com',
+                'studio_root_url': 'http://studio.example.com',
+                'platform_name': '', 'logo_image_url': ''
+            },
+            '7': {
+                'lms_root_url': 'https://s7.sample.com',
+                'studio_root_url': 'http://studio.example.com',
+                'platform_name': '', 'logo_image_url': ''
+            },
         })
 
     @patch("futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email")

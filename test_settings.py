@@ -88,3 +88,5 @@ REST_FRAMEWORK = {
         'fx_anonymous_data_retrieve': '5/hour',
     },
 }
+
+CMS_ROOT_URL = 'http://studio.example.com'
