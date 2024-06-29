@@ -14,13 +14,14 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
+from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
 from futurex_openedx_extensions.helpers.permissions import (
-    HasCourseAccess,
-    HasTenantAccess,
+    FXHasTenantCourseAccess,
     IsAnonymousOrSystemStaff,
     IsSystemStaff,
 )
 from tests.base_test_data import expected_statistics
+from tests.fixture_helpers import get_all_orgs, get_user1_fx_permission_info
 
 
 class BaseTestViewMixin(APITestCase):
@@ -49,7 +50,8 @@ class BaseTestViewMixin(APITestCase):
         request = factory.get(self.url)
         request.query_params = {}
         request.user = get_user_model().objects.get(id=self.staff_user)
-
+        request.fx_permission_info = get_user1_fx_permission_info()
+        request.fx_permission_info['user'] = request.user
         return request, view_class
 
 
@@ -109,14 +111,19 @@ class TestLearnersView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_learners_queryset') as mock_queryset:
             self.client.get(self.url)
-            mock_queryset.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8], search_text=None)
+            mock_queryset.assert_called_once()
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info'][
+                       'view_allowed_full_access_orgs'
+                   ] == get_all_orgs()
+            assert mock_queryset.call_args_list[0][1]['search_text'] is None
 
     def test_search(self):
         """Verify that the view filters the learners by search text"""
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_learners_queryset') as mock_queryset:
             self.client.get(self.url + '?tenant_ids=1&search_text=user')
-            mock_queryset.assert_called_once_with(tenant_ids=[1], search_text='user')
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['permitted_tenant_ids'] == [1]
+            assert mock_queryset.call_args_list[0][1]['search_text'] == 'user'
 
     def test_success(self):
         """Verify that the view returns the correct response"""
@@ -142,14 +149,24 @@ class TestCoursesView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
             self.client.get(self.url)
-            mock_queryset.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8], search_text=None, visible_filter=None)
+            print('================================')
+            print(self.url)
+            print(mock_queryset.call_args_list[0][1])
+            print('================================')
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info'][
+                       'view_allowed_full_access_orgs'
+                   ] == get_all_orgs()
+            assert mock_queryset.call_args_list[0][1]['search_text'] is None
+            assert mock_queryset.call_args_list[0][1]['visible_filter'] is None
 
     def test_search(self):
         """Verify that the view filters the courses by search text"""
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
             self.client.get(self.url + '?tenant_ids=1&search_text=course')
-            mock_queryset.assert_called_once_with(tenant_ids=[1], search_text='course', visible_filter=None)
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['permitted_tenant_ids'] == [1]
+            assert mock_queryset.call_args_list[0][1]['search_text'] == 'course'
+            assert mock_queryset.call_args_list[0][1]['visible_filter'] is None
 
     def helper_test_success(self, response):
         """Verify that the view returns the correct response"""
@@ -205,7 +222,9 @@ class TestCourseCourseStatusesView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_count_by_status') as mock_queryset:
             self.client.get(self.url)
-            mock_queryset.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8])
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info'][
+                       'view_allowed_full_access_orgs'
+                   ] == get_all_orgs()
 
     def test_success(self):
         """Verify that the view returns the correct response"""
@@ -230,11 +249,14 @@ class PermissionsTestOfLearnerInfoViewMixin:
         super().setUp()
         self.url_args = ['user10']
 
+    def _get_view_class(self):
+        """Helper to get the view class"""
+        view_func, _, _ = resolve(self.url)
+        return view_func.view_class
+
     def test_permission_classes(self):
         """Verify that the view has the correct permission classes"""
-        view_func, _, _ = resolve(self.url)
-        view_class = view_func.view_class
-        self.assertEqual(view_class.permission_classes, [HasTenantAccess])
+        self.assertEqual(self._get_view_class().permission_classes, [FXHasTenantCourseAccess])
 
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
@@ -264,16 +286,45 @@ class PermissionsTestOfLearnerInfoViewMixin:
         self.assertFalse(CourseAccessRole.objects.filter(user_id=org3_learner_id).exists(), msg='bad test data')
 
         self.login_user(org3_admin_id)
+        self.url_args = [f'user{org3_learner_id}']
 
     def test_org_admin_user_with_allowed_learner(self):
         """Verify that the view returns 200 when the user is an admin on the learner's organization"""
         self._get_test_users(4, 45)
+        view_class = self._get_view_class()
+        ViewAllowedRoles.objects.create(
+            view_name=view_class.fx_view_name,
+            view_description=view_class.fx_view_description,
+            allowed_role='org_course_creator_group',
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_org_admin_user_with_allowed_learner_same_tenant_diff_org(self):
+        """
+        Verify that the view returns 200 when the user is an admin on the learner's organization, where the user is
+        in the same tenant but in an organization that is not included in course_access_roles
+        for the admin's organization
+        """
+        self._get_test_users(4, 52)
+        view_class = self._get_view_class()
+        ViewAllowedRoles.objects.create(
+            view_name=view_class.fx_view_name,
+            view_description=view_class.fx_view_description,
+            allowed_role='org_course_creator_group',
+        )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
 
     def test_org_admin_user_with_not_allowed_learner(self):
         """Verify that the view returns 404 when the user is an org admin but the learner belongs to another org"""
-        self._get_test_users(9, 45)
+        self._get_test_users(4, 16)
+        view_class = self._get_view_class()
+        ViewAllowedRoles.objects.create(
+            view_name=view_class.fx_view_name,
+            view_description=view_class.fx_view_description,
+            allowed_role='org_course_creator_group',
+        )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 404)
 
@@ -308,7 +359,9 @@ class TestLearnerInfoView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMix
 
         with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_get_info:
             mock_get_info.return_value = Mock()
-            view_class.get(self, request, 'user10')
+            view = view_class()
+            view.request = request
+            view.get(request, 'user10')
 
         mock_serializer.assert_called_once_with(
             mock_get_info.return_value.first(),
@@ -343,7 +396,11 @@ class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseT
             mock_get_info.return_value = courses
             response = self.client.get(self.url)
 
-        mock_get_info.assert_called_once_with([1, 2, 3, 7, 8], 10, visible_filter=None)
+        assert mock_get_info.call_args_list[0][1]['fx_permission_info'][
+                   'view_allowed_full_access_orgs'
+               ] == get_all_orgs()
+        assert mock_get_info.call_args_list[0][1]['user_id'] == 10
+        assert mock_get_info.call_args_list[0][1]['visible_filter'] is None
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(len(data), 2)
@@ -356,7 +413,9 @@ class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseT
 
         with patch('futurex_openedx_extensions.dashboard.views.get_learner_courses_info_queryset') as mock_get_info:
             mock_get_info.return_value = Mock()
-            view_class.get(self, request, 'user10')
+            view = view_class()
+            view.request = request
+            view.get(request, 'user10')
 
         mock_serializer.assert_called_once_with(
             mock_get_info.return_value,
@@ -459,7 +518,7 @@ class TestLearnersDetailsForCourseView(BaseTestViewMixin):
         """Verify that the view has the correct permission classes"""
         view_func, _, _ = resolve(self.url)
         view_class = view_func.view_class
-        self.assertEqual(view_class.permission_classes, [HasCourseAccess])
+        self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
 
     def test_success(self):
         """Verify that the view returns the correct response"""

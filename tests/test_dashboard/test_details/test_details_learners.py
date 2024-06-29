@@ -14,6 +14,7 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_queryset,
     get_learners_search_queryset,
 )
+from tests.fixture_helpers import get_tenants_orgs
 
 
 @pytest.mark.django_db
@@ -26,30 +27,32 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     ("certificates", "user5", 1, "user5 should report all certificates regardless of course access role"),
 ])
 def test_count_for_learner_queryset(
-    base_data, function_to_test, username, expected_count, assert_error_message
-):  # pylint: disable=unused-argument
-    """Verify that get_certificates_count_for_learner_queryset returns the correct QuerySet."""
+    base_data, fx_permission_info, function_to_test, username, expected_count, assert_error_message
+):  # pylint: disable=unused-argument, too-many-arguments
+    """
+    Verify that get_certificates_count_for_learner_queryset and get_courses_count_for_learner_queryset
+    return the correct QuerySet.
+    """
     assert function_to_test in ["courses", "certificates"], f"bad test data (function_to_test = {function_to_test})"
 
     queryset = get_user_model().objects.filter(username=username)
     assert queryset.count() == 1, f"bad test data (username = {username})"
 
-    course_org_filter_list = ["ORG1", "ORG2"]
     if function_to_test == "courses":
         fnc = get_courses_count_for_learner_queryset
     else:
         fnc = get_certificates_count_for_learner_queryset
     queryset = get_user_model().objects.filter(username=username).annotate(
-        result=fnc(course_org_filter_list)
+        result=fnc(fx_permission_info)
     )
 
     assert queryset.all()[0].result == expected_count, f"{assert_error_message} +. Check the test data for details."
 
 
 @pytest.mark.django_db
-def test_get_learner_info_queryset(base_data):  # pylint: disable=unused-argument
+def test_get_learner_info_queryset(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_learner_info_queryset returns the correct QuerySet."""
-    queryset = get_learner_info_queryset([1], 3)
+    queryset = get_learner_info_queryset(fx_permission_info, 3)
     assert queryset.count() == 1, "bad test data, user id (3) should be in the queryset"
 
     info = queryset.first()
@@ -59,10 +62,10 @@ def test_get_learner_info_queryset(base_data):  # pylint: disable=unused-argumen
 
 
 @pytest.mark.django_db
-def test_get_learner_info_queryset_selecting_profile(base_data):  # pylint: disable=unused-argument
+def test_get_learner_info_queryset_selecting_profile(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_learner_info_queryset returns the correct QuerySet along with the related profile record."""
     with patch('django.db.models.query.QuerySet.select_related') as mocked_select_related:
-        get_learner_info_queryset([1], 3)
+        get_learner_info_queryset(fx_permission_info, 3)
     mocked_select_related.assert_called_once_with('profile')
 
 
@@ -114,9 +117,13 @@ def test_get_learners_search_queryset_active_filter(
     ([7], 17),
     ([4], 0),
 ])
-def test_get_learners_queryset(base_data, tenant_ids, expected_count):  # pylint: disable=unused-argument
+def test_get_learners_queryset(
+    base_data, fx_permission_info, tenant_ids, expected_count
+):  # pylint: disable=unused-argument
     """Verify that get_learners_queryset returns the correct QuerySet."""
-    result = get_learners_queryset(tenant_ids)
+    fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs(tenant_ids)
+    fx_permission_info['permitted_tenant_ids'] = tenant_ids
+    result = get_learners_queryset(fx_permission_info)
     assert result.count() == expected_count
     if expected_count > 0:
         assert result.first().courses_count is not None, "courses_count should be in the queryset"

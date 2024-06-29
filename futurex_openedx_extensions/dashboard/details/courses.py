@@ -1,8 +1,6 @@
 """Courses details collectors"""
 from __future__ import annotations
 
-from typing import List
-
 from common.djangoapps.student.models import CourseAccessRole
 from completion.models import BlockCompletion
 from django.db.models import (
@@ -26,17 +24,19 @@ from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
 
 from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
-from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list
 
 
 def get_courses_queryset(
-    tenant_ids: List, search_text: str = None, visible_filter: bool | None = True, active_filter: bool | None = None
+    fx_permission_info: dict,
+    search_text: str = None,
+    visible_filter: bool | None = True,
+    active_filter: bool | None = None
 ) -> QuerySet:
     """
     Get the courses queryset for the given tenant IDs and search text.
 
-    :param tenant_ids: List of tenant IDs to get the courses for
-    :type tenant_ids: List
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
     :param search_text: Search text to filter the courses by
     :type search_text: str
     :param visible_filter: Value to filter courses on catalog visibility. None means no filter
@@ -46,10 +46,8 @@ def get_courses_queryset(
     :return: QuerySet of courses
     :rtype: QuerySet
     """
-    course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
-
     queryset = get_base_queryset_courses(
-        course_org_filter_list, visible_filter=visible_filter, active_filter=active_filter,
+        fx_permission_info, visible_filter=visible_filter, active_filter=active_filter,
     )
 
     search_text = (search_text or '').strip()
@@ -121,13 +119,13 @@ def get_courses_queryset(
 
 
 def get_learner_courses_info_queryset(
-    tenant_ids: List, user_id: int, visible_filter: bool | None = True, active_filter: bool | None = None
+    fx_permission_info: dict, user_id: int, visible_filter: bool | None = True, active_filter: bool | None = None
 ) -> QuerySet:
     """
     Get the learner's courses queryset for the given user ID. This method assumes a valid user ID.
 
-    :param tenant_ids: List of tenant IDs to get the learner for
-    :type tenant_ids: List
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
     :param user_id: The user ID to get the learner for
     :type user_id: int
     :param visible_filter: Value to filter courses on catalog visibility. None means no filter
@@ -137,10 +135,8 @@ def get_learner_courses_info_queryset(
     :return: QuerySet of learners
     :rtype: QuerySet
     """
-    course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
-
     queryset = get_base_queryset_courses(
-        course_org_filter_list, visible_filter=visible_filter, active_filter=active_filter,
+        fx_permission_info, visible_filter=visible_filter, active_filter=active_filter,
     ).filter(
         courseenrollment__user_id=user_id,
         courseenrollment__is_active=True,

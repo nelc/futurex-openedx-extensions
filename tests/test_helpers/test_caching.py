@@ -122,5 +122,47 @@ def test_bad_timeout(mock_cache, caplog, timeout):  # pylint: disable=redefined-
     assert result == {'key': 'value'}
     mock_get.assert_not_called()
     mock_set.assert_not_called()
-    assert "cache_dict: error generating cache key: unexpected timout value. Should be an integer greater than 0" in \
+    assert "cache_dict: error generating cache key: unexpected timeout value. Should be an integer greater than 0" in \
            caplog.text
+
+
+def test_read_from_settings(mock_cache, settings):  # pylint: disable=redefined-outer-name
+    """Verify that the timeout is read from the settings when timeout is a string."""
+    settings.TEST_TIMEOUT = 995
+    mock_get, mock_set = mock_cache
+    mock_get.return_value = None
+    timeout = 'TEST_TIMEOUT'
+
+    @cache_dict(timeout=timeout, key_generator_or_name='test_key')
+    def dummy_func():
+        return {'key': 'value'}
+
+    result = dummy_func()
+    assert result == {'key': 'value'}
+    mock_get.assert_called_once()
+    mock_set.assert_called_once_with('test_key', {'key': 'value'}, 995)
+
+    settings.TEST_TIMEOUT = 123
+    mock_get.reset_mock()
+    mock_get.return_value = None
+    mock_set.reset_mock()
+    result = dummy_func()
+    assert result == {'key': 'value'}
+    mock_get.assert_called_once()
+    mock_set.assert_called_once_with('test_key', {'key': 'value'}, 123)
+
+
+def test_read_from_settings_non_existing(mock_cache, caplog):  # pylint: disable=redefined-outer-name
+    """Verify that an error is logged when the timeout is not a positive integer."""
+    mock_get, mock_set = mock_cache
+    mock_get.return_value = None
+
+    @cache_dict(timeout='NOT_EXIST_SETTING', key_generator_or_name='test_key')
+    def dummy_func():
+        return {'key': 'value'}
+
+    result = dummy_func()
+    assert result == {'key': 'value'}
+    mock_get.assert_not_called()
+    mock_set.assert_not_called()
+    assert "cache_dict: error generating cache key: timeout setting (NOT_EXIST_SETTING) not found" in caplog.text

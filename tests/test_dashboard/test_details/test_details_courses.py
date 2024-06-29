@@ -10,23 +10,27 @@ from futurex_openedx_extensions.dashboard.details.courses import get_courses_que
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('tenant_ids, search_text, expected_count', [
-    ([7, 8], None, 5),
-    ([7], None, 3),
-    ([8], None, 2),
-    ([7], 'Course 1', 1),
-    ([7], 'Course 3', 1),
-    ([7], 'course 3', 1),
-    ([7], 'course 4', 0),
-    ([4], None, 0),
+@pytest.mark.parametrize('orgs, search_text, expected_count', [
+    (['ORG3', 'ORG8'], None, 5),
+    (['ORG3'], None, 3),
+    (['ORG8'], None, 2),
+    (['ORG3'], 'Course 1', 1),
+    (['ORG3'], 'Course 3', 1),
+    (['ORG3'], 'course 3', 1),
+    (['ORG3'], 'course 4', 0),
+    (['ORGX'], None, 0),
+    ([], None, 0),
 ])
-def test_get_courses_queryset(base_data, tenant_ids, search_text, expected_count):  # pylint: disable=unused-argument
+def test_get_courses_queryset(
+    base_data, fx_permission_info, orgs, search_text, expected_count
+):  # pylint: disable=unused-argument
     """Verify that get_courses_queryset returns the correct QuerySet."""
-    assert get_courses_queryset(tenant_ids, search_text).count() == expected_count
+    fx_permission_info['view_allowed_full_access_orgs'] = orgs
+    assert get_courses_queryset(fx_permission_info, search_text).count() == expected_count
 
 
 @pytest.mark.django_db
-def test_get_courses_queryset_result_excludes_staff(base_data):  # pylint: disable=unused-argument
+def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_courses_queryset excludes staff users from enrollment, but not from certificates."""
     expected_results = {
         'course-v1:ORG1+1+1': [1, 0],
@@ -42,14 +46,14 @@ def test_get_courses_queryset_result_excludes_staff(base_data):  # pylint: disab
         'course-v1:ORG2+6+6': [5, 0],
         'course-v1:ORG2+7+7': [5, 3],
         }
-    queryset = get_courses_queryset([1])
+    queryset = get_courses_queryset(fx_permission_info)
     for record in queryset:
         assert record.enrolled_count == expected_results[record.id][0]
         assert record.certificates_count == expected_results[record.id][1]
 
 
 @pytest.mark.django_db
-def test_get_courses_queryset_result_rating(base_data):  # pylint: disable=unused-argument
+def test_get_courses_queryset_result_rating(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_courses_queryset returns the correct rating."""
     ratings = [3, 4, 5, 3, 4, 5, 3, 2, 5, 2, 4, 5]
     no_ratings = [0, 0, 0, 0, 0, 0]
@@ -60,7 +64,7 @@ def test_get_courses_queryset_result_rating(base_data):  # pylint: disable=unuse
             course_id=course,
             rating_content=rating,
         )
-    queryset = get_courses_queryset([1])
+    queryset = get_courses_queryset(fx_permission_info)
     for record in queryset:
         if record.id != course.id:
             continue
@@ -69,7 +73,7 @@ def test_get_courses_queryset_result_rating(base_data):  # pylint: disable=unuse
 
 
 @pytest.mark.django_db
-def test_get_learner_courses_info_queryset(base_data):  # pylint: disable=unused-argument
+def test_get_learner_courses_info_queryset(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_learner_courses_info_queryset returns the correct QuerySet."""
     user_id = 23
     now_datetime = now()
@@ -96,7 +100,7 @@ def test_get_learner_courses_info_queryset(base_data):  # pylint: disable=unused
                 modified=now_datetime - timedelta(days=days),
             )
 
-    result = get_learner_courses_info_queryset([1], user_id)
+    result = get_learner_courses_info_queryset(fx_permission_info, user_id)
 
     assert result.count() == len(test_data)
     for record in result:

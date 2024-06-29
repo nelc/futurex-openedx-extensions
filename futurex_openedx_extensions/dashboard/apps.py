@@ -7,7 +7,9 @@ class DashboardConfig(AppConfig):
     """Configuration for the dashboard Django application"""
 
     name = 'futurex_openedx_extensions.dashboard'
+    label = 'fx_dashboard'
 
+    # pylint: disable=duplicate-code
     plugin_app = {
         'settings_config': {
             'lms.djangoapp': {
@@ -27,3 +29,4 @@ class DashboardConfig(AppConfig):
             },
         },
     }
+    # pylint: enable=duplicate-code

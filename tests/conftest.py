@@ -8,6 +8,23 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from tests.base_test_data import _base_data
+from tests.fixture_helpers import get_user1_fx_permission_info
+
+
+@pytest.fixture
+def fx_permission_info():
+    """Fixture for permission information."""
+    return {
+        'is_system_staff_user': True,
+        'view_allowed_full_access_orgs': ['ORG1', 'ORG2'],
+        'view_allowed_course_access_orgs': [],
+    }
+
+
+@pytest.fixture
+def user1_fx_permission_info():
+    """Fixture for permission information for user1."""
+    return get_user1_fx_permission_info()
 
 
 @pytest.fixture(scope="session")

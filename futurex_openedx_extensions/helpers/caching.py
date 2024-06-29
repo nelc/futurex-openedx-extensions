@@ -2,6 +2,7 @@
 import functools
 import logging
 
+from django.conf import settings
 from django.core.cache import cache
 
 log = logging.getLogger(__name__)
@@ -16,9 +17,16 @@ def cache_dict(timeout, key_generator_or_name):
             """Wrapped function"""
             cache_key = None
             try:
-                if not isinstance(timeout, int) or timeout <= 0:
+                if isinstance(timeout, str):
+                    timeout_seconds = getattr(settings, timeout, None)
+                    if timeout_seconds is None:
+                        raise ValueError(f"timeout setting ({timeout}) not found")
+                else:
+                    timeout_seconds = timeout
+
+                if not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
                     raise ValueError(
-                        "unexpected timout value. Should be an integer greater than 0"
+                        "unexpected timeout value. Should be an integer greater than 0"
                     )
                 if not callable(key_generator_or_name) and not isinstance(key_generator_or_name, str):
                     raise TypeError("key_generator_or_name must be a callable or a string")
@@ -34,7 +42,7 @@ def cache_dict(timeout, key_generator_or_name):
             if result is None:
                 result = func(*args, **kwargs)
                 if cache_key and result and isinstance(result, dict):
-                    cache.set(cache_key, result, timeout)
+                    cache.set(cache_key, result, timeout_seconds)
                 elif cache_key and result:
                     # log: cache_dict: expecting dictionary result from <<function name>> but got <<result type>>
                     log.error(
