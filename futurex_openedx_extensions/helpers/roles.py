@@ -190,24 +190,28 @@ class FXViewRoleInfoMetaClass(type):
         """Initialize the metaclass."""
         super().__init__(name, bases, attrs)
 
+        if name.endswith('Mixin'):
+            logger.info('Metaclass initialization skipped for mixin (%s)', name)
+            return
+
         cls.fx_view_name = (cls.fx_view_name or '').strip()
         if not cls.fx_view_name:
-            logger.error('fx_view_name is not defined for view (%s)', cls.__name__)
+            logger.error('fx_view_name is not defined for view (%s)', name)
             return
 
         if len(cls.fx_view_name) > 255 or len(cls.fx_view_description or '') > 255:
-            logger.error('fx_view_name and fx_view_description length must be below 256 characters (%s)', cls.__name__)
+            logger.error('fx_view_name and fx_view_description length must be below 256 characters (%s)', name)
             return
 
-        if cls.__name__ in cls._fx_views_with_roles:
-            logger.error('FXViewRoleInfoMetaClass error: Unexpected class redefinition (%s)', cls.__name__)
+        if name in cls._fx_views_with_roles:
+            logger.error('FXViewRoleInfoMetaClass error: Unexpected class redefinition (%s)', name)
             return
 
         if cls.fx_view_name in cls._fx_views_with_roles['_all_view_names']:
-            logger.error('fx_view_name duplicate between (%s) and another view', cls.__name__)
+            logger.error('fx_view_name duplicate between (%s) and another view', name)
             return
 
-        cls._fx_views_with_roles[cls.__name__] = {
+        cls._fx_views_with_roles[name] = {
             'name': cls.fx_view_name,
             'description': cls.fx_view_description,
             'default_allowed_roles': cls.fx_default_allowed_roles,

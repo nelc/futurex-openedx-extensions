@@ -165,6 +165,31 @@ class CoursesView(ListAPIView, FXViewRoleInfoMixin):
             visible_filter=None,
         )
 
+    def get(self, request, *args, **kwargs):
+        if request.GET.get('download_csv') == 'true':
+            return self.download_csv(request)
+        return super().get(request, *args, **kwargs)
+
+    def download_csv(self, request):
+        from django.http import HttpResponse
+        import csv
+        queryset = self.filter_queryset(self.get_queryset()).iterator(chunk_size=2)
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="data.csv"'
+
+        writer = csv.writer(response)
+
+        headers = [field for field in self.serializer_class.Meta.fields]
+        writer.writerow(headers)
+
+        for obj in queryset:
+            serialized = self.serializer_class(obj).data
+            print(serialized)
+            writer.writerow([serialized[field] for field in headers])
+
+        return response
+
 
 class CourseStatusesView(APIView, FXViewRoleInfoMixin):
     """View to get the course statuses"""
