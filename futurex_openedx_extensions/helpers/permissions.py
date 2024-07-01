@@ -42,7 +42,6 @@ def get_tenant_limited_fx_permission_info(fx_permission_info: dict, tenant_id: i
 
 class FXBaseAuthenticatedPermission(IsAuthenticated):
     """Base permission class for FutureX Open edX Extensions."""
-    allow_non_system_staff = True
 
     def verify_access_roles(self, request, view):
         """Verify access roles."""
@@ -61,9 +60,6 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
             raise NotAuthenticated()
 
         is_system_staff_user = request.user.is_staff or request.user.is_superuser
-        if not self.allow_non_system_staff and not is_system_staff_user:
-            raise PermissionDenied(detail=json.dumps({"reason": "User is not a system staff member"}))
-
         view_allowed_roles = view.get_allowed_roles_all_views()[view.fx_view_name]
         tenant_ids_string = request.GET.get('tenant_ids')
         user_roles = None if is_system_staff_user else get_all_course_access_roles().get(request.user.id, {})

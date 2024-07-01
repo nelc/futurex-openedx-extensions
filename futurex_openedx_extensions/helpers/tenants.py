@@ -30,7 +30,7 @@ def get_excluded_tenant_ids() -> List[int]:
             not tenant.lms_configs.get('course_org_filter') or (
                 not tenant.lms_configs.get('SITE_NAME') and
                 not tenant.lms_configs.get('LMS_BASE')
-            )
+            ) or not tenant.lms_configs.get('IS_FX_DASHBOARD_ENABLED')
         )
     tenants = TenantConfig.objects.annotate(
         no_route=~Exists(Route.objects.filter(config_id=OuterRef('pk')))

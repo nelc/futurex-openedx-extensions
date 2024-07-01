@@ -1,4 +1,6 @@
 """Tests for the signals module of the helpers app"""
+from unittest.mock import patch
+
 import pytest
 from common.djangoapps.student.models import CourseAccessRole
 from django.core.cache import cache
@@ -30,6 +32,7 @@ def test_refresh_view_allowed_roles_cache_on_delete(base_data):  # pylint: disab
     assert cache.get(CACHE_NAME_ALL_COURSE_ACCESS_ROLES) is None
 
 
+@patch('futurex_openedx_extensions.helpers.roles.is_view_exist', return_value=True)
 @override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @pytest.mark.django_db
 def test_refresh_view_allowed_roles_cache_on_save(base_data):  # pylint: disable=unused-argument
@@ -43,6 +46,7 @@ def test_refresh_view_allowed_roles_cache_on_save(base_data):  # pylint: disable
     assert cache.get(CACHE_NAME_ALL_VIEW_ROLES) is None
 
 
+@patch('futurex_openedx_extensions.helpers.roles.is_view_exist', return_value=True)
 @override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @pytest.mark.django_db
 def test_refresh_course_access_role_cache_on_delete(base_data):  # pylint: disable=unused-argument

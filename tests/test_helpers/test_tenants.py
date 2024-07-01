@@ -20,6 +20,17 @@ def test_get_excluded_tenant_ids(base_data):  # pylint: disable=unused-argument
 
 
 @pytest.mark.django_db
+def test_get_excluded_tenant_ids_dashboard_disabled(base_data):  # pylint: disable=unused-argument
+    """Verify get_excluded_tenant_ids function when the dashboard is disabled."""
+    TenantConfig.objects.filter(id=1).update(lms_configs={'IS_FX_DASHBOARD_ENABLED': False})
+    assert tenants.get_excluded_tenant_ids() == [1, 4, 5, 6]
+    tenant2 = TenantConfig.objects.get(id=2)
+    tenant2.lms_configs.pop('IS_FX_DASHBOARD_ENABLED')
+    tenant2.save()
+    assert tenants.get_excluded_tenant_ids() == [1, 2, 4, 5, 6]
+
+
+@pytest.mark.django_db
 def test_get_all_tenants(base_data):  # pylint: disable=unused-argument
     """Verify get_all_tenants function."""
     result = tenants.get_all_tenants()

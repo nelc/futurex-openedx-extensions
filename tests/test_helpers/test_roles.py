@@ -15,7 +15,10 @@ from futurex_openedx_extensions.helpers.roles import (
     FXViewRoleInfoMixin,
     check_tenant_access,
     get_all_course_access_roles,
+    get_fx_view_with_roles,
     is_valid_course_access_role,
+    is_view_exist,
+    is_view_support_write,
     optimize_access_roles_result,
 )
 
@@ -27,7 +30,7 @@ class FXViewRoleInfoMetaClassTestView(metaclass=FXViewRoleInfoMetaClass):  # pyl
 @pytest.fixture(autouse=True)
 def reset_fx_views_with_roles():
     """Reset the _fx_views_with_roles dictionary before each test."""
-    FXViewRoleInfoMetaClass._fx_views_with_roles = {'_all_view_names': []}  # pylint: disable=protected-access
+    FXViewRoleInfoMetaClass._fx_views_with_roles = {'_all_view_names': {}}  # pylint: disable=protected-access
 
 
 @pytest.mark.parametrize('course_access_role, error_msg', [
@@ -233,7 +236,7 @@ def test_fx_view_role_metaclass__view_name_missing():
         class TestView(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods, unused-variable
             fx_view_name = ""
             fx_view_description = "A test view"
-            fx_default_allowed_roles = ["role1", "role2"]
+            fx_default_read_only_roles = ["role1", "role2"]
 
     mock_logger.error.assert_called_with('fx_view_name is not defined for view (%s)', 'TestView')
 
@@ -245,7 +248,7 @@ def test_fx_view_role_metaclass_view_name_length_exceeded():
         class TestView(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods, unused-variable
             fx_view_name = long_name
             fx_view_description = "A test view"
-            fx_default_allowed_roles = ["role1", "role2"]
+            fx_default_read_only_roles = ["role1", "role2"]
 
     mock_logger.error.assert_called_with(
         'fx_view_name and fx_view_description length must be below 256 characters (%s)', 'TestView')
@@ -258,7 +261,7 @@ def test_fx_view_role_metaclass_view_description_length_exceeded():
         class TestView(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods, unused-variable
             fx_view_name = "TestView"
             fx_view_description = long_description
-            fx_default_allowed_roles = ["role1", "role2"]
+            fx_default_read_only_roles = ["role1", "role2"]
 
     mock_logger.error.assert_called_with(
             'fx_view_name and fx_view_description length must be below 256 characters (%s)', 'TestView'
@@ -270,13 +273,13 @@ def test_fx_view_role_metaclass_view_name_duplicate():
     class FirstView(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods, unused-variable
         fx_view_name = "TestView"
         fx_view_description = "First test view"
-        fx_default_allowed_roles = ["role1"]
+        fx_default_read_only_roles = ["role1"]
 
     with patch('futurex_openedx_extensions.helpers.roles.logger') as mock_logger:
         class SecondView(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods, unused-variable
             fx_view_name = "TestView"
             fx_view_description = "Second test view"
-            fx_default_allowed_roles = ["role2"]
+            fx_default_read_only_roles = ["role2"]
 
     mock_logger.error.assert_called_with('fx_view_name duplicate between (%s) and another view', 'SecondView')
 
@@ -287,52 +290,36 @@ def test_fx_view_role_metaclass_adding_view_to_fx_views_with_roles():
         """Test view class."""
         fx_view_name = "UniqueView"
         fx_view_description = "A unique test view"
-        fx_default_allowed_roles = ["role1", "role2"]
+        fx_default_read_only_roles = ["role1", "role2"]
 
     assert 'TestView' in TestView._fx_views_with_roles  # pylint: disable=protected-access
     assert TestView._fx_views_with_roles['TestView'] == {  # pylint: disable=protected-access
         'name': "UniqueView",
         'description': "A unique test view",
-        'default_allowed_roles': ["role1", "role2"]
+        'default_read_only_roles': ["role1", "role2"],
+        'default_read_write_roles': [],
     }
     assert "UniqueView" in TestView._fx_views_with_roles['_all_view_names']  # pylint: disable=protected-access
-
-
-def test_fx_view_role_metaclass_get_fx_view_with_roles():
-    """Verify that get_fx_view_with_roles returns the expected dictionary."""
-    class TestView1(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods, unused-variable
-        fx_view_name = "TestView_1"
-        fx_view_description = "A test view"
-        fx_default_allowed_roles = ["role1", "role2"]
-
-    class TestView2(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods, unused-variable
-        fx_view_name = "TestView_2"
-        fx_view_description = "A test view"
-        fx_default_allowed_roles = ["role1", "role5"]
-
-    assert FXViewRoleInfoMetaClassTestView.get_fx_view_with_roles() == {
-        'TestView1': {
-            'name': "TestView_1",
-            'description': "A test view",
-            'default_allowed_roles': ["role1", "role2"]
-        },
-        'TestView2': {
-            'name': "TestView_2",
-            'description': "A test view",
-            'default_allowed_roles': ["role1", "role5"]
-        },
-        '_all_view_names': ["TestView_1", "TestView_2"]
-    }
 
 
 def test_fx_view_role_metaclass_bad_duplicate_class_definition():
     """Verify that duplicate class definitions are logged as errors, and included in get_fx_view_with_roles result."""
     class DuplicateClassDefinition(
         FXViewRoleInfoMetaClassTestView
-    ):  # pylint: disable=too-few-public-methods, unused-variable, missing-class-docstring
+    ):  # pylint: disable=too-few-public-methods, missing-class-docstring
         fx_view_name = "TestView_1"
         fx_view_description = "A test view"
-        fx_default_allowed_roles = ["role1", "role2"]
+        fx_default_read_only_roles = ["role1", "role2"]
+
+    expected_result = {
+        'DuplicateClassDefinition': {
+            'name': "TestView_1",
+            'description': "A test view",
+            'default_read_only_roles': ["role1", "role2"],
+            'default_read_write_roles': [],
+        },
+        '_all_view_names': {"TestView_1": DuplicateClassDefinition},
+    }
 
     with patch('futurex_openedx_extensions.helpers.roles.logger') as mock_logger:
         class DuplicateClassDefinition(
@@ -340,27 +327,146 @@ def test_fx_view_role_metaclass_bad_duplicate_class_definition():
         ):  # pylint: disable=function-redefined, too-few-public-methods, missing-class-docstring
             fx_view_name = "TestView_2"
             fx_view_description = "A test view"
-            fx_default_allowed_roles = ["role1", "role5"]
+            fx_default_read_only_roles = ["role1", "role5"]
 
-    assert FXViewRoleInfoMetaClassTestView.get_fx_view_with_roles() == {
-        'DuplicateClassDefinition': {
-            'name': "TestView_1",
-            'description': "A test view",
-            'default_allowed_roles': ["role1", "role2"]
-        },
-        '_all_view_names': ["TestView_1"]
-    }
+    assert get_fx_view_with_roles() == expected_result
     mock_logger.error.assert_called_with(
         'FXViewRoleInfoMetaClass error: Unexpected class redefinition (%s)', 'DuplicateClassDefinition'
     )
 
 
+def test_fx_view_role_metaclass_get_fx_view_with_roles():
+    """Verify that get_fx_view_with_roles returns the expected dictionary."""
+    class TestView1(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods
+        fx_view_name = "TestView_1"
+        fx_view_description = "A test view"
+        fx_default_read_only_roles = ["role1", "role2"]
+
+    class TestView2(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods
+        fx_view_name = "TestView_2"
+        fx_view_description = "A test view"
+        fx_default_read_only_roles = ["role1", "role5"]
+
+    assert get_fx_view_with_roles() == {
+        'TestView1': {
+            'name': "TestView_1",
+            'description': "A test view",
+            'default_read_only_roles': ["role1", "role2"],
+            'default_read_write_roles': [],
+        },
+        'TestView2': {
+            'name': "TestView_2",
+            'description': "A test view",
+            'default_read_only_roles': ["role1", "role5"],
+            'default_read_write_roles': [],
+        },
+        '_all_view_names': {"TestView_1": TestView1, "TestView_2": TestView2},
+    }
+
+
+def test_fx_view_role_metaclass_get_methods():
+    """Verify that the get_read_methods and get_write_methods methods return the expected values."""
+    assert FXViewRoleInfoMetaClass.get_read_methods() == ['GET', 'HEAD', 'OPTIONS']
+    assert FXViewRoleInfoMetaClass.get_write_methods() == ['POST', 'PUT', 'PATCH', 'DELETE']
+
+
+def test_fx_view_role_metaclass_check_allowed_read_methods(caplog):
+    """Verify that check_allowed_read_methods returns the expected value."""
+    error_message = 'fx_allowed_read_methods contains invalid methods (TestView)'
+
+    with patch(
+        'futurex_openedx_extensions.helpers.roles.FXViewRoleInfoMetaClass.get_read_methods',
+        return_value=['GET']
+    ):
+        class TestView(FXViewRoleInfoMetaClass):
+            fx_view_name = "TestView"
+            fx_view_description = "A test view"
+            fx_allowed_read_methods = ['GET']
+        assert TestView.check_allowed_read_methods() is True
+
+        assert error_message not in caplog.text
+        TestView.fx_allowed_read_methods = ['POST']
+        assert TestView.check_allowed_read_methods() is False
+        assert error_message in caplog.text
+
+
+def test_fx_view_role_metaclass_check_allowed_write_methods(caplog):
+    """Verify that check_allowed_write_methods returns the expected value."""
+    error_message = 'fx_allowed_write_methods contains invalid methods (TestView)'
+
+    with patch(
+        'futurex_openedx_extensions.helpers.roles.FXViewRoleInfoMetaClass.get_write_methods',
+        return_value=['POST']
+    ):
+        class TestView(FXViewRoleInfoMetaClass):
+            fx_view_name = "TestView"
+            fx_view_description = "A test view"
+            fx_allowed_write_methods = ['POST']
+        assert TestView.check_allowed_write_methods() is True
+
+        assert error_message not in caplog.text
+        TestView.fx_allowed_write_methods = ['GET']
+        assert TestView.check_allowed_write_methods() is False
+        assert error_message in caplog.text
+
+
+def test_fx_view_role_metaclass_is_write_supported():
+    """Verify that is_write_supported returns the expected value."""
+    class TestView(FXViewRoleInfoMetaClass):
+        fx_view_name = "TestView"
+        fx_view_description = "A test view"
+    assert TestView.is_write_supported() is False
+
+    TestView.fx_allowed_write_methods = ['ANYTHING']
+    assert TestView.is_write_supported() is True
+
+
+def test_is_view_exist():
+    """Verify that is_view_exist returns the expected value."""
+    assert is_view_exist('TestView') is False
+
+    with patch(
+        'futurex_openedx_extensions.helpers.roles.get_fx_view_with_roles',
+        return_value={'_all_view_names': {'TestView': Mock()}}
+    ):
+        assert is_view_exist('TestView') is True
+
+
+def test_is_view_support_write_nonexistent_view():
+    """Verify that is_view_support_write returns the expected value for a nonexistent view."""
+    assert is_view_support_write('non-existing_dummy_view') is False
+
+
+@pytest.mark.parametrize('flag_value', [True, False])
+def test_is_view_support_write(flag_value):
+    """Verify that is_view_support_write returns the expected value."""
+    class TestView(FXViewRoleInfoMetaClass):
+        fx_view_name = "TestView"
+    with patch(
+        'futurex_openedx_extensions.helpers.roles.get_fx_view_with_roles',
+        return_value={'_all_view_names': {'TestView': TestView}}
+    ):
+        with patch.object(TestView, 'is_write_supported') as mock_is_write_supported:
+            mock_is_write_supported.return_value = flag_value
+            assert is_view_support_write('TestView') is flag_value
+
+
 def _fill_default_fx_views_with_roles():
     """Fill the _fx_views_with_roles dictionary with default values."""
     FXViewRoleInfoMetaClass._fx_views_with_roles = {  # pylint: disable=protected-access
-        '_all_view_names': ['View1', 'View2'],
-        'View1Class': {'name': 'View1', 'description': 'Desc1', 'default_allowed_roles': ['role1']},
-        'View2Class': {'name': 'View2', 'description': 'Desc2', 'default_allowed_roles': ['role1', 'role2']}
+        '_all_view_names': {'View1': None, 'View2': None},
+        'View1Class': {
+            'name': 'View1',
+            'description': 'Desc1',
+            'default_read_only_roles': ['role1'],
+            'default_read_write_roles': [],
+        },
+        'View2Class': {
+            'name': 'View2',
+            'description': 'Desc2',
+            'default_read_only_roles': ['role1', 'role2'],
+            'default_read_write_roles': [],
+        }
     }
 
 
@@ -411,14 +517,17 @@ def test_fx_view_role_mixin_get_allowed_roles_with_nonexistent_view(db):  # pyli
     for nonexistent views.
     """
     FXViewRoleInfoMetaClass._fx_views_with_roles = {  # pylint: disable=protected-access
-        '_all_view_names': ['View1'],
-        'View1Class': {'name': 'View1', 'description': 'Desc1', 'default_allowed_roles': ['role1']}
+        '_all_view_names': {'View1': None, 'View2': None},
     }
     assert ViewAllowedRoles.objects.count() == 0
 
     ViewAllowedRoles.objects.create(view_name='View1', view_description='Desc1', allowed_role='role1')
     ViewAllowedRoles.objects.create(view_name='View1', view_description='Desc1', allowed_role='role4')
     ViewAllowedRoles.objects.create(view_name='View2', view_description='Desc2', allowed_role='role2')
+
+    FXViewRoleInfoMetaClass._fx_views_with_roles['_all_view_names'] = {  # pylint: disable=protected-access
+        'View1': None
+    }
 
     mixin = FXViewRoleInfoMixin()
     result = mixin.get_allowed_roles_all_views()

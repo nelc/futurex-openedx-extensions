@@ -55,7 +55,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
 
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'total_counts_statistics'
-    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/statistics/v1/total_counts/: Get the total count statistics'
 
     @staticmethod
@@ -129,7 +129,7 @@ class LearnersView(ListAPIView, FXViewRoleInfoMixin):
     permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
     fx_view_name = 'learners_list'
-    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learners/: Get the list of learners'
 
     def get_queryset(self):
@@ -153,7 +153,7 @@ class CoursesView(ListAPIView, FXViewRoleInfoMixin):
     ]
     ordering = ['display_name']
     fx_view_name = 'courses_list'
-    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/courses/v1/courses/: Get the list of courses'
 
     def get_queryset(self):
@@ -170,7 +170,7 @@ class CourseStatusesView(APIView, FXViewRoleInfoMixin):
     """View to get the course statuses"""
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'course_statuses'
-    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/statistics/v1/course_statuses/: Get the course statuses'
 
     @staticmethod
@@ -203,7 +203,7 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
     """View to get the information of a learner"""
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'learner_detailed_info'
-    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learner/: Get the information of a learner'
 
     def get(self, request, username, *args, **kwargs):
@@ -228,7 +228,7 @@ class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
     permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
     fx_view_name = 'learner_courses'
-    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learner_courses/: Get the list of courses for a learner'
 
     def get(self, request, username, *args, **kwargs):
@@ -293,7 +293,7 @@ class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
     permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
     fx_view_name = 'learners_with_details_for_course'
-    fx_default_allowed_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learners/<course-id>: Get the list of learners for a course'
 
     def get_queryset(self, *args, **kwargs):
