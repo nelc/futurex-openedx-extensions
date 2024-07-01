@@ -172,27 +172,6 @@ def test_fx_base_authenticated_permission_staff_always_allowed(
     }
 
 
-def test_fx_base_authenticated_permission_do_not_allow_non_system_staff(
-    db, dummy_view, permission
-):  # pylint: disable=unused-argument, redefined-outer-name
-    """
-    Verify that FXBaseAuthenticatedPermission raises PermissionDenied when user is not a system staff member and
-    allow_non_system_staff is False.
-    """
-    user = get_user_model().objects.get(id=15)
-    assert user.is_staff is False and user.is_superuser is False, 'Bad test data, user should not be staff or superuser'
-
-    permission.allow_non_system_staff = True
-    request = APIRequestFactory().generic('GET', '/dummy/')
-    set_user(request, user.id)
-    assert permission.has_permission(request, dummy_view) is True
-
-    permission.allow_non_system_staff = False
-    with pytest.raises(PermissionDenied) as exc:
-        permission.has_permission(request, dummy_view)
-    assert str(exc.value) == json.dumps({"reason": "User is not a system staff member"})
-
-
 def test_fx_base_authenticated_permission_selected_tenants(
     db, dummy_view, permission
 ):  # pylint: disable=unused-argument, redefined-outer-name

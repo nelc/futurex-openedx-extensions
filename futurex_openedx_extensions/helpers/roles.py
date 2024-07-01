@@ -181,48 +181,116 @@ def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple
 
 class FXViewRoleInfoMetaClass(type):
     """Metaclass to provide role information to the view."""
-    _fx_views_with_roles = {'_all_view_names': []}
+    _fx_views_with_roles = {'_all_view_names': {}}
     fx_view_name = None
     fx_view_description = None
-    fx_default_allowed_roles = []
+    fx_default_read_write_roles = []
+    fx_default_read_only_roles = []
+    fx_allowed_read_methods = ['GET', 'HEAD', 'OPTIONS']
+    fx_allowed_write_methods = []
+
+    @staticmethod
+    def get_read_methods():
+        """Get a list of the read methods."""
+        return ['GET', 'HEAD', 'OPTIONS']
+
+    @staticmethod
+    def get_write_methods():
+        """Get a list of the write methods."""
+        return ['POST', 'PUT', 'PATCH', 'DELETE']
+
+    @classmethod
+    def check_allowed_read_methods(mcs):
+        """Check if the allowed read methods are valid."""
+        wrong_methods = set(mcs.fx_allowed_read_methods) - set(mcs.get_read_methods())
+        if wrong_methods:
+            logger.error('fx_allowed_read_methods contains invalid methods (%s)', mcs.__name__)
+            return False
+        return True
+
+    @classmethod
+    def check_allowed_write_methods(mcs):
+        """Check if the allowed to write methods are valid."""
+        wrong_methods = set(mcs.fx_allowed_write_methods) - set(mcs.get_write_methods())
+        if wrong_methods:
+            logger.error('fx_allowed_write_methods contains invalid methods (%s)', mcs.__name__)
+            return False
+        return True
+
+    @classmethod
+    def is_write_supported(mcs):
+        """Check if write is supported."""
+        return bool(mcs.fx_allowed_write_methods)
 
     def __init__(cls, name, bases, attrs):
         """Initialize the metaclass."""
         super().__init__(name, bases, attrs)
 
+        if name.endswith('Mixin'):
+            return
+
         cls.fx_view_name = (cls.fx_view_name or '').strip()
         if not cls.fx_view_name:
-            logger.error('fx_view_name is not defined for view (%s)', cls.__name__)
+            logger.error('fx_view_name is not defined for view (%s)', name)
             return
 
         if len(cls.fx_view_name) > 255 or len(cls.fx_view_description or '') > 255:
-            logger.error('fx_view_name and fx_view_description length must be below 256 characters (%s)', cls.__name__)
+            logger.error('fx_view_name and fx_view_description length must be below 256 characters (%s)', name)
             return
 
-        if cls.__name__ in cls._fx_views_with_roles:
-            logger.error('FXViewRoleInfoMetaClass error: Unexpected class redefinition (%s)', cls.__name__)
+        if name in cls._fx_views_with_roles:
+            logger.error('FXViewRoleInfoMetaClass error: Unexpected class redefinition (%s)', name)
             return
 
         if cls.fx_view_name in cls._fx_views_with_roles['_all_view_names']:
-            logger.error('fx_view_name duplicate between (%s) and another view', cls.__name__)
+            logger.error('fx_view_name duplicate between (%s) and another view', name)
             return
 
-        cls._fx_views_with_roles[cls.__name__] = {
+        cls._fx_views_with_roles[name] = {
             'name': cls.fx_view_name,
             'description': cls.fx_view_description,
-            'default_allowed_roles': cls.fx_default_allowed_roles,
+            'default_read_only_roles': cls.fx_default_read_only_roles,
+            'default_read_write_roles': cls.fx_default_read_write_roles,
         }
-        cls._fx_views_with_roles['_all_view_names'].append(cls.fx_view_name)
+        cls._fx_views_with_roles['_all_view_names'][cls.fx_view_name] = cls
 
-    @staticmethod
-    def get_fx_view_with_roles() -> dict:
-        """
-        Get the view with roles.
 
-        :return: The view with roles
-        :rtype: dict
-        """
-        return deepcopy(FXViewRoleInfoMetaClass._fx_views_with_roles)
+def get_fx_view_with_roles() -> dict:
+    """
+    Get the view with roles.
+
+    :return: The view with roles
+    :rtype: dict
+    """
+    return deepcopy(FXViewRoleInfoMetaClass._fx_views_with_roles)  # pylint: disable=protected-access
+
+
+def is_view_exist(view_name: str) -> bool:
+    """
+    Check if the view supports write.
+
+    :param view_name: The view name
+    :type view_name: str
+    :return: True if the view exists, False otherwise
+    :rtype: bool
+    """
+    return view_name in get_fx_view_with_roles()['_all_view_names']
+
+
+def is_view_support_write(view_name: str) -> bool:
+    """
+    Check if the view supports write.
+
+    :param view_name: The view name
+    :type view_name: str
+    :return: True if the view supports write, False otherwise
+    :rtype: bool
+    """
+    view_class = get_fx_view_with_roles()['_all_view_names'].get(view_name)
+    if not view_class:
+        return False
+
+    return view_class.is_write_supported()
 
 
 class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
@@ -241,7 +309,7 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
         :return: The allowed roles for all views
         :rtype: dict
         """
-        fx_views_with_roles = FXViewRoleInfoMetaClass.get_fx_view_with_roles()
+        fx_views_with_roles = get_fx_view_with_roles()
 
         result = {}
         for info in ViewAllowedRoles.objects.all():
@@ -264,9 +332,14 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
         for info in fx_views_with_roles.values():
             view_name = info['name']
             if view_name not in result:
-                result[view_name] = info['default_allowed_roles'].copy()
+                result[view_name] = info['default_read_only_roles'].copy()
                 ViewAllowedRoles.objects.bulk_create([
-                    ViewAllowedRoles(view_name=view_name, view_description=info['description'], allowed_role=role)
+                    ViewAllowedRoles(
+                        view_name=view_name,
+                        view_description=info['description'],
+                        allowed_role=role,
+                        allow_write=role in info['default_read_only_roles'],
+                    )
                     for role in result[view_name]
                 ])
 
