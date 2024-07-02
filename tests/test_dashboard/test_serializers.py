@@ -41,7 +41,7 @@ def test_learner_basic_details_serializer_no_profile(base_data):  # pylint: disa
     data = LearnerBasicDetailsSerializer(queryset, many=True).data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
-    assert data[0]['full_name'] == ""
+    assert data[0]['full_name'] == ''
     assert data[0]['mobile_no'] is None
     assert data[0]['year_of_birth'] is None
     assert data[0]['gender'] is None
@@ -68,16 +68,16 @@ def test_learner_basic_details_serializer_with_profile(base_data):  # pylint: di
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("first_name, last_name, profile_name, expected_full_name, expected_alt_name, use_case", [
-    ("", "", "", "", "", "all are empty"),
-    ("", "Doe", "Alt John", "Doe", "Alt John", "first name empty"),
-    ("John", "", "Alt John", "John", "Alt John", "last name empty"),
-    ("John", "Doe", "", "John Doe", "", "profile name empty"),
-    ("", "", "Alt John", "Alt John", "", "first and last names empty"),
-    ("John", "John", "Alt John", "John John", "Alt John", "first and last names identical with no spaces"),
-    ("John Doe", "John Doe", "Alt John", "John Doe", "Alt John", "first and last names identical with spaces"),
-    ("عربي", "Doe", "Alt John", "عربي Doe", "Alt John", "Arabic name"),
-    ("John", "Doe", "عربي", "عربي", "John Doe", "Arabic alternative name"),
+@pytest.mark.parametrize('first_name, last_name, profile_name, expected_full_name, expected_alt_name, use_case', [
+    ('', '', '', '', '', 'all are empty'),
+    ('', 'Doe', 'Alt John', 'Doe', 'Alt John', 'first name empty'),
+    ('John', '', 'Alt John', 'John', 'Alt John', 'last name empty'),
+    ('John', 'Doe', '', 'John Doe', '', 'profile name empty'),
+    ('', '', 'Alt John', 'Alt John', '', 'first and last names empty'),
+    ('John', 'John', 'Alt John', 'John John', 'Alt John', 'first and last names identical with no spaces'),
+    ('John Doe', 'John Doe', 'Alt John', 'John Doe', 'Alt John', 'first and last names identical with spaces'),
+    ('عربي', 'Doe', 'Alt John', 'عربي Doe', 'Alt John', 'Arabic name'),
+    ('John', 'Doe', 'عربي', 'عربي', 'John Doe', 'Arabic alternative name'),
 ])
 def test_learner_basic_details_serializer_full_name_alt_name(
     base_data, first_name, last_name, profile_name, expected_full_name, expected_alt_name, use_case
@@ -97,8 +97,8 @@ def test_learner_basic_details_serializer_full_name_alt_name(
     data = serializer.data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
-    assert data[0]['full_name'] == expected_full_name, f"checking ({use_case}) failed"
-    assert data[0]['alternative_full_name'] == expected_alt_name, f"checking ({use_case}) failed"
+    assert data[0]['full_name'] == expected_full_name, f'checking ({use_case}) failed'
+    assert data[0]['alternative_full_name'] == expected_alt_name, f'checking ({use_case}) failed'
 
 
 @pytest.mark.django_db
@@ -132,8 +132,8 @@ def test_learner_details_extended_serializer(base_data):  # pylint: disable=unus
         bio='Test Bio',
         level_of_education='Test Level',
     )
-    request = Mock(site=Mock(domain="https://an-example.com"))
-    data = LearnerDetailsExtendedSerializer(queryset, many=True, context={"request": request}).data
+    request = Mock(site=Mock(domain='https://an-example.com'))
+    data = LearnerDetailsExtendedSerializer(queryset, many=True, context={'request': request}).data
     image_serialized = AccountLegacyProfileSerializer.get_profile_image(profile, queryset.first(), None)
     assert len(data) == 1
     assert data[0]['user_id'] == 10
@@ -142,7 +142,7 @@ def test_learner_details_extended_serializer(base_data):  # pylint: disable=unus
     assert data[0]['level_of_education'] == 'Test Level'
     assert data[0]['social_links'] == {}
     assert data[0]['image'] == image_serialized['image_url_large']
-    assert data[0]['profile_link'] == "https://an-example.com/u/user10/"
+    assert data[0]['profile_link'] == 'https://an-example.com/u/user10/'
     assert image_serialized['has_image'] is False
 
 
@@ -219,14 +219,14 @@ def test_course_details_base_serializer(base_data):  # pylint: disable=unused-ar
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("start_date, end_date, expected_status", [
-    (None, None, COURSE_STATUSES["active"]),
-    (None, now() + timedelta(days=10), COURSE_STATUSES["active"]),
-    (now() - timedelta(days=10), None, COURSE_STATUSES["active"]),
-    (now() - timedelta(days=10), now() + timedelta(days=10), COURSE_STATUSES["active"]),
-    (now() - timedelta(days=10), now() - timedelta(days=5), COURSE_STATUSES["archived"]),
-    (now() + timedelta(days=10), now() + timedelta(days=20), COURSE_STATUSES["upcoming"]),
-    (now() + timedelta(days=10), None, COURSE_STATUSES["upcoming"]),
+@pytest.mark.parametrize('start_date, end_date, expected_status', [
+    (None, None, COURSE_STATUSES['active']),
+    (None, now() + timedelta(days=10), COURSE_STATUSES['active']),
+    (now() - timedelta(days=10), None, COURSE_STATUSES['active']),
+    (now() - timedelta(days=10), now() + timedelta(days=10), COURSE_STATUSES['active']),
+    (now() - timedelta(days=10), now() - timedelta(days=5), COURSE_STATUSES['archived']),
+    (now() + timedelta(days=10), now() + timedelta(days=20), COURSE_STATUSES['upcoming']),
+    (now() + timedelta(days=10), None, COURSE_STATUSES['upcoming']),
 ])
 def test_course_details_base_serializer_status(
     base_data, start_date, end_date, expected_status
@@ -265,7 +265,7 @@ def test_course_details_serializer(base_data):  # pylint: disable=unused-argumen
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("rating_total, rating_count, expected_rating", [
+@pytest.mark.parametrize('rating_total, rating_count, expected_rating', [
     (None, None, 0),
     (10, 0, 0),
     (0, 10, 0),
@@ -277,8 +277,8 @@ def test_course_details_serializer_rating(
     base_data, rating_total, rating_count, expected_rating
 ):  # pylint: disable=unused-argument
     """Verify that the CourseDetailsSerializer returns the correct rating."""
-    assert rating_total is None or rating_total == int(rating_total), "bad test data, rating_total should be an integer"
-    assert rating_count is None or rating_count == int(rating_count), "bad test data, rating_count should be an integer"
+    assert rating_total is None or rating_total == int(rating_total), 'bad test data, rating_total should be an integer'
+    assert rating_count is None or rating_count == int(rating_count), 'bad test data, rating_count should be an integer'
 
     course = CourseOverview.objects.first()
     course.rating_total = rating_total
@@ -308,7 +308,7 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
         'locked_count': 1,
     }
 
-    request = Mock(site=Mock(domain="https://test.com"))
+    request = Mock(site=Mock(domain='https://test.com'))
     with patch(
         'futurex_openedx_extensions.dashboard.serializers.get_course_blocks_completion_summary'
     ) as mock_get_completion_summary:
@@ -318,20 +318,20 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
             mock_get_completion_summary.return_value = completion_summary
             mock_get_certificates.return_value = {
                 course.id: {
-                    'download_url': "https://test.com/courses/course-v1:dummy+key/certificate/",
+                    'download_url': 'https://test.com/courses/course-v1:dummy+key/certificate/',
                 }
             }
-            data = LearnerCoursesDetailsSerializer(course, context={"request": request}).data
+            data = LearnerCoursesDetailsSerializer(course, context={'request': request}).data
 
     assert data['id'] == course.id
     assert data['enrollment_date'] == enrollment_date.isoformat()
     assert data['last_activity'] == last_activity.isoformat()
-    assert data['progress_url'] == f"https://test.com/learning/course/{course.id}/progress/{course.related_user_id}/"
-    assert data['grades_url'] == f"https://test.com/gradebook/{course.id}/"
+    assert data['progress_url'] == f'https://test.com/learning/course/{course.id}/progress/{course.related_user_id}/'
+    assert data['grades_url'] == f'https://test.com/gradebook/{course.id}/'
     assert data['progress'] == completion_summary
     assert dict(data['grade']) == {
-        "letter_grade": "Fail",
-        "percent": 0.4,
-        "is_passing": False,
+        'letter_grade': 'Fail',
+        'percent': 0.4,
+        'is_passing': False,
     }
-    assert data['certificate_url'] == "https://test.com/courses/course-v1:dummy+key/certificate/"
+    assert data['certificate_url'] == 'https://test.com/courses/course-v1:dummy+key/certificate/'

@@ -111,7 +111,7 @@ class FXHasTenantAllCoursesAccess(FXBaseAuthenticatedPermission):
     def verify_access_roles(self, request, view):
         """Verify access roles."""
         if not request.fx_permission_info['view_allowed_full_access_orgs']:
-            raise PermissionDenied(detail=json.dumps({"reason": "User does not have full access to any organization"}))
+            raise PermissionDenied(detail=json.dumps({'reason': 'User does not have full access to any organization'}))
 
         return True
 
@@ -124,7 +124,7 @@ class FXHasTenantCourseAccess(FXBaseAuthenticatedPermission):
             not request.fx_permission_info['view_allowed_full_access_orgs'] and
             not request.fx_permission_info['view_allowed_course_access_orgs']
         ):
-            raise PermissionDenied(detail=json.dumps({"reason": "User does not have course access to the tenant"}))
+            raise PermissionDenied(detail=json.dumps({'reason': 'User does not have course access to the tenant'}))
 
         return True
 
@@ -137,7 +137,7 @@ class IsSystemStaff(IsAuthenticated):
             raise NotAuthenticated()
 
         if not request.user.is_staff and not request.user.is_superuser:
-            raise PermissionDenied(detail=json.dumps({"reason": "User is not a system staff member"}))
+            raise PermissionDenied(detail=json.dumps({'reason': 'User is not a system staff member'}))
 
         return True
 
@@ -146,6 +146,6 @@ class IsAnonymousOrSystemStaff(BasePermission):
     """Permission class to check if the user is anonymous or system staff."""
     def has_permission(self, request, view):
         """Check if the user is anonymous"""
-        if not hasattr(request, "user") or not request.user or not request.user.is_authenticated:
+        if not hasattr(request, 'user') or not request.user or not request.user.is_authenticated:
             return True
         return request.user.is_staff or request.user.is_superuser

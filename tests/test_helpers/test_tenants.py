@@ -55,7 +55,7 @@ def test_get_accessible_tenant_ids_none(base_data):  # pylint: disable=unused-ar
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("user_id, expected", [
+@pytest.mark.parametrize('user_id, expected', [
     (1, [1, 2, 3, 7, 8]),
 ])
 def test_get_accessible_tenant_ids_super_users(base_data, user_id, expected):  # pylint: disable=unused-argument
@@ -67,7 +67,7 @@ def test_get_accessible_tenant_ids_super_users(base_data, user_id, expected):  #
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("user_id, expected", [
+@pytest.mark.parametrize('user_id, expected', [
     (2, [1, 2, 3, 7, 8]),
 ])
 def test_get_accessible_tenant_ids_staff(base_data, user_id, expected):  # pylint: disable=unused-argument
@@ -81,7 +81,7 @@ def test_get_accessible_tenant_ids_staff(base_data, user_id, expected):  # pylin
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("user_id, expected", [
+@pytest.mark.parametrize('user_id, expected', [
     (3, [1]),
     (4, [1, 2, 7]),
     (9, [1, 2, 7]),
@@ -122,7 +122,7 @@ def test_get_all_course_org_filter_list_is_being_cached():
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("tenant_ids, expected", [
+@pytest.mark.parametrize('tenant_ids, expected', [
     ([1, 2, 3, 7], {
         'course_org_filter_list': ['ORG1', 'ORG2', 'ORG3', 'ORG8', 'ORG4', 'ORG5'],
         'duplicates': {
@@ -163,7 +163,7 @@ def test_get_course_org_filter_list(base_data, tenant_ids, expected):  # pylint:
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("user_id, expected", [
+@pytest.mark.parametrize('user_id, expected', [
     (1, [1, 2, 3, 7, 8]),
     (2, [1, 2, 3, 7, 8]),
     (3, [1]),
@@ -191,13 +191,13 @@ def test_get_all_tenants_info(base_data):  # pylint: disable=unused-argument
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("config_key, info_key, test_value, expected_result", [
-    ("LMS_BASE", "lms_root_url", "lms.example.com", "https://lms.example.com"),
-    ("LMS_ROOT_URL", "lms_root_url", "https://lms.example.com", "https://lms.example.com"),
-    ("SITE_NAME", "lms_root_url", "lms.example.com", "https://lms.example.com"),
-    ("PLATFORM_NAME", "platform_name", "Test Platform", "Test Platform"),
-    ("platform_name", "platform_name", "Test Platform", "Test Platform"),
-    ("logo_image_url", "logo_image_url", "https://img.example.com/dummy.jpg", "https://img.example.com/dummy.jpg"),
+@pytest.mark.parametrize('config_key, info_key, test_value, expected_result', [
+    ('LMS_BASE', 'lms_root_url', 'lms.example.com', 'https://lms.example.com'),
+    ('LMS_ROOT_URL', 'lms_root_url', 'https://lms.example.com', 'https://lms.example.com'),
+    ('SITE_NAME', 'lms_root_url', 'lms.example.com', 'https://lms.example.com'),
+    ('PLATFORM_NAME', 'platform_name', 'Test Platform', 'Test Platform'),
+    ('platform_name', 'platform_name', 'Test Platform', 'Test Platform'),
+    ('logo_image_url', 'logo_image_url', 'https://img.example.com/dummy.jpg', 'https://img.example.com/dummy.jpg'),
 ])
 @patch('futurex_openedx_extensions.helpers.tenants.get_excluded_tenant_ids', return_value=[])
 def test_get_all_tenants_info_configs(
@@ -208,18 +208,18 @@ def test_get_all_tenants_info_configs(
     assert tenant_config.lms_configs.get(config_key) is None
 
     result = tenants.get_all_tenants_info()
-    assert result["info"][tenant_config.id][info_key] == ""
+    assert result['info'][tenant_config.id][info_key] == ''
 
     tenant_config.lms_configs[config_key] = test_value
     tenant_config.save()
     result = tenants.get_all_tenants_info()
-    assert result["info"][tenant_config.id][info_key] == expected_result
+    assert result['info'][tenant_config.id][info_key] == expected_result
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("config_keys, data_prefix, call_index", [
-    (["LMS_ROOT_URL", "LMS_BASE", "SITE_NAME"], "https://", 0),
-    (["PLATFORM_NAME", "platform_name"], "", 1),
+@pytest.mark.parametrize('config_keys, data_prefix, call_index', [
+    (['LMS_ROOT_URL', 'LMS_BASE', 'SITE_NAME'], 'https://', 0),
+    (['PLATFORM_NAME', 'platform_name'], '', 1),
 ])
 @patch(
     'futurex_openedx_extensions.helpers.tenants.get_excluded_tenant_ids',
@@ -230,15 +230,15 @@ def test_get_all_tenants_info_config_priorities(
     mock_get_first_not_empty_item, base_data, config_keys, data_prefix, call_index
 ):  # pylint: disable=unused-argument
     """Verify get_all_tenants_info is respecting the priority of the config keys."""
-    assert not tenants.get_all_tenants_info()["tenant_ids"]
+    assert not tenants.get_all_tenants_info()['tenant_ids']
     tenant_config = TenantConfig.objects.create()
     for config_key in config_keys:
-        tenant_config.lms_configs[config_key] = f"{data_prefix}{config_key}_value"
+        tenant_config.lms_configs[config_key] = f'{data_prefix}{config_key}_value'
     tenant_config.save()
 
     _ = tenants.get_all_tenants_info()
     assert mock_get_first_not_empty_item.call_args_list[call_index][0][0] == [
-        f"{data_prefix}{config_key}_value" for config_key in config_keys
+        f'{data_prefix}{config_key}_value' for config_key in config_keys
     ]
 
 
@@ -252,7 +252,7 @@ def test_get_all_tenants_info_is_being_cached():
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("tenant_id, expected", [
+@pytest.mark.parametrize('tenant_id, expected', [
     (1, 's1.sample.com'),
     (2, 's2.sample.com'),
     (3, 's3.sample.com'),
@@ -268,7 +268,7 @@ def test_get_tenant_site(base_data, tenant_id, expected):  # pylint: disable=unu
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("org, expected", [
+@pytest.mark.parametrize('org, expected', [
     ('ORG1', [1]),
     ('ORG2', [1]),
     ('ORG3', [2, 7]),
@@ -282,7 +282,7 @@ def test_get_tenants_by_org(base_data, org, expected):  # pylint: disable=unused
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("tenant_ids, expected", [
+@pytest.mark.parametrize('tenant_ids, expected', [
     ([1], ['s1.sample.com']),
     ([2, 3], ['s2.sample.com', 's3.sample.com']),
     ([2, 3, 4], ['s2.sample.com', 's3.sample.com']),
@@ -294,7 +294,7 @@ def test_get_tenants_sites(base_data, tenant_ids, expected):  # pylint: disable=
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("tenant_ids", [
+@pytest.mark.parametrize('tenant_ids', [
     [],
     None,
     [99],
@@ -317,7 +317,7 @@ def test_get_user_id_from_username_tenants_non_existent_username(base_data):  # 
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("tenant_ids", [
+@pytest.mark.parametrize('tenant_ids', [
     [],
     None,
     [99],
@@ -331,7 +331,7 @@ def test_get_user_id_from_username_tenants_bad_tenant(base_data, tenant_ids):  #
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("username, tenant_ids, orgs, sites, is_enrolled, is_signup", [
+@pytest.mark.parametrize('username, tenant_ids, orgs, sites, is_enrolled, is_signup', [
     ('user15', [1], ['ORG1', 'ORG2'], ['s1.sample.com'], True, False),
     ('user50', [7], ['ORG3'], ['s7.sample.com'], False, True),
     ('user4', [1], ['ORG1', 'ORG2'], ['s1.sample.com'], True, True),
@@ -354,4 +354,4 @@ def test_get_user_id_from_username_tenants(
         site='s1.sample.com',
     ).exists(), 'test data is not as expected'
 
-    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len("user"):])
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])

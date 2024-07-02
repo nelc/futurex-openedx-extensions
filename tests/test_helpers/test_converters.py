@@ -7,7 +7,7 @@ import pytest
 from futurex_openedx_extensions.helpers import converters
 
 
-@pytest.mark.parametrize("ids_string, expected", [
+@pytest.mark.parametrize('ids_string, expected', [
     ('1,2,3,7', [1, 2, 3, 7]),
     (', 1, 2, 3, 7, 8, ', [1, 2, 3, 7, 8]),
     (None, []),
@@ -21,7 +21,7 @@ def test_ids_string_to_list(ids_string, expected):
     assert result == expected
 
 
-@pytest.mark.parametrize("ids_string", [
+@pytest.mark.parametrize('ids_string', [
     '1.1, 2',
     '1, 2, 3, 7, 8, a',
 ])

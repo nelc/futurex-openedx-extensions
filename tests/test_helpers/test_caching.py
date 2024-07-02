@@ -47,7 +47,7 @@ def test_cache_key_callable(mock_cache):  # pylint: disable=redefined-outer-name
     mock_get.return_value = None
 
     def key_gen(*args, **kwargs):
-        return f"test_key_{args[0]}_{args[1]}"
+        return f'test_key_{args[0]}_{args[1]}'
 
     @cache_dict(timeout=88, key_generator_or_name=key_gen)
     def dummy_func(arg1, arg2):
@@ -64,7 +64,7 @@ def test_cache_key_generation_error(mock_cache, caplog):  # pylint: disable=rede
     mock_get, mock_set = mock_cache
 
     def key_gen(*args, **kwargs):
-        raise ValueError("Error generating key")
+        raise ValueError('Error generating key')
 
     @cache_dict(timeout=60, key_generator_or_name=key_gen)
     def dummy_func():
@@ -74,7 +74,7 @@ def test_cache_key_generation_error(mock_cache, caplog):  # pylint: disable=rede
     assert result == {'key': 'value'}
     mock_get.assert_not_called()
     mock_set.assert_not_called()
-    assert "cache_dict: error generating cache key" in caplog.text
+    assert 'cache_dict: error generating cache key' in caplog.text
 
 
 def test_cache_incorrect_result_type(mock_cache, caplog):  # pylint: disable=redefined-outer-name
@@ -90,7 +90,8 @@ def test_cache_incorrect_result_type(mock_cache, caplog):  # pylint: disable=red
     assert result == ['not', 'a', 'dict']
     mock_get.assert_called_once_with('test_key')
     mock_set.assert_not_called()
-    assert "cache_dict: expecting dictionary result from dummy_func but got <class 'list'>" in caplog.text
+
+    assert 'cache_dict: expecting dictionary result from dummy_func but got <class \'list\'>' in caplog.text
 
 
 def test_cache_key_not_callable_or_string(mock_cache, caplog):  # pylint: disable=redefined-outer-name
@@ -105,7 +106,7 @@ def test_cache_key_not_callable_or_string(mock_cache, caplog):  # pylint: disabl
     assert result == {'key': 'value'}
     mock_get.assert_not_called()
     mock_set.assert_not_called()
-    assert "cache_dict: error generating cache key: key_generator_or_name must be a callable or a string" in caplog.text
+    assert 'cache_dict: error generating cache key: key_generator_or_name must be a callable or a string' in caplog.text
 
 
 @pytest.mark.parametrize('timeout', [-1, 0, None, 77.5])
@@ -122,7 +123,7 @@ def test_bad_timeout(mock_cache, caplog, timeout):  # pylint: disable=redefined-
     assert result == {'key': 'value'}
     mock_get.assert_not_called()
     mock_set.assert_not_called()
-    assert "cache_dict: error generating cache key: unexpected timeout value. Should be an integer greater than 0" in \
+    assert 'cache_dict: error generating cache key: unexpected timeout value. Should be an integer greater than 0' in \
            caplog.text
 
 
@@ -165,4 +166,4 @@ def test_read_from_settings_non_existing(mock_cache, caplog):  # pylint: disable
     assert result == {'key': 'value'}
     mock_get.assert_not_called()
     mock_set.assert_not_called()
-    assert "cache_dict: error generating cache key: timeout setting (NOT_EXIST_SETTING) not found" in caplog.text
+    assert 'cache_dict: error generating cache key: timeout setting (NOT_EXIST_SETTING) not found' in caplog.text

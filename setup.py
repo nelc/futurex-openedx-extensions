@@ -16,7 +16,7 @@ def get_version(*file_paths):
                    version string
     """
     filename = os.path.join(os.path.dirname(__file__), *file_paths)
-    version_file = open(filename, encoding="utf8").read()
+    version_file = open(filename, encoding='utf8').read()
     version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
                               version_file, re.M)
     if version_match:
@@ -32,7 +32,7 @@ def load_requirements(*requirements_paths):
     with -c in the requirements files.
     Returns a list of requirement strings.
     """
-    # e.g. {"django": "Django", "confluent-kafka": "confluent_kafka[avro]"}
+    # e.g. {'django': 'Django', 'confluent-kafka': 'confluent_kafka[avro]'}
     by_canonical_name = {}
 
     def check_name_consistent(package):
@@ -57,11 +57,11 @@ def load_requirements(*requirements_paths):
     requirements = {}
     constraint_files = set()
 
-    # groups "pkg<=x.y.z,..." into ("pkg", "<=x.y.z,...")
-    re_package_name_base_chars = r"a-zA-Z0-9\-_."  # chars allowed in base package name
+    # groups 'pkg<=x.y.z,...' into ('pkg', '<=x.y.z,...')
+    re_package_name_base_chars = r'a-zA-Z0-9\-_.'  # chars allowed in base package name
     # Two groups: name[maybe,extras], and optionally a constraint
     requirement_line_regex = re.compile(
-        r"([%s]+(?:\[[%s,\s]+\])?)([<>=][^#\s]+)?"
+        r'([%s]+(?:\[[%s,\s]+\])?)([<>=][^#\s]+)?'
         % (re_package_name_base_chars, re_package_name_base_chars)
     )
 
@@ -112,19 +112,19 @@ def is_requirement(line):
         bool: True if the line is not blank, a comment,
         a URL, or an included file
     """
-    return line and line.strip() and not line.startswith(("-r", "#", "-e", "git+", "-c"))
+    return line and line.strip() and not line.startswith(('-r', '#', '-e', 'git+', '-c'))
 
 
 VERSION = get_version('futurex_openedx_extensions', '__init__.py')
 
 if sys.argv[-1] == 'tag':
-    print("Tagging the version on github:")
-    os.system("git tag -a %s -m 'version %s'" % (VERSION, VERSION))
-    os.system("git push --tags")
+    print('Tagging the version on github:')
+    os.system('git tag -a %s -m "version %s"' % (VERSION, VERSION))
+    os.system('git push --tags')
     sys.exit()
 
-README = open(os.path.join(os.path.dirname(__file__), 'README.rst'), encoding="utf8").read()
-CHANGELOG = open(os.path.join(os.path.dirname(__file__), 'CHANGELOG.rst'), encoding="utf8").read()
+README = open(os.path.join(os.path.dirname(__file__), 'README.rst'), encoding='utf8').read()
+CHANGELOG = open(os.path.join(os.path.dirname(__file__), 'CHANGELOG.rst'), encoding='utf8').read()
 
 setup(
     name='futurex-openedx-extensions',
@@ -140,12 +140,12 @@ setup(
             'futurex_openedx_extensions.dashboard', 'futurex_openedx_extensions.dashboard.*',
             'futurex_openedx_extensions.helpers', 'futurex_openedx_extensions.helpers.*',
         ],
-        exclude=["*tests"],
+        exclude=['*tests'],
     ),
 
     include_package_data=True,
     install_requires=load_requirements('requirements/base.in'),
-    python_requires=">=3.8",
+    python_requires='>=3.8',
     zip_safe=False,
     keywords='Python edx',
     classifiers=[

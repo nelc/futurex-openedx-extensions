@@ -31,17 +31,17 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
         fields = [
-            "user_id",
-            "full_name",
-            "alternative_full_name",
-            "username",
-            "email",
-            "mobile_no",
-            "year_of_birth",
-            "gender",
-            "gender_display",
-            "date_joined",
-            "last_login",
+            'user_id',
+            'full_name',
+            'alternative_full_name',
+            'username',
+            'email',
+            'mobile_no',
+            'year_of_birth',
+            'gender',
+            'gender_display',
+            'date_joined',
+            'last_login',
         ]
 
     @staticmethod
@@ -63,14 +63,14 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
         last_name = obj.last_name.strip()
 
         full_name = first_name or last_name
-        if first_name and last_name and not (first_name == last_name and " " in first_name):
-            full_name = " ".join(filter(None, (first_name, last_name)))
+        if first_name and last_name and not (first_name == last_name and ' ' in first_name):
+            full_name = ' '.join(filter(None, (first_name, last_name)))
 
-        profile_name = self._get_profile_field(obj, "name")
-        alt_name = profile_name.strip() if profile_name else ""
+        profile_name = self._get_profile_field(obj, 'name')
+        alt_name = profile_name.strip() if profile_name else ''
 
         if not full_name:
-            full_name, alt_name = alt_name, ""
+            full_name, alt_name = alt_name, ''
 
         if alt_name and not self._is_english(alt_name):
             full_name, alt_name = alt_name, full_name
@@ -80,7 +80,7 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
     @staticmethod
     def _get_profile_field(obj, field_name):
         """Get the profile field value."""
-        return getattr(obj.profile, field_name) if hasattr(obj, "profile") and obj.profile else None
+        return getattr(obj.profile, field_name) if hasattr(obj, 'profile') and obj.profile else None
 
     def get_user_id(self, obj):  # pylint: disable=no-self-use
         """Return user ID."""
@@ -96,19 +96,19 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
 
     def get_mobile_no(self, obj):
         """Return mobile number."""
-        return self._get_profile_field(obj, "phone_number")
+        return self._get_profile_field(obj, 'phone_number')
 
     def get_gender(self, obj):
         """Return gender."""
-        return self._get_profile_field(obj, "gender")
+        return self._get_profile_field(obj, 'gender')
 
     def get_gender_display(self, obj):
         """Return readable text for gender"""
-        return self._get_profile_field(obj, "gender_display")
+        return self._get_profile_field(obj, 'gender_display')
 
     def get_year_of_birth(self, obj):
         """Return year of birth."""
-        return self._get_profile_field(obj, "year_of_birth")
+        return self._get_profile_field(obj, 'year_of_birth')
 
 
 class LearnerDetailsSerializer(LearnerBasicDetailsSerializer):
@@ -119,8 +119,8 @@ class LearnerDetailsSerializer(LearnerBasicDetailsSerializer):
     class Meta:
         model = get_user_model()
         fields = LearnerBasicDetailsSerializer.Meta.fields + [
-            "enrolled_courses_count",
-            "certificates_count",
+            'enrolled_courses_count',
+            'certificates_count',
         ]
 
     def get_certificates_count(self, obj):  # pylint: disable=no-self-use
@@ -141,9 +141,9 @@ class LearnerDetailsForCourseSerializer(LearnerBasicDetailsSerializer):
     class Meta:
         model = get_user_model()
         fields = LearnerBasicDetailsSerializer.Meta.fields + [
-            "certificate_available",
-            "course_score",
-            "active_in_course",
+            'certificate_available',
+            'course_score',
+            'active_in_course',
         ]
 
 
@@ -159,30 +159,30 @@ class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):
     class Meta:
         model = get_user_model()
         fields = LearnerDetailsSerializer.Meta.fields + [
-            "city",
-            "bio",
-            "level_of_education",
-            "social_links",
-            "image",
-            "profile_link",
+            'city',
+            'bio',
+            'level_of_education',
+            'social_links',
+            'image',
+            'profile_link',
         ]
 
     def get_city(self, obj):
         """Return city."""
-        return self._get_profile_field(obj, "city")
+        return self._get_profile_field(obj, 'city')
 
     def get_bio(self, obj):
         """Return bio."""
-        return self._get_profile_field(obj, "bio")
+        return self._get_profile_field(obj, 'bio')
 
     def get_level_of_education(self, obj):
         """Return level of education."""
-        return self._get_profile_field(obj, "level_of_education_display")
+        return self._get_profile_field(obj, 'level_of_education_display')
 
     def get_social_links(self, obj):  # pylint: disable=no-self-use
         """Return social links."""
         result = {}
-        profile = obj.profile if hasattr(obj, "profile") else None
+        profile = obj.profile if hasattr(obj, 'profile') else None
         if profile:
             links = profile.social_links.all().order_by('platform')
             for link in links:
@@ -191,16 +191,16 @@ class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):
 
     def get_image(self, obj):
         """Return image."""
-        if hasattr(obj, "profile") and obj.profile:
+        if hasattr(obj, 'profile') and obj.profile:
             return AccountLegacyProfileSerializer.get_profile_image(
                 obj.profile, obj, self.context.get('request')
-            )["image_url_large"]
+            )['image_url_large']
 
         return None
 
     def get_profile_link(self, obj):
         """Return profile link."""
-        return relative_url_to_absolute_url(f"/u/{obj.username}/", self.context.get('request'))
+        return relative_url_to_absolute_url(f'/u/{obj.username}/', self.context.get('request'))
 
 
 class CourseDetailsBaseSerializer(serializers.ModelSerializer):
@@ -218,28 +218,28 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = CourseOverview
         fields = [
-            "id",
-            "status",
-            "self_paced",
-            "start_date",
-            "end_date",
-            "start_enrollment_date",
-            "end_enrollment_date",
-            "display_name",
-            "image_url",
-            "org",
-            "tenant_ids",
+            'id',
+            'status',
+            'self_paced',
+            'start_date',
+            'end_date',
+            'start_enrollment_date',
+            'end_enrollment_date',
+            'display_name',
+            'image_url',
+            'org',
+            'tenant_ids',
         ]
 
     def get_status(self, obj):  # pylint: disable=no-self-use
         """Return the course status."""
         now_time = now()
         if obj.end and obj.end < now_time:
-            status = COURSE_STATUSES["archived"]
+            status = COURSE_STATUSES['archived']
         elif obj.start and obj.start > now_time:
-            status = COURSE_STATUSES["upcoming"]
+            status = COURSE_STATUSES['upcoming']
         else:
-            status = COURSE_STATUSES["active"]
+            status = COURSE_STATUSES['active']
 
         return f'{COURSE_STATUS_SELF_PREFIX if obj.self_paced else ""}{status}'
 
@@ -278,10 +278,10 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
     class Meta:
         model = CourseOverview
         fields = CourseDetailsBaseSerializer.Meta.fields + [
-            "rating",
-            "enrolled_count",
-            "active_count",
-            "certificates_count",
+            'rating',
+            'enrolled_count',
+            'active_count',
+            'certificates_count',
         ]
 
     def get_rating(self, obj):  # pylint: disable=no-self-use
@@ -302,13 +302,13 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
     class Meta:
         model = CourseOverview
         fields = CourseDetailsBaseSerializer.Meta.fields + [
-            "enrollment_date",
-            "last_activity",
-            "certificate_url",
-            "progress_url",
-            "grades_url",
-            "progress",
-            "grade",
+            'enrollment_date',
+            'last_activity',
+            'certificate_url',
+            'progress_url',
+            'grades_url',
+            'progress',
+            'grade',
         ]
 
     def get_certificate_url(self, obj):  # pylint: disable=no-self-use
@@ -316,21 +316,21 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
         user = get_user_model().objects.get(id=obj.related_user_id)
         certificate = get_certificates_for_user_by_course_keys(user, [obj.id])
         if certificate and obj.id in certificate:
-            return certificate[obj.id].get("download_url")
+            return certificate[obj.id].get('download_url')
 
         return None
 
     def get_progress_url(self, obj):
         """Return the certificate URL."""
         return relative_url_to_absolute_url(
-            f"/learning/course/{obj.id}/progress/{obj.related_user_id}/",
+            f'/learning/course/{obj.id}/progress/{obj.related_user_id}/',
             self.context.get('request')
         )
 
     def get_grades_url(self, obj):
         """Return the certificate URL."""
         return relative_url_to_absolute_url(
-            f"/gradebook/{obj.id}/",
+            f'/gradebook/{obj.id}/',
             self.context.get('request')
         )
 
