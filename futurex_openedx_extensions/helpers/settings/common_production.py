@@ -1,7 +1,10 @@
 """Common Settings"""
+from __future__ import annotations
+
+from typing import Any
 
 
-def plugin_settings(settings):
+def plugin_settings(settings: Any) -> None:
     """plugin settings"""
     # Cache timeout for long living cache
     settings.FX_CACHE_TIMEOUT_COURSE_ACCESS_ROLES = getattr(

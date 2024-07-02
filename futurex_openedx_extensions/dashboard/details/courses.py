@@ -28,7 +28,7 @@ from futurex_openedx_extensions.helpers.querysets import get_base_queryset_cours
 
 def get_courses_queryset(
     fx_permission_info: dict,
-    search_text: str = None,
+    search_text: str | None = None,
     visible_filter: bool | None = True,
     active_filter: bool | None = None
 ) -> QuerySet:
@@ -38,7 +38,7 @@ def get_courses_queryset(
     :param fx_permission_info: Dictionary containing permission information
     :type fx_permission_info: dict
     :param search_text: Search text to filter the courses by
-    :type search_text: str
+    :type search_text: str | None
     :param visible_filter: Value to filter courses on catalog visibility. None means no filter
     :type visible_filter: bool | None
     :param active_filter: Value to filter courses on active status. None means no filter

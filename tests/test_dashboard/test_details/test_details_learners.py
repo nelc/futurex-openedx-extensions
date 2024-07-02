@@ -21,7 +21,7 @@ from tests.fixture_helpers import get_tenants_orgs
 @pytest.mark.parametrize('function_to_test, username, expected_count, assert_error_message', [
     ('courses', 'user4', 0, 'user4 should report zero courses in ORG1 and ORG2 because of being an org admin'),
     ('certificates', 'user4', 2, 'user4 should report all certificates regardless of being an org admin'),
-    ('courses', 'user3', 1, 'user3 should report courses in ORG2 but not ORG2 because of course access role'),
+    ('courses', 'user3', 1, 'user3 should report courses in ORG2 but not ORG1 because of course access role'),
     ('certificates', 'user3', 1, 'user3 should report all certificates regardless of course access role'),
     ('courses', 'user5', 2, 'user5 should report all courses in ORG1 and ORG2'),
     ('certificates', 'user5', 1, 'user5 should report all certificates regardless of course access role'),
@@ -46,7 +46,7 @@ def test_count_for_learner_queryset(
         result=fnc(fx_permission_info)
     )
 
-    assert queryset.all()[0].result == expected_count, f'{assert_error_message} +. Check the test data for details.'
+    assert queryset.all()[0].result == expected_count, f'{assert_error_message}. Check the test data for details.'
 
 
 @pytest.mark.django_db

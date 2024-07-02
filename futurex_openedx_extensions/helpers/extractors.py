@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import List
+from typing import Any, List
 from urllib.parse import urlparse
 
 from futurex_openedx_extensions.helpers.constants import COURSE_ID_REGX
@@ -20,6 +20,6 @@ def get_course_id_from_uri(uri: str) -> str | None:
     return None
 
 
-def get_first_not_empty_item(items: List, default=None) -> any:
+def get_first_not_empty_item(items: List, default: Any = None) -> Any:
     """Return the first item in the list that is not empty."""
     return next((item for item in items if item), default)

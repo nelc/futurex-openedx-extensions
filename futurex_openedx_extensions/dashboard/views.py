@@ -1,6 +1,11 @@
 """Views for the dashboard app"""
+from __future__ import annotations
+
+from typing import Any
+
 from common.djangoapps.student.models import get_user_by_username_or_email
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
@@ -59,25 +64,25 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
     fx_view_description = 'api/fx/statistics/v1/total_counts/: Get the total count statistics'
 
     @staticmethod
-    def _get_certificates_count_data(one_tenant_permission_info):
+    def _get_certificates_count_data(one_tenant_permission_info: dict) -> int:
         """Get the count of certificates for the given tenant"""
         collector_result = get_certificates_count(one_tenant_permission_info)
         return sum(certificate_count for certificate_count in collector_result.values())
 
     @staticmethod
-    def _get_courses_count_data(one_tenant_permission_info, visible_filter):
+    def _get_courses_count_data(one_tenant_permission_info: dict, visible_filter: bool | None) -> int:
         """Get the count of courses for the given tenant"""
         collector_result = get_courses_count(one_tenant_permission_info, visible_filter=visible_filter)
         return sum(org_count['courses_count'] for org_count in collector_result)
 
     @staticmethod
-    def _get_learners_count_data(one_tenant_permission_info, tenant_id):
+    def _get_learners_count_data(one_tenant_permission_info: dict, tenant_id: int) -> int:
         """Get the count of learners for the given tenant"""
         collector_result = get_learners_count(one_tenant_permission_info)
         return collector_result[tenant_id]['learners_count'] + \
             collector_result[tenant_id]['learners_count_no_enrollment']
 
-    def _get_stat_count(self, stat, tenant_id):
+    def _get_stat_count(self, stat: str, tenant_id: int) -> int:
         """Get the count of the given stat for the given tenant"""
         one_tenant_permission_info = get_tenant_limited_fx_permission_info(self.fx_permission_info, tenant_id)
         if stat == self.STAT_CERTIFICATES:
@@ -91,7 +96,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
 
         return self._get_learners_count_data(one_tenant_permission_info, tenant_id)
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
         """
         GET /api/fx/statistics/v1/total_counts/?stats=<countTypesList>&tenant_ids=<tenantIds>
 
@@ -132,7 +137,7 @@ class LearnersView(ListAPIView, FXViewRoleInfoMixin):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learners/: Get the list of learners'
 
-    def get_queryset(self):
+    def get_queryset(self) -> QuerySet:
         """Get the list of learners"""
         search_text = self.request.query_params.get('search_text')
         return get_learners_queryset(
@@ -156,7 +161,7 @@ class CoursesView(ListAPIView, FXViewRoleInfoMixin):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/courses/v1/courses/: Get the list of courses'
 
-    def get_queryset(self):
+    def get_queryset(self) -> QuerySet:
         """Get the list of learners"""
         search_text = self.request.query_params.get('search_text')
         return get_courses_queryset(
@@ -174,7 +179,7 @@ class CourseStatusesView(APIView, FXViewRoleInfoMixin):
     fx_view_description = 'api/fx/statistics/v1/course_statuses/: Get the course statuses'
 
     @staticmethod
-    def to_json(result):
+    def to_json(result: QuerySet) -> dict[str, int]:
         """Convert the result to JSON format"""
         dict_result = {
             f'{COURSE_STATUS_SELF_PREFIX if self_paced else ""}{status}': 0
@@ -187,7 +192,7 @@ class CourseStatusesView(APIView, FXViewRoleInfoMixin):
             dict_result[status] = item['courses_count']
         return dict_result
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/statistics/v1/course_statuses/?tenant_ids=<tenantIds>
 
@@ -206,7 +211,7 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learner/: Get the information of a learner'
 
-    def get(self, request, username, *args, **kwargs):
+    def get(self, request: Any, username: str, *args: Any, **kwargs: Any) -> JsonResponse | Response:
         """
         GET /api/fx/learners/v1/learner/<username>/
         """
@@ -231,7 +236,7 @@ class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learner_courses/: Get the list of courses for a learner'
 
-    def get(self, request, username, *args, **kwargs):
+    def get(self, request: Any, username: str, *args: Any, **kwargs: Any) -> JsonResponse | Response:
         """
         GET /api/fx/learners/v1/learner_courses/<username>/
         """
@@ -256,7 +261,7 @@ class VersionInfoView(APIView):
     """View to get the version information"""
     permission_classes = [IsSystemStaff]
 
-    def get(self, request, *args, **kwargs):  # pylint: disable=no-self-use
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
         """
         GET /api/fx/version/v1/info/
         """
@@ -270,7 +275,7 @@ class AccessibleTenantsInfoView(APIView):
     """View to get the list of accessible tenants"""
     permission_classes = [IsAnonymousOrSystemStaff]
 
-    def get(self, request, *args, **kwargs):  # pylint: disable=no-self-use
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
         """
         GET /api/fx/tenants/v1/accessible_tenants/?username_or_email=<usernameOrEmail>
         """
@@ -296,7 +301,7 @@ class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learners/<course-id>: Get the list of learners for a course'
 
-    def get_queryset(self, *args, **kwargs):
+    def get_queryset(self, *args: Any, **kwargs: Any) -> QuerySet:
         """Get the list of learners for a course"""
         search_text = self.request.query_params.get('search_text')
         course_id = self.kwargs.get('course_id')
