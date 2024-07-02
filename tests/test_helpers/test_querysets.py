@@ -13,29 +13,29 @@ def test_get_base_queryset_courses(base_data, fx_permission_info):  # pylint: di
     result = querysets.get_base_queryset_courses(fx_permission_info)
     assert result.count() == 12
     for course in result:
-        assert course.catalog_visibility == "both"
+        assert course.catalog_visibility == 'both'
 
 
 @pytest.mark.django_db
 def test_get_base_queryset_courses_non_staff(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_base_queryset_courses function for non-staff user."""
     fx_permission_info.update({
-        'user': get_user_model().objects.get(username="user4"),
+        'user': get_user_model().objects.get(username='user4'),
         'is_system_staff_user': False,
         'view_allowed_roles': ['org_course_creator_group'],
     })
     result = querysets.get_base_queryset_courses(fx_permission_info)
     assert result.count() == 12
     for course in result:
-        assert course.catalog_visibility == "both"
+        assert course.catalog_visibility == 'both'
 
 
 @pytest.mark.django_db
 def test_get_base_queryset_courses_visible_filter(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_base_queryset_courses function with visible_filter."""
-    course = CourseOverview.objects.filter(org="ORG1").first()
-    assert course.catalog_visibility == "both", "Catalog visibility should be initialized as (both) for test courses"
-    course.catalog_visibility = "none"
+    course = CourseOverview.objects.filter(org='ORG1').first()
+    assert course.catalog_visibility == 'both', 'Catalog visibility should be initialized as (both) for test courses'
+    course.catalog_visibility = 'none'
     course.save()
 
     result = querysets.get_base_queryset_courses(fx_permission_info)
@@ -78,18 +78,18 @@ def test_get_base_queryset_courses_limited_course_roles(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("sites, expected", [
-    (["s1.sample.com"], True),
-    (["s2.sample.com"], True),
-    (["s3.sample.com"], False),
-    (["s1.sample.com", "s2.sample.com"], True),
-    (["s1.sample.com", "s3.sample.com"], True),
-    (["s2.sample.com", "s3.sample.com"], True),
+@pytest.mark.parametrize('sites, expected', [
+    (['s1.sample.com'], True),
+    (['s2.sample.com'], True),
+    (['s3.sample.com'], False),
+    (['s1.sample.com', 's2.sample.com'], True),
+    (['s1.sample.com', 's3.sample.com'], True),
+    (['s2.sample.com', 's3.sample.com'], True),
 ])
 def test_get_has_site_login_queryset(base_data, sites, expected):  # pylint: disable=unused-argument
     """Verify get_has_site_login_queryset function."""
     result = get_user_model().objects.filter(
-        username="user4",
+        username='user4',
     ).annotate(
         has_site_login=querysets.get_has_site_login_queryset(sites),
     )

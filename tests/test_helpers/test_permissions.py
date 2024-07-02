@@ -193,7 +193,7 @@ def test_fx_base_authenticated_permission_selected_tenants(
     with pytest.raises(PermissionDenied) as exc:
         permission.has_permission(request, dummy_view)
     assert str(exc.value) == json.dumps({
-        "reason": "User does not have access to these tenants", "details": {"tenant_ids": [3]}
+        'reason': 'User does not have access to these tenants', 'details': {'tenant_ids': [3]}
     })
 
 
@@ -234,7 +234,7 @@ def test_fx_has_tenant_all_courses_access_correct_base_fail(
     })
     with pytest.raises(PermissionDenied) as exc:
         assert FXHasTenantAllCoursesAccess().verify_access_roles(request, None)
-    assert str(exc.value) == json.dumps({"reason": "User does not have full access to any organization"})
+    assert str(exc.value) == json.dumps({'reason': 'User does not have full access to any organization'})
 
 
 def test_fx_has_tenant_course_access_correct_base():
@@ -267,7 +267,7 @@ def test_fx_has_tenant_course_access_correct_base_fail():
     })
     with pytest.raises(PermissionDenied) as exc:
         FXHasTenantCourseAccess().verify_access_roles(request, None)
-    assert str(exc.value) == json.dumps({"reason": "User does not have course access to the tenant"})
+    assert str(exc.value) == json.dumps({'reason': 'User does not have course access to the tenant'})
 
 
 def test_get_tenant_limited_fx_permission_info():

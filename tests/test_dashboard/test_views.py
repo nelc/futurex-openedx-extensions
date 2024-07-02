@@ -112,9 +112,8 @@ class TestLearnersView(BaseTestViewMixin):
         with patch('futurex_openedx_extensions.dashboard.views.get_learners_queryset') as mock_queryset:
             self.client.get(self.url)
             mock_queryset.assert_called_once()
-            assert mock_queryset.call_args_list[0][1]['fx_permission_info'][
-                       'view_allowed_full_access_orgs'
-                   ] == get_all_orgs()
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
+                   == get_all_orgs()
             assert mock_queryset.call_args_list[0][1]['search_text'] is None
 
     def test_search(self):
@@ -149,13 +148,8 @@ class TestCoursesView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
             self.client.get(self.url)
-            print('================================')
-            print(self.url)
-            print(mock_queryset.call_args_list[0][1])
-            print('================================')
-            assert mock_queryset.call_args_list[0][1]['fx_permission_info'][
-                       'view_allowed_full_access_orgs'
-                   ] == get_all_orgs()
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
+                   == get_all_orgs()
             assert mock_queryset.call_args_list[0][1]['search_text'] is None
             assert mock_queryset.call_args_list[0][1]['visible_filter'] is None
 
@@ -222,9 +216,8 @@ class TestCourseCourseStatusesView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_count_by_status') as mock_queryset:
             self.client.get(self.url)
-            assert mock_queryset.call_args_list[0][1]['fx_permission_info'][
-                       'view_allowed_full_access_orgs'
-                   ] == get_all_orgs()
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
+                   == get_all_orgs()
 
     def test_success(self):
         """Verify that the view returns the correct response"""
@@ -233,12 +226,12 @@ class TestCourseCourseStatusesView(BaseTestViewMixin):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertDictEqual(data, {
-            "active": 12,
-            "archived": 3,
-            "upcoming": 2,
-            "self_active": 1,
-            "self_archived": 0,
-            "self_upcoming": 0,
+            'active': 12,
+            'archived': 3,
+            'upcoming': 2,
+            'self_active': 1,
+            'self_archived': 0,
+            'self_upcoming': 0,
         })
 
 
@@ -372,7 +365,7 @@ class TestLearnerInfoView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMix
 @patch.object(
     serializers.LearnerCoursesDetailsSerializer,
     'get_grade',
-    lambda self, obj: {"letter_grade": "Pass", "percent": 0.7, "is_passing": True}
+    lambda self, obj: {'letter_grade': 'Pass', 'percent': 0.7, 'is_passing': True}
 )
 @pytest.mark.usefixtures('base_data')
 class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMixin):
@@ -396,9 +389,8 @@ class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseT
             mock_get_info.return_value = courses
             response = self.client.get(self.url)
 
-        assert mock_get_info.call_args_list[0][1]['fx_permission_info'][
-                   'view_allowed_full_access_orgs'
-               ] == get_all_orgs()
+        assert mock_get_info.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
+               == get_all_orgs()
         assert mock_get_info.call_args_list[0][1]['user_id'] == 10
         assert mock_get_info.call_args_list[0][1]['visible_filter'] is None
         self.assertEqual(response.status_code, 200)
@@ -448,10 +440,10 @@ class TestVersionInfoView(BaseTestViewMixin):
         self.assertEqual(json.loads(response.content), {'version': '0.1.dummy'})
 
 
-@pytest.mark.usefixtures("base_data")
+@pytest.mark.usefixtures('base_data')
 class TestAccessibleTenantsInfoView(BaseTestViewMixin):
     """Tests for AccessibleTenantsInfoView"""
-    VIEW_NAME = "fx_dashboard:accessible-info"
+    VIEW_NAME = 'fx_dashboard:accessible-info'
 
     def test_permission_classes(self):
         """Verify that the view has the correct permission classes"""
@@ -459,11 +451,11 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
         view_class = view_func.view_class
         self.assertEqual(view_class.permission_classes, [IsAnonymousOrSystemStaff])
 
-    @patch("futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email")
+    @patch('futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email')
     def test_success(self, mock_get_user):
         """Verify that the view returns the correct response"""
-        mock_get_user.return_value = get_user_model().objects.get(username="user4")
-        response = self.client.get(self.url, data={"username_or_email": "dummy, the user loader function is mocked"})
+        mock_get_user.return_value = get_user_model().objects.get(username='user4')
+        response = self.client.get(self.url, data={'username_or_email': 'dummy, the user loader function is mocked'})
         self.assertEqual(response.status_code, 200)
         self.assertDictEqual(json.loads(response.content), {
             '1': {
@@ -483,7 +475,7 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
             },
         })
 
-    @patch("futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email")
+    @patch('futurex_openedx_extensions.dashboard.views.get_user_by_username_or_email')
     def test_no_username_or_email(self, mock_get_user):
         """Verify that the view returns the correct response"""
         mock_get_user.side_effect = get_user_model().DoesNotExist()
@@ -494,7 +486,7 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
 
     def test_not_existing_username_or_email(self):
         """Verify that the view returns the correct response"""
-        response = self.client.get(self.url, data={"username_or_email": "dummy"})
+        response = self.client.get(self.url, data={'username_or_email': 'dummy'})
         self.assertEqual(response.status_code, 200)
         self.assertDictEqual(json.loads(response.content), {})
 

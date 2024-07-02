@@ -156,14 +156,14 @@ def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple
         tenant_ids = set(ids_string_to_list(tenant_ids_string))
     except ValueError as exc:
         return False, error_details_to_dictionary(
-            reason="Invalid tenant IDs provided. It must be a comma-separated list of integers",
+            reason='Invalid tenant IDs provided. It must be a comma-separated list of integers',
             error=str(exc)
         )
 
     wrong_tenant_ids = tenant_ids - set(get_all_tenant_ids())
     if wrong_tenant_ids:
         return False, error_details_to_dictionary(
-            reason="Invalid tenant IDs provided",
+            reason='Invalid tenant IDs provided',
             tenant_ids=list(wrong_tenant_ids)
         )
 
@@ -172,7 +172,7 @@ def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple
     inaccessible_tenants = tenant_ids - set(accessible_tenant_ids)
     if inaccessible_tenants:
         return False, error_details_to_dictionary(
-            reason="User does not have access to these tenants",
+            reason='User does not have access to these tenants',
             tenant_ids=list(inaccessible_tenants),
         )
 

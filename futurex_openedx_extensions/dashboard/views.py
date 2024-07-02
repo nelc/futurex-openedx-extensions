@@ -106,7 +106,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         stats = request.query_params.get('stats', '').split(',')
         invalid_stats = list(set(stats) - set(self.valid_stats))
         if invalid_stats:
-            return Response(error_details_to_dictionary(reason="Invalid stats type", invalid=invalid_stats), status=400)
+            return Response(error_details_to_dictionary(reason='Invalid stats type', invalid=invalid_stats), status=400)
 
         tenant_ids = self.fx_permission_info['permitted_tenant_ids']
 
@@ -177,13 +177,13 @@ class CourseStatusesView(APIView, FXViewRoleInfoMixin):
     def to_json(result):
         """Convert the result to JSON format"""
         dict_result = {
-            f"{COURSE_STATUS_SELF_PREFIX if self_paced else ''}{status}": 0
+            f'{COURSE_STATUS_SELF_PREFIX if self_paced else ""}{status}': 0
             for status in COURSE_STATUSES
             for self_paced in [False, True]
         }
 
         for item in result:
-            status = f"{COURSE_STATUS_SELF_PREFIX if item['self_paced'] else ''}{item['status']}"
+            status = f'{COURSE_STATUS_SELF_PREFIX if item["self_paced"] else ""}{item["status"]}'
             dict_result[status] = item['courses_count']
         return dict_result
 
@@ -214,7 +214,7 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
         user_id = get_user_id_from_username_tenants(username, tenant_ids)
 
         if not user_id:
-            return Response(error_details_to_dictionary(reason=f"User not found {username}"), status=404)
+            return Response(error_details_to_dictionary(reason=f'User not found {username}'), status=404)
 
         user = get_learner_info_queryset(self.fx_permission_info, user_id).first()
 
@@ -239,7 +239,7 @@ class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
         user_id = get_user_id_from_username_tenants(username, tenant_ids)
 
         if not user_id:
-            return Response(error_details_to_dictionary(reason=f"User not found {username}"), status=404)
+            return Response(error_details_to_dictionary(reason=f'User not found {username}'), status=404)
 
         courses = get_learner_courses_info_queryset(
             fx_permission_info=self.fx_permission_info,
@@ -274,7 +274,7 @@ class AccessibleTenantsInfoView(APIView):
         """
         GET /api/fx/tenants/v1/accessible_tenants/?username_or_email=<usernameOrEmail>
         """
-        username_or_email = request.query_params.get("username_or_email")
+        username_or_email = request.query_params.get('username_or_email')
         try:
             user = get_user_by_username_or_email(username_or_email)
         except ObjectDoesNotExist:
