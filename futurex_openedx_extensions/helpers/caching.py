@@ -1,6 +1,9 @@
 """Helper functions for caching"""
+from __future__ import annotations
+
 import functools
 import logging
+from typing import Any, Callable, Dict
 
 from django.conf import settings
 from django.core.cache import cache
@@ -8,14 +11,15 @@ from django.core.cache import cache
 log = logging.getLogger(__name__)
 
 
-def cache_dict(timeout, key_generator_or_name):
+def cache_dict(timeout: int | str, key_generator_or_name: str | Callable) -> Callable:
     """Cache the dictionary result returned by the function"""
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         """Decorator definition"""
         @functools.wraps(func)
-        def wrapped(*args, **kwargs):
+        def wrapped(*args: Any, **kwargs: Any) -> Dict[str, Any]:
             """Wrapped function"""
             cache_key = None
+            timeout_seconds = None
             try:
                 if isinstance(timeout, str):
                     timeout_seconds = getattr(settings, timeout, None)

@@ -1,4 +1,8 @@
 """Serializers for the dashboard details API."""
+from __future__ import annotations
+
+from typing import Any
+
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
 from lms.djangoapps.certificates.api import get_certificates_for_user_by_course_keys
@@ -45,7 +49,7 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
         ]
 
     @staticmethod
-    def _is_english(text):
+    def _is_english(text: str) -> bool:
         """
         Checks if a string consists only of characters in the ASCII range (a-z, A-Z, 0-9, and common symbols).
 
@@ -53,11 +57,17 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
         """
         return all(ord(char) < 128 for char in text)
 
-    def _get_name(self, obj, alternative=False):
+    def _get_name(self, obj: Any, alternative: bool = False) -> str:
         """
         Calculate the full name and alternative full name. We have two issues in the data:
         1. The first and last names in auth.user contain many records with identical values (redundant data).
         2. The name field in the profile sometimes contains data while the first and last names are empty.
+
+        :param obj: The user object.
+        :type obj: Any
+        :param alternative: Whether to return the alternative full name.
+        :type alternative: bool
+        :return: The full name or alternative full name.
         """
         first_name = obj.first_name.strip()
         last_name = obj.last_name.strip()
@@ -78,35 +88,35 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
         return alt_name if alternative else full_name
 
     @staticmethod
-    def _get_profile_field(obj, field_name):
+    def _get_profile_field(obj: get_user_model, field_name: str) -> Any:
         """Get the profile field value."""
         return getattr(obj.profile, field_name) if hasattr(obj, 'profile') and obj.profile else None
 
-    def get_user_id(self, obj):  # pylint: disable=no-self-use
+    def get_user_id(self, obj: get_user_model) -> Any:  # pylint: disable=no-self-use
         """Return user ID."""
         return obj.id
 
-    def get_full_name(self, obj):
+    def get_full_name(self, obj: get_user_model) -> Any:
         """Return full name."""
         return self._get_name(obj)
 
-    def get_alternative_full_name(self, obj):
+    def get_alternative_full_name(self, obj: get_user_model) -> Any:
         """Return alternative full name."""
         return self._get_name(obj, alternative=True)
 
-    def get_mobile_no(self, obj):
+    def get_mobile_no(self, obj: get_user_model) -> Any:
         """Return mobile number."""
         return self._get_profile_field(obj, 'phone_number')
 
-    def get_gender(self, obj):
+    def get_gender(self, obj: get_user_model) -> Any:
         """Return gender."""
         return self._get_profile_field(obj, 'gender')
 
-    def get_gender_display(self, obj):
+    def get_gender_display(self, obj: get_user_model) -> Any:
         """Return readable text for gender"""
         return self._get_profile_field(obj, 'gender_display')
 
-    def get_year_of_birth(self, obj):
+    def get_year_of_birth(self, obj: get_user_model) -> Any:
         """Return year of birth."""
         return self._get_profile_field(obj, 'year_of_birth')
 
@@ -123,11 +133,11 @@ class LearnerDetailsSerializer(LearnerBasicDetailsSerializer):
             'certificates_count',
         ]
 
-    def get_certificates_count(self, obj):  # pylint: disable=no-self-use
+    def get_certificates_count(self, obj: get_user_model) -> Any:  # pylint: disable=no-self-use
         """Return certificates count."""
         return obj.certificates_count
 
-    def get_enrolled_courses_count(self, obj):  # pylint: disable=no-self-use
+    def get_enrolled_courses_count(self, obj: get_user_model) -> Any:  # pylint: disable=no-self-use
         """Return enrolled courses count."""
         return obj.courses_count
 
@@ -167,19 +177,19 @@ class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):
             'profile_link',
         ]
 
-    def get_city(self, obj):
+    def get_city(self, obj: get_user_model) -> Any:
         """Return city."""
         return self._get_profile_field(obj, 'city')
 
-    def get_bio(self, obj):
+    def get_bio(self, obj: get_user_model) -> Any:
         """Return bio."""
         return self._get_profile_field(obj, 'bio')
 
-    def get_level_of_education(self, obj):
+    def get_level_of_education(self, obj: get_user_model) -> Any:
         """Return level of education."""
         return self._get_profile_field(obj, 'level_of_education_display')
 
-    def get_social_links(self, obj):  # pylint: disable=no-self-use
+    def get_social_links(self, obj: get_user_model) -> Any:  # pylint: disable=no-self-use
         """Return social links."""
         result = {}
         profile = obj.profile if hasattr(obj, 'profile') else None
@@ -189,7 +199,7 @@ class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):
                 result[link.platform] = link.social_link
         return result
 
-    def get_image(self, obj):
+    def get_image(self, obj: get_user_model) -> Any:
         """Return image."""
         if hasattr(obj, 'profile') and obj.profile:
             return AccountLegacyProfileSerializer.get_profile_image(
@@ -198,7 +208,7 @@ class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):
 
         return None
 
-    def get_profile_link(self, obj):
+    def get_profile_link(self, obj: get_user_model) -> Any:
         """Return profile link."""
         return relative_url_to_absolute_url(f'/u/{obj.username}/', self.context.get('request'))
 
@@ -231,7 +241,7 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
             'tenant_ids',
         ]
 
-    def get_status(self, obj):  # pylint: disable=no-self-use
+    def get_status(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the course status."""
         now_time = now()
         if obj.end and obj.end < now_time:
@@ -243,27 +253,27 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
 
         return f'{COURSE_STATUS_SELF_PREFIX if obj.self_paced else ""}{status}'
 
-    def get_start_enrollment_date(self, obj):  # pylint: disable=no-self-use
+    def get_start_enrollment_date(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the start enrollment date."""
         return obj.enrollment_start
 
-    def get_end_enrollment_date(self, obj):  # pylint: disable=no-self-use
+    def get_end_enrollment_date(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the end enrollment date."""
         return obj.enrollment_end
 
-    def get_image_url(self, obj):  # pylint: disable=no-self-use
+    def get_image_url(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the course image URL."""
         return obj.course_image_url
 
-    def get_tenant_ids(self, obj):  # pylint: disable=no-self-use
+    def get_tenant_ids(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the tenant IDs."""
         return get_tenants_by_org(obj.org)
 
-    def get_start_date(self, obj):  # pylint: disable=no-self-use
+    def get_start_date(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the start date."""
         return obj.start
 
-    def get_end_date(self, obj):  # pylint: disable=no-self-use
+    def get_end_date(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the end date."""
         return obj.end
 
@@ -284,7 +294,7 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
             'certificates_count',
         ]
 
-    def get_rating(self, obj):  # pylint: disable=no-self-use
+    def get_rating(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the course rating."""
         return round(obj.rating_total / obj.rating_count if obj.rating_count else 0, 1)
 
@@ -311,7 +321,7 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
             'grade',
         ]
 
-    def get_certificate_url(self, obj):  # pylint: disable=no-self-use
+    def get_certificate_url(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the certificate URL."""
         user = get_user_model().objects.get(id=obj.related_user_id)
         certificate = get_certificates_for_user_by_course_keys(user, [obj.id])
@@ -320,26 +330,26 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 
         return None
 
-    def get_progress_url(self, obj):
+    def get_progress_url(self, obj: CourseOverview) -> Any:
         """Return the certificate URL."""
         return relative_url_to_absolute_url(
             f'/learning/course/{obj.id}/progress/{obj.related_user_id}/',
             self.context.get('request')
         )
 
-    def get_grades_url(self, obj):
+    def get_grades_url(self, obj: CourseOverview) -> Any:
         """Return the certificate URL."""
         return relative_url_to_absolute_url(
             f'/gradebook/{obj.id}/',
             self.context.get('request')
         )
 
-    def get_progress(self, obj):  # pylint: disable=no-self-use
+    def get_progress(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the certificate URL."""
         user = get_user_model().objects.get(id=obj.related_user_id)
         return get_course_blocks_completion_summary(obj.id, user)
 
-    def get_grade(self, obj):  # pylint: disable=no-self-use
+    def get_grade(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the grade summary."""
         collected_block_structure = get_block_structure_manager(obj.id).get_collected()
         course_grade = CourseGradeFactory().read(

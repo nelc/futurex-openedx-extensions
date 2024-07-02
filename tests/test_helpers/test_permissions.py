@@ -163,7 +163,7 @@ def test_fx_base_authenticated_permission_staff_always_allowed(
     assert permission.has_permission(request, dummy_view) is True
     assert request.fx_permission_info == {
         'user': request.user,
-        'user_roles': None,
+        'user_roles': {},
         'is_system_staff_user': True,
         'permitted_tenant_ids': [1, 2, 3, 7, 8],
         'view_allowed_roles': ['staff', 'admin'],

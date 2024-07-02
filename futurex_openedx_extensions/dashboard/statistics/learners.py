@@ -14,7 +14,10 @@ from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_lis
 
 
 def get_learners_count_having_enrollment_per_org(
-    fx_permission_info: dict, tenant_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
+    fx_permission_info: dict,
+    tenant_id: int,
+    visible_courses_filter: bool | None = True,
+    active_courses_filter: bool | None = None
 ) -> QuerySet:
     """
     TODO: Cache the result of this function
@@ -26,9 +29,9 @@ def get_learners_count_having_enrollment_per_org(
     :param tenant_id: Tenant ID to get the count for
     :type tenant_id: int
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
-    :type visible_courses_filter: bool
+    :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
-    :type active_courses_filter: bool
+    :type active_courses_filter: bool | None
     :return: QuerySet of learners count per organization
     :rtype: QuerySet
     """
@@ -56,7 +59,10 @@ def get_learners_count_having_enrollment_per_org(
 
 
 def get_learners_count_having_enrollment_for_tenant(
-    fx_permission_info: dict, tenant_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
+    fx_permission_info: dict,
+    tenant_id: int,
+    visible_courses_filter: bool | None = True,
+    active_courses_filter: bool | None = None
 ) -> QuerySet:
     """
     TODO: Cache the result of this function
@@ -67,9 +73,9 @@ def get_learners_count_having_enrollment_for_tenant(
     :param tenant_id: Tenant ID to get the count for
     :type tenant_id: int
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
-    :type visible_courses_filter: bool
+    :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
-    :type active_courses_filter: bool
+    :type active_courses_filter: bool | None
     :return: QuerySet of learners count per organization
     :rtype: QuerySet
     """
@@ -93,8 +99,11 @@ def get_learners_count_having_enrollment_for_tenant(
 
 
 def get_learners_count_having_no_enrollment(
-    fx_permission_info: dict, tenant_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
-) -> QuerySet:
+    fx_permission_info: dict,
+    tenant_id: int,
+    visible_courses_filter: bool | None = True,
+    active_courses_filter: bool | None = None
+) -> int:
     """
     TODO: Cache the result of this function
     TODO: maybe there is a duplicate unnecessary query here when excluding the users with course access roles
@@ -111,8 +120,8 @@ def get_learners_count_having_no_enrollment(
     :type visible_courses_filter: bool
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
     :type active_courses_filter: bool
-    :return: QuerySet of learners count per organization
-    :rtype: QuerySet
+    :return: Number of learners count per organization
+    :rtype: int
     """
     filtered_orgs = set(get_course_org_filter_list([tenant_id])['course_org_filter_list'])
     tenant_fx_permission_info = get_tenant_limited_fx_permission_info(fx_permission_info, tenant_id)

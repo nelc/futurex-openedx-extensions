@@ -1,4 +1,5 @@
 """helpers Django application initialization"""
+from __future__ import annotations
 
 from django.apps import AppConfig
 
@@ -26,6 +27,6 @@ class HelpersConfig(AppConfig):
     }
     # pylint: enable=duplicate-code
 
-    def ready(self):
+    def ready(self) -> None:
         """Connect handlers to send notifications about discussions."""
         from futurex_openedx_extensions.helpers import signals  # pylint: disable=unused-import, import-outside-toplevel
