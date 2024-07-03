@@ -9,3 +9,5 @@ isort                     # to standardize order of imports
 pycodestyle               # PEP 8 compliance validation
 pydocstyle                # PEP 257 compliance validation
 mypy                      # static type checker
+flake8                    # to enforce PEP 8 compliance
+flake8-quotes             # to enforce single quotes
