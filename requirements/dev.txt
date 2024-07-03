@@ -143,6 +143,12 @@ mccabe==0.7.0
     # via
     #   -r requirements/quality.txt
     #   pylint
+mypy==1.10.1
+    # via -r requirements/quality.txt
+mypy-extensions==1.0.0
+    # via
+    #   -r requirements/quality.txt
+    #   mypy
 openedx-filters==1.9.0
     # via -r requirements/quality.txt
 packaging==24.1
@@ -263,6 +269,7 @@ tomli==2.0.1
     #   -r requirements/quality.txt
     #   build
     #   coverage
+    #   mypy
     #   pip-tools
     #   pylint
     #   pyproject-api
@@ -280,6 +287,7 @@ typing-extensions==4.12.2
     #   asgiref
     #   astroid
     #   edx-opaque-keys
+    #   mypy
     #   pylint
 virtualenv==20.26.3
     # via
