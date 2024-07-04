@@ -5,7 +5,7 @@ from typing import Dict
 
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Exists, OuterRef, Q, Subquery
+from django.db.models import Case, Count, Exists, IntegerField, OuterRef, Q, Subquery, Value, When
 from django.db.models.query import QuerySet
 
 from futurex_openedx_extensions.helpers.permissions import get_tenant_limited_fx_permission_info
@@ -43,16 +43,22 @@ def get_learners_count_having_enrollment_per_org(
 
     return queryset.values('org').annotate(
         learners_count=Count(
-            'courseenrollment__user_id',
-            filter=~Exists(
-                CourseAccessRole.objects.filter(
-                    user_id=OuterRef('courseenrollment__user_id'),
-                    org=OuterRef('org')
-                )
-            ) &
-            Q(courseenrollment__user__is_superuser=False) &
-            Q(courseenrollment__user__is_staff=False) &
-            Q(courseenrollment__user__is_active=True),
+            Case(
+                When(
+                    ~Exists(
+                        CourseAccessRole.objects.filter(
+                            user_id=OuterRef('courseenrollment__user_id'),
+                            org=OuterRef('org')
+                        )
+                    ) &
+                    Q(courseenrollment__user__is_superuser=False) &
+                    Q(courseenrollment__user__is_staff=False) &
+                    Q(courseenrollment__user__is_active=True),
+                    then='courseenrollment__user_id',
+                ),
+                default=Value(None),
+                output_field=IntegerField(),
+            ),
             distinct=True
         )
     )

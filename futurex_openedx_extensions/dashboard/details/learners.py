@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
-from django.db.models import BooleanField, Case, Count, Exists, OuterRef, Q, Subquery, Value, When
+from django.db.models import BooleanField, Case, Count, Exists, IntegerField, OuterRef, Q, Subquery, Value, When
 from django.db.models.query import QuerySet
 from django.utils import timezone
 from lms.djangoapps.certificates.models import GeneratedCertificate
@@ -34,19 +34,23 @@ def get_courses_count_for_learner_queryset(
     :rtype: Count
     """
     return Count(
-        'courseenrollment',
-        filter=(
-            Q(courseenrollment__course_id__in=get_base_queryset_courses(
-                fx_permission_info,
-                visible_filter=visible_courses_filter,
-                active_filter=active_courses_filter,
-            )) &
-            ~Exists(
-                CourseAccessRole.objects.filter(
-                    user_id=OuterRef('id'),
-                    org=OuterRef('courseenrollment__course__org')
-                )
-            )
+        Case(
+            When(
+                Q(courseenrollment__course_id__in=get_base_queryset_courses(
+                    fx_permission_info,
+                    visible_filter=visible_courses_filter,
+                    active_filter=active_courses_filter,
+                )) &
+                ~Exists(
+                    CourseAccessRole.objects.filter(
+                        user_id=OuterRef('id'),
+                        org=OuterRef('courseenrollment__course__org')
+                    ),
+                ),
+                then='courseenrollment__id',
+            ),
+            default=Value(None),
+            output_field=IntegerField(),
         ),
         distinct=True
     )
@@ -70,16 +74,20 @@ def get_certificates_count_for_learner_queryset(
     :rtype: QuerySet
     """
     return Count(
-        'generatedcertificate',
-        filter=(
-            Q(generatedcertificate__course_id__in=Subquery(
-                get_base_queryset_courses(
-                    fx_permission_info,
-                    visible_filter=visible_courses_filter,
-                    active_filter=active_courses_filter
-                ).values_list('id', flat=True)
-            )) &
-            Q(generatedcertificate__status='downloadable')
+        Case(
+            When(
+                Q(generatedcertificate__course_id__in=Subquery(
+                    get_base_queryset_courses(
+                        fx_permission_info,
+                        visible_filter=visible_courses_filter,
+                        active_filter=active_courses_filter
+                    ).values_list('id', flat=True)
+                )) &
+                Q(generatedcertificate__status='downloadable'),
+                then='generatedcertificate__id',
+            ),
+            default=Value(None),
+            output_field=IntegerField(),
         ),
         distinct=True
     )
