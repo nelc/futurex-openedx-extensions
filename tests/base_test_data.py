@@ -10,7 +10,7 @@ _base_data = {
                 'IS_FX_DASHBOARD_ENABLED': True,
             },
         },
-        2: {  # Organisation is duplicated with tenant 7
+        2: {  # Organisation is duplicated with tenant 7 and 8
             'lms_configs': {
                 'LMS_BASE': 's2.sample.com',
                 'course_org_filter': ['ORG3', 'ORG8'],
