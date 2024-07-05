@@ -53,6 +53,22 @@ def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_inf
 
 
 @pytest.mark.django_db
+def test_get_courses_queryset_result_excludes_staff_inactive_enrollment(
+    base_data, fx_permission_info
+):  # pylint: disable=unused-argument
+    """Verify that enrolled_count of get_courses_queryset is not including inactive enrollments."""
+    enrollment = CourseEnrollment.objects.get(user_id=21, course_id='course-v1:ORG1+5+5')
+    assert enrollment.is_active is True, 'bad test data'
+    queryset = get_courses_queryset(fx_permission_info).filter(id='course-v1:ORG1+5+5')
+    assert queryset.count() == 1, 'bad test data'
+    assert queryset.first().enrolled_count == 3, 'bad test data'
+
+    enrollment.is_active = False
+    enrollment.save()
+    assert get_courses_queryset(fx_permission_info).filter(id='course-v1:ORG1+5+5').first().enrolled_count == 2
+
+
+@pytest.mark.django_db
 def test_get_courses_queryset_result_rating(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_courses_queryset returns the correct rating."""
     ratings = [3, 4, 5, 3, 4, 5, 3, 2, 5, 2, 4, 5]

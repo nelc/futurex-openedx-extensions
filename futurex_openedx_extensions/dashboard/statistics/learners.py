@@ -50,6 +50,7 @@ def get_learners_count_having_enrollment_per_org(
                     org=OuterRef('org')
                 )
             ) &
+            Q(courseenrollment__is_active=True) &
             Q(courseenrollment__user__is_superuser=False) &
             Q(courseenrollment__user__is_staff=False) &
             Q(courseenrollment__user__is_active=True),
@@ -83,6 +84,7 @@ def get_learners_count_having_enrollment_for_tenant(
         is_superuser=False,
         is_staff=False,
         is_active=True,
+        courseenrollment__is_active=True,
         courseenrollment__course_id__in=get_base_queryset_courses(
             get_tenant_limited_fx_permission_info(fx_permission_info, tenant_id),
             visible_filter=visible_courses_filter,
@@ -106,7 +108,6 @@ def get_learners_count_having_no_enrollment(
 ) -> int:
     """
     TODO: Cache the result of this function
-    TODO: maybe there is a duplicate unnecessary query here when excluding the users with course access roles
     Get the count of learners with no enrollments per organization. Admins and staff are excluded from the count.
     Since there is no enrollment, we'll use UserSignupSource
 
@@ -123,6 +124,25 @@ def get_learners_count_having_no_enrollment(
     :return: Number of learners count per organization
     :rtype: int
     """
+    def _course_enrollment_queryset(is_active: bool, outer: bool) -> QuerySet:
+        if outer:
+            keyword = {'user_id': OuterRef('user_id')}
+        else:
+            keyword = {}
+
+        return CourseEnrollment.objects.filter(
+            is_active=is_active,
+            course_id__in=get_base_queryset_courses(
+                get_tenant_limited_fx_permission_info(fx_permission_info, tenant_id),
+                visible_filter=visible_courses_filter,
+                active_filter=active_courses_filter,
+            ),
+            user__is_superuser=False,
+            user__is_staff=False,
+            user__is_active=True,
+            **keyword
+        )
+
     filtered_orgs = set(get_course_org_filter_list([tenant_id])['course_org_filter_list'])
     tenant_fx_permission_info = get_tenant_limited_fx_permission_info(fx_permission_info, tenant_id)
     if filtered_orgs - set(tenant_fx_permission_info['view_allowed_full_access_orgs']) != set():
@@ -130,28 +150,11 @@ def get_learners_count_having_no_enrollment(
 
     tenant_site = get_tenant_site(tenant_id)
 
-    return UserSignupSource.objects.filter(
+    user_from_signup_source = UserSignupSource.objects.filter(
         site=tenant_site
     ).exclude(
-        user_id__in=Subquery(
-            CourseEnrollment.objects.filter(
-                user_id=OuterRef('user_id'),
-                course_id__in=get_base_queryset_courses(
-                    tenant_fx_permission_info,
-                    visible_filter=visible_courses_filter,
-                    active_filter=active_courses_filter,
-                ),
-                user__is_superuser=False,
-                user__is_staff=False,
-                user__is_active=True,
-            ).exclude(
-                Exists(
-                    CourseAccessRole.objects.filter(
-                        user_id=OuterRef('user_id'),
-                        org=OuterRef('course__org'),
-                    ).values('user_id').distinct()
-                ),
-            ).values('user_id')
+        Exists(
+            _course_enrollment_queryset(is_active=True, outer=True)
         )
     ).exclude(
         user_id__in=Subquery(
@@ -159,7 +162,18 @@ def get_learners_count_having_no_enrollment(
                 org__in=tenant_fx_permission_info['view_allowed_full_access_orgs'],
             ).values('user_id').distinct()
         )
-    ).values('user_id').distinct().count()
+    ).values('user_id').distinct()
+
+    user_with_no_enrollment = _course_enrollment_queryset(is_active=False, outer=False).exclude(
+        user_id__in=Subquery(
+            _course_enrollment_queryset(is_active=True, outer=True).values('user_id').distinct()
+        )
+    ).exclude(
+        user__usersignupsource__user_id=OuterRef('user_id'),
+        user__usersignupsource__site=tenant_site,
+    ).values('user_id').distinct()
+
+    return user_from_signup_source.count() + user_with_no_enrollment.count()
 
 
 def get_learners_count(fx_permission_info: dict) -> Dict[int, Dict[str, int]]:
