@@ -1,5 +1,6 @@
 """Tests for querysets helpers"""
 import pytest
+from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
@@ -7,39 +8,73 @@ from futurex_openedx_extensions.helpers import querysets
 
 
 @pytest.mark.django_db
-def test_get_base_queryset_courses(base_data):  # pylint: disable=unused-argument
+def test_get_base_queryset_courses(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_base_queryset_courses function."""
-    result = querysets.get_base_queryset_courses(["ORG1", "ORG2"])
+    result = querysets.get_base_queryset_courses(fx_permission_info)
     assert result.count() == 12
     for course in result:
         assert course.catalog_visibility == "both"
 
 
 @pytest.mark.django_db
-def test_get_base_queryset_courses_visible_filter(base_data):  # pylint: disable=unused-argument
+def test_get_base_queryset_courses_non_staff(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify get_base_queryset_courses function for non-staff user."""
+    fx_permission_info.update({
+        'user': get_user_model().objects.get(username="user4"),
+        'is_system_staff_user': False,
+        'view_allowed_roles': ['org_course_creator_group'],
+    })
+    result = querysets.get_base_queryset_courses(fx_permission_info)
+    assert result.count() == 12
+    for course in result:
+        assert course.catalog_visibility == "both"
+
+
+@pytest.mark.django_db
+def test_get_base_queryset_courses_visible_filter(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_base_queryset_courses function with visible_filter."""
     course = CourseOverview.objects.filter(org="ORG1").first()
     assert course.catalog_visibility == "both", "Catalog visibility should be initialized as (both) for test courses"
     course.catalog_visibility = "none"
     course.save()
 
-    result = querysets.get_base_queryset_courses(["ORG1", "ORG2"])
+    result = querysets.get_base_queryset_courses(fx_permission_info)
     assert result.count() == 11
-    result = querysets.get_base_queryset_courses(["ORG1", "ORG2"], visible_filter=False)
+    result = querysets.get_base_queryset_courses(fx_permission_info, visible_filter=False)
     assert result.count() == 1
-    result = querysets.get_base_queryset_courses(["ORG1", "ORG2"], visible_filter=None)
+    result = querysets.get_base_queryset_courses(fx_permission_info, visible_filter=None)
     assert result.count() == 12
 
 
 @pytest.mark.django_db
-def test_get_base_queryset_courses_active_filter(base_data):  # pylint: disable=unused-argument
+def test_get_base_queryset_courses_active_filter(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_base_queryset_courses function with active_filter."""
-    result = querysets.get_base_queryset_courses(["ORG1", "ORG2"])
+    result = querysets.get_base_queryset_courses(fx_permission_info)
     assert result.count() == 12
-    result = querysets.get_base_queryset_courses(["ORG1", "ORG2"], active_filter=True)
+    result = querysets.get_base_queryset_courses(fx_permission_info, active_filter=True)
     assert result.count() == 7
-    result = querysets.get_base_queryset_courses(["ORG1", "ORG2"], active_filter=False)
+    result = querysets.get_base_queryset_courses(fx_permission_info, active_filter=False)
     assert result.count() == 5
+
+
+@pytest.mark.django_db
+def test_get_base_queryset_courses_limited_course_roles(
+    base_data, fx_permission_info
+):  # pylint: disable=unused-argument
+    """Verify get_base_queryset_courses function with limited course roles."""
+    fx_permission_info.update({
+        'user': get_user_model().objects.get(username='user4'),
+        'is_system_staff_user': False,
+        'view_allowed_full_access_orgs': [],
+        'view_allowed_course_access_orgs': ['ORG2'],
+        'view_allowed_roles': ['org_course_creator_group'],
+    })
+    course_role = CourseAccessRole.objects.get(user_id=4, org='ORG2')
+    course_role.course_id = 'course-v1:ORG2+2+2'
+    course_role.save()
+    result = querysets.get_base_queryset_courses(fx_permission_info)
+    assert result.count() == 1
+    assert result.first().org == 'ORG2'
 
 
 @pytest.mark.django_db

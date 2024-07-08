@@ -10,7 +10,6 @@ from eox_tenant.models import TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
-from tests.base_test_data import _base_data
 
 
 @pytest.mark.django_db
@@ -18,6 +17,17 @@ def test_get_excluded_tenant_ids(base_data):  # pylint: disable=unused-argument
     """Verify get_excluded_tenant_ids function."""
     result = tenants.get_excluded_tenant_ids()
     assert result == [4, 5, 6]
+
+
+@pytest.mark.django_db
+def test_get_excluded_tenant_ids_dashboard_disabled(base_data):  # pylint: disable=unused-argument
+    """Verify get_excluded_tenant_ids function when the dashboard is disabled."""
+    TenantConfig.objects.filter(id=1).update(lms_configs={'IS_FX_DASHBOARD_ENABLED': False})
+    assert tenants.get_excluded_tenant_ids() == [1, 4, 5, 6]
+    tenant2 = TenantConfig.objects.get(id=2)
+    tenant2.lms_configs.pop('IS_FX_DASHBOARD_ENABLED')
+    tenant2.save()
+    assert tenants.get_excluded_tenant_ids() == [1, 2, 4, 5, 6]
 
 
 @pytest.mark.django_db
@@ -66,13 +76,15 @@ def test_get_accessible_tenant_ids_staff(base_data, user_id, expected):  # pylin
     assert user.is_staff, 'only staff users allowed in this test'
     result = tenants.get_accessible_tenant_ids(user)
     assert result == expected
+    result = tenants.get_accessible_tenant_ids(user, roles_filter=[])
+    assert result == expected
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("user_id, expected", [
-    (3, []),
+    (3, [1]),
     (4, [1, 2, 7]),
-    (9, [1]),
+    (9, [1, 2, 7]),
     (23, [2, 3, 8]),
 ])
 def test_get_accessible_tenant_ids_no_staff_no_sueperuser(
@@ -83,77 +95,8 @@ def test_get_accessible_tenant_ids_no_staff_no_sueperuser(
     assert not user.is_staff and not user.is_superuser, 'only users with no staff and no superuser allowed in this test'
     result = tenants.get_accessible_tenant_ids(user)
     assert result == expected
-
-
-@pytest.mark.django_db
-def test_get_accessible_tenant_ids_complex(base_data):  # pylint: disable=unused-argument
-    """Verify get_accessible_tenant_ids function for complex cases"""
-    user = get_user_model().objects.get(id=10)
-    user_access_role = 'org_course_creator_group'
-    user_access = 'ORG3'
-
-    assert not user.is_staff and not user.is_superuser, 'only users with no staff and no superuser allowed in this test'
-    assert _base_data['tenant_config'][2]['lms_configs']['course_org_filter'] == [
-        'ORG3', 'ORG8'], 'test data is not as expected'
-    assert _base_data['tenant_config'][7]['lms_configs']['course_org_filter'] == 'ORG3', 'test data is not as expected'
-    assert _base_data['tenant_config'][8]['lms_configs']['course_org_filter'] == [
-        'ORG8'], 'test data is not as expected'
-
-    for role, orgs in _base_data["course_access_roles"].items():
-        for org, users in orgs.items():
-            if role not in cs.TENANT_LIMITED_ADMIN_ROLES:
-                continue
-            if role != user_access_role or org != user_access:
-                assert user.id not in users, (
-                    f'test data is not as expected, user {user.id} should be only in '
-                    f'{user_access_role} for {user_access}. Found in {role} for {org}'
-                )
-            else:
-                assert user.id in users, (
-                    f'test data is not as expected, user {user.id} was not found in '
-                    f'{user_access_role} for {user_access}'
-                )
-            assert (
-                (role not in cs.TENANT_LIMITED_ADMIN_ROLES) or
-                (role != user_access_role and user.id not in users) or
-                (org != user_access and user.id not in users) or
-                (role == user_access_role and org == user_access and user.id in users)
-            ), (f'test data is not as expected, user {user.id} should be only in {user_access_role} for {user_access}. '
-                f'Found in {role} for {org}' if user.id in users else f'Found in {role} for {org}')
-
-    tenant_8_not_expected = [2, 7]
-    result = tenants.get_accessible_tenant_ids(user)
-    assert result == tenant_8_not_expected
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("user_id, ids_to_check, expected", [
-    (1, '1,2,3,7', (True, {})),
-    (2, '1,2,3,7', (True, {})),
-    (3, '1,2,3,7', (
-        False, {
-            'details': {'tenant_ids': [1, 2, 3, 7]},
-            'reason': 'User does not have access to these tenants'
-        }
-    )),
-    (1, '1,7,9', (
-        False, {
-            'details': {'tenant_ids': [9]},
-            'reason': 'Invalid tenant IDs provided'
-        }
-    )),
-    (1, '1,2,E,7', (
-        False, {
-            'details': {'error': "invalid literal for int() with base 10: 'E'"},
-            'reason': 'Invalid tenant IDs provided. It must be a comma-separated list of integers'
-        }
-    )),
-])
-def test_check_tenant_access(base_data, user_id, ids_to_check, expected):  # pylint: disable=unused-argument
-    """Verify check_tenant_access function."""
-    user = get_user_model().objects.get(id=user_id)
-    result = tenants.check_tenant_access(user, ids_to_check)
-    assert result == expected
+    result = tenants.get_accessible_tenant_ids(user, roles_filter=[])
+    assert not result and isinstance(result, list)
 
 
 @pytest.mark.django_db
@@ -223,7 +166,8 @@ def test_get_course_org_filter_list(base_data, tenant_ids, expected):  # pylint:
 @pytest.mark.parametrize("user_id, expected", [
     (1, [1, 2, 3, 7, 8]),
     (2, [1, 2, 3, 7, 8]),
-    (3, []),
+    (3, [1]),
+    (15, []),
 ])
 def test_get_accessible_tenant_ids(base_data, user_id, expected):  # pylint: disable=unused-argument
     """Verify get_accessible_tenant_ids function."""

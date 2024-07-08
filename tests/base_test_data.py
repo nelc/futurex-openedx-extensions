@@ -7,18 +7,21 @@ _base_data = {
                 "LMS_BASE": "s1.sample.com",
                 "SITE_NAME": "s1.sample.com",
                 "course_org_filter": ["ORG1", "ORG2"],
+                "IS_FX_DASHBOARD_ENABLED": True,
             },
         },
         2: {  # Organisation is duplicated with tenant 7
             "lms_configs": {
                 "LMS_BASE": "s2.sample.com",
                 "course_org_filter": ["ORG3", "ORG8"],
+                "IS_FX_DASHBOARD_ENABLED": True,
             },
         },
         3: {
             "lms_configs": {
                 "SITE_NAME": "s3.sample.com",
                 "course_org_filter": ["ORG4", "ORG5"],
+                "IS_FX_DASHBOARD_ENABLED": True,
             },
         },
         4: {  # This is a tenant with no SITE_NAME nor LMS_BASE
@@ -26,6 +29,7 @@ _base_data = {
                 "LMS_BASE": None,
                 "SITE_NAME": None,
                 "course_org_filter": ["ORG1", "ORG2"],
+                "IS_FX_DASHBOARD_ENABLED": True,
             },
         },
         5: {  # This is a tenant with no course_org_filter
@@ -33,18 +37,21 @@ _base_data = {
                 "LMS_BASE":  "s5.sample.com",
                 "SITE_NAME":  "s5.sample.com",
                 "course_org_filter": [],
+                "IS_FX_DASHBOARD_ENABLED": True,
             },
         },
         6: {  # This is a tenant with no route
             "lms_configs": {
                 "LMS_BASE": "s6.sample.com",
                 "course_org_filter": ["ORG2"],
+                "IS_FX_DASHBOARD_ENABLED": True,
             },
         },
         7: {
             "lms_configs": {
                 "LMS_BASE": "s7.sample.com",
                 "course_org_filter": "ORG3",  # This a string, not a list, it should be fine too
+                "IS_FX_DASHBOARD_ENABLED": True,
             },
         },
         8: {
@@ -52,6 +59,7 @@ _base_data = {
                 "LMS_BASE": "s8.sample.com",
                 "SITE_NAME": "s8.sample.com",
                 "course_org_filter": ["ORG8"],
+                "IS_FX_DASHBOARD_ENABLED": True,
             },
         },
     },
@@ -177,7 +185,7 @@ _base_data = {
     "staff_users": [2, 60],
     "inactive_users": [61, 62, 63],
     "course_access_roles": {  # roles, user ids per org
-        "staff": {  # at least one role that is not in TENANT_LIMITED_ADMIN_ROLES
+        "staff": {
             "ORG1": [3],
             "ORG2": [8, 9],
             "ORG3": [9, 18],

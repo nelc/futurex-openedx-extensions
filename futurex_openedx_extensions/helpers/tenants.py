@@ -9,11 +9,9 @@ from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef
 from django.db.models.query import Q, QuerySet
 from eox_tenant.models import Route, TenantConfig
-from rest_framework.request import Request
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
-from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, ids_string_to_list
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
 from futurex_openedx_extensions.helpers.querysets import get_has_site_login_queryset
 
@@ -32,7 +30,7 @@ def get_excluded_tenant_ids() -> List[int]:
             not tenant.lms_configs.get('course_org_filter') or (
                 not tenant.lms_configs.get('SITE_NAME') and
                 not tenant.lms_configs.get('LMS_BASE')
-            )
+            ) or not tenant.lms_configs.get('IS_FX_DASHBOARD_ENABLED')
         )
     tenants = TenantConfig.objects.annotate(
         no_route=~Exists(Route.objects.filter(config_id=OuterRef('pk')))
@@ -52,7 +50,7 @@ def get_all_tenants() -> QuerySet:
     return TenantConfig.objects.exclude(id__in=get_excluded_tenant_ids())
 
 
-@cache_dict(timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name=cs.CACHE_NAME_ALL_TENANTS_INFO)
+@cache_dict(timeout='FX_CACHE_TIMEOUT_TENANTS_INFO', key_generator_or_name=cs.CACHE_NAME_ALL_TENANTS_INFO)
 def get_all_tenants_info() -> Dict[str, Any]:
     """
     Get all tenants in the system that are exposed in the route table, and with a valid config
@@ -128,9 +126,7 @@ def get_tenant_site(tenant_id: int) -> str:
     return get_all_tenants_info()['sites'].get(tenant_id)
 
 
-@cache_dict(
-    timeout=settings.FX_CACHE_TIMEOUT_TENANTS_INFO, key_generator_or_name=cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST
-)
+@cache_dict(timeout='FX_CACHE_TIMEOUT_TENANTS_INFO', key_generator_or_name=cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST)
 def get_all_course_org_filter_list() -> Dict[int, List[str]]:
     """
     Get all course org filters for all tenants.
@@ -207,12 +203,14 @@ def get_course_org_filter_list(tenant_ids: List[int]) -> Dict[str, List | Dict[s
     }
 
 
-def get_accessible_tenant_ids(user: get_user_model()) -> List[int]:
+def get_accessible_tenant_ids(user: get_user_model(), roles_filter: List[str] | None = None) -> List[int]:
     """
     Get the tenants that the user has access to.
 
     :param user: The user to check.
     :type user: get_user_model()
+    :param roles_filter: List of roles to filter by. None means no filter. Empty list means no access at all.
+    :type roles_filter: List[str] | None
     :return: List of accessible tenant IDs
     :rtype: List[int]
     """
@@ -221,50 +219,22 @@ def get_accessible_tenant_ids(user: get_user_model()) -> List[int]:
     if user.is_superuser or user.is_staff:
         return get_all_tenant_ids()
 
+    if not roles_filter and isinstance(roles_filter, list):
+        return []
+
     course_org_filter_list = get_all_course_org_filter_list()
     accessible_orgs = CourseAccessRole.objects.filter(
         user_id=user.id,
-        role__in=cs.TENANT_LIMITED_ADMIN_ROLES,
-    ).values_list('org', flat=True).distinct()
+    )
+    if roles_filter is not None:
+        accessible_orgs = accessible_orgs.filter(
+            role__in=roles_filter
+        )
+    accessible_orgs = accessible_orgs.values_list('org', flat=True).distinct()
 
     return [t_id for t_id, course_org_filter in course_org_filter_list.items() if any(
         org in course_org_filter for org in accessible_orgs
     )]
-
-
-def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple[bool, dict]:
-    """
-    Check if the user has access to the provided tenant IDs
-
-    :param user: The user to check.
-    :type user: get_user_model()
-    :param tenant_ids_string: Comma-separated string of tenant IDs
-    :type tenant_ids_string: str
-    :return: Tuple of a boolean indicating if the user has access, and a dictionary of error details if any
-    """
-    try:
-        tenant_ids = set(ids_string_to_list(tenant_ids_string))
-    except ValueError as exc:
-        return False, error_details_to_dictionary(
-            reason="Invalid tenant IDs provided. It must be a comma-separated list of integers",
-            error=str(exc)
-        )
-
-    wrong_tenant_ids = tenant_ids - set(get_all_tenant_ids())
-    if wrong_tenant_ids:
-        return False, error_details_to_dictionary(
-            reason="Invalid tenant IDs provided",
-            tenant_ids=list(wrong_tenant_ids)
-        )
-
-    inaccessible_tenants = tenant_ids - set(get_accessible_tenant_ids(user))
-    if inaccessible_tenants:
-        return False, error_details_to_dictionary(
-            reason="User does not have access to these tenants",
-            tenant_ids=list(inaccessible_tenants),
-        )
-
-    return True, {}
 
 
 def get_tenants_by_org(org: str) -> List[int]:
@@ -278,21 +248,6 @@ def get_tenants_by_org(org: str) -> List[int]:
     """
     tenant_configs = get_all_course_org_filter_list()
     return [t_id for t_id, course_org_filter in tenant_configs.items() if org in course_org_filter]
-
-
-def get_selected_tenants(request: Request) -> List[int]:
-    """
-    Get the tenant IDs from the request
-
-    :param request: The request
-    :type request: Request
-    :return: List of tenant IDs
-    :rtype: List[int]
-    """
-    tenant_ids = request.query_params.get('tenant_ids')
-    if tenant_ids is None:
-        return get_accessible_tenant_ids(request.user)
-    return ids_string_to_list(tenant_ids)
 
 
 def get_tenants_sites(tenant_ids: List[int]) -> List[str]:

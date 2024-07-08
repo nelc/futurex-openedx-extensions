@@ -9,7 +9,7 @@ code-annotations          # provides commands used by the pii_check make target.
 
 # eox-tenant requirements
 six
-djangorestframework
+djangorestframework<3.15.2  # 3.15.2 dropped support for Django 3.2
 django-crum
 django-mysql
 jsonfield
@@ -18,3 +18,6 @@ openedx_filters
 
 # Python 3.8 compatibility
 backports.zoneinfo;python_version<"3.9"
+
+# other requirements
+django-simple-history<3.7.0  # 3.7.0 dropped support for Django 3.2
