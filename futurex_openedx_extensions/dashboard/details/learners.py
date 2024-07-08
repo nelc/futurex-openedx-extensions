@@ -41,6 +41,7 @@ def get_courses_count_for_learner_queryset(
                 visible_filter=visible_courses_filter,
                 active_filter=active_courses_filter,
             )) &
+            Q(courseenrollment__is_active=True) &
             ~Exists(
                 CourseAccessRole.objects.filter(
                     user_id=OuterRef('id'),
@@ -183,7 +184,8 @@ def get_learners_by_course_queryset(course_id: str, search_text: str | None = No
     """
     queryset = get_learners_search_queryset(search_text)
     queryset = queryset.filter(
-        courseenrollment__course_id=course_id
+        courseenrollment__course_id=course_id,
+        courseenrollment__is_active=True,
     ).filter(
         ~Exists(
             CourseAccessRole.objects.filter(

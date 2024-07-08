@@ -339,19 +339,44 @@ def test_get_user_id_from_username_tenants_bad_tenant(base_data, tenant_ids):  #
 def test_get_user_id_from_username_tenants(
     base_data, username, tenant_ids, orgs, sites, is_enrolled, is_signup
 ):  # pylint: disable=unused-argument, too-many-arguments
-    """Verify get_user_id_from_username_tenants function for a user enrolled in a course but not in the site signup."""
+    """
+    Verify get_user_id_from_username_tenants function returns the expected result according
+    to course enrollment and signup source.
+    """
+    assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
+
+    enrollment_qs = CourseEnrollment.objects.filter(
+        user__username=username,
+        course__org__in=orgs,
+    )
+    signup_qs = UserSignupSource.objects.filter(
+        user__username=username,
+        site__in=sites,
+    )
+    assert enrollment_qs.exists() is is_enrolled, 'test data is not as expected'
+    assert signup_qs.exists() is is_signup, 'test data is not as expected'
+
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])
+
+    enrollment_qs.delete()
+    signup_qs.delete()
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == 0
+
+
+@pytest.mark.django_db
+def test_get_user_id_from_username_tenants_inactive_enrollment(base_data):  # pylint: disable=unused-argument
+    """Verify get_user_id_from_username_tenants function for inactive enrollment."""
     username = 'user15'
     tenant_ids = [1]
     assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
-    assert TenantConfig.objects.filter(id__in=tenant_ids).count() == len(tenant_ids), 'test data is not as expected'
-
-    assert CourseEnrollment.objects.filter(
-        user__username=username,
-        course__org__in=['ORG1', 'ORG2'],
-    ).exists(), 'test data is not as expected'
     assert not UserSignupSource.objects.filter(
         user__username=username,
-        site='s1.sample.com',
+        site__in=['s1.sample.com'],
     ).exists(), 'test data is not as expected'
 
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])
+    CourseEnrollment.objects.filter(
+        user__username=username,
+        course__org__in=['ORG1', 'ORG2'],
+    ).update(is_active=False)
     assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])
