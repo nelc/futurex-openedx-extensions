@@ -191,13 +191,14 @@ def test_get_all_course_access_roles(base_data):  # pylint: disable=unused-argum
     }
 
 
-@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @pytest.mark.django_db
+@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 def test_get_all_course_access_roles_being_cached():
     """Verify that get_all_course_access_roles is being cached."""
     assert cache.get(CACHE_NAME_ALL_COURSE_ACCESS_ROLES) is None
     result = get_all_course_access_roles()
-    assert cache.get(CACHE_NAME_ALL_COURSE_ACCESS_ROLES) == result
+    assert cache.get(CACHE_NAME_ALL_COURSE_ACCESS_ROLES)['data'] == result
+    cache.set(CACHE_NAME_ALL_COURSE_ACCESS_ROLES, None)
 
 
 @pytest.mark.django_db
