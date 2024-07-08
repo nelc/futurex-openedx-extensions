@@ -45,7 +45,7 @@ def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_inf
         'course-v1:ORG2+5+5': [5, 3],
         'course-v1:ORG2+6+6': [5, 0],
         'course-v1:ORG2+7+7': [5, 3],
-        }
+    }
     queryset = get_courses_queryset(fx_permission_info)
     for record in queryset:
         assert record.enrolled_count == expected_results[record.id][0]

@@ -45,7 +45,7 @@ dnspython==2.6.1
     # via pymongo
 edx-opaque-keys[django]==2.10.0
     # via -r requirements/test.in
-eox-tenant==11.2.0
+eox-tenant==10.0.0
     # via -r requirements/base.txt
 exceptiongroup==1.2.1
     # via pytest
@@ -65,7 +65,7 @@ pbr==6.0.0
     # via stevedore
 pluggy==1.5.0
     # via pytest
-pymongo==4.7.3
+pymongo==4.8.0
     # via edx-opaque-keys
 pytest==8.2.2
     # via

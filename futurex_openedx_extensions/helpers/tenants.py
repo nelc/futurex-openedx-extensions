@@ -23,7 +23,7 @@ def get_excluded_tenant_ids() -> List[int]:
     :return: List of tenant IDs to exclude
     :rtype: List[int]
     """
-    def bad_config(tenant):
+    def bad_config(tenant: TenantConfig) -> bool:
         """Check if the tenant has a bad config"""
         return (
             tenant.no_route or
@@ -51,7 +51,7 @@ def get_all_tenants() -> QuerySet:
 
 
 @cache_dict(timeout='FX_CACHE_TIMEOUT_TENANTS_INFO', key_generator_or_name=cs.CACHE_NAME_ALL_TENANTS_INFO)
-def get_all_tenants_info() -> Dict[str, Any]:
+def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
     """
     Get all tenants in the system that are exposed in the route table, and with a valid config
 
@@ -79,7 +79,7 @@ def get_all_tenants_info() -> Dict[str, Any]:
                     (tenant['lms_configs'].get('LMS_ROOT_URL') or '').strip(),
                     _fix_lms_base((tenant['lms_configs'].get('LMS_BASE') or '').strip()),
                     _fix_lms_base((tenant['lms_configs'].get('SITE_NAME') or '').strip()),
-                    ], default=''),
+                ], default=''),
                 'studio_root_url': settings.CMS_ROOT_URL,
                 'platform_name': get_first_not_empty_item([
                     (tenant['lms_configs'].get('PLATFORM_NAME') or '').strip(),
@@ -146,7 +146,7 @@ def get_all_course_org_filter_list() -> Dict[int, List[str]]:
     return result
 
 
-def get_course_org_filter_list(tenant_ids: List[int]) -> Dict[str, List | Dict[str, List[int]]]:
+def get_course_org_filter_list(tenant_ids: List[int]) -> Dict[str, Any]:
     """
     Get the filters to use for course orgs.
 
@@ -203,12 +203,12 @@ def get_course_org_filter_list(tenant_ids: List[int]) -> Dict[str, List | Dict[s
     }
 
 
-def get_accessible_tenant_ids(user: get_user_model(), roles_filter: List[str] | None = None) -> List[int]:
+def get_accessible_tenant_ids(user: get_user_model, roles_filter: List[str] | None = None) -> List[int]:
     """
     Get the tenants that the user has access to.
 
     :param user: The user to check.
-    :type user: get_user_model()
+    :type user: get_user_model
     :param roles_filter: List of roles to filter by. None means no filter. Empty list means no access at all.
     :type roles_filter: List[str] | None
     :return: List of accessible tenant IDs

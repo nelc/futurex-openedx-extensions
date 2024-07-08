@@ -82,7 +82,7 @@ docutils==0.19
     #   sphinx
 edx-opaque-keys[django]==2.10.0
     # via -r requirements/test.txt
-eox-tenant==11.2.0
+eox-tenant==10.0.0
     # via -r requirements/test.txt
 exceptiongroup==1.2.1
     # via
@@ -151,7 +151,7 @@ pbr==6.0.0
     # via
     #   -r requirements/test.txt
     #   stevedore
-pkginfo==1.11.1
+pkginfo==1.10.0
     # via twine
 pluggy==1.5.0
     # via
@@ -169,7 +169,7 @@ pygments==2.18.0
     #   readme-renderer
     #   rich
     #   sphinx
-pymongo==4.7.3
+pymongo==4.8.0
     # via
     #   -r requirements/test.txt
     #   edx-opaque-keys
@@ -257,7 +257,7 @@ tomli==2.0.1
     #   coverage
     #   doc8
     #   pytest
-twine==5.1.0
+twine==5.1.1
     # via -r requirements/doc.in
 typing-extensions==4.12.2
     # via

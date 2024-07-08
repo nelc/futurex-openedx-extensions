@@ -65,12 +65,18 @@ edx-lint==5.3.6
     # via -r requirements/quality.in
 edx-opaque-keys[django]==2.10.0
     # via -r requirements/test.txt
-eox-tenant==11.2.0
+eox-tenant==10.0.0
     # via -r requirements/test.txt
 exceptiongroup==1.2.1
     # via
     #   -r requirements/test.txt
     #   pytest
+flake8==7.1.0
+    # via
+    #   -r requirements/quality.in
+    #   flake8-quotes
+flake8-quotes==3.4.0
+    # via -r requirements/quality.in
 iniconfig==2.0.0
     # via
     #   -r requirements/test.txt
@@ -90,7 +96,13 @@ markupsafe==2.1.5
     #   -r requirements/test.txt
     #   jinja2
 mccabe==0.7.0
-    # via pylint
+    # via
+    #   flake8
+    #   pylint
+mypy==1.10.1
+    # via -r requirements/quality.in
+mypy-extensions==1.0.0
+    # via mypy
 openedx-filters==1.9.0
     # via -r requirements/test.txt
 packaging==24.1
@@ -108,10 +120,14 @@ pluggy==1.5.0
     #   -r requirements/test.txt
     #   pytest
 pycodestyle==2.12.0
-    # via -r requirements/quality.in
+    # via
+    #   -r requirements/quality.in
+    #   flake8
 pydocstyle==6.3.0
     # via -r requirements/quality.in
-pylint==3.2.3
+pyflakes==3.2.0
+    # via flake8
+pylint==3.2.5
     # via
     #   edx-lint
     #   pylint-celery
@@ -125,7 +141,7 @@ pylint-plugin-utils==0.8.2
     # via
     #   pylint-celery
     #   pylint-django
-pymongo==4.7.3
+pymongo==4.8.0
     # via
     #   -r requirements/test.txt
     #   edx-opaque-keys
@@ -169,6 +185,7 @@ tomli==2.0.1
     # via
     #   -r requirements/test.txt
     #   coverage
+    #   mypy
     #   pylint
     #   pytest
 tomlkit==0.12.5
@@ -179,4 +196,8 @@ typing-extensions==4.12.2
     #   asgiref
     #   astroid
     #   edx-opaque-keys
+    #   mypy
     #   pylint
+
+# The following packages are considered to be unsafe in a requirements file:
+# setuptools

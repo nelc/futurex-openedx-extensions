@@ -20,8 +20,8 @@ class CourseOverview(models.Model):
     visible_to_staff_only = models.BooleanField(default=False)
 
     class Meta:
-        app_label = "fake_models"
-        db_table = "course_overviews_courseoverview"
+        app_label = 'fake_models'
+        db_table = 'course_overviews_courseoverview'
 
 
 class CourseAccessRole(models.Model):
@@ -32,8 +32,8 @@ class CourseAccessRole(models.Model):
     course_id = CourseKeyField(max_length=255, db_index=True, blank=True)
 
     class Meta:
-        app_label = "fake_models"
-        db_table = "student_courseaccessrole"
+        app_label = 'fake_models'
+        db_table = 'student_courseaccessrole'
 
 
 class CourseEnrollment(models.Model):
@@ -44,8 +44,8 @@ class CourseEnrollment(models.Model):
     created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        app_label = "fake_models"
-        db_table = "student_courseenrollment"
+        app_label = 'fake_models'
+        db_table = 'student_courseenrollment'
 
 
 class UserSignupSource(models.Model):
@@ -54,8 +54,8 @@ class UserSignupSource(models.Model):
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
 
     class Meta:
-        app_label = "fake_models"
-        db_table = "student_usersignupsource"
+        app_label = 'fake_models'
+        db_table = 'student_usersignupsource'
 
 
 class GeneratedCertificate(models.Model):
@@ -66,8 +66,8 @@ class GeneratedCertificate(models.Model):
 
     class Meta:
         unique_together = (('user', 'course_id'),)
-        app_label = "fake_models"
-        db_table = "certificates_generatedcertificate"
+        app_label = 'fake_models'
+        db_table = 'certificates_generatedcertificate'
 
 
 class UserProfile(models.Model):
@@ -111,8 +111,8 @@ class UserProfile(models.Model):
         return self.level_of_education
 
     class Meta:
-        app_label = "fake_models"
-        db_table = "auth_userprofile"
+        app_label = 'fake_models'
+        db_table = 'auth_userprofile'
 
 
 class SocialLink(models.Model):
@@ -122,8 +122,8 @@ class SocialLink(models.Model):
     social_link = models.CharField(max_length=100, blank=True)
 
     class Meta:
-        app_label = "fake_models"
-        db_table = "student_social_link"
+        app_label = 'fake_models'
+        db_table = 'student_social_link'
 
 
 class BaseFeedback(models.Model):
@@ -154,15 +154,15 @@ class FeedbackCourse(BaseFeedback):
 
     class Meta:
         """Set constrain for author an course id"""
-        unique_together = [["author", "course_id"]]
-        db_table = "eox_nelp_feedbackcourse"
+        unique_together = [['author', 'course_id']]
+        db_table = 'eox_nelp_feedbackcourse'
 
 
 class BlockCompletion(models.Model):
     """Mock"""
     id = models.BigAutoField(primary_key=True)  # pylint: disable=invalid-name
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
-    context_key = models.CharField(max_length=255, null=False, blank=False, db_column="course_key")
+    context_key = models.CharField(max_length=255, null=False, blank=False, db_column='course_key')
     modified = models.DateTimeField()
 
 
@@ -173,7 +173,7 @@ class CourseGradeFactory:  # pylint: disable=too-few-public-methods
         class DummyGrade:
             """dummy grade class"""
 
-            letter_grade = "Fail"
+            letter_grade = 'Fail'
             percent = 0.4
             passed = False
 
@@ -193,11 +193,11 @@ class PersistentCourseGrade(models.Model):
     percent_grade = models.FloatField(blank=False)
 
     class Meta:
-        app_label = "fake_models"
+        app_label = 'fake_models'
         unique_together = [
             ('course_id', 'user_id'),
         ]
-        db_table = "persistentcoursegrade"
+        db_table = 'persistentcoursegrade'
 
 
 class StudentModule(models.Model):
@@ -209,5 +209,5 @@ class StudentModule(models.Model):
     module_state_key = UsageKeyField(max_length=255, db_column='module_id')
 
     class Meta:
-        app_label = "fake_models"
+        app_label = 'fake_models'
         unique_together = (('student', 'module_state_key', 'course_id'),)

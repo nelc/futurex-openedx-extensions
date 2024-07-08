@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
+from typing import Any, Dict, List, Tuple
 
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
@@ -45,7 +46,7 @@ def is_valid_course_access_role(course_access_role: dict) -> bool:
     return True
 
 
-def optimize_access_roles_result(access_roles: dict, course_org: dict):
+def optimize_access_roles_result(access_roles: dict, course_org: dict) -> None:
     """
     Remove redundant course access roles that specify a course_id when the user already has access to the entire org.
 
@@ -109,7 +110,8 @@ def get_all_course_access_roles() -> dict:
     ).values(
         'id', 'user_id', 'role', 'org', 'course_id', 'course_org',
     )
-    result = {}
+
+    result: dict[int, dict] = {}
     for access_role in access_roles:
         if not is_valid_course_access_role(access_role):
             continue
@@ -142,12 +144,12 @@ def get_all_course_access_roles() -> dict:
     return result
 
 
-def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple[bool, dict]:
+def check_tenant_access(user: get_user_model, tenant_ids_string: str) -> tuple[bool, dict]:
     """
     Check if the user has access to the provided tenant IDs
 
     :param user: The user to check.
-    :type user: get_user_model()
+    :type user: get_user_model
     :param tenant_ids_string: Comma-separated string of tenant IDs
     :type tenant_ids_string: str
     :return: Tuple of a boolean indicating if the user has access, and a dictionary of error details if any
@@ -156,14 +158,14 @@ def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple
         tenant_ids = set(ids_string_to_list(tenant_ids_string))
     except ValueError as exc:
         return False, error_details_to_dictionary(
-            reason="Invalid tenant IDs provided. It must be a comma-separated list of integers",
+            reason='Invalid tenant IDs provided. It must be a comma-separated list of integers',
             error=str(exc)
         )
 
     wrong_tenant_ids = tenant_ids - set(get_all_tenant_ids())
     if wrong_tenant_ids:
         return False, error_details_to_dictionary(
-            reason="Invalid tenant IDs provided",
+            reason='Invalid tenant IDs provided',
             tenant_ids=list(wrong_tenant_ids)
         )
 
@@ -172,7 +174,7 @@ def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple
     inaccessible_tenants = tenant_ids - set(accessible_tenant_ids)
     if inaccessible_tenants:
         return False, error_details_to_dictionary(
-            reason="User does not have access to these tenants",
+            reason='User does not have access to these tenants',
             tenant_ids=list(inaccessible_tenants),
         )
 
@@ -181,26 +183,26 @@ def check_tenant_access(user: get_user_model(), tenant_ids_string: str) -> tuple
 
 class FXViewRoleInfoMetaClass(type):
     """Metaclass to provide role information to the view."""
-    _fx_views_with_roles = {'_all_view_names': {}}
+    _fx_views_with_roles: dict[str, Any] = {'_all_view_names': {}}
     fx_view_name = None
     fx_view_description = None
-    fx_default_read_write_roles = []
-    fx_default_read_only_roles = []
-    fx_allowed_read_methods = ['GET', 'HEAD', 'OPTIONS']
-    fx_allowed_write_methods = []
+    fx_default_read_write_roles: List[str] = []
+    fx_default_read_only_roles: List[str] = []
+    fx_allowed_read_methods: List[str] = ['GET', 'HEAD', 'OPTIONS']
+    fx_allowed_write_methods: List[str] = []
 
     @staticmethod
-    def get_read_methods():
+    def get_read_methods() -> List[str]:
         """Get a list of the read methods."""
         return ['GET', 'HEAD', 'OPTIONS']
 
     @staticmethod
-    def get_write_methods():
+    def get_write_methods() -> List[str]:
         """Get a list of the write methods."""
         return ['POST', 'PUT', 'PATCH', 'DELETE']
 
     @classmethod
-    def check_allowed_read_methods(mcs):
+    def check_allowed_read_methods(mcs) -> bool:
         """Check if the allowed read methods are valid."""
         wrong_methods = set(mcs.fx_allowed_read_methods) - set(mcs.get_read_methods())
         if wrong_methods:
@@ -209,7 +211,7 @@ class FXViewRoleInfoMetaClass(type):
         return True
 
     @classmethod
-    def check_allowed_write_methods(mcs):
+    def check_allowed_write_methods(mcs) -> bool:
         """Check if the allowed to write methods are valid."""
         wrong_methods = set(mcs.fx_allowed_write_methods) - set(mcs.get_write_methods())
         if wrong_methods:
@@ -218,11 +220,11 @@ class FXViewRoleInfoMetaClass(type):
         return True
 
     @classmethod
-    def is_write_supported(mcs):
+    def is_write_supported(mcs) -> bool:
         """Check if write is supported."""
         return bool(mcs.fx_allowed_write_methods)
 
-    def __init__(cls, name, bases, attrs):
+    def __init__(cls, name: str, bases: Tuple, attrs: Dict[str, Any]) -> None:
         """Initialize the metaclass."""
         super().__init__(name, bases, attrs)
 
@@ -298,11 +300,12 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
     @property
     def fx_permission_info(self) -> dict:
         """Get fx_permission_info from the request."""
-        return self.request.fx_permission_info if hasattr(self.request, 'fx_permission_info') else {}
+        return self.request.fx_permission_info if hasattr(  # type: ignore[attr-defined]
+            self.request, 'fx_permission_info') else {}  # type: ignore[attr-defined]
 
     @staticmethod
     @cache_dict(timeout='FX_CACHE_TIMEOUT_VIEW_ROLES', key_generator_or_name=cs.CACHE_NAME_ALL_VIEW_ROLES)
-    def get_allowed_roles_all_views() -> dict:
+    def get_allowed_roles_all_views() -> Dict[str, List[str]]:
         """
         Get the allowed roles for all views.
 
@@ -311,7 +314,7 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
         """
         fx_views_with_roles = get_fx_view_with_roles()
 
-        result = {}
+        result: dict[str, List] = {}
         for info in ViewAllowedRoles.objects.all():
             if info.view_name in result:
                 result[info.view_name].append(info.allowed_role)

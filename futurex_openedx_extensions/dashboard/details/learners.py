@@ -18,20 +18,20 @@ from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 
 def get_courses_count_for_learner_queryset(
     fx_permission_info: dict,
-    visible_courses_filter: bool = True,
-    active_courses_filter: bool = None,
-) -> QuerySet:
+    visible_courses_filter: bool | None = True,
+    active_courses_filter: bool | None = None,
+) -> Count:
     """
     Annotate the given queryset with the courses count for the learner.
 
     :param fx_permission_info: Dictionary containing permission information
     :type fx_permission_info: dict
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
-    :type visible_courses_filter: bool
+    :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
-    :type active_courses_filter: bool
-    :return: QuerySet of learners
-    :rtype: QuerySet
+    :type active_courses_filter: bool | None
+    :return: Count of learners
+    :rtype: Count
     """
     return Count(
         'courseenrollment',
@@ -54,18 +54,18 @@ def get_courses_count_for_learner_queryset(
 
 def get_certificates_count_for_learner_queryset(
     fx_permission_info: dict,
-    visible_courses_filter: bool = True,
-    active_courses_filter: bool = None,
-) -> QuerySet:
+    visible_courses_filter: bool | None = True,
+    active_courses_filter: bool | None = None,
+) -> Count:
     """
     Annotate the given queryset with the certificate counts.
 
     :param fx_permission_info: Dictionary containing permission information
     :type fx_permission_info: dict
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
-    :type visible_courses_filter: bool
+    :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
-    :type active_courses_filter: bool
+    :type active_courses_filter: bool | None
     :return: QuerySet of learners
     :rtype: QuerySet
     """
@@ -86,7 +86,7 @@ def get_certificates_count_for_learner_queryset(
 
 
 def get_learners_search_queryset(
-    search_text: str = None,
+    search_text: str | None = None,
     superuser_filter: bool | None = False,
     staff_filter: bool | None = False,
     active_filter: bool | None = True
@@ -95,13 +95,13 @@ def get_learners_search_queryset(
     Get the learners queryset for the given search text.
 
     :param search_text: Search text to filter the learners by
-    :type search_text: str
+    :type search_text: str | None
     :param superuser_filter: Value to filter superusers. None means no filter
-    :type superuser_filter: bool
+    :type superuser_filter: bool | None
     :param staff_filter: Value to filter staff users. None means no filter
-    :type staff_filter: bool
+    :type staff_filter: bool | None
     :param active_filter: Value to filter active users. None means no filter
-    :type active_filter: bool
+    :type active_filter: bool | None
     :return: QuerySet of learners
     :rtype: QuerySet
     """
@@ -127,9 +127,9 @@ def get_learners_search_queryset(
 
 def get_learners_queryset(
     fx_permission_info: dict,
-    search_text: str = None,
-    visible_courses_filter: bool = True,
-    active_courses_filter: bool = None
+    search_text: str | None = None,
+    visible_courses_filter: bool | None = True,
+    active_courses_filter: bool | None = None
 ) -> QuerySet:
     """
     Get the learners queryset for the given tenant IDs and search text.
@@ -137,7 +137,7 @@ def get_learners_queryset(
     :param fx_permission_info: Dictionary containing permission information
     :type fx_permission_info: dict
     :param search_text: Search text to filter the learners by
-    :type search_text: str
+    :type search_text: str | None
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter
     :type visible_courses_filter: bool
     :param active_courses_filter: Value to filter courses on active status. None means no filter
@@ -170,14 +170,14 @@ def get_learners_queryset(
     return queryset
 
 
-def get_learners_by_course_queryset(course_id: str, search_text: str = None) -> QuerySet:
+def get_learners_by_course_queryset(course_id: str, search_text: str | None = None) -> QuerySet:
     """
     Get the learners queryset for the given course ID.
 
     :param course_id: The course ID to get the learners for
     :type course_id: str
     :param search_text: Search text to filter the learners by
-    :type search_text: str
+    :type search_text: str | None
     :return: QuerySet of learners
     :rtype: QuerySet
     """
@@ -227,7 +227,10 @@ def get_learners_by_course_queryset(course_id: str, search_text: str = None) -> 
 
 
 def get_learner_info_queryset(
-    fx_permission_info: dict, user_id: int, visible_courses_filter: bool = True, active_courses_filter: bool = None
+    fx_permission_info: dict,
+    user_id: int,
+    visible_courses_filter: bool | None = True,
+    active_courses_filter: bool | None = None
 ) -> QuerySet:
     """
     Get the learner queryset for the given user ID. This method assumes a valid user ID.
@@ -237,9 +240,9 @@ def get_learner_info_queryset(
     :param user_id: The user ID to get the learner for
     :type user_id: int
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter
-    :type visible_courses_filter: bool
+    :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter
-    :type active_courses_filter: bool
+    :type active_courses_filter: bool | None
     :return: QuerySet of learners
     :rtype: QuerySet
     """

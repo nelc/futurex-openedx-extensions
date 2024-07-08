@@ -18,7 +18,7 @@ class ViewAllowedRoles(models.Model):
         verbose_name_plural = 'View Allowed Roles'
         unique_together = ('view_name', 'allowed_role')
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs):  # type: ignore
         """Override the save method to apply data cleanup"""
         self.clean()
         super().save(*args, **kwargs)
