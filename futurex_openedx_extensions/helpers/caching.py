@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import functools
 import logging
+from datetime import timedelta
 from typing import Any, Callable, Dict
 
 from django.conf import settings
 from django.core.cache import cache
+from django.utils import timezone
 
 log = logging.getLogger(__name__)
 
@@ -43,10 +45,23 @@ def cache_dict(timeout: int | str, key_generator_or_name: str | Callable) -> Cal
                 log.exception('cache_dict: error generating cache key: %s', exc)
 
             result = cache.get(cache_key) if cache_key else None
+            if result is not None:
+                result = result.get('data')
+
             if result is None:
                 result = func(*args, **kwargs)
+                now_datetime = timezone.now()
                 if cache_key and result and isinstance(result, dict):
-                    cache.set(cache_key, result, timeout_seconds)
+                    timeout_seconds = float(timeout_seconds)  # type: ignore
+                    cache.set(
+                        cache_key,
+                        {
+                            'created_datetime': now_datetime,
+                            'expiry_datetime': now_datetime + timedelta(seconds=timeout_seconds),
+                            'data': result,
+                        },
+                        timeout_seconds,
+                    )
                 elif cache_key and result:
                     # log: cache_dict: expecting dictionary result from <<function name>> but got <<result type>>
                     log.error(

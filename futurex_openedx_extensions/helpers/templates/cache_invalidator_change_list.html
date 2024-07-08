@@ -1,0 +1,47 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<h1>Cache Invalidator View</h1>
+    <div style="display: flex; flex-flow: column">
+    {% for cache_name, cache_info in fx_cache_info.items %}
+        <table>
+            <tr>
+                <td style="width: 450px;">
+                    <h2>{{ cache_info.short_description }}</h2>
+                    {{ cache_info.long_description }}
+                </td>
+                <td>
+                    <form action="{% url 'admin:fx_helpers_cacheinvalidator_invalidate_cache' cache_name %}" method="post" style="margin-top: 20px;">
+                        {% csrf_token %}
+                        <input type="submit" value="Invalidate Cache" class="default">
+                    </form>
+                </td>
+            <tr>
+                <td>Cache Key:</td>
+                <td>{{ cache_name }}</td>
+            </tr>
+            <tr>
+                <td>Cached data available:</td>
+                <td>{{ cache_info.available }}</td>
+            </tr>
+            <tr>
+                <td>Created on:</td>
+                <td>{{ cache_info.created_datetime }}</td>
+            </tr>
+            <tr>
+                <td>Expires on:</td>
+                <td>{{ cache_info.expiry_datetime }}</td>
+            </tr>
+            <tr>
+                <td>Remaining minutes:</td>
+                <td>{{ cache_info.remaining_minutes }}</td>
+            </tr>
+            <tr>
+                <td>Data:</td>
+                <td><pre style="max-height: 160px; overflow-y: auto;">{{ cache_info.data }}</pre></td>
+            </tr>
+        </table>
+    {% endfor %}
+    </div>
+{% endblock %}
