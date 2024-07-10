@@ -8,7 +8,7 @@ asgiref==3.8.1
     # via
     #   -r requirements/quality.txt
     #   django
-astroid==3.2.2
+astroid==3.2.4
     # via
     #   -r requirements/quality.txt
     #   pylint
@@ -22,10 +22,14 @@ build==1.2.1
     # via
     #   -r requirements/pip-tools.txt
     #   pip-tools
-cachetools==5.3.3
+cachetools==5.4.0
     # via
     #   -r requirements/ci.txt
     #   tox
+certifi==2024.7.4
+    # via
+    #   -r requirements/quality.txt
+    #   clickhouse-connect
 chardet==5.2.0
     # via
     #   -r requirements/ci.txt
@@ -43,6 +47,8 @@ click-log==0.4.0
     # via
     #   -r requirements/quality.txt
     #   edx-lint
+clickhouse-connect==0.5.25
+    # via -r requirements/quality.txt
 code-annotations==1.8.0
     # via
     #   -r requirements/quality.txt
@@ -51,11 +57,13 @@ colorama==0.4.6
     # via
     #   -r requirements/ci.txt
     #   tox
-coverage[toml]==7.5.4
+coverage[toml]==7.6.0
     # via
     #   -r requirements/quality.txt
     #   pytest-cov
-diff-cover==9.1.0
+ddt==1.7.2
+    # via -r requirements/quality.txt
+diff-cover==9.1.1
     # via -r requirements/dev.in
 dill==0.3.8
     # via
@@ -65,7 +73,7 @@ distlib==0.3.8
     # via
     #   -r requirements/ci.txt
     #   virtualenv
-django==4.2.13
+django==4.2.14
     # via
     #   -c https://raw.githubusercontent.com/edx/edx-lint/master/edx_lint/files/common_constraints.txt
     #   -r requirements/quality.txt
@@ -94,13 +102,13 @@ dnspython==2.6.1
     #   pymongo
 edx-i18n-tools==1.6.0
     # via -r requirements/dev.in
-edx-lint==5.3.6
+edx-lint==5.3.7
     # via -r requirements/quality.txt
 edx-opaque-keys[django]==2.10.0
     # via -r requirements/quality.txt
 eox-tenant==10.0.0
     # via -r requirements/quality.txt
-exceptiongroup==1.2.1
+exceptiongroup==1.2.2
     # via
     #   -r requirements/quality.txt
     #   pytest
@@ -141,6 +149,10 @@ lxml[html-clean,html_clean]==5.2.2
     #   lxml-html-clean
 lxml-html-clean==0.1.1
     # via lxml
+lz4==4.3.3
+    # via
+    #   -r requirements/quality.txt
+    #   clickhouse-connect
 markupsafe==2.1.5
     # via
     #   -r requirements/quality.txt
@@ -150,7 +162,7 @@ mccabe==0.7.0
     #   -r requirements/quality.txt
     #   flake8
     #   pylint
-mypy==1.10.1
+mypy==1.11.0
     # via -r requirements/quality.txt
 mypy-extensions==1.0.0
     # via
@@ -203,7 +215,7 @@ pyflakes==3.2.0
     #   flake8
 pygments==2.18.0
     # via diff-cover
-pylint==3.2.5
+pylint==3.2.6
     # via
     #   -r requirements/quality.txt
     #   edx-lint
@@ -236,7 +248,7 @@ pyproject-hooks==1.1.0
     #   -r requirements/pip-tools.txt
     #   build
     #   pip-tools
-pytest==8.2.2
+pytest==8.3.1
     # via
     #   -r requirements/quality.txt
     #   pytest-cov
@@ -245,10 +257,16 @@ pytest-cov==5.0.0
     # via -r requirements/quality.txt
 pytest-django==4.8.0
     # via -r requirements/quality.txt
+python-dateutil==2.9.0.post0
+    # via -r requirements/quality.txt
 python-slugify==8.0.4
     # via
     #   -r requirements/quality.txt
     #   code-annotations
+pytz==2024.1
+    # via
+    #   -r requirements/quality.txt
+    #   clickhouse-connect
 pyyaml==6.0.1
     # via
     #   -r requirements/quality.txt
@@ -258,11 +276,12 @@ six==1.16.0
     # via
     #   -r requirements/quality.txt
     #   edx-lint
+    #   python-dateutil
 snowballstemmer==2.2.0
     # via
     #   -r requirements/quality.txt
     #   pydocstyle
-sqlparse==0.5.0
+sqlparse==0.5.1
     # via
     #   -r requirements/quality.txt
     #   django
@@ -288,7 +307,7 @@ tomli==2.0.1
     #   pyproject-api
     #   pytest
     #   tox
-tomlkit==0.12.5
+tomlkit==0.13.0
     # via
     #   -r requirements/quality.txt
     #   pylint
@@ -302,6 +321,10 @@ typing-extensions==4.12.2
     #   edx-opaque-keys
     #   mypy
     #   pylint
+urllib3==2.2.2
+    # via
+    #   -r requirements/quality.txt
+    #   clickhouse-connect
 virtualenv==20.26.3
     # via
     #   -r requirements/ci.txt
@@ -314,6 +337,10 @@ zipp==3.19.2
     # via
     #   -r requirements/pip-tools.txt
     #   importlib-metadata
+zstandard==0.23.0
+    # via
+    #   -r requirements/quality.txt
+    #   clickhouse-connect
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip

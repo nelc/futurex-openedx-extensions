@@ -8,7 +8,11 @@ asgiref==3.8.1
     # via django
 backports-zoneinfo==0.2.1
     # via django
-django==4.2.13
+certifi==2024.7.4
+    # via clickhouse-connect
+clickhouse-connect==0.5.25
+    # via -r requirements/base.in
+django==4.2.14
     # via
     #   -c https://raw.githubusercontent.com/edx/edx-lint/master/edx_lint/files/common_constraints.txt
     #   -r requirements/base.in
@@ -17,7 +21,15 @@ django-model-utils==4.5.1
     # via -r requirements/base.in
 eox-tenant==10.0.0
     # via -r requirements/base.in
-sqlparse==0.5.0
+lz4==4.3.3
+    # via clickhouse-connect
+pytz==2024.1
+    # via clickhouse-connect
+sqlparse==0.5.1
     # via django
 typing-extensions==4.12.2
     # via asgiref
+urllib3==2.2.2
+    # via clickhouse-connect
+zstandard==0.23.0
+    # via clickhouse-connect

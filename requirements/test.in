@@ -6,6 +6,7 @@
 pytest-cov                # pytest extension for code coverage statistics
 pytest-django             # pytest extension for better Django support
 code-annotations          # provides commands used by the pii_check make target.
+ddt
 
 # eox-tenant requirements
 six
@@ -21,3 +22,4 @@ backports.zoneinfo;python_version<"3.9"
 
 # other requirements
 django-simple-history<3.7.0  # 3.7.0 dropped support for Django 3.2
+python-dateutil
