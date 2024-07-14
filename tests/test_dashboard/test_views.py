@@ -460,17 +460,17 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
         self.assertDictEqual(json.loads(response.content), {
             '1': {
                 'lms_root_url': 'https://s1.sample.com',
-                'studio_root_url': 'http://studio.example.com',
+                'studio_root_url': 'https://studio.example.com',
                 'platform_name': '', 'logo_image_url': ''
             },
             '2': {
                 'lms_root_url': 'https://s2.sample.com',
-                'studio_root_url': 'http://studio.example.com',
+                'studio_root_url': 'https://studio.example.com',
                 'platform_name': '', 'logo_image_url': ''
             },
             '7': {
                 'lms_root_url': 'https://s7.sample.com',
-                'studio_root_url': 'http://studio.example.com',
+                'studio_root_url': 'https://studio.example.com',
                 'platform_name': '', 'logo_image_url': ''
             },
         })

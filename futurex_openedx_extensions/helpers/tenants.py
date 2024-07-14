@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List
+from urllib.parse import urlparse
 
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment
 from django.conf import settings
@@ -50,6 +51,24 @@ def get_all_tenants() -> QuerySet:
     return TenantConfig.objects.exclude(id__in=get_excluded_tenant_ids())
 
 
+def fix_lms_base(domain_name: str) -> str:
+    """Fix the LMS base URL"""
+    if not domain_name:
+        return ''
+
+    lms_root_parts = urlparse(settings.LMS_ROOT_URL)
+    domain_name_parts = urlparse(domain_name)
+    if not domain_name_parts.scheme:
+        domain_name_parts = urlparse(f'{lms_root_parts.scheme}://{domain_name}')
+
+    port = f':{domain_name_parts.port}' if domain_name_parts.port else ''
+
+    if not port:
+        port = f':{lms_root_parts.port}' if lms_root_parts.port else ''
+
+    return f'{domain_name_parts.scheme}://{domain_name_parts.hostname}{port}'
+
+
 @cache_dict(timeout='FX_CACHE_TIMEOUT_TENANTS_INFO', key_generator_or_name=cs.CACHE_NAME_ALL_TENANTS_INFO)
 def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
     """
@@ -60,12 +79,6 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
     :return: Dictionary of tenant IDs and Sites
     :rtype: Dict[str, Any]
     """
-    def _fix_lms_base(domain_name: str) -> str:
-        """Fix the LMS base URL"""
-        if not domain_name:
-            return ''
-        return f'https://{domain_name}' if not domain_name.startswith('http') else domain_name
-
     tenant_ids = list(get_all_tenants().values_list('id', flat=True))
     info = TenantConfig.objects.filter(id__in=tenant_ids).values('id', 'route__domain', 'lms_configs')
     return {
@@ -77,8 +90,8 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
             tenant['id']: {
                 'lms_root_url': get_first_not_empty_item([
                     (tenant['lms_configs'].get('LMS_ROOT_URL') or '').strip(),
-                    _fix_lms_base((tenant['lms_configs'].get('LMS_BASE') or '').strip()),
-                    _fix_lms_base((tenant['lms_configs'].get('SITE_NAME') or '').strip()),
+                    fix_lms_base((tenant['lms_configs'].get('LMS_BASE') or '').strip()),
+                    fix_lms_base((tenant['lms_configs'].get('SITE_NAME') or '').strip()),
                 ], default=''),
                 'studio_root_url': settings.CMS_ROOT_URL,
                 'platform_name': get_first_not_empty_item([

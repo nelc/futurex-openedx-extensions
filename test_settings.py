@@ -93,4 +93,5 @@ REST_FRAMEWORK = {
     },
 }
 
-CMS_ROOT_URL = 'http://studio.example.com'
+LMS_ROOT_URL = 'https://lms.example.com'
+CMS_ROOT_URL = 'https://studio.example.com'

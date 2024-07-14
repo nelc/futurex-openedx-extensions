@@ -227,8 +227,9 @@ def test_get_all_tenants_info_configs(
     return_value=[1, 2, 3, 4, 5, 6, 7, 8]
 )
 @patch('futurex_openedx_extensions.helpers.tenants.get_first_not_empty_item')
+@patch('futurex_openedx_extensions.helpers.tenants.fix_lms_base')
 def test_get_all_tenants_info_config_priorities(
-    mock_get_first_not_empty_item, base_data, config_keys, data_prefix, call_index
+    mock_fix_lms_base, mock_get_first_not_empty_item, base_data, config_keys, data_prefix, call_index
 ):  # pylint: disable=unused-argument
     """Verify get_all_tenants_info is respecting the priority of the config keys."""
     assert not tenants.get_all_tenants_info()['tenant_ids']
@@ -236,6 +237,8 @@ def test_get_all_tenants_info_config_priorities(
     for config_key in config_keys:
         tenant_config.lms_configs[config_key] = f'{data_prefix}{config_key}_value'
     tenant_config.save()
+
+    mock_fix_lms_base.side_effect = lambda x: x
 
     _ = tenants.get_all_tenants_info()
     assert mock_get_first_not_empty_item.call_args_list[call_index][0][0] == [
@@ -382,3 +385,39 @@ def test_get_user_id_from_username_tenants_inactive_enrollment(base_data):  # py
         course__org__in=['ORG1', 'ORG2'],
     ).update(is_active=False)
     assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])
+
+
+@pytest.mark.parametrize('lms_root_scheme, domain_name, expected_result', [
+    ('http', 'example.com', 'http://example.com'),
+    ('http', 'http://example.com', 'http://example.com'),
+    ('http', 'https://example.com', 'https://example.com'),
+    ('https', 'example.com', 'https://example.com'),
+    ('https', 'http://example.com', 'http://example.com'),
+    ('https', 'https://example.com', 'https://example.com'),
+])
+def test_fix_lms_base_scheme(lms_root_scheme, domain_name, expected_result):
+    """Verify that fix_lms_base sets the correct scheme for the result."""
+    with override_settings(LMS_ROOT_URL=f'{lms_root_scheme}://lms.example.com'):
+        assert expected_result == tenants.fix_lms_base(domain_name)
+
+
+@pytest.mark.parametrize('lms_root_port, domain_name, expected_result', [
+    (None, 'example.com', 'https://example.com'),
+    (None, 'example.com:8080', 'https://example.com:8080'),
+    (3030, 'example.com', 'https://example.com:3030'),
+    (3030, 'example.com:8080', 'https://example.com:8080'),
+])
+def test_fix_lms_base_port(lms_root_port, domain_name, expected_result):
+    """Verify that fix_lms_base sets the correct port for the result."""
+    port = f':{lms_root_port}' if lms_root_port else ''
+    with override_settings(LMS_ROOT_URL=f'https://lms.example.com{port}'):
+        assert expected_result == tenants.fix_lms_base(domain_name)
+
+
+@pytest.mark.parametrize('domain_name', [
+    None, '',
+])
+def test_fix_lms_base_empty_domain_name(domain_name):
+    """Verify that fix_lms_base sets the correct port for the result."""
+    assert tenants.fix_lms_base(domain_name) == ''
+
