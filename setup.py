@@ -144,6 +144,9 @@ setup(
     ),
 
     include_package_data=True,
+    package_data={
+        'futurex_openedx_extensions': ['helpers/assets/*.yml'],
+    },
     install_requires=load_requirements('requirements/base.in'),
     python_requires='>=3.8',
     zip_safe=False,

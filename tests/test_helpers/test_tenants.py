@@ -230,7 +230,7 @@ def test_get_all_tenants_info_configs(
 @patch('futurex_openedx_extensions.helpers.tenants.fix_lms_base')
 def test_get_all_tenants_info_config_priorities(
     mock_fix_lms_base, mock_get_first_not_empty_item, base_data, config_keys, data_prefix, call_index
-):  # pylint: disable=unused-argument
+):  # pylint: disable=unused-argument, too-many-arguments
     """Verify get_all_tenants_info is respecting the priority of the config keys."""
     assert not tenants.get_all_tenants_info()['tenant_ids']
     tenant_config = TenantConfig.objects.create()
@@ -420,4 +420,3 @@ def test_fix_lms_base_port(lms_root_port, domain_name, expected_result):
 def test_fix_lms_base_empty_domain_name(domain_name):
     """Verify that fix_lms_base sets the correct port for the result."""
     assert tenants.fix_lms_base(domain_name) == ''
-

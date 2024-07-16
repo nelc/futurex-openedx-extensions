@@ -3,6 +3,7 @@ from rest_framework.pagination import PageNumberPagination
 
 
 class DefaultPagination(PageNumberPagination):
-    page_size = 20
-    page_size_query_param = 'page_size'
-    max_page_size = 100
+    """Default pagination settings for the API views."""
+    page_size: int = 20
+    page_size_query_param: str = 'page_size'
+    max_page_size: int = 100

@@ -16,6 +16,7 @@ from futurex_openedx_extensions.helpers.roles import (
     check_tenant_access,
     get_all_course_access_roles,
     get_fx_view_with_roles,
+    get_usernames_with_access_roles,
     is_valid_course_access_role,
     is_view_exist,
     is_view_support_write,
@@ -559,3 +560,19 @@ def test_fx_view_role_mixin_fx_permission_info_available():
     mixin = FXViewRoleInfoMixin()
     mixin.request = Mock(fx_permission_info={'dummy': ['data']})
     assert mixin.fx_permission_info == {'dummy': ['data']}
+
+
+@pytest.mark.django_db
+def test_get_usernames_with_access_roles(base_data):  # pylint: disable=unused-argument
+    """Verify that get_usernames_with_access_roles returns the expected value."""
+    user3 = get_user_model().objects.get(username='user3')
+    assert user3.is_active is True
+    expected_result = ['user1', 'user2', 'user3', 'user4', 'user8', 'user9', 'user60']
+
+    assert set(get_usernames_with_access_roles(['ORG1', 'ORG2'])) == set(expected_result)
+
+    user3.is_active = False
+    user3.save()
+    expected_result.remove('user3')
+    assert set(get_usernames_with_access_roles(['ORG1', 'ORG2'], active_filter=True)) == set(expected_result)
+    assert get_usernames_with_access_roles(['ORG1', 'ORG2'], active_filter=False) == ['user3']

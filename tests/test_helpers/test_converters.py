@@ -1,10 +1,12 @@
 
 """Tests for converters helpers."""
-from unittest.mock import Mock
+from datetime import date
+from unittest.mock import Mock, patch
 
 import pytest
 
 from futurex_openedx_extensions.helpers import converters
+from futurex_openedx_extensions.helpers.converters import DateMethods
 
 
 @pytest.mark.parametrize('ids_string, expected', [
@@ -69,3 +71,72 @@ def test_relative_url_to_absolute_url_with_site():
     request = Mock()
     request.site.domain = 'https://example-converter.com'
     assert converters.relative_url_to_absolute_url('/test9', request) == 'https://example-converter.com/test9'
+
+
+@pytest.mark.parametrize('date_method_string, expected_error_msg', [
+    ('bad_method', 'Invalid date method: bad_method'),
+    (
+        f'bad_method{DateMethods.ARG_SEPARATOR}9',
+        f'Invalid date method: bad_method{DateMethods.ARG_SEPARATOR}',
+    ),
+    (
+        f'today{DateMethods.ARG_SEPARATOR}not_a_number',
+        f'Invalid integer given to method: today{DateMethods.ARG_SEPARATOR}not_a_number',
+    ),
+    (
+        f'many_separators{DateMethods.ARG_SEPARATOR}{DateMethods.ARG_SEPARATOR}',
+        (
+            f'Date method contains many separators: many_separators{DateMethods.ARG_SEPARATOR}'
+            f'{DateMethods.ARG_SEPARATOR}'
+        ),
+    ),
+    (None, 'Date method string is empty'),
+    ('', 'Date method string is empty'),
+])
+def test_date_methods_parse_date_method_invalid_argument(date_method_string, expected_error_msg):
+    """Verify that DateMethods.parse_date_method raises ValueError for invalid date method."""
+    with pytest.raises(ValueError) as exc_info:
+        DateMethods.parse_date_method(date_method_string)
+    assert exc_info.value.args[0] == expected_error_msg
+
+
+@pytest.mark.parametrize('method, expected', [
+    ('today', '2023-12-26'),
+    ('yesterday', '2023-12-25'),
+    ('tomorrow', '2023-12-27'),
+    ('month_start', '2023-12-01'),
+    ('month_end', '2023-12-31'),
+    ('year_start', '2023-01-01'),
+    ('year_end', '2023-12-31'),
+    ('next_month_start', '2024-01-01'),
+    ('next_month_end', '2024-01-31'),
+    ('next_year_start', '2024-01-01'),
+    ('next_year_end', '2024-12-31'),
+    ('last_month_start', '2023-11-01'),
+    ('last_month_end', '2023-11-30'),
+    ('last_year_start', '2022-01-01'),
+    ('last_year_end', '2022-12-31'),
+    ('days,1', '2023-12-27'),
+    ('days,-1', '2023-12-25'),
+    ('months,1', '2024-01-26'),
+    ('months,-1', '2023-11-26'),
+    ('years,1', '2024-12-26'),
+    ('years,-1', '2022-12-26'),
+    ('2024-12-26', '2024-12-26'),
+])
+def test_date_methods_parse_date_method(method, expected):
+    """Verify that DateMethods.parse_date_method return correct values."""
+    time_freeze = date(2023, 12, 26)
+
+    with patch('futurex_openedx_extensions.helpers.converters.datetime') as mock_datetime:
+        mock_datetime.now.return_value = time_freeze
+        assert DateMethods.parse_date_method(method) == expected
+
+
+def test_date_methods_valid_supported_methods():
+    """Verify that all methods in DateMethods.DATE_METHODS are valid."""
+    for method_id in DateMethods.DATE_METHODS:
+        method_parts = method_id.split(DateMethods.ARG_SEPARATOR)
+        method = method_parts[0]
+        assert hasattr(DateMethods, method), f'DateMethods.DATE_METHODS contains a non-existing method! ({method})'
+        assert all(not item for item in method_parts[1:]), f'Bad DateMethods.DATE_METHODS format! ({method_id})'
