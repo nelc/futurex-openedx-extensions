@@ -1,0 +1,15 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools %}
+    {{ block.super }}
+    {% if fx_missing_queries_count > 0 %}
+        <div class="button-group" style="margin-bottom: 8px;">
+            <span style="color: #8d050d; font-weight: bold">
+                There are {{ fx_missing_queries_count }} missing queries according to latest configurations.
+            </span>
+            <a href="{% url 'admin:fx_helpers_clickhousequery_load_missing_queries' %}" class="button">
+                Click here to add them all
+            </a>
+        </div>
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,71 @@
+default_queries:
+  course:
+    v1:
+      activities-day:
+        description: |
+          Course activities per day for all users in the given tenants
+        query: |
+          SELECT toDate(emission_time) AS day, COUNT(actor_id) AS activities
+          FROM xapi.xapi_events_all_parsed
+          WHERE org in %(__orgs_of_tenants__)s
+              AND JSONExtractString(simpleJSONExtractRaw(event_str, 'actor'), 'name') NOT IN %(__ca_users_of_tenants__)s
+              AND if(%(activity_date_from)s IS NULL, 1, emission_time >= %(activity_date_from)s)
+              AND if(%(activity_date_to)s IS NULL, 1, emission_time < %(activity_date_to)s)
+          GROUP BY day
+          ORDER BY day
+          DESC
+        params_config:
+          activity_date_from:
+            type: date
+            sample_data: last_month_start
+            optional: true
+          activity_date_to:
+            type: date
+            sample_data: last_month_end
+            optional: true
+
+      activities-month:
+        description: |
+          Course activities per day for all users in the given tenants
+        query: |
+          SELECT toStartOfMonth(emission_time) AS month, COUNT(actor_id) AS activities
+          FROM xapi.xapi_events_all_parsed
+          WHERE org in %(__orgs_of_tenants__)s
+              AND JSONExtractString(simpleJSONExtractRaw(event_str, 'actor'), 'name') NOT IN %(__ca_users_of_tenants__)s
+              AND if(%(activity_date_from)s IS NULL, 1, emission_time >= %(activity_date_from)s)
+              AND if(%(activity_date_to)s IS NULL, 1, emission_time < %(activity_date_to)s)
+          GROUP BY month
+          ORDER BY month
+          DESC
+        params_config:
+          activity_date_from:
+            type: date
+            sample_data: last_month_start
+            optional: true
+          activity_date_to:
+            type: date
+            sample_data: last_month_end
+            optional: true
+
+      activities-year:
+        description: |
+          Course activities per day for all users in the given tenants
+        query: |
+          SELECT toYear(emission_time) AS year, COUNT(actor_id) AS activities
+          FROM xapi.xapi_events_all_parsed
+          WHERE org in %(__orgs_of_tenants__)s
+              AND JSONExtractString(simpleJSONExtractRaw(event_str, 'actor'), 'name') NOT IN %(__ca_users_of_tenants__)s
+              AND if(%(activity_date_from)s IS NULL, 1, emission_time >= %(activity_date_from)s)
+              AND if(%(activity_date_to)s IS NULL, 1, emission_time < %(activity_date_to)s)
+          GROUP BY year
+          ORDER BY year
+          DESC
+        params_config:
+          activity_date_from:
+            type: date
+            sample_data: last_month_start
+            optional: true
+          activity_date_to:
+            type: date
+            sample_data: last_month_end
+            optional: true

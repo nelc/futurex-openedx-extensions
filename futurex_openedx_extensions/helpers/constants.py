@@ -23,8 +23,12 @@ CACHE_NAMES = {
     },
 }
 
-COURSE_ID_REGX = r'(?P<course_id>course-v1:(?P<org>[a-zA-Z0-9_]+)\+(?P<course>[a-zA-Z0-9_]+)\+(?P<run>[a-zA-Z0-9_]+))'
+CLICKHOUSE_FX_BUILTIN_ORG_IN_TENANTS = '__orgs_of_tenants__'
+CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS = '__ca_users_of_tenants__'
 
+CLICKHOUSE_QUERY_SLUG_PATTERN = r'[a-z0-9_\-.]+'
+
+COURSE_ID_REGX = r'(?P<course_id>course-v1:(?P<org>[a-zA-Z0-9_]+)\+(?P<course>[a-zA-Z0-9_]+)\+(?P<run>[a-zA-Z0-9_]+))'
 
 COURSE_STATUSES = {
     'active': 'active',
