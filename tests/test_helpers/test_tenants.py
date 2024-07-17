@@ -118,7 +118,8 @@ def test_get_all_course_org_filter_list_is_being_cached():
     """Verify that get_all_course_org_filter_list is being cached."""
     assert cache.get(cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST) is None
     result = tenants.get_all_course_org_filter_list()
-    assert cache.get(cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST) == result
+    assert cache.get(cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST)['data'] == result
+    cache.set(cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST, None)
 
 
 @pytest.mark.django_db
@@ -248,7 +249,8 @@ def test_get_all_tenants_info_is_being_cached():
     """Verify that get_all_tenants_info is being cached."""
     assert cache.get(cs.CACHE_NAME_ALL_TENANTS_INFO) is None
     result = tenants.get_all_tenants_info()
-    assert cache.get(cs.CACHE_NAME_ALL_TENANTS_INFO) == result
+    assert cache.get(cs.CACHE_NAME_ALL_TENANTS_INFO)['data'] == result
+    cache.set(cs.CACHE_NAME_ALL_TENANTS_INFO, None)
 
 
 @pytest.mark.django_db

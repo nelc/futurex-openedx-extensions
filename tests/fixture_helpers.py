@@ -1,6 +1,9 @@
 """Fixtures for tests."""
 from unittest.mock import Mock
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
+
 
 def get_user1_fx_permission_info():
     """Get permission information for user1."""
@@ -36,3 +39,13 @@ def get_tenants_orgs(tenant_id):
     for tenant in tenant_id:
         result.update(orgs[tenant])
     return list(result)
+
+
+def set_user(request, user_id=1):
+    """Set user for request."""
+    if user_id is None:
+        request.user = None
+    elif user_id == 0:
+        request.user = AnonymousUser()
+    else:
+        request.user = get_user_model().objects.get(id=user_id)

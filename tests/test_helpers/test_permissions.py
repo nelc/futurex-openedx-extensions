@@ -4,8 +4,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 from common.djangoapps.student.models import CourseAccessRole
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.test import APIRequestFactory
 
@@ -17,17 +15,7 @@ from futurex_openedx_extensions.helpers.permissions import (
     IsSystemStaff,
     get_tenant_limited_fx_permission_info,
 )
-from tests.fixture_helpers import get_all_orgs
-
-
-def set_user(request, user_id):
-    """Set user"""
-    if user_id is None:
-        request.user = None
-    elif user_id == 0:
-        request.user = AnonymousUser()
-    else:
-        request.user = get_user_model().objects.get(id=user_id)
+from tests.fixture_helpers import get_all_orgs, set_user
 
 
 @pytest.fixture
