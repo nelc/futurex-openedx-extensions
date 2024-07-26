@@ -8,7 +8,7 @@ asgiref==3.8.1
     # via
     #   -r requirements/test.txt
     #   django
-astroid==3.2.2
+astroid==3.2.4
     # via
     #   pylint
     #   pylint-celery
@@ -17,6 +17,10 @@ backports-zoneinfo==0.2.1 ; python_version < "3.9"
     #   -r requirements/test.txt
     #   django
     #   djangorestframework
+certifi==2024.7.4
+    # via
+    #   -r requirements/test.txt
+    #   clickhouse-connect
 click==8.1.7
     # via
     #   -r requirements/test.txt
@@ -25,17 +29,21 @@ click==8.1.7
     #   edx-lint
 click-log==0.4.0
     # via edx-lint
+clickhouse-connect==0.5.25
+    # via -r requirements/test.txt
 code-annotations==1.8.0
     # via
     #   -r requirements/test.txt
     #   edx-lint
-coverage[toml]==7.5.4
+coverage[toml]==7.6.0
     # via
     #   -r requirements/test.txt
     #   pytest-cov
+ddt==1.7.2
+    # via -r requirements/test.txt
 dill==0.3.8
     # via pylint
-django==4.2.13
+django==4.2.14
     # via
     #   -c https://raw.githubusercontent.com/edx/edx-lint/master/edx_lint/files/common_constraints.txt
     #   -r requirements/test.txt
@@ -61,13 +69,13 @@ dnspython==2.6.1
     # via
     #   -r requirements/test.txt
     #   pymongo
-edx-lint==5.3.6
+edx-lint==5.3.7
     # via -r requirements/quality.in
 edx-opaque-keys[django]==2.10.0
     # via -r requirements/test.txt
 eox-tenant==10.0.0
     # via -r requirements/test.txt
-exceptiongroup==1.2.1
+exceptiongroup==1.2.2
     # via
     #   -r requirements/test.txt
     #   pytest
@@ -91,6 +99,10 @@ jinja2==3.1.4
     #   code-annotations
 jsonfield==3.1.0
     # via -r requirements/test.txt
+lz4==4.3.3
+    # via
+    #   -r requirements/test.txt
+    #   clickhouse-connect
 markupsafe==2.1.5
     # via
     #   -r requirements/test.txt
@@ -99,7 +111,7 @@ mccabe==0.7.0
     # via
     #   flake8
     #   pylint
-mypy==1.10.1
+mypy==1.11.0
     # via -r requirements/quality.in
 mypy-extensions==1.0.0
     # via mypy
@@ -127,7 +139,7 @@ pydocstyle==6.3.0
     # via -r requirements/quality.in
 pyflakes==3.2.0
     # via flake8
-pylint==3.2.5
+pylint==3.2.6
     # via
     #   edx-lint
     #   pylint-celery
@@ -145,7 +157,7 @@ pymongo==4.8.0
     # via
     #   -r requirements/test.txt
     #   edx-opaque-keys
-pytest==8.2.2
+pytest==8.3.1
     # via
     #   -r requirements/test.txt
     #   pytest-cov
@@ -154,10 +166,16 @@ pytest-cov==5.0.0
     # via -r requirements/test.txt
 pytest-django==4.8.0
     # via -r requirements/test.txt
+python-dateutil==2.9.0.post0
+    # via -r requirements/test.txt
 python-slugify==8.0.4
     # via
     #   -r requirements/test.txt
     #   code-annotations
+pytz==2024.1
+    # via
+    #   -r requirements/test.txt
+    #   clickhouse-connect
 pyyaml==6.0.1
     # via
     #   -r requirements/test.txt
@@ -166,9 +184,10 @@ six==1.16.0
     # via
     #   -r requirements/test.txt
     #   edx-lint
+    #   python-dateutil
 snowballstemmer==2.2.0
     # via pydocstyle
-sqlparse==0.5.0
+sqlparse==0.5.1
     # via
     #   -r requirements/test.txt
     #   django
@@ -188,7 +207,7 @@ tomli==2.0.1
     #   mypy
     #   pylint
     #   pytest
-tomlkit==0.12.5
+tomlkit==0.13.0
     # via pylint
 typing-extensions==4.12.2
     # via
@@ -198,6 +217,14 @@ typing-extensions==4.12.2
     #   edx-opaque-keys
     #   mypy
     #   pylint
+urllib3==2.2.2
+    # via
+    #   -r requirements/test.txt
+    #   clickhouse-connect
+zstandard==0.23.0
+    # via
+    #   -r requirements/test.txt
+    #   clickhouse-connect
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools

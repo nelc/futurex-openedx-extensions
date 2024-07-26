@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
-from django.db.models import OuterRef, Subquery
+from django.db.models import OuterRef, Q, Subquery
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers import constants as cs
@@ -347,3 +347,24 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
                 ])
 
         return result
+
+
+def get_usernames_with_access_roles(orgs: list[str], active_filter: None | bool = None) -> list[str]:
+    """
+    Get the users with access roles for the given orgs. Including all staff and superusers.
+
+    :param orgs: The orgs to filter on
+    :type orgs: list
+    :param active_filter: The active filter to apply. None for no filter
+    :type active_filter: None | bool
+    :return: The list of usernames with access roles
+    :rtype: list
+    """
+    queryset = get_user_model().objects.filter(
+        Q(is_staff=True) | Q(is_superuser=True) | Q(courseaccessrole__org__in=orgs),
+    )
+
+    if active_filter is not None:
+        queryset = queryset.filter(is_active=active_filter)
+
+    return list(queryset.distinct().values_list('username', flat=True))

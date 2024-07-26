@@ -27,8 +27,11 @@ beautifulsoup4==4.12.3
     # via pydata-sphinx-theme
 build==1.2.1
     # via -r requirements/doc.in
-certifi==2024.6.2
-    # via requests
+certifi==2024.7.4
+    # via
+    #   -r requirements/test.txt
+    #   clickhouse-connect
+    #   requests
 cffi==1.16.0
     # via cryptography
 charset-normalizer==3.3.2
@@ -37,15 +40,19 @@ click==8.1.7
     # via
     #   -r requirements/test.txt
     #   code-annotations
+clickhouse-connect==0.5.25
+    # via -r requirements/test.txt
 code-annotations==1.8.0
     # via -r requirements/test.txt
-coverage[toml]==7.5.4
+coverage[toml]==7.6.0
     # via
     #   -r requirements/test.txt
     #   pytest-cov
-cryptography==42.0.8
+cryptography==43.0.0
     # via secretstorage
-django==4.2.13
+ddt==1.7.2
+    # via -r requirements/test.txt
+django==4.2.14
     # via
     #   -c https://raw.githubusercontent.com/edx/edx-lint/master/edx_lint/files/common_constraints.txt
     #   -r requirements/test.txt
@@ -84,7 +91,7 @@ edx-opaque-keys[django]==2.10.0
     # via -r requirements/test.txt
 eox-tenant==10.0.0
     # via -r requirements/test.txt
-exceptiongroup==1.2.1
+exceptiongroup==1.2.2
     # via
     #   -r requirements/test.txt
     #   pytest
@@ -124,6 +131,10 @@ jsonfield==3.1.0
     # via -r requirements/test.txt
 keyring==25.2.1
     # via twine
+lz4==4.3.3
+    # via
+    #   -r requirements/test.txt
+    #   clickhouse-connect
 markdown-it-py==3.0.0
     # via rich
 markupsafe==2.1.5
@@ -136,7 +147,7 @@ more-itertools==10.3.0
     # via
     #   jaraco-classes
     #   jaraco-functools
-nh3==0.2.17
+nh3==0.2.18
     # via readme-renderer
 openedx-filters==1.9.0
     # via -r requirements/test.txt
@@ -175,7 +186,7 @@ pymongo==4.8.0
     #   edx-opaque-keys
 pyproject-hooks==1.1.0
     # via build
-pytest==8.2.2
+pytest==8.3.1
     # via
     #   -r requirements/test.txt
     #   pytest-cov
@@ -184,12 +195,17 @@ pytest-cov==5.0.0
     # via -r requirements/test.txt
 pytest-django==4.8.0
     # via -r requirements/test.txt
+python-dateutil==2.9.0.post0
+    # via -r requirements/test.txt
 python-slugify==8.0.4
     # via
     #   -r requirements/test.txt
     #   code-annotations
 pytz==2024.1
-    # via babel
+    # via
+    #   -r requirements/test.txt
+    #   babel
+    #   clickhouse-connect
 pyyaml==6.0.1
     # via
     #   -r requirements/test.txt
@@ -212,7 +228,9 @@ rich==13.7.1
 secretstorage==3.3.3
     # via keyring
 six==1.16.0
-    # via -r requirements/test.txt
+    # via
+    #   -r requirements/test.txt
+    #   python-dateutil
 snowballstemmer==2.2.0
     # via sphinx
 soupsieve==2.5
@@ -236,7 +254,7 @@ sphinxcontrib-qthelp==1.0.3
     # via sphinx
 sphinxcontrib-serializinghtml==1.1.5
     # via sphinx
-sqlparse==0.5.0
+sqlparse==0.5.1
     # via
     #   -r requirements/test.txt
     #   django
@@ -268,9 +286,15 @@ typing-extensions==4.12.2
     #   rich
 urllib3==2.2.2
     # via
+    #   -r requirements/test.txt
+    #   clickhouse-connect
     #   requests
     #   twine
 zipp==3.19.2
     # via
     #   importlib-metadata
     #   importlib-resources
+zstandard==0.23.0
+    # via
+    #   -r requirements/test.txt
+    #   clickhouse-connect

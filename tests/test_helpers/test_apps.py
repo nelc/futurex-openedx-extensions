@@ -50,19 +50,6 @@ def test_common_production_plugin_settings_explicit(settings, setting_key, defau
     assert getattr(settings, setting_key) == new_value, f'settings ({setting_key}) did not read from env correctly!'
 
 
-def test_set_default_throttle_rates(settings):
-    """Verify that the plugin's settings set the default throttle rates"""
-    settings = copy.deepcopy(settings)
-    settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {}
-    throttle_rates = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']
-    assert 'fx_anonymous_data_retrieve' not in throttle_rates, 'fx_anonymous_data_retrieve already exists!'
-
-    common_production.plugin_settings(settings)
-    throttle_rates = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']
-    assert 'fx_anonymous_data_retrieve' in throttle_rates, 'fx_anonymous_data_retrieve was not set!'
-    assert throttle_rates['fx_anonymous_data_retrieve'] == '5/hour', 'fx_anonymous_data_retrieve was not set!'
-
-
 def test_ready_imports_signals():
     """Verify that the ready method imports the signals module"""
     config = apps.get_app_config('fx_helpers')

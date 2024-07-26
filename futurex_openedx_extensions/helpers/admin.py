@@ -13,7 +13,48 @@ from rest_framework.response import Response
 from simple_history.admin import SimpleHistoryAdmin
 
 from futurex_openedx_extensions.helpers.constants import CACHE_NAMES
-from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ViewAllowedRoles
+
+
+class ClickhouseQueryAdmin(SimpleHistoryAdmin):
+    """Admin view for the ClickhouseQuery model."""
+    change_list_template = 'clickhouse_query_change_list.html'
+
+    def changelist_view(self, request: Any, extra_context: dict | None = None) -> Response:
+        """Override the default changelist_view to add missing queries info."""
+        extra_context = extra_context or {}
+        extra_context['fx_missing_queries_count'] = ClickhouseQuery.get_missing_queries_count()
+
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def get_urls(self) -> list:
+        """Override the default get_urls to add custom cache invalidation URL."""
+        urls = super().get_urls()
+        urls.append(
+            path(
+                r'load_missing_queries',
+                self.admin_site.admin_view(self.load_missing_queries),
+                name='fx_helpers_clickhousequery_load_missing_queries'
+            ),
+        )
+        return urls
+
+    def load_missing_queries(self, request: Any) -> HttpResponseRedirect:  # pylint: disable=no-self-use
+        """
+        Load the missing Clickhouse queries.
+
+        :param request: The request object
+        :type request: Request
+        :return: HttpResponseRedirect to the previous page
+        """
+        ClickhouseQuery.load_missing_queries()
+
+        full_path = request.get_full_path()
+        full_path = full_path[:len(full_path) - 1]
+        one_step_back_path = full_path.rsplit('/', 1)[0]
+        return HttpResponseRedirect(one_step_back_path)
+
+    list_display = ('id', 'scope', 'version', 'slug', 'description', 'enabled', 'modified_at')
 
 
 class ViewAllowedRolesHistoryAdmin(SimpleHistoryAdmin):
@@ -28,6 +69,7 @@ class CacheInvalidator(ViewAllowedRoles):
         proxy = True
         verbose_name = 'Cache Invalidator'
         verbose_name_plural = 'Cache Invalidators'
+        abstract = True  # to be ignored by makemigrations
 
 
 class CacheInvalidatorAdmin(admin.ModelAdmin):
@@ -79,11 +121,11 @@ class CacheInvalidatorAdmin(admin.ModelAdmin):
         """
         Invalidate the cache with the given name.
 
-        @param request: The request object
-        @type request: Request
-        @param cache_name: The name of the cache to invalidate
-        @type cache_name: str
-        @return: HttpResponseRedirect to the previous page
+        :param request: The request object
+        :type request: Request
+        :param cache_name: The name of the cache to invalidate
+        :type cache_name: str
+        :return: HttpResponseRedirect to the previous page
         """
         if cache_name not in CACHE_NAMES:
             raise Http404(f'Cache name {cache_name} not found')
@@ -95,5 +137,13 @@ class CacheInvalidatorAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(one_step_back_path)
 
 
-admin.site.register(ViewAllowedRoles, ViewAllowedRolesHistoryAdmin)
-admin.site.register(CacheInvalidator, CacheInvalidatorAdmin)
+def register_admins() -> None:
+    """Register the admin views."""
+    CacheInvalidator._meta.abstract = False  # to be able to register the admin view
+
+    admin.site.register(CacheInvalidator, CacheInvalidatorAdmin)
+    admin.site.register(ClickhouseQuery, ClickhouseQueryAdmin)
+    admin.site.register(ViewAllowedRoles, ViewAllowedRolesHistoryAdmin)
+
+
+register_admins()

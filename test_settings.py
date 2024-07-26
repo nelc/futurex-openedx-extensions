@@ -87,10 +87,14 @@ FX_CACHE_TIMEOUT_COURSE_ACCESS_ROLES = 60 * 31  # 31 minutes
 FX_CACHE_TIMEOUT_TENANTS_INFO = 60 * 60 * 3  # 3 hours
 FX_CACHE_TIMEOUT_VIEW_ROLES = 60 * 31  # 31 minutes
 
+FX_CLICKHOUSE_USER = 'dummy_test_user'
+FX_CLICKHOUSE_PASSWORD = 'dummy_test_password'
+
 REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'fx_anonymous_data_retrieve': '60/minute',
     },
 }
 
-CMS_ROOT_URL = 'http://studio.example.com'
+LMS_ROOT_URL = 'https://lms.example.com'
+CMS_ROOT_URL = 'https://studio.example.com'
