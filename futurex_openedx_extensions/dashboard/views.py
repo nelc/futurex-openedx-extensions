@@ -21,7 +21,11 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_queryset,
 )
 from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
-from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count, get_courses_count_by_status
+from futurex_openedx_extensions.dashboard.statistics.courses import (
+    get_courses_count,
+    get_courses_count_by_status,
+    get_courses_ratings,
+)
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
@@ -64,7 +68,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         STAT_CERTIFICATES: 'certificates_count',
         STAT_COURSES: 'courses_count',
         STAT_HIDDEN_COURSES: 'hidden_courses_count',
-        STAT_LEARNERS: 'learners_count'
+        STAT_LEARNERS: 'learners_count',
     }
 
     permission_classes = [FXHasTenantCourseAccess]
@@ -319,6 +323,24 @@ class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
             course_id=course_id,
             search_text=search_text,
         )
+
+
+class GlobalRatingView(APIView, FXViewRoleInfoMixin):
+    """View to get the global rating"""
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'global_rating'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = 'api/fx/statistics/v1/rating/: Get the global rating for courses'
+
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
+        """
+        GET /api/fx/statistics/v1/rating/?tenant_ids=<tenantIds>
+
+        <tenantIds> (optional): a comma-separated list of the tenant IDs to get the information for. If not provided,
+            the API will assume the list of all accessible tenants by the user
+        """
+        result = get_courses_ratings(fx_permission_info=self.fx_permission_info)
+        return JsonResponse(result)
 
 
 class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):

@@ -568,6 +568,36 @@ class MockClickhouseQuery:
         )
 
 
+class TestGlobalRatingView(BaseTestViewMixin):
+    """Tests for GlobalRatingView"""
+    VIEW_NAME = 'fx_dashboard:statistics-rating'
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_courses_ratings') as mocked_calc:
+            mocked_calc.return_value = {
+                'total_rating': 50,
+                'total_count': 15,
+                'courses_count': 2,
+            }
+            response = self.client.get(self.url)
+        data = json.loads(response.content)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data, mocked_calc.return_value)
+
+
 @ddt.ddt
 class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     """Tests for ClickhouseQueryView"""
