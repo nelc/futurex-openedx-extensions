@@ -26,6 +26,39 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
 
 
+def annotate_courses_rating_queryset(
+    base_queryset: QuerySet,
+) -> QuerySet:
+    """
+    Annotate the given courses queryset with rating information.
+
+    :param base_queryset: Base queryset of courses
+    :type base_queryset: QuerySet
+    :return: Annotated queryset of courses
+    :rtype: QuerySet
+    """
+    queryset = base_queryset.annotate(
+        rating_count=Coalesce(Subquery(
+            FeedbackCourse.objects.filter(
+                course_id=OuterRef('id'),
+                rating_content__isnull=False,
+                rating_content__gt=0,
+            ).values('course_id').annotate(count=Count('id')).values('count'),
+            output_field=IntegerField(),
+        ), 0),
+    ).annotate(
+        rating_total=Coalesce(Subquery(
+            FeedbackCourse.objects.filter(
+                course_id=OuterRef('id'),
+                rating_content__isnull=False,
+                rating_content__gt=0,
+            ).values('course_id').annotate(total=Sum('rating_content')).values('total'),
+        ), 0),
+    )
+
+    return queryset
+
+
 def get_courses_queryset(
     fx_permission_info: dict,
     search_text: str | None = None,
@@ -56,24 +89,10 @@ def get_courses_queryset(
             Q(display_name__icontains=search_text) |
             Q(id__icontains=search_text),
         )
+
+    queryset = annotate_courses_rating_queryset(queryset)
+
     queryset = queryset.annotate(
-        rating_count=Coalesce(Subquery(
-            FeedbackCourse.objects.filter(
-                course_id=OuterRef('id'),
-                rating_content__isnull=False,
-                rating_content__gt=0,
-            ).values('course_id').annotate(count=Count('id')).values('count'),
-            output_field=IntegerField(),
-        ), 0),
-    ).annotate(
-        rating_total=Coalesce(Subquery(
-            FeedbackCourse.objects.filter(
-                course_id=OuterRef('id'),
-                rating_content__isnull=False,
-                rating_content__gt=0,
-            ).values('course_id').annotate(total=Sum('rating_content')).values('total'),
-        ), 0),
-    ).annotate(
         enrolled_count=Count(
             'courseenrollment',
             filter=(

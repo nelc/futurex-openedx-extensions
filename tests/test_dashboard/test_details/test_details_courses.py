@@ -1,4 +1,6 @@
 """Tests for courses details collectors"""
+from unittest.mock import patch
+
 import pytest
 from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
@@ -6,7 +8,11 @@ from django.utils.timezone import now, timedelta
 from eox_nelp.course_experience.models import FeedbackCourse
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
-from futurex_openedx_extensions.dashboard.details.courses import get_courses_queryset, get_learner_courses_info_queryset
+from futurex_openedx_extensions.dashboard.details.courses import (
+    annotate_courses_rating_queryset,
+    get_courses_queryset,
+    get_learner_courses_info_queryset,
+)
 
 
 @pytest.mark.django_db
@@ -69,8 +75,18 @@ def test_get_courses_queryset_result_excludes_staff_inactive_enrollment(
 
 
 @pytest.mark.django_db
-def test_get_courses_queryset_result_rating(base_data, fx_permission_info):  # pylint: disable=unused-argument
-    """Verify that get_courses_queryset returns the correct rating."""
+def test_get_courses_queryset_gets_rating(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify that get_courses_queryset calls annotate_courses_rating_queryset."""
+    with patch(
+        'futurex_openedx_extensions.dashboard.details.courses.annotate_courses_rating_queryset'
+    ) as mock_rating_queryset:
+        get_courses_queryset(fx_permission_info)
+        mock_rating_queryset.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_annotate_courses_rating_queryset(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify that annotate_courses_rating_queryset returns the correct rating."""
     ratings = [3, 4, 5, 3, 4, 5, 3, 2, 5, 2, 4, 5]
     no_ratings = [0, 0, 0, 0, 0, 0]
     all_ratings = ratings + no_ratings
@@ -80,7 +96,7 @@ def test_get_courses_queryset_result_rating(base_data, fx_permission_info):  # p
             course_id=course,
             rating_content=rating,
         )
-    queryset = get_courses_queryset(fx_permission_info)
+    queryset = annotate_courses_rating_queryset(CourseOverview.objects.filter(org__in=['ORG1', 'ORG2']))
     for record in queryset:
         if record.id != course.id:
             continue
