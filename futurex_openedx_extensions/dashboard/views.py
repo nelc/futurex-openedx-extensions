@@ -5,7 +5,7 @@ from typing import Any, Dict
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from common.djangoapps.student.models import get_user_by_username_or_email
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
@@ -418,10 +418,10 @@ class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
         if CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS in clickhouse_query.query:
             params[CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS] = get_usernames_with_access_roles(orgs)
 
-        clickhouse_query.fix_param_types(params)
-
         error_response = None
         try:
+            clickhouse_query.fix_param_types(params)
+
             with ch.get_client() as clickhouse_client:
                 records_count, next_page, result = ch.execute_query(
                     clickhouse_client,
@@ -437,6 +437,8 @@ class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
             error_response = Response(error_details_to_dictionary(reason=str(exc)), status=503)
         except (ch.ClickhouseBaseError, ValueError) as exc:
             error_response = Response(error_details_to_dictionary(reason=str(exc)), status=400)
+        except ValidationError as exc:
+            error_response = Response(error_details_to_dictionary(reason=exc.message), status=400)
 
         if error_response:
             return error_response

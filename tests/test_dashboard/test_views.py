@@ -6,6 +6,7 @@ import ddt
 import pytest
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.core.paginator import EmptyPage
 from django.http import JsonResponse
 from django.urls import resolve, reverse
@@ -720,6 +721,7 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     @ddt.data(
         ch.ClickhouseBaseError,
         ValueError,
+        ValidationError,
     )
     def test_bad_use_of_arguments(self, side_effect):
         """Verify that the view returns 400 when there is a bad use of arguments"""
