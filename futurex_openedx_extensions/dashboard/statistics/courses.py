@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from django.db.models import Case, CharField, Count, Q, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.utils.timezone import now
 
@@ -120,14 +121,13 @@ def get_courses_ratings(
     )
 
     q_set = q_set.aggregate(
-        total_rating=Sum('rating_total'),
-        total_count=Sum('rating_count'),
-        courses_count=Count('id'),
-        rating_1_count=Sum('course_rating_1_count'),
-        rating_2_count=Sum('course_rating_2_count'),
-        rating_3_count=Sum('course_rating_3_count'),
-        rating_4_count=Sum('course_rating_4_count'),
-        rating_5_count=Sum('course_rating_5_count'),
+        total_rating=Coalesce(Sum('rating_total'), 0),
+        courses_count=Coalesce(Count('id'), 0),
+        rating_1_count=Coalesce(Sum('course_rating_1_count'), 0),
+        rating_2_count=Coalesce(Sum('course_rating_2_count'), 0),
+        rating_3_count=Coalesce(Sum('course_rating_3_count'), 0),
+        rating_4_count=Coalesce(Sum('course_rating_4_count'), 0),
+        rating_5_count=Coalesce(Sum('course_rating_5_count'), 0),
     )
 
     return q_set

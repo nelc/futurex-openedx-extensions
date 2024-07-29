@@ -619,6 +619,35 @@ class TestGlobalRatingView(BaseTestViewMixin):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(data, expected_result)
 
+    def test_success_no_rating(self):
+        """Verify that the view returns the correct response when there are no ratings"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_courses_ratings') as mocked_calc:
+            mocked_calc.return_value = {
+                'total_rating': 0,
+                'courses_count': 0,
+                'rating_1_count': 0,
+                'rating_2_count': 0,
+                'rating_3_count': 0,
+                'rating_4_count': 0,
+                'rating_5_count': 0,
+            }
+            response = self.client.get(self.url)
+        data = json.loads(response.content)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data, {
+            'total_rating': 0,
+            'total_count': 0,
+            'courses_count': 0,
+            'rating_counts': {
+                '1': 0,
+                '2': 0,
+                '3': 0,
+                '4': 0,
+                '5': 0,
+            },
+        })
+
 
 @ddt.ddt
 class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
