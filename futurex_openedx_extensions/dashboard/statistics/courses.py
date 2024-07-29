@@ -1,7 +1,10 @@
 """functions for getting statistics about courses"""
 from __future__ import annotations
 
+from typing import Dict
+
 from django.db.models import Case, CharField, Count, Q, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.utils.timezone import now
 
@@ -77,7 +80,7 @@ def get_courses_ratings(
     fx_permission_info: dict,
     visible_filter: bool | None = True,
     active_filter: bool | None = None,
-) -> QuerySet:
+) -> Dict[str, int]:
     """
     Get the average rating of courses in the given tenants
 
@@ -87,47 +90,27 @@ def get_courses_ratings(
     :type visible_filter: bool | None
     :param active_filter: Value to filter courses on active status. None means no filter (according to dates)
     :type active_filter: bool | None
-    :return: QuerySet of average rating per organization
-    :rtype: QuerySet
+    :return: Dictionary containing the total rating, courses count, and rating count per rating value
+    :rtype: Dict[str, int]
     """
     q_set = get_base_queryset_courses(
         fx_permission_info, visible_filter=visible_filter, active_filter=active_filter
     )
 
     q_set = annotate_courses_rating_queryset(q_set).filter(rating_count__gt=0)
-    # annotate the count of all records with FeedbackCourse rating equal 1 using subquery on FeedbackCourse
-    q_set = q_set.annotate(
-        course_rating_1_count=Count(
-            'feedbackcourse',
-            filter=Q(feedbackcourse__rating_content=1)
-        ),
-        course_rating_2_count=Count(
-            'feedbackcourse',
-            filter=Q(feedbackcourse__rating_content=2)
-        ),
-        course_rating_3_count=Count(
-            'feedbackcourse',
-            filter=Q(feedbackcourse__rating_content=3)
-        ),
-        course_rating_4_count=Count(
-            'feedbackcourse',
-            filter=Q(feedbackcourse__rating_content=4)
-        ),
-        course_rating_5_count=Count(
-            'feedbackcourse',
-            filter=Q(feedbackcourse__rating_content=5)
-        ),
-    )
 
-    q_set = q_set.aggregate(
-        total_rating=Sum('rating_total'),
-        total_count=Sum('rating_count'),
-        courses_count=Count('id'),
-        rating_1_count=Sum('course_rating_1_count'),
-        rating_2_count=Sum('course_rating_2_count'),
-        rating_3_count=Sum('course_rating_3_count'),
-        rating_4_count=Sum('course_rating_4_count'),
-        rating_5_count=Sum('course_rating_5_count'),
-    )
+    q_set = q_set.annotate(**{
+        f'course_rating_{rate_value}_count': Count(
+            'feedbackcourse',
+            filter=Q(feedbackcourse__rating_content=rate_value)
+        ) for rate_value in range(1, 6)
+    })
 
-    return q_set
+    return q_set.aggregate(
+        total_rating=Coalesce(Sum('rating_total'), 0),
+        courses_count=Coalesce(Count('id'), 0),
+        **{
+            f'rating_{rate_value}_count': Coalesce(Sum(f'course_rating_{rate_value}_count'), 0)
+            for rate_value in range(1, 6)
+        }
+    )

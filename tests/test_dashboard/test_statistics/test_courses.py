@@ -61,10 +61,21 @@ def test_get_courses_ratings(base_data, fx_permission_info):  # pylint: disable=
 
     result = courses.get_courses_ratings(fx_permission_info)
     assert result['total_rating'] == 114
-    assert result['total_count'] == 32
     assert result['courses_count'] == 3
     assert result['rating_1_count'] == 3
     assert result['rating_2_count'] == 5
     assert result['rating_3_count'] == 6
     assert result['rating_4_count'] == 7
     assert result['rating_5_count'] == 11
+
+
+@pytest.mark.django_db
+def test_get_courses_ratings_no_rating(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify that get_courses_ratings returns the correct QuerySet when there are no ratings."""
+    expected_keys = ['total_rating', 'courses_count'] + [
+        f'rating_{i}_count' for i in range(1, 6)
+    ]
+    result = courses.get_courses_ratings(fx_permission_info)
+    assert set(result.keys()) == set(expected_keys)
+    assert all(result[key] is not None for key in expected_keys)
+    assert all(result[key] == 0 for key in expected_keys)
