@@ -1,5 +1,7 @@
 """Tests for courses statistics."""
 import pytest
+from eox_nelp.course_experience.models import FeedbackCourse
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.dashboard.statistics import courses
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
@@ -39,3 +41,30 @@ def test_get_courses_count_by_status(base_data, fx_permission_info):  # pylint: 
         {'self_paced': False, 'status': COURSE_STATUSES['upcoming'], 'courses_count': 2},
         {'self_paced': True, 'status': COURSE_STATUSES['active'], 'courses_count': 1}
     ]
+
+
+@pytest.mark.django_db
+def test_get_courses_ratings(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify that get_courses_ratings returns the correct QuerySet."""
+    ratings = {
+        'course-v1:ORG1+5+5': [3, 4, 5, 3, 4, 5, 3, 2, 5, 2, 4, 5],
+        'course-v1:ORG2+4+4': [1, 2, 3, 4, 5, 1, 2, 3, 4, 5],
+        'course-v1:ORG2+5+5': [1, 5, 5, 5, 5, 2, 4, 3, 4, 5],
+    }
+    for course_id, rating in ratings.items():
+        course = CourseOverview.objects.get(id=course_id)
+        for rate in rating:
+            FeedbackCourse.objects.create(
+                course_id=course,
+                rating_content=rate,
+            )
+
+    result = courses.get_courses_ratings(fx_permission_info)
+    assert result['total_rating'] == 114
+    assert result['total_count'] == 32
+    assert result['courses_count'] == 3
+    assert result['rating_1_count'] == 3
+    assert result['rating_2_count'] == 5
+    assert result['rating_3_count'] == 6
+    assert result['rating_4_count'] == 7
+    assert result['rating_5_count'] == 11

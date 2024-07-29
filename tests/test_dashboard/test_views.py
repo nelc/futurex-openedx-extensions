@@ -6,6 +6,7 @@ import ddt
 import pytest
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.core.paginator import EmptyPage
 from django.http import JsonResponse
 from django.urls import resolve, reverse
@@ -568,6 +569,57 @@ class MockClickhouseQuery:
         )
 
 
+class TestGlobalRatingView(BaseTestViewMixin):
+    """Tests for GlobalRatingView"""
+    VIEW_NAME = 'fx_dashboard:statistics-rating'
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        test_data = {
+            'total_rating': 50,
+            'courses_count': 2,
+            'rating_1_count': 3,
+            'rating_2_count': 5,
+            'rating_3_count': 2,
+            'rating_4_count': 1,
+            'rating_5_count': 4,
+        }
+        expected_result = {
+            'total_rating': 50,
+            'total_count': 15,
+            'courses_count': 2,
+            'rating_counts': {
+                '1': 3,
+                '2': 5,
+                '3': 2,
+                '4': 1,
+                '5': 4,
+            },
+        }
+        for value in range(1, 6):
+            assert expected_result['rating_counts'][str(value)] == test_data[f'rating_{value}_count']
+        assert expected_result['total_count'] == sum(expected_result['rating_counts'].values())
+
+        with patch('futurex_openedx_extensions.dashboard.views.get_courses_ratings') as mocked_calc:
+            mocked_calc.return_value = test_data
+            response = self.client.get(self.url)
+        data = json.loads(response.content)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data, expected_result)
+
+
 @ddt.ddt
 class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     """Tests for ClickhouseQueryView"""
@@ -720,6 +772,7 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     @ddt.data(
         ch.ClickhouseBaseError,
         ValueError,
+        ValidationError,
     )
     def test_bad_use_of_arguments(self, side_effect):
         """Verify that the view returns 400 when there is a bad use of arguments"""

@@ -5,7 +5,7 @@ from typing import Any, Dict
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from common.djangoapps.student.models import get_user_by_username_or_email
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
@@ -21,7 +21,11 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_queryset,
 )
 from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
-from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count, get_courses_count_by_status
+from futurex_openedx_extensions.dashboard.statistics.courses import (
+    get_courses_count,
+    get_courses_count_by_status,
+    get_courses_ratings,
+)
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
@@ -64,7 +68,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         STAT_CERTIFICATES: 'certificates_count',
         STAT_COURSES: 'courses_count',
         STAT_HIDDEN_COURSES: 'hidden_courses_count',
-        STAT_LEARNERS: 'learners_count'
+        STAT_LEARNERS: 'learners_count',
     }
 
     permission_classes = [FXHasTenantCourseAccess]
@@ -321,6 +325,33 @@ class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
         )
 
 
+class GlobalRatingView(APIView, FXViewRoleInfoMixin):
+    """View to get the global rating"""
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'global_rating'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = 'api/fx/statistics/v1/rating/: Get the global rating for courses'
+
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
+        """
+        GET /api/fx/statistics/v1/rating/?tenant_ids=<tenantIds>
+
+        <tenantIds> (optional): a comma-separated list of the tenant IDs to get the information for. If not provided,
+            the API will assume the list of all accessible tenants by the user
+        """
+        data_result = get_courses_ratings(fx_permission_info=self.fx_permission_info)
+        result = {
+            'total_rating': data_result['total_rating'],
+            'total_count': sum(data_result[f'rating_{index}_count'] for index in range(1, 6)),
+            'courses_count': data_result['courses_count'],
+            'rating_counts': {
+                str(index): data_result[f'rating_{index}_count'] for index in range(1, 6)
+            },
+        }
+
+        return JsonResponse(result)
+
+
 class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
     """View to get the Clickhouse query"""
     permission_classes = [FXHasTenantCourseAccess]
@@ -418,10 +449,10 @@ class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
         if CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS in clickhouse_query.query:
             params[CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS] = get_usernames_with_access_roles(orgs)
 
-        clickhouse_query.fix_param_types(params)
-
         error_response = None
         try:
+            clickhouse_query.fix_param_types(params)
+
             with ch.get_client() as clickhouse_client:
                 records_count, next_page, result = ch.execute_query(
                     clickhouse_client,
@@ -437,6 +468,8 @@ class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
             error_response = Response(error_details_to_dictionary(reason=str(exc)), status=503)
         except (ch.ClickhouseBaseError, ValueError) as exc:
             error_response = Response(error_details_to_dictionary(reason=str(exc)), status=400)
+        except ValidationError as exc:
+            error_response = Response(error_details_to_dictionary(reason=exc.message), status=400)
 
         if error_response:
             return error_response
