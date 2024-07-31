@@ -13,14 +13,22 @@ from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
 from futurex_openedx_extensions.helpers.roles import (
     FXViewRoleInfoMetaClass,
     FXViewRoleInfoMixin,
+    RoleType,
     check_tenant_access,
     get_all_course_access_roles,
+    get_course_access_roles_queryset,
     get_fx_view_with_roles,
     get_usernames_with_access_roles,
     is_valid_course_access_role,
     is_view_exist,
     is_view_support_write,
     optimize_access_roles_result,
+)
+from tests.fixture_helpers import (
+    get_all_orgs,
+    get_test_data_dict,
+    get_test_data_dict_without_course_roles,
+    get_test_data_dict_without_course_roles_org3,
 )
 
 
@@ -137,10 +145,20 @@ def test_get_all_course_access_roles_ignores_inactive_and_system_admins(
         is_superuser=False,
         is_active=True,
     ).first()
-    assert user is not None, 'Bad test data, user 3 should be an active non-staff user'
-    assert get_all_course_access_roles()[3] == {
-        'staff': {'orgs_full_access': ['ORG1'], 'course_limited_access': [], 'orgs_of_courses': []},
+    expected_result = {
+        'staff': {
+            'orgs_full_access': ['ORG1'],
+            'course_limited_access': [],
+            'orgs_of_courses': []
+        },
+        'org_course_creator_group': {
+            'orgs_full_access': [],
+            'course_limited_access': ['course-v1:ORG1+3+3', 'course-v1:ORG1+4+4'],
+            'orgs_of_courses': ['ORG1']
+        }
     }
+    assert user is not None, 'Bad test data, user 3 should be an active non-staff user'
+    assert get_all_course_access_roles()[3] == expected_result
 
     setattr(user, verify_attribute, not getattr(user, verify_attribute))
     user.save()
@@ -148,18 +166,26 @@ def test_get_all_course_access_roles_ignores_inactive_and_system_admins(
 
     setattr(user, verify_attribute, not getattr(user, verify_attribute))
     user.save()
-    assert get_all_course_access_roles()[3] == {
-        'staff': {'orgs_full_access': ['ORG1'], 'course_limited_access': [], 'orgs_of_courses': []},
-    }
+    assert get_all_course_access_roles()[3] == expected_result
 
 
 @pytest.mark.django_db
 def test_get_all_course_access_roles(base_data):  # pylint: disable=unused-argument
     """Verify that get_all_course_access_roles returns the expected structure."""
     _remove_course_access_roles_causing_error_logs()
-    assert get_all_course_access_roles()[3] == {
-        'staff': {'orgs_full_access': ['ORG1'], 'course_limited_access': [], 'orgs_of_courses': []},
+    expected_result = {
+        'staff': {
+            'orgs_full_access': ['ORG1'],
+            'course_limited_access': [],
+            'orgs_of_courses': []
+        },
+        'org_course_creator_group': {
+            'orgs_full_access': [],
+            'course_limited_access': ['course-v1:ORG1+3+3', 'course-v1:ORG1+4+4'],
+            'orgs_of_courses': ['ORG1']
+        }
     }
+    assert get_all_course_access_roles()[3] == expected_result
     CourseAccessRole.objects.create(
         user_id=3,
         role='staff',
@@ -185,11 +211,9 @@ def test_get_all_course_access_roles(base_data):  # pylint: disable=unused-argum
             course_id='course-v1:ORG2+2+2',
         )
 
-    assert get_all_course_access_roles()[3] == {
-        'staff': {
-            'orgs_full_access': ['ORG1'], 'course_limited_access': ['course-v1:ORG2+2+2'], 'orgs_of_courses': ['ORG2']
-        },
-    }
+    expected_result['staff']['orgs_of_courses'] = ['ORG2']
+    expected_result['staff']['course_limited_access'] = ['course-v1:ORG2+2+2']
+    assert get_all_course_access_roles()[3] == expected_result
 
 
 @pytest.mark.django_db
@@ -576,3 +600,396 @@ def test_get_usernames_with_access_roles(base_data):  # pylint: disable=unused-a
     expected_result.remove('user3')
     assert set(get_usernames_with_access_roles(['ORG1', 'ORG2'], active_filter=True)) == set(expected_result)
     assert get_usernames_with_access_roles(['ORG1', 'ORG2'], active_filter=False) == ['user3']
+
+
+def test_role_types():
+    """Verify that the role types are as expected."""
+    assert RoleType.ORG_WIDE == RoleType('org_wide')
+    assert RoleType.COURSE_SPECIFIC == RoleType('course_specific')
+    assert len(RoleType) == 2, 'Unexpected number of role types, if this class is updated, then the logic of ' \
+                               'get_course_access_roles_queryset should be updated as well'
+
+
+@pytest.mark.parametrize('bad_role_type, expected_error_message', [
+    ('bad_name', 'Invalid exclude_role_type: bad_name'),
+    ('', 'Invalid exclude_role_type: EmptyString'),
+    (['not string and not RoleType'], 'Invalid exclude_role_type: [\'not string and not RoleType\']'),
+])
+def test_get_roles_for_users_queryset_bad_exclude(bad_role_type, expected_error_message):
+    """Verify that get_roles_for_users_queryset raises an error if the exclude parameter is invalid."""
+    with pytest.raises(TypeError) as exc_info:
+        get_course_access_roles_queryset(
+            orgs_filter=['ORG1', 'ORG2'],
+            remove_redundant=False,
+            exclude_role_type=bad_role_type,
+        )
+    assert str(exc_info.value) == expected_error_message
+
+
+def test_get_roles_for_users_queryset_bad_course_id():
+    """Verify that get_roles_for_users_queryset raises an error if the course_id parameter is invalid."""
+    with pytest.raises(ValueError) as exc_info:
+        get_course_access_roles_queryset(
+            orgs_filter=['ORG1', 'ORG2'],
+            remove_redundant=False,
+            course_ids_filter=['course-v1:ORG1+999+999', 'course-v1:ORG1+bad_course_id', 'course-v1:ORG1+99+99'],
+        )
+    assert str(exc_info.value) == 'Invalid course ID format: course-v1:ORG1+bad_course_id'
+
+
+def roles_records_to_dict(records):
+    """Convert the roles records to a dictionary."""
+    result = {
+        record.user.username: {} for record in records
+    }
+    for record in records:
+        result[record.user.username][record.org] = {}
+    for record in records:
+        result[record.user.username][record.org][str(record.course_id or 'None')] = []
+    for record in records:
+        result[record.user.username][record.org][str(record.course_id or 'None')].append(record.role)
+
+    return result
+
+
+@pytest.mark.django_db
+def test_assert_roles_test_data():
+    """Verify that the test data is as expected."""
+    records = CourseAccessRole.objects.filter(user__is_superuser=False, user__is_staff=False).exclude(org='')
+
+    assert roles_records_to_dict(records) == get_test_data_dict()
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_simple(base_data):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset returns the expected queryset."""
+    result = get_course_access_roles_queryset(orgs_filter=get_all_orgs(), remove_redundant=False)
+
+    assert roles_records_to_dict(result) == get_test_data_dict()
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_search_text(base_data):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset returns the expected queryset when search_text is used."""
+    test_orgs = get_all_orgs()
+    result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=False, search_text='user4')
+
+    assert roles_records_to_dict(result) == {
+        'user4': get_test_data_dict()['user4'],
+        'user48': get_test_data_dict()['user48'],
+    }
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_active(base_data):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset returns the expected queryset when active_filter is used."""
+    test_orgs = get_all_orgs()
+    expected_data = get_test_data_dict()
+    result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=False)
+    assert roles_records_to_dict(result) == expected_data
+
+    user3 = get_user_model().objects.get(username='user3')
+    user3.is_active = False
+    user3.save()
+
+    result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=False, active_filter=True)
+    expected_data.pop('user3')
+    assert roles_records_to_dict(result) == expected_data
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset returns the expected queryset when roles_filter is used."""
+    result = get_course_access_roles_queryset(
+        orgs_filter=get_all_orgs(), remove_redundant=False, roles_filter=['data_researcher']
+    )
+
+    expected_data = {
+        'user9': {
+            'ORG3': {
+                'None': ['data_researcher'],
+                'course-v1:ORG3+2+2': ['data_researcher'],
+            },
+        },
+        'user10': {
+            'ORG3': {'None': ['data_researcher']},
+        },
+
+    }
+    assert roles_records_to_dict(result) == expected_data
+
+    result = get_course_access_roles_queryset(
+        orgs_filter=get_all_orgs(), remove_redundant=True, roles_filter=['data_researcher']
+    )
+    del expected_data['user9']['ORG3']['course-v1:ORG3+2+2']
+    assert roles_records_to_dict(result) == expected_data
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('course_ids, remove_redundant, exclude_role_type, expected_result', [
+    ([], False, None, get_test_data_dict()),
+    ([], True, None, {
+        'user3': {
+            'ORG1': {
+                'None': ['staff'],
+                'course-v1:ORG1+3+3': ['org_course_creator_group'],
+                'course-v1:ORG1+4+4': ['org_course_creator_group'],
+            }
+        },
+        'user8': {
+            'ORG2': {'None': ['staff'], 'course-v1:ORG2+3+3': ['org_course_creator_group']}
+        },
+        'user9': {
+            'ORG3': {
+                'None': ['staff', 'data_researcher'],
+                'course-v1:ORG3+3+3': ['org_course_creator_group'],
+            },
+            'ORG2': {'course-v1:ORG2+1+1': ['staff'], 'course-v1:ORG2+3+3': ['staff']},
+        },
+        'user18': {'ORG3': {'None': ['staff']}},
+        'user10': {
+            'ORG4': {'None': ['staff']},
+            'ORG3': {'None': ['data_researcher']},
+        },
+        'user23': {
+            'ORG4': {'None': ['staff', 'org_course_creator_group']},
+            'ORG5': {'None': ['staff', 'org_course_creator_group']},
+            'ORG8': {'None': ['org_course_creator_group']},
+        },
+        'user4': {
+            'ORG1': {'None': ['org_course_creator_group'], 'course-v1:ORG1+4+4': ['staff']},
+            'ORG2': {'None': ['org_course_creator_group']},
+            'ORG3': {
+                'None': ['org_course_creator_group'],
+                'course-v1:ORG3+1+1': ['staff'],
+            },
+        },
+        'user11': {
+            'ORG3': {
+                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+            }
+        },
+        'user48': {'ORG4': {'None': ['org_course_creator_group']}},
+    }),
+    ([], False, RoleType.ORG_WIDE, {
+        'user3': {
+            'ORG1': {
+                'course-v1:ORG1+3+3': ['staff', 'org_course_creator_group'],
+                'course-v1:ORG1+4+4': ['org_course_creator_group'],
+            }
+        },
+        'user8': {
+            'ORG2': {'course-v1:ORG2+3+3': ['org_course_creator_group']}
+        },
+        'user9': {
+            'ORG3': {
+                'course-v1:ORG3+2+2': ['data_researcher'],
+                'course-v1:ORG3+3+3': ['org_course_creator_group'],
+            },
+            'ORG2': {'course-v1:ORG2+1+1': ['staff'], 'course-v1:ORG2+3+3': ['staff']},
+        },
+        'user18': {'ORG3': {'course-v1:ORG3+3+3': ['staff']}},
+        'user4': {
+            'ORG1': {'course-v1:ORG1+4+4': ['staff']},
+            'ORG3': {
+                'course-v1:ORG3+1+1': ['staff', 'org_course_creator_group'],
+            },
+        },
+        'user11': {
+            'ORG3': {
+                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+            }
+        },
+    }),
+    ([], True, RoleType.ORG_WIDE, {
+        'user3': {
+            'ORG1': {
+                'course-v1:ORG1+3+3': ['org_course_creator_group'],
+                'course-v1:ORG1+4+4': ['org_course_creator_group'],
+            }
+        },
+        'user8': {
+            'ORG2': {'course-v1:ORG2+3+3': ['org_course_creator_group']}
+        },
+        'user9': {
+            'ORG3': {
+                'course-v1:ORG3+3+3': ['org_course_creator_group'],
+            },
+            'ORG2': {'course-v1:ORG2+1+1': ['staff'], 'course-v1:ORG2+3+3': ['staff']},
+        },
+        'user4': {
+            'ORG1': {'course-v1:ORG1+4+4': ['staff']},
+            'ORG3': {
+                'course-v1:ORG3+1+1': ['staff'],
+            },
+        },
+        'user11': {
+            'ORG3': {
+                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+            }
+        },
+    }),
+    ([], False, RoleType.COURSE_SPECIFIC, get_test_data_dict_without_course_roles()),
+    ([], True, RoleType.COURSE_SPECIFIC, get_test_data_dict_without_course_roles()),
+    (['course-v1:ORG3+2+2'], False, None, {
+        'user9': {
+            'ORG3': {
+                'None': ['staff', 'data_researcher'],
+                'course-v1:ORG3+2+2': ['data_researcher'],
+            },
+        },
+        'user18': {'ORG3': {'None': ['staff']}},
+        'user10': {
+            'ORG3': {'None': ['data_researcher']},
+        },
+        'user23': {
+            'ORG8': {'None': ['org_course_creator_group']},
+        },
+        'user4': {
+            'ORG3': {
+                'None': ['org_course_creator_group'],
+            },
+        },
+        'user11': {
+            'ORG3': {
+                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+            }
+        },
+    }),
+    (['course-v1:ORG3+2+2'], True, None, {
+        'user9': {
+            'ORG3': {
+                'None': ['staff', 'data_researcher'],
+            },
+        },
+        'user18': {'ORG3': {'None': ['staff']}},
+        'user10': {
+            'ORG3': {'None': ['data_researcher']},
+        },
+        'user23': {
+            'ORG8': {'None': ['org_course_creator_group']},
+        },
+        'user4': {
+            'ORG3': {
+                'None': ['org_course_creator_group'],
+            },
+        },
+        'user11': {
+            'ORG3': {
+                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+            }
+        },
+    }),
+    (['course-v1:ORG3+2+2'], False, RoleType.ORG_WIDE, {
+        'user9': {
+            'ORG3': {
+                'course-v1:ORG3+2+2': ['data_researcher'],
+            },
+        },
+        'user11': {
+            'ORG3': {
+                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+            }
+        },
+    }),
+    (['course-v1:ORG3+2+2'], True, RoleType.ORG_WIDE, {
+        'user11': {
+            'ORG3': {
+                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+            }
+        },
+    }),
+    (['course-v1:ORG3+2+2'], False, RoleType.COURSE_SPECIFIC, get_test_data_dict_without_course_roles_org3()),
+    (['course-v1:ORG3+2+2'], True, RoleType.COURSE_SPECIFIC, get_test_data_dict_without_course_roles_org3()),
+])
+def test_get_roles_for_users_queryset(
+    base_data, course_ids, remove_redundant, exclude_role_type, expected_result,
+):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset returns the expected queryset."""
+    result = get_course_access_roles_queryset(
+        orgs_filter=get_all_orgs(),
+        course_ids_filter=course_ids,
+        remove_redundant=remove_redundant,
+        exclude_role_type=exclude_role_type,
+    )
+    assert roles_records_to_dict(result) == expected_result
+
+    result = get_course_access_roles_queryset(
+        orgs_filter=get_all_orgs(),
+        course_ids_filter=course_ids,
+        remove_redundant=remove_redundant,
+        exclude_role_type=exclude_role_type,
+        user_id_distinct=True,
+    )
+    user_ids = [record['user_id'] for record in result]
+    expected_user_ids = [int(username[4:]) for username in expected_result.keys()]
+    assert set(user_ids) == set(expected_user_ids)
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_superuser(base_data):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset does not include superusers."""
+    test_orgs = ['ORG1', 'ORG2']
+    user = get_user_model().objects.get(username='user1')
+    assert user.is_superuser is True
+
+    users = get_user_model().objects.all()
+    result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=False, users=users)
+
+    assert CourseAccessRole.objects.filter(user_id=user.id, org__in=test_orgs).exists()
+    assert not any(record.user_id == user.id for record in result)
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_staff(base_data):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset does not include staff user."""
+    test_orgs = ['ORG1', 'ORG2']
+    user = get_user_model().objects.get(username='user2')
+    assert user.is_superuser is False
+    assert user.is_staff is True
+
+    users = get_user_model().objects.all()
+    result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=False, users=users)
+
+    assert CourseAccessRole.objects.filter(user_id=user.id, org__in=test_orgs).exists()
+    assert result.count() > 0
+    assert user.id not in [record.user_id for record in result]
+
+
+def assert_roles_result(result, expected):
+    """Assert that the roles result is as expected."""
+    expected_length = len(expected)
+    assert result.count() == expected_length
+    result = result.order_by('user_id', 'role', 'org', 'course_id')
+    for i in result:
+        print('user_id:', i.user_id, 'role:', i.role, 'org:', i.org, 'course_id:', i.course_id)
+    for index in range(expected_length):
+        assert result[index].user_id == expected[index]['user_id']
+        assert result[index].role == expected[index]['role']
+        assert result[index].org == expected[index]['org']
+        assert str(result[index].course_id) == expected[index]['course_id']
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_remove_redundant(base_data):  # pylint: disable=unused-argument
+    """
+    Verify that get_roles_for_users_queryset returns the expected queryset, with or without redundant records.
+    """
+    test_orgs = ['ORG1', 'ORG2']
+    user = get_user_model().objects.get(username='user3')
+    assert CourseAccessRole.objects.filter(org__in=test_orgs, user__in=[user]).count() == 4
+
+    result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=False, users=[user])
+    assert_roles_result(result, [
+        {'user_id': 3, 'role': 'org_course_creator_group', 'org': 'ORG1', 'course_id': 'course-v1:ORG1+3+3'},
+        {'user_id': 3, 'role': 'org_course_creator_group', 'org': 'ORG1', 'course_id': 'course-v1:ORG1+4+4'},
+        {'user_id': 3, 'role': 'staff', 'org': 'ORG1', 'course_id': 'None'},
+        {'user_id': 3, 'role': 'staff', 'org': 'ORG1', 'course_id': 'course-v1:ORG1+3+3'},
+    ])
+
+    result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=True, users=[user])
+    assert_roles_result(result, [
+        {'user_id': 3, 'role': 'org_course_creator_group', 'org': 'ORG1', 'course_id': 'course-v1:ORG1+3+3'},
+        {'user_id': 3, 'role': 'org_course_creator_group', 'org': 'ORG1', 'course_id': 'course-v1:ORG1+4+4'},
+        {'user_id': 3, 'role': 'staff', 'org': 'ORG1', 'course_id': 'None'},
+    ])
