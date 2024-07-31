@@ -3,18 +3,26 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
+from enum import Enum
 from typing import Any, Dict, List, Tuple
 
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
-from django.db.models import OuterRef, Q, Subquery
+from django.db.models import Exists, OuterRef, Q, Subquery
+from django_mysql.models import QuerySet
+from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, ids_string_to_list
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
-from futurex_openedx_extensions.helpers.tenants import get_accessible_tenant_ids, get_all_tenant_ids
+from futurex_openedx_extensions.helpers.tenants import (
+    get_accessible_tenant_ids,
+    get_all_tenant_ids,
+    get_course_org_filter_list,
+    get_tenants_by_org,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -368,3 +376,209 @@ def get_usernames_with_access_roles(orgs: list[str], active_filter: None | bool 
         queryset = queryset.filter(is_active=active_filter)
 
     return list(queryset.distinct().values_list('username', flat=True))
+
+
+class RoleType(Enum):
+    """Role types."""
+    ORG_WIDE = 'org_wide'
+    COURSE_SPECIFIC = 'course_specific'
+
+
+def _apply_special_filters(  # pylint: disable=too-many-locals
+    queryset: QuerySet,
+    course_ids_filter: list[str] | None,
+    remove_redundant: bool,
+    exclude_role_type: RoleType | None,
+) -> QuerySet:
+    """
+    Apply special filters to the queryset.
+
+    :param queryset: The queryset to filter
+    :type queryset: QuerySet
+    :param course_ids_filter: The course IDs to filter on. None for no filter
+    :type course_ids_filter: list
+    :param remove_redundant: True to exclude redundant roles, False otherwise
+    :type remove_redundant: bool
+    :param exclude_role_type: The role type to exclude. None for no filter
+    :type exclude_role_type: RoleType
+    :return: The filtered queryset
+    :rtype: QuerySet
+    """
+    def _no_filter() -> QuerySet:
+        """Keep it as it is."""
+        return queryset
+
+    def _just_remove_org_wide_roles() -> QuerySet:
+        """Remove org-wide roles."""
+        return queryset.exclude(course_id=CourseKeyField.Empty)
+
+    def _just_remove_course_roles() -> QuerySet:
+        """Remove course-specific roles."""
+        return queryset.filter(course_id=CourseKeyField.Empty)
+
+    def _just_no_redundant() -> QuerySet:
+        """Remove redundant roles."""
+        return queryset.filter(
+            course_id=CourseKeyField.Empty
+        ).union(
+            _no_redundant_no_org_roles()
+        )
+
+    def _no_redundant_no_org_roles() -> QuerySet:
+        """Remove redundant roles and org-wide roles."""
+        return queryset.exclude(course_id=CourseKeyField.Empty).filter(
+            ~Exists(
+                queryset.filter(
+                    course_id=CourseKeyField.Empty,
+                    user=OuterRef('user'),
+                    role=OuterRef('role'),
+                    org=OuterRef('org'),
+                )
+            )
+        )
+
+    def _select_courses() -> QuerySet:
+        """Keep only selected courses along with org-wide roles."""
+        return queryset.filter(Q(course_id__in=course_ids_filter) | Q(course_id=CourseKeyField.Empty))
+
+    def _keep_only_select_courses() -> QuerySet:
+        """Keep only selected courses and remove org-wide roles."""
+        return queryset.filter(course_id__in=course_ids_filter)
+
+    def _no_redundant_and_select_courses() -> QuerySet:
+        """Remove redundant roles and keep only selected courses."""
+        return queryset.filter(
+            course_id=CourseKeyField.Empty
+        ).union(
+            _no_redundant_no_org_roles_and_select_courses()
+        )
+
+    def _no_redundant_no_org_roles_and_select_courses() -> QuerySet:
+        """Remove redundant roles and org-wide roles and keep only selected courses."""
+        return queryset.filter(
+            course_id__in=course_ids_filter
+        ).filter(
+            ~Exists(
+                queryset.filter(
+                    course_id=CourseKeyField.Empty,
+                    user=OuterRef('user'),
+                    role=OuterRef('role'),
+                    org=OuterRef('org'),
+                )
+            )
+        )
+
+    _remove_redundant = True
+    _keep_redundant = False
+    _selected_courses = True
+    _all_courses = False
+    _exclude_org_wide_roles = str(RoleType.ORG_WIDE)
+    _exclude_course_specific_roles = str(RoleType.COURSE_SPECIFIC)
+    _no_exclusion = 'None'
+
+    decision_matrix = {
+        _all_courses: {
+            _keep_redundant: {
+                _no_exclusion: _no_filter,
+                _exclude_org_wide_roles: _just_remove_org_wide_roles,
+                _exclude_course_specific_roles: _just_remove_course_roles,
+            },
+            _remove_redundant: {
+                _no_exclusion: _just_no_redundant,
+                _exclude_org_wide_roles: _no_redundant_no_org_roles,
+                _exclude_course_specific_roles: _just_remove_course_roles,
+            },
+        },
+        _selected_courses: {
+            _keep_redundant: {
+                _no_exclusion: _select_courses,
+                _exclude_org_wide_roles: _keep_only_select_courses,
+                _exclude_course_specific_roles: _just_remove_course_roles,
+            },
+            _remove_redundant: {
+                _no_exclusion: _no_redundant_and_select_courses,
+                _exclude_org_wide_roles: _no_redundant_no_org_roles_and_select_courses,
+                _exclude_course_specific_roles: _just_remove_course_roles,
+            },
+        },
+    }
+
+    queryset = decision_matrix[bool(course_ids_filter)][remove_redundant][str(exclude_role_type or _no_exclusion)]()
+    return queryset
+
+
+def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments
+    orgs_filter: list[str],
+    remove_redundant: bool,
+    users: list[get_user_model] | None = None,
+    search_text: str | None = None,
+    roles_filter: list[str] | None = None,
+    active_filter: bool | None = None,
+    course_ids_filter: list[str] | None = None,
+    exclude_role_type: RoleType | None = None,
+) -> QuerySet:
+    """
+    Get the course access roles queryset.
+
+    :param orgs_filter: The orgs to filter on
+    :type orgs_filter: list
+    :param remove_redundant: True to exclude redundant roles, False otherwise. Redundant roles are course-specific roles
+        that are already covered by another org-wide role for the same user
+    :type remove_redundant: bool
+    :param users: The users queryset. None for no filter
+    :type users: list
+    :param search_text: The search text to filter on. Search in email, username, and name. None for no filter
+    :type search_text: str
+    :param roles_filter: The roles to filter on. None for no filter
+    :type roles_filter: list
+    :param active_filter: The active filter to apply. None for no filter
+    :type active_filter: bool
+    :param course_ids_filter: The course IDs to filter on. None for no filter
+    :type course_ids_filter: list
+    :param exclude_role_type: The role type to exclude. None for no filter
+    :return: The roles for the users queryset
+    :rtype: QuerySet
+    """
+    if exclude_role_type is not None and not isinstance(exclude_role_type, RoleType):
+        if isinstance(exclude_role_type, str):  # type: ignore[unreachable] # it is reachable, but mypy is stupid
+            exclude_role_type = RoleType(exclude_role_type)
+        else:
+            raise ValueError(
+                f'Invalid exclude_role_type! str or RoleType expected. Got: {type(exclude_role_type).__name__}'
+            )
+
+    orgs_filter_set = set(orgs_filter)
+
+    queryset = CourseAccessRole.objects.filter(
+        user__is_staff=False,
+        user__is_superuser=False,
+    )
+
+    if users:
+        queryset = queryset.filter(user__in=users)
+
+    if search_text:
+        queryset = queryset.filter(
+            Q(user__username__icontains=search_text) |
+            Q(user__email__icontains=search_text) |
+            Q(user__profile__name__icontains=search_text),
+        )
+
+    if active_filter is not None:
+        queryset = queryset.filter(user__is_active=active_filter)
+
+    if roles_filter:
+        queryset = queryset.filter(role__in=roles_filter)
+
+    if course_ids_filter:
+        tenants_of_courses = []
+        for org in CourseOverview.objects.filter(id__in=course_ids_filter).values_list('org', flat=True).distinct():
+            tenants_of_courses.extend(get_tenants_by_org(org))
+        tenants_of_courses = list(set(tenants_of_courses))
+
+        orgs_of_courses = set(get_course_org_filter_list(tenants_of_courses)['course_org_filter_list'])
+        orgs_filter_set = orgs_filter_set.intersection(orgs_of_courses)
+
+    queryset = queryset.filter(org__in=list(orgs_filter_set))
+
+    return _apply_special_filters(queryset, course_ids_filter, remove_redundant, exclude_role_type)
