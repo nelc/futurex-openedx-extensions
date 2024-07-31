@@ -7,7 +7,9 @@ from typing import Any, Dict, List, Tuple
 
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
-from django.db.models import OuterRef, Q, Subquery
+from django.db.models import Exists, OuterRef, Q, Subquery
+from django_mysql.models import QuerySet
+from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers import constants as cs
@@ -368,3 +370,37 @@ def get_usernames_with_access_roles(orgs: list[str], active_filter: None | bool 
         queryset = queryset.filter(is_active=active_filter)
 
     return list(queryset.distinct().values_list('username', flat=True))
+
+
+def get_roles_for_users_queryset(users: list[get_user_model], orgs_filter: list[str]) -> QuerySet:
+    """
+    Get the roles for the users queryset.
+
+    :param users: The users queryset
+    :type users: list
+    :param orgs_filter: The orgs to filter on
+    :type orgs_filter: list
+    :return: The roles for the users queryset
+    :rtype: QuerySet
+    """
+    queryset = CourseAccessRole.objects.filter(
+        user__in=users,
+        org__in=orgs_filter,
+        user__is_staff=False,
+        user__is_superuser=False,
+        course_id=CourseKeyField.Empty,
+    )
+
+    return CourseAccessRole.objects.filter(
+        user__in=users,
+        org__in=orgs_filter,
+        user__is_staff=False,
+        user__is_superuser=False,
+    ).exclude(
+        Exists(
+            queryset.filter(
+                user=OuterRef('user'),
+                role=OuterRef('role'),
+            )
+        )
+    ).union(queryset)

@@ -4,11 +4,14 @@ from __future__ import annotations
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
-from common.djangoapps.student.models import get_user_by_username_or_email
+from common.djangoapps.student.models import CourseAccessRole, get_user_by_username_or_email
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage
+from django.db.models import Exists, OuterRef
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
+from rest_framework import viewsets
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -350,6 +353,43 @@ class GlobalRatingView(APIView, FXViewRoleInfoMixin):
         }
 
         return JsonResponse(result)
+
+
+class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # pylint: disable=too-many-ancestors
+    """View to get the user roles"""
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'user_roles'
+    fx_default_read_only_roles = ['org_course_creator_group']
+    fx_default_read_write_roles = ['org_course_creator_group']
+    fx_allowed_write_methods = ['POST', 'PUT', 'DELETE']
+    fx_view_description = 'api/fx/roles/v1/user_roles/: user roles management APIs'
+
+    lookup_field = 'username'
+    serializer_class = serializers.UserRolesSerializer
+    pagination_class = DefaultPagination
+
+    def get_queryset(self) -> QuerySet:
+        """Get the list of users"""
+        q_set = get_user_model().objects.filter(
+            is_staff=False,
+            is_superuser=False,
+        ).filter(
+            Exists(CourseAccessRole.objects.filter(user_id=OuterRef('id')))
+        ).distinct()
+
+        return q_set
+
+    def create(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """Create a new user role"""
+        raise NotImplementedError
+
+    def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """Update a user role"""
+        raise NotImplementedError
+
+    def destroy(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """Delete a user role"""
+        raise NotImplementedError
 
 
 class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):

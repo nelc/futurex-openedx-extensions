@@ -649,6 +649,45 @@ class TestGlobalRatingView(BaseTestViewMixin):
         })
 
 
+class TestUserRolesManagementView(BaseTestViewMixin):
+    """Tests for UserRolesManagementView"""
+    VIEW_NAME = 'fx_dashboard:user-roles-list'
+
+    # TODO: fix this
+    # def test_permission_classes(self):
+    #     """Verify that the view has the correct permission classes"""
+    #     view_func, _, _ = resolve(self.url)
+    #     view_class = view_func.view_class
+    #     self.assertEqual(view_class.permission_classes, [IsSystemStaff])
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    # TODO: fix this
+    # def test_user_not_found(self):
+    #     """Verify that the view returns 404 when the user is not found"""
+    #     user_name = 'user10x'
+    #     self.url_args = [user_name]
+    #     assert not get_user_model().objects.filter(username=user_name).exists(), 'bad test data'
+    #
+    #     self.login_user(self.staff_user)
+    #     response = self.client.get(self.url)
+    #     self.assertEqual(response.status_code, 404)
+    #     self.assertEqual(response.data, {'reason': 'User not found user10x', 'details': {}})
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        print(json.loads(response.content))
+        assert response.data['count'] == 14
+        assert len(response.data['results']) == 14
+
+
 @ddt.ddt
 class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     """Tests for ClickhouseQueryView"""

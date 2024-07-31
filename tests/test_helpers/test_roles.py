@@ -16,6 +16,7 @@ from futurex_openedx_extensions.helpers.roles import (
     check_tenant_access,
     get_all_course_access_roles,
     get_fx_view_with_roles,
+    get_roles_for_users_queryset,
     get_usernames_with_access_roles,
     is_valid_course_access_role,
     is_view_exist,
@@ -576,3 +577,83 @@ def test_get_usernames_with_access_roles(base_data):  # pylint: disable=unused-a
     expected_result.remove('user3')
     assert set(get_usernames_with_access_roles(['ORG1', 'ORG2'], active_filter=True)) == set(expected_result)
     assert get_usernames_with_access_roles(['ORG1', 'ORG2'], active_filter=False) == ['user3']
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_superuser(base_data):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset does not include superusers."""
+    test_orgs = ['ORG1', 'ORG2']
+    user = get_user_model().objects.get(username='user1')
+    assert user.is_superuser is True
+
+    users = get_user_model().objects.all()
+    result = get_roles_for_users_queryset(users=users, orgs_filter=test_orgs)
+
+    assert CourseAccessRole.objects.filter(user_id=user.id, org__in=test_orgs).exists()
+    assert not any(record.user_id == user.id for record in result)
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_staff(base_data):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset does not include staff user."""
+    test_orgs = ['ORG1', 'ORG2']
+    user = get_user_model().objects.get(username='user2')
+    assert user.is_superuser is False
+    assert user.is_staff is True
+
+    users = get_user_model().objects.all()
+    result = get_roles_for_users_queryset(users=users, orgs_filter=test_orgs)
+
+    assert CourseAccessRole.objects.filter(user_id=user.id, org__in=test_orgs).exists()
+    assert result.count() > 0
+    assert user.id not in [record.user_id for record in result]
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_inactive(base_data):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset will include inactive users in the result"""
+    test_orgs = ['ORG1', 'ORG2']
+    user = get_user_model().objects.get(username='user3')
+    user.is_active = False
+    user.save()
+
+    users = get_user_model().objects.all()
+    result = get_roles_for_users_queryset(users=users, orgs_filter=test_orgs)
+
+    assert CourseAccessRole.objects.filter(user_id=user.id, org__in=test_orgs).exists()
+    assert user.id in [record.user_id for record in result]
+
+
+@pytest.mark.django_db
+def test_get_roles_for_users_queryset_course_id_already_in_org(base_data):  # pylint: disable=unused-argument
+    """
+    Verify that get_roles_for_users_queryset does not include roles records that are redundant because the course_id
+    is related to a role that already exists for the user as organization wide role.
+    """
+    test_orgs = ['ORG1', 'ORG2']
+    user = get_user_model().objects.get(username='user3')
+    assert CourseAccessRole.objects.filter(user_id=user.id, org__in=test_orgs).count() == 1
+
+    result = get_roles_for_users_queryset(users=[user], orgs_filter=test_orgs)
+
+    assert result.count() == 1
+    first = result.first()
+    assert not first.course_id
+
+    for course_id in ['course-v1:ORG1+1+1', 'course-v1:ORG2+2+2']:
+        CourseAccessRole.objects.create(user_id=user.id, role=first.role, org=first.org, course_id=course_id)
+    assert CourseAccessRole.objects.filter(user_id=user.id, org__in=test_orgs).count() == 3
+
+    result = get_roles_for_users_queryset(users=[user], orgs_filter=test_orgs)
+    assert result.count() == 1
+    first = result.first()
+    assert not first.course_id
+
+    first.delete()
+    assert CourseAccessRole.objects.filter(user_id=user.id, org__in=test_orgs).count() == 2
+    result = get_roles_for_users_queryset(users=[user], orgs_filter=test_orgs)
+    assert result.count() == 2
+    first = result.first()
+    assert first.course_id
+    last = result.last()
+    assert last.course_id
