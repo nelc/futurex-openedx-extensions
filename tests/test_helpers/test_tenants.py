@@ -159,8 +159,12 @@ def test_get_all_course_org_filter_list_is_being_cached():
 ])
 def test_get_course_org_filter_list(base_data, tenant_ids, expected):  # pylint: disable=unused-argument
     """Verify get_course_org_filter_list function."""
-    result = tenants.get_course_org_filter_list(tenant_ids)
+    result = tenants.get_course_org_filter_list(tenant_ids, ignore_invalid_tenant_ids=True)
     assert result == expected
+    if expected['invalid']:
+        with pytest.raises(ValueError) as exc_info:
+            tenants.get_course_org_filter_list(tenant_ids)
+        assert str(exc_info.value) == f'Invalid tenant IDs: {expected["invalid"]}'
 
 
 @pytest.mark.django_db

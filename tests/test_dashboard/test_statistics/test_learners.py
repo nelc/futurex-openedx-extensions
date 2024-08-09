@@ -12,9 +12,6 @@ from futurex_openedx_extensions.dashboard.statistics import learners
     (1, {'org1': 4, 'org2': 17}),
     (2, {'org3': 13, 'org8': 6}),
     (3, {'org4': 4}),
-    (4, {}),
-    (5, {}),
-    (6, {}),
     (7, {'org3': 13}),
     (8, {'org8': 6}),
 ])
@@ -59,9 +56,6 @@ def test_get_learners_count_having_enrollment_per_org_inactive_enrollment(
     (1, 17),
     (2, 16),
     (3, 4),
-    (4, 0),
-    (5, 0),
-    (6, 0),
     (7, 13),
     (8, 6),
 ])
@@ -94,9 +88,6 @@ def test_get_learners_count_having_enrollment_for_tenant_inactive_enrollment(
     (1, 0),
     (2, 5),
     (3, 2),
-    (4, 0),
-    (5, 0),
-    (6, 0),
     (7, 4),
     (8, 3),
 ])
@@ -167,7 +158,6 @@ def test_get_learners_count(base_data, user1_fx_permission_info):  # pylint: dis
         1: {'learners_count': 17, 'learners_count_no_enrollment': 0, 'learners_count_per_org': {'org1': 4, 'org2': 17}},
         2: {'learners_count': 16, 'learners_count_no_enrollment': 5, 'learners_count_per_org': {'org3': 13, 'org8': 6}},
         3: {'learners_count': 4, 'learners_count_no_enrollment': 2, 'learners_count_per_org': {'org4': 4}},
-        4: {'learners_count': 0, 'learners_count_no_enrollment': 0, 'learners_count_per_org': {}},
         7: {'learners_count': 13, 'learners_count_no_enrollment': 4, 'learners_count_per_org': {'org3': 13}},
         8: {'learners_count': 6, 'learners_count_no_enrollment': 3, 'learners_count_per_org': {'org8': 6}}
     }, f'Wrong learners count: {result}'
