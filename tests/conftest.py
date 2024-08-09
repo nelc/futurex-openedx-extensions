@@ -74,7 +74,7 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
 
     def _create_course_access_roles():
         """Create course access roles."""
-        for role, orgs in _base_data['course_access_roles'].items():
+        for role, orgs in _base_data['course_access_roles_org_wide'].items():
             for org, users in orgs.items():
                 for user_id in users:
                     CourseAccessRole.objects.create(
@@ -82,6 +82,17 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
                         role=role,
                         org=org,
                     )
+        for org, courses in _base_data['course_access_roles_course_specific'].items():
+            for course_index, roles in courses.items():
+                for role, users in roles.items():
+                    for user_id in users:
+                        course_id = f'course-v1:{org}+{course_index}+{course_index}'
+                        CourseAccessRole.objects.create(
+                            user_id=user_id,
+                            role=role,
+                            org=org,
+                            course_id=course_id,
+                        )
 
     def _create_ignored_course_access_roles():
         """Create course access roles for records that will be ignored by our APIs."""

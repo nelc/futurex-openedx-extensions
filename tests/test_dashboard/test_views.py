@@ -14,19 +14,20 @@ from django.utils.timezone import now, timedelta
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework.test import APIRequestFactory, APITestCase
 
-from futurex_openedx_extensions.dashboard import serializers, views
+from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS, COURSE_STATUSES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
+    FXHasTenantAllCoursesAccess,
     FXHasTenantCourseAccess,
     IsAnonymousOrSystemStaff,
     IsSystemStaff,
 )
 from tests.base_test_data import expected_statistics
-from tests.fixture_helpers import get_all_orgs, get_user1_fx_permission_info
+from tests.fixture_helpers import get_all_orgs, get_test_data_dict, get_user1_fx_permission_info
 from tests.test_dashboard.test_mixins import MockPatcherMixin
 
 
@@ -36,13 +37,14 @@ class BaseTestViewMixin(APITestCase):
 
     def setUp(self):
         """Setup"""
+        self.view_name = self.VIEW_NAME
         self.url_args = []
         self.staff_user = 2
 
     @property
     def url(self):
         """Get the URL"""
-        return reverse(self.VIEW_NAME, args=self.url_args)
+        return reverse(self.view_name, args=self.url_args)
 
     def login_user(self, user_id):
         """Helper to login user"""
@@ -647,6 +649,101 @@ class TestGlobalRatingView(BaseTestViewMixin):
                 '5': 0,
             },
         })
+
+
+@ddt.ddt
+class TestUserRolesManagementView(BaseTestViewMixin):
+    """Tests for UserRolesManagementView for GET list"""
+    def set_action(self, action):
+        """Set the action"""
+        self.view_name = f'fx_dashboard:user-roles-{action}'
+        if action == 'detail':
+            self.url_args = ['user4']
+
+    @ddt.data('list', 'detail')
+    def test_permission_classes(self, action):
+        """Verify that the view has the correct permission classes"""
+        self.set_action(action)
+
+        registry = {}
+        for _, viewset, basename in urls.router.registry:
+            registry[basename] = viewset
+        view_class = registry['user-roles']
+        self.assertEqual(view_class.permission_classes, [FXHasTenantAllCoursesAccess])
+
+    @ddt.data('list', 'detail')
+    def test_unauthorized(self, action):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        self.set_action(action)
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_bad_course_id(self):
+        """Verify that the view returns 400 when the course ID is invalid"""
+        self.set_action('list')
+
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url, data={'only_course_ids': 'course-v1:ORG1+4+4,invalid-course-id'})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Invalid course ID format: invalid-course-id', response.data['detail'])
+
+    def test_success_list(self):
+        """Verify that the view returns the correct response when list action is used"""
+        self.set_action('list')
+
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+
+        test_data = get_test_data_dict()
+        assert len(response.data['results']) == len(test_data)
+        for user_roles in response.data['results']:
+            username = user_roles['username']
+            assert username in test_data
+            del test_data[username]
+
+        assert not test_data
+
+    def test_success_detail(self):
+        """Verify that the view returns the correct response when detail action is used"""
+        self.set_action('detail')
+
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+
+        assert response.data['tenants'] == {
+            1: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG1+4+4': ['staff']}},
+            2: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}},
+            7: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}}
+        }
+
+    def test_post_not_implemented(self):
+        """Verify that the view returns 501 for POST"""
+        self.set_action('list')
+
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 501)
+
+    def test_put_not_implemented(self):
+        """Verify that the view returns 501 for PUT"""
+        self.set_action('detail')
+
+        self.login_user(self.staff_user)
+        response = self.client.put(self.url)
+        self.assertEqual(response.status_code, 501)
+
+    def test_delete_not_implemented(self):
+        """Verify that the view returns 501 for DELETE"""
+        self.set_action('detail')
+
+        self.login_user(self.staff_user)
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, 501)
 
 
 @ddt.ddt

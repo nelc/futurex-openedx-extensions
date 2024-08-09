@@ -17,8 +17,10 @@ from futurex_openedx_extensions.dashboard.serializers import (
     LearnerDetailsExtendedSerializer,
     LearnerDetailsForCourseSerializer,
     LearnerDetailsSerializer,
+    UserRolesSerializer,
 )
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREFIX, COURSE_STATUSES
+from futurex_openedx_extensions.helpers.roles import RoleType
 
 
 def get_dummy_queryset(users_list=None):
@@ -32,6 +34,21 @@ def get_dummy_queryset(users_list=None):
         course_score=Value(0.67),
         active_in_course=Value(True),
     ).select_related('profile')
+
+
+@pytest.fixture
+def serializer_context():
+    """Create a context for testing."""
+    return {
+        'request': Mock(
+            fx_permission_info={
+                'view_allowed_full_access_orgs': ['ORG1', 'ORG2'],
+                'view_allowed_course_access_orgs': ['ORG3'],
+                'permitted_tenant_ids': [1, 3],
+            },
+            query_params={},
+        )
+    }
 
 
 @pytest.mark.django_db
@@ -335,3 +352,159 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
         'is_passing': False,
     }
     assert data['certificate_url'] == 'https://test.com/courses/course-v1:dummy+key/certificate/'
+
+
+@pytest.mark.django_db
+def test_user_roles_serializer_init(
+    base_data, serializer_context
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that the UserRolesSerializer is correctly defined."""
+    user3 = get_user_model().objects.get(id=3)
+
+    with patch(
+        'futurex_openedx_extensions.dashboard.serializers.UserRolesSerializer.construct_roles_data'
+    ) as mock_construct_roles_data:
+        mock_construct_roles_data.return_value = {3: {}}
+        serializer = UserRolesSerializer(user3, context=serializer_context)
+
+    assert mock_construct_roles_data.called
+    assert mock_construct_roles_data.call_args[0][0] == [user3]
+    assert serializer.orgs_filter == ['ORG1', 'ORG2', 'ORG3']
+    assert serializer.permitted_tenant_ids == \
+           serializer_context['request'].fx_permission_info['permitted_tenant_ids']
+    assert serializer.data == {
+        'user_id': user3.id,
+        'email': user3.email,
+        'username': user3.username,
+        'full_name': '',
+        'alternative_full_name': '',
+        'tenants': {}
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('instance, many', [
+    ([], True),
+    (None, True),
+    (None, False),
+])
+def test_user_roles_serializer_init_no_construct_call(
+    base_data, serializer_context, instance, many
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that the UserRolesSerializer does not call construct_roles_data if the instance is empty."""
+    with patch(
+        'futurex_openedx_extensions.dashboard.serializers.UserRolesSerializer.construct_roles_data'
+    ) as mock_construct_roles_data:
+        UserRolesSerializer(instance, context=serializer_context, many=many)
+
+    mock_construct_roles_data.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_user_roles_serializer_get_org_tenants(
+    base_data, serializer_context
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that the UserRolesSerializer correctly gets the org tenants and caches it in _org_tenant."""
+    user3 = get_user_model().objects.get(id=3)
+    with patch(
+        'futurex_openedx_extensions.dashboard.serializers.get_tenants_by_org'
+    ) as mock_get_tenants_by_org, patch(
+        'futurex_openedx_extensions.dashboard.serializers.UserRolesSerializer.construct_roles_data'
+    ) as mock_construct_roles_data:
+        mock_construct_roles_data.return_value = {
+            3: {
+                1: {
+                    'tenant_roles': ['instructor'],
+                    'course_roles': {},
+                },
+            },
+        }
+        serializer = UserRolesSerializer(user3, context=serializer_context)
+
+        mock_get_tenants_by_org.return_value = [1, 2]
+        assert isinstance(serializer._org_tenant, dict)  # pylint: disable=protected-access
+        assert not serializer._org_tenant  # pylint: disable=protected-access
+        assert serializer.get_org_tenants('ORG1') == [1, 2]
+        assert serializer._org_tenant == {'ORG1': [1, 2]}  # pylint: disable=protected-access
+        mock_get_tenants_by_org.assert_called_once()
+
+        mock_get_tenants_by_org.reset_mock()
+        assert serializer.get_org_tenants('ORG1') == [1, 2]
+        mock_get_tenants_by_org.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_user_roles_serializer_construct_roles_data(
+    base_data, serializer_context
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that the construct_roles_data method correctly returns the roles data."""
+    user3 = get_user_model().objects.get(id=3)
+    user4 = get_user_model().objects.get(id=4)
+
+    serializer = UserRolesSerializer(context=serializer_context)
+    assert not serializer.roles_data
+
+    serializer.construct_roles_data([user3, user4])
+    assert serializer.roles_data == {
+        3: {
+            1: {
+                'tenant_roles': ['staff'],
+                'course_roles': {
+                    'course-v1:ORG1+3+3': ['org_course_creator_group'],
+                    'course-v1:ORG1+4+4': ['org_course_creator_group']
+                }
+            }
+        },
+        4: {
+            1: {
+                'tenant_roles': ['org_course_creator_group'],
+                'course_roles': {
+                    'course-v1:ORG1+4+4': ['staff']
+                }
+            }
+        }
+    }
+
+
+@pytest.mark.django_db
+def test_user_roles_serializer_parse_query_params_defaults(
+    base_data, serializer_context
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that the parse_query_params method correctly parses the query parameters."""
+    print(UserRolesSerializer.parse_query_params({}))
+    assert UserRolesSerializer.parse_query_params({}) == {
+        'search_text': '',
+        'course_ids_filter': [],
+        'roles_filter': [],
+        'active_filter': None,
+        'exclude_role_type': None,
+    }
+
+
+@pytest.mark.parametrize('exclude_tenant_roles, exclude_course_roles, exclude_role_type', [
+    (None, None, None),
+    ('0', None, None),
+    ('1', None, RoleType.ORG_WIDE),
+    (None, '0', None),
+    ('0', '0', None),
+    ('1', '0', RoleType.ORG_WIDE),
+    (None, '1', RoleType.COURSE_SPECIFIC),
+    ('0', '1', RoleType.COURSE_SPECIFIC),
+    ('1', '1', RoleType.ORG_WIDE),
+])
+def test_user_roles_serializer_parse_query_params_values(exclude_tenant_roles, exclude_course_roles, exclude_role_type):
+    """Verify that the parse_query_params method correctly parses the query parameters."""
+    assert UserRolesSerializer.parse_query_params({
+        'search_text': 'user99',
+        'only_course_ids': 'course-v1:ORG99+88+88,another-course',
+        'only_roles': 'staff,instructor',
+        'active_users_filter': '1',
+        'exclude_tenant_roles': exclude_tenant_roles,
+        'exclude_course_roles': exclude_course_roles,
+    }) == {
+        'search_text': 'user99',
+        'course_ids_filter': ['course-v1:ORG99+88+88', 'another-course'],
+        'roles_filter': ['staff', 'instructor'],
+        'active_filter': True,
+        'exclude_role_type': exclude_role_type,
+    }

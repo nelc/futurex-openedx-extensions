@@ -10,10 +10,13 @@ from futurex_openedx_extensions.helpers.constants import COURSE_ID_REGX
 
 def get_course_id_from_uri(uri: str) -> str | None:
     """Extract the course_id from the URI."""
+    print('=================================')
+    print(uri)
     path_parts = urlparse(uri).path.split('/')
-
+    print(path_parts)
     for part in path_parts:
         result = re.search(r'^' + COURSE_ID_REGX, part)
+        print(result)
         if result:
             return result.groupdict().get('course_id')
 

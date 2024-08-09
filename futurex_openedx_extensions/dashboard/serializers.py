@@ -12,9 +12,11 @@ from openedx.core.djangoapps.content.block_structure.api import get_block_struct
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
 from rest_framework import serializers
+from rest_framework.fields import empty
 
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREFIX, COURSE_STATUSES
 from futurex_openedx_extensions.helpers.converters import relative_url_to_absolute_url
+from futurex_openedx_extensions.helpers.roles import RoleType, get_course_access_roles_queryset
 from futurex_openedx_extensions.helpers.tenants import get_tenants_by_org
 
 
@@ -362,3 +364,159 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
             'letter_grade': course_grade.letter_grade,
             'is_passing': course_grade.passed,
         }
+
+
+class UserRolesSerializer(LearnerBasicDetailsSerializer):
+    """Serializer for user roles."""
+    tenants = serializers.SerializerMethodField()
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> UserRolesSerializer:
+        """Create a new instance of the serializer."""
+        return super().__new__(cls, *args, **kwargs)
+
+    def __init__(self, instance: Any | None = None, data: Any = empty, **kwargs: Any):
+        """Initialize the serializer."""
+        self._org_tenant: dict[str, list[int]] = {}
+        self._roles_data: dict[Any, Any] = {}
+
+        permission_info = kwargs['context']['request'].fx_permission_info
+        self.orgs_filter = permission_info['view_allowed_full_access_orgs']
+        self.orgs_filter.extend(permission_info['view_allowed_course_access_orgs'])
+        self.permitted_tenant_ids = permission_info['permitted_tenant_ids']
+        self.query_params = self.parse_query_params(kwargs['context']['request'].query_params)
+
+        if instance:
+            self.construct_roles_data(instance if isinstance(instance, list) else [instance])
+
+        super().__init__(instance, data, **kwargs)
+
+    @staticmethod
+    def parse_query_params(query_params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Parse the query parameters.
+
+        :param query_params: The query parameters.
+        :type query_params: dict[str, Any]
+        """
+        result = {
+            'search_text': query_params.get('search_text', ''),
+            'course_ids_filter': query_params[
+                'only_course_ids'
+            ].split(',') if query_params.get('only_course_ids') else [],
+            'roles_filter': query_params.get('only_roles', '').split(',') if query_params.get('only_roles') else [],
+        }
+
+        if query_params.get('active_users_filter') is not None:
+            result['active_filter'] = query_params['active_users_filter'] == '1'
+        else:
+            result['active_filter'] = None
+
+        exclude_tenant_roles = False
+        exclude_course_roles = False
+        if query_params.get('exclude_tenant_roles') is not None:
+            exclude_tenant_roles = query_params['exclude_tenant_roles'] == '1'
+
+        if not exclude_tenant_roles and query_params.get('exclude_course_roles') is not None:
+            exclude_course_roles = query_params['exclude_course_roles'] == '1'
+
+        if exclude_tenant_roles:
+            result['exclude_role_type'] = RoleType.ORG_WIDE
+        elif exclude_course_roles:
+            result['exclude_role_type'] = RoleType.COURSE_SPECIFIC
+        else:
+            result['exclude_role_type'] = None
+
+        return result
+
+    def get_org_tenants(self, org: str) -> list[int]:
+        """
+        Get the tenants for an organization.
+
+        :param org: The organization to get the tenants for.
+        :type org: str
+        :return: The tenants.
+        :rtype: list[int]
+        """
+        result = self._org_tenant.get(org)
+        if not result:
+            result = get_tenants_by_org(org)
+            self._org_tenant[org] = result
+
+        return result or []
+
+    def construct_roles_data(self, users: list[get_user_model]) -> None:
+        """
+        Construct the roles data.
+
+        {
+            "<userID>": {
+                "<tenantID>": {
+                    "tenant_roles": ["<roleName>", "<roleName>"],
+                    "course_roles": {
+                        "<courseID>": ["<roleName>", "<roleName>"],
+                        "<courseID>": ["<roleName>", "<roleName>"],
+                    },
+                },
+                ....
+            },
+            ....
+        }
+
+        :param users: The user instances.
+        :type users: list[get_user_model]
+        """
+        self._roles_data = {}
+        for user in users:
+            self._roles_data[user.id] = {}
+
+        records = get_course_access_roles_queryset(
+            self.orgs_filter,
+            remove_redundant=True,
+            users=users,
+            search_text=self.query_params['search_text'],
+            roles_filter=self.query_params['roles_filter'],
+            active_filter=self.query_params['active_filter'],
+            course_ids_filter=self.query_params['course_ids_filter'],
+            exclude_role_type=self.query_params['exclude_role_type'],
+        )
+
+        for record in records or []:
+            usr_data = self._roles_data[record.user_id]
+            for tenant_id in self.get_org_tenants(record.org):
+                if tenant_id not in self.permitted_tenant_ids:
+                    continue
+
+                if tenant_id not in usr_data:
+                    usr_data[tenant_id] = {
+                        'tenant_roles': [],
+                        'course_roles': {},
+                    }
+
+                course_id = str(record.course_id) if record.course_id else None
+                if course_id and course_id not in usr_data[tenant_id]['course_roles']:
+                    usr_data[tenant_id]['course_roles'][course_id] = []
+
+                if course_id:
+                    usr_data[tenant_id]['course_roles'][course_id].append(record.role)
+                elif record.role not in usr_data[tenant_id]['tenant_roles']:
+                    usr_data[tenant_id]['tenant_roles'].append(record.role)
+
+    @property
+    def roles_data(self) -> dict[Any, Any] | None:
+        """Get the roles data."""
+        return self._roles_data
+
+    def get_tenants(self, obj: get_user_model) -> Any:
+        """Return the tenants."""
+        return self.roles_data.get(obj.id, {}) if self.roles_data else {}
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'user_id',
+            'email',
+            'username',
+            'full_name',
+            'alternative_full_name',
+            'tenants',
+        ]
