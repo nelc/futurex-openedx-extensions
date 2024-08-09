@@ -370,10 +370,6 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
     """Serializer for user roles."""
     tenants = serializers.SerializerMethodField()
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> UserRolesSerializer:
-        """Create a new instance of the serializer."""
-        return super().__new__(cls, *args, **kwargs)
-
     def __init__(self, instance: Any | None = None, data: Any = empty, **kwargs: Any):
         """Initialize the serializer."""
         self._org_tenant: dict[str, list[int]] = {}

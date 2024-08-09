@@ -12,11 +12,12 @@ from django.http import JsonResponse
 from django.urls import resolve, reverse
 from django.utils.timezone import now, timedelta
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from rest_framework import status as http_status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
-from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS
+from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
@@ -71,13 +72,13 @@ class TestTotalCountsView(BaseTestViewMixin):
     def test_unauthorized(self):
         """Test unauthorized access"""
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_invalid_stats(self):
         """Test invalid stats"""
         self.login_user(self.staff_user)
         response = self.client.get(self.url + '?stats=invalid')
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data, {'reason': 'Invalid stats type', 'details': {'invalid': ['invalid']}})
 
     def test_all_stats(self):
@@ -85,7 +86,7 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url + '?stats=certificates,courses,hidden_courses,learners')
         self.assertTrue(isinstance(response, JsonResponse))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertDictEqual(json.loads(response.content), expected_statistics)
 
     def test_selected_tenants(self):
@@ -93,7 +94,7 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url + '?stats=certificates,courses,learners&tenant_ids=1,2')
         self.assertTrue(isinstance(response, JsonResponse))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         expected_response = {
             '1': {'certificates_count': 14, 'courses_count': 12, 'learners_count': 17},
             '2': {'certificates_count': 9, 'courses_count': 5, 'learners_count': 21},
@@ -112,7 +113,7 @@ class TestLearnersView(BaseTestViewMixin):
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_no_tenants(self):
         """Verify that the view returns the result for all accessible tenants when no tenant IDs are provided"""
@@ -136,7 +137,7 @@ class TestLearnersView(BaseTestViewMixin):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 46)
         self.assertGreater(len(response.data['results']), 0)
 
@@ -149,7 +150,7 @@ class TestCoursesView(BaseTestViewMixin):
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_no_tenants(self):
         """Verify that the view returns the result for all accessible tenants when no tenant IDs are provided"""
@@ -174,7 +175,7 @@ class TestCoursesView(BaseTestViewMixin):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 18)
         self.assertEqual(len(response.data['results']), 18)
 
@@ -193,7 +194,7 @@ class TestCourseCourseStatusesView(BaseTestViewMixin):
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_no_tenants(self):
         """Verify that the view returns the result for all accessible tenants when no tenant IDs are provided"""
@@ -207,7 +208,7 @@ class TestCourseCourseStatusesView(BaseTestViewMixin):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         data = json.loads(response.content)
         self.assertDictEqual(data, {
             'active': 12,
@@ -238,7 +239,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_user_not_found(self):
         """Verify that the view returns 404 when the user is not found"""
@@ -248,7 +249,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
 
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
         self.assertEqual(response.data, {'reason': 'User not found user10x', 'details': {}})
 
     def _get_test_users(self, org3_admin_id, org3_learner_id):
@@ -275,7 +276,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
             allowed_role='org_course_creator_group',
         )
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
     def test_org_admin_user_with_allowed_learner_same_tenant_diff_org(self):
         """
@@ -291,7 +292,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
             allowed_role='org_course_creator_group',
         )
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
     def test_org_admin_user_with_not_allowed_learner(self):
         """Verify that the view returns 404 when the user is an org admin but the learner belongs to another org"""
@@ -303,7 +304,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
             allowed_role='org_course_creator_group',
         )
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
 
 
 @pytest.mark.usefixtures('base_data')
@@ -324,7 +325,7 @@ class TestLearnerInfoView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMix
             mock_get_info.return_value = Mock(first=Mock(return_value=user))
             response = self.client.get(self.url)
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         data = json.loads(response.content)
         self.assertDictEqual(data, serializers.LearnerDetailsExtendedSerializer(user).data)
 
@@ -377,7 +378,7 @@ class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseT
                == get_all_orgs()
         assert mock_get_info.call_args_list[0][1]['user_id'] == 10
         assert mock_get_info.call_args_list[0][1]['visible_filter'] is None
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         data = json.loads(response.content)
         self.assertEqual(len(data), 2)
         self.assertEqual(list(data), list(serializers.LearnerCoursesDetailsSerializer(courses, many=True).data))
@@ -413,14 +414,14 @@ class TestVersionInfoView(BaseTestViewMixin):
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_success(self):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.__version__', new='0.1.dummy'):
             response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(json.loads(response.content), {'version': '0.1.dummy'})
 
 
@@ -440,7 +441,7 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
         """Verify that the view returns the correct response"""
         mock_get_user.return_value = get_user_model().objects.get(username='user4')
         response = self.client.get(self.url, data={'username_or_email': 'dummy, the user loader function is mocked'})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertDictEqual(json.loads(response.content), {
             '1': {
                 'lms_root_url': 'https://s1.sample.com',
@@ -465,13 +466,13 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
         mock_get_user.side_effect = get_user_model().DoesNotExist()
         response = self.client.get(self.url)
         mock_get_user.assert_called_once_with(None)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertDictEqual(json.loads(response.content), {})
 
     def test_not_existing_username_or_email(self):
         """Verify that the view returns the correct response"""
         response = self.client.get(self.url, data={'username_or_email': 'dummy'})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertDictEqual(json.loads(response.content), {})
 
 
@@ -488,7 +489,7 @@ class TestLearnersDetailsForCourseView(BaseTestViewMixin):
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_permission_classes(self):
         """Verify that the view has the correct permission classes"""
@@ -500,7 +501,7 @@ class TestLearnersDetailsForCourseView(BaseTestViewMixin):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 3)
         self.assertGreater(len(response.data['results']), 0)
 
@@ -534,7 +535,7 @@ class MockClickhouseQuery:
 
         query = 'SELECT * FROM table'
         if 'ca-users' in slug:
-            query += f' WHERE user_id IN {{{{{CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS}}}}}'
+            query += f' WHERE user_id IN {{{{{cs.CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS}}}}}'
 
         return MockClickhouseQuery(
             query=query,
@@ -554,7 +555,7 @@ class TestGlobalRatingView(BaseTestViewMixin):
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_permission_classes(self):
         """Verify that the view has the correct permission classes"""
@@ -594,7 +595,7 @@ class TestGlobalRatingView(BaseTestViewMixin):
             mocked_calc.return_value = test_data
             response = self.client.get(self.url)
         data = json.loads(response.content)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(data, expected_result)
 
     def test_success_no_rating(self):
@@ -612,7 +613,7 @@ class TestGlobalRatingView(BaseTestViewMixin):
             }
             response = self.client.get(self.url)
         data = json.loads(response.content)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(data, {
             'total_rating': 0,
             'total_count': 0,
@@ -653,7 +654,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.set_action(action)
 
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_bad_course_id(self):
         """Verify that the view returns 400 when the course ID is invalid"""
@@ -661,7 +662,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
 
         self.login_user(self.staff_user)
         response = self.client.get(self.url, data={'only_course_ids': 'course-v1:ORG1+4+4,invalid-course-id'})
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertIn('Invalid course ID format: invalid-course-id', response.data['detail'])
 
     def test_success_list(self):
@@ -671,7 +672,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
         test_data = get_test_data_dict()
         assert len(response.data['results']) == len(test_data)
@@ -689,7 +690,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
         assert response.data['tenants'] == {
             1: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG1+4+4': ['staff']}},
@@ -697,13 +698,69 @@ class TestUserRolesManagementView(BaseTestViewMixin):
             7: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}}
         }
 
-    def test_post_not_implemented(self):
-        """Verify that the view returns 501 for POST"""
+    def test_post_success(self):
+        """Verify that the view returns 201 for POST"""
         self.set_action('list')
 
         self.login_user(self.staff_user)
-        response = self.client.post(self.url)
-        self.assertEqual(response.status_code, 501)
+        with patch('futurex_openedx_extensions.dashboard.views.add_course_access_roles') as mock_add_users:
+            mock_add_users.return_value = {
+                'failed': [],
+                'added': ['shadinaif', 'ahmad@gmail.com'],
+                'updated': [10098765],
+                'not_updated': [],
+            }
+            response = self.client.post(
+                self.url,
+                data={
+                    'tenant_ids': [9],
+                    'users': ['shadinaif', 'ahmad@gmail.com', 10098765],
+                    'role': 'staff',
+                    'tenant_wide': False,
+                    'course_ids': ['course-v1:ORG1+TOPIC+2024', 'course-v1:ORG1+TOPIC2+2024'],
+                },
+                format='json',
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(json.loads(response.content), mock_add_users.return_value)
+
+    @ddt.data(
+        ('tenant_ids', 'not list', True, 'tenant_ids must be a list of integers'),
+        ('tenant_ids', [1, 'not int'], True, 'tenant_ids must be a list of integers'),
+        ('users', 'not list', True, 'users must be a list'),
+        ('role', ['not str'], True, 'role must be a string'),
+        ('tenant_wide', 'not int', True, 'tenant_wide must be an integer flag'),
+        ('course_ids', 'not list', False, 'course_ids must be a list'),
+    )
+    @ddt.unpack
+    def test_post_validation_error(self, key, value, is_required, error_message):
+        """Verify that the view returns 400 for POST when the payload is invalid"""
+        self.set_action('list')
+        self.login_user(self.staff_user)
+        data = {
+            'tenant_ids': [9],
+            'users': ['shadinaif', 'ahmad@gmail.com', 10098765],
+            'role': 'staff',
+            'tenant_wide': False,
+            'course_ids': ['course-v1:ORG1+TOPIC+2024', 'course-v1:ORG1+TOPIC2+2024'],
+        }
+
+        data.pop(key)
+        with patch('futurex_openedx_extensions.dashboard.views.add_course_access_roles') as mock_add_users:
+            mock_add_users.return_value = {}
+            response = self.client.post(self.url, data=data, format='json')
+            if is_required:
+                self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+                self.assertEqual(response.data, {
+                    'reason': f"Missing required parameter: '{key}'", 'details': {}
+                })
+            else:
+                self.assertEqual(response.status_code, http_status.HTTP_201_CREATED)
+
+        data.update({key: value})
+        response = self.client.post(self.url, data=data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data, {'reason': error_message, 'details': {}})
 
     def test_put_not_implemented(self):
         """Verify that the view returns 501 for PUT"""
@@ -711,15 +768,54 @@ class TestUserRolesManagementView(BaseTestViewMixin):
 
         self.login_user(self.staff_user)
         response = self.client.put(self.url)
-        self.assertEqual(response.status_code, 501)
+        self.assertEqual(response.status_code, http_status.HTTP_501_NOT_IMPLEMENTED)
 
-    def test_delete_not_implemented(self):
-        """Verify that the view returns 501 for DELETE"""
+    @patch('futurex_openedx_extensions.dashboard.views.get_user_by_key')
+    def test_delete_bad_username(self, mock_get_user):
+        """Verify that the view returns 400 when the user tries to delete their own roles"""
+        self.set_action('detail')
+
+        mock_get_user.return_value = {
+            'user': None,
+            'key_type': cs.USER_KEY_TYPE_NOT_ID,
+            'error_code': '999',
+            'error_message': 'the error message',
+        }
+        self.url_args = ['invalid_username']
+
+        self.login_user(self.staff_user)
+        response = self.client.delete(self.url + '?tenant_ids=1,2')
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data, {'reason': '(999) the error message', 'details': {}})
+
+    @patch('futurex_openedx_extensions.dashboard.views.get_user_by_key')
+    def test_delete_missing_required_parameter(self, _):
+        """Verify that the view returns 400 when there is a missing required-parameter"""
         self.set_action('detail')
 
         self.login_user(self.staff_user)
-        response = self.client.delete(self.url)
-        self.assertEqual(response.status_code, 501)
+        response = self.client.delete(self.url + '?tenant_ids_not_sent_in_query_params=x')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data, {'reason': "Missing required parameter: 'tenant_ids'", 'details': {}})
+
+    @patch('futurex_openedx_extensions.dashboard.views.get_user_by_key')
+    @patch('futurex_openedx_extensions.dashboard.views.delete_course_access_roles')
+    def test_delete_success(self, mock_delete_user, mock_get_user):
+        """Verify that the view returns 400 when the user tries to delete their own roles"""
+        self.set_action('detail')
+
+        mock_get_user.return_value = {
+            'user': get_user_model().objects.get(id=4),
+            'key_type': cs.USER_KEY_TYPE_ID,
+            'error_code': None,
+            'error_message': None,
+        }
+
+        self.login_user(self.staff_user)
+        response = self.client.delete(self.url + '?tenant_ids=1,2')
+        self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        self.assertIsNone(response.data)
+        mock_delete_user.assert_called_once_with(tenant_ids=[1, 2], user=mock_get_user.return_value['user'])
 
 
 @ddt.ddt
@@ -758,13 +854,13 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
     def test_success(self):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(json.loads(response.content), {
             'count': 100,
             'next': 'http://testserver/api/fx/query/v1/course/test-query/?page=2',
@@ -779,7 +875,7 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
 
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(json.loads(response.content), [{'col_name': 1}])
         self.mocks['get_usernames_with_access_roles'].assert_not_called()
 
@@ -790,7 +886,7 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
 
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(json.loads(response.content), [{'col_name': 1}])
         self.mocks['get_usernames_with_access_roles'].assert_called_once_with(all_orgs)
 

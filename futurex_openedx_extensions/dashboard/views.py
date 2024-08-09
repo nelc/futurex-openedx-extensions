@@ -10,6 +10,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
+from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.exceptions import ParseError
 from rest_framework.generics import ListAPIView
@@ -50,6 +51,8 @@ from futurex_openedx_extensions.helpers.permissions import (
 )
 from futurex_openedx_extensions.helpers.roles import (
     FXViewRoleInfoMixin,
+    add_course_access_roles,
+    delete_course_access_roles,
     get_course_access_roles_queryset,
     get_usernames_with_access_roles,
 )
@@ -58,6 +61,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_tenants_info,
     get_user_id_from_username_tenants,
 )
+from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 
 class TotalCountsView(APIView, FXViewRoleInfoMixin):
@@ -132,7 +136,10 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         stats = request.query_params.get('stats', '').split(',')
         invalid_stats = list(set(stats) - set(self.valid_stats))
         if invalid_stats:
-            return Response(error_details_to_dictionary(reason='Invalid stats type', invalid=invalid_stats), status=400)
+            return Response(
+                error_details_to_dictionary(reason='Invalid stats type', invalid=invalid_stats),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
 
         tenant_ids = self.fx_permission_info['permitted_tenant_ids']
 
@@ -240,7 +247,10 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
         user_id = get_user_id_from_username_tenants(username, tenant_ids)
 
         if not user_id:
-            return Response(error_details_to_dictionary(reason=f'User not found {username}'), status=404)
+            return Response(
+                error_details_to_dictionary(reason=f'User not found {username}'),
+                status=http_status.HTTP_404_NOT_FOUND
+            )
 
         user = get_learner_info_queryset(self.fx_permission_info, user_id).first()
 
@@ -265,7 +275,10 @@ class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
         user_id = get_user_id_from_username_tenants(username, tenant_ids)
 
         if not user_id:
-            return Response(error_details_to_dictionary(reason=f'User not found {username}'), status=404)
+            return Response(
+                error_details_to_dictionary(reason=f'User not found {username}'),
+                status=http_status.HTTP_404_NOT_FOUND
+            )
 
         courses = get_learner_courses_info_queryset(
             fx_permission_info=self.fx_permission_info,
@@ -396,17 +409,74 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
 
         return q_set
 
-    def create(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+    def create(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
         """Create a new user role"""
-        return Response(error_details_to_dictionary(reason='Not implemented yet'), status=501)
+        data = request.data
+        try:
+            if (
+                not isinstance(data['tenant_ids'], list) or
+                not all(isinstance(t_id, int) for t_id in data['tenant_ids'])
+            ):
+                raise ValueError('tenant_ids must be a list of integers')
+            if not isinstance(data['users'], list):
+                raise ValueError('users must be a list')
+            if not isinstance(data['role'], str):
+                raise ValueError('role must be a string')
+            if not isinstance(data['tenant_wide'], int):
+                raise ValueError('tenant_wide must be an integer flag')
+            if not isinstance(data.get('course_ids', []), list):
+                raise ValueError('course_ids must be a list')
+        except KeyError as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'Missing required parameter: {exc}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+        except ValueError as exc:
+            return Response(
+                error_details_to_dictionary(reason=str(exc)),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        return JsonResponse(
+            add_course_access_roles(
+                tenant_ids=data['tenant_ids'],
+                user_keys=data['users'],
+                role=data['role'],
+                tenant_wide=data['tenant_wide'] != 0,
+                course_ids=data.get('course_ids', []),
+            ),
+            status=http_status.HTTP_201_CREATED,
+        )
 
     def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """Update a user role"""
-        return Response(error_details_to_dictionary(reason='Not implemented yet'), status=501)
+        return Response(
+            error_details_to_dictionary(reason='Not implemented yet'),
+            status=http_status.HTTP_501_NOT_IMPLEMENTED
+        )
 
     def destroy(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """Delete a user role"""
-        return Response(error_details_to_dictionary(reason='Not implemented yet'), status=501)
+        if not request.query_params.get('tenant_ids'):
+            return Response(
+                error_details_to_dictionary(reason="Missing required parameter: 'tenant_ids'"),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        username = kwargs.get('username')
+        user_info = get_user_by_key(username)
+        if not user_info['user']:
+            return Response(
+                error_details_to_dictionary(reason=f'({user_info["error_code"]}) {user_info["error_message"]}'),
+                status=http_status.HTTP_404_NOT_FOUND
+            )
+
+        delete_course_access_roles(
+            tenant_ids=self.fx_permission_info['permitted_tenant_ids'],
+            user=user_info['user'],
+        )
+
+        return Response(status=204)
 
 
 class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
@@ -490,10 +560,16 @@ class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
         """
         clickhouse_query = ClickhouseQuery.get_query_record(scope, 'v1', slug)
         if not clickhouse_query:
-            return Response(error_details_to_dictionary(reason=f'Query not found {scope}.v1.{slug}'), status=404)
+            return Response(
+                error_details_to_dictionary(reason=f'Query not found {scope}.v1.{slug}'),
+                status=http_status.HTTP_404_NOT_FOUND
+            )
 
         if not clickhouse_query.enabled:
-            return Response(error_details_to_dictionary(reason=f'Query is disabled {scope}.v1.{slug}'), status=400)
+            return Response(
+                error_details_to_dictionary(reason=f'Query is disabled {scope}.v1.{slug}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
 
         params = request.query_params.dict()
         self.get_page_url_with_page(request.build_absolute_uri(), 9)
@@ -520,13 +596,21 @@ class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
                 )
 
         except EmptyPage as exc:
-            error_response = Response(error_details_to_dictionary(reason=str(exc)), status=404)
+            error_response = Response(
+                error_details_to_dictionary(reason=str(exc)), status=http_status.HTTP_404_NOT_FOUND
+            )
         except (ch.ClickhouseClientNotConfiguredError, ch.ClickhouseClientConnectionError) as exc:
-            error_response = Response(error_details_to_dictionary(reason=str(exc)), status=503)
+            error_response = Response(
+                error_details_to_dictionary(reason=str(exc)), status=http_status.HTTP_503_SERVICE_UNAVAILABLE
+            )
         except (ch.ClickhouseBaseError, ValueError) as exc:
-            error_response = Response(error_details_to_dictionary(reason=str(exc)), status=400)
+            error_response = Response(
+                error_details_to_dictionary(reason=str(exc)), status=http_status.HTTP_400_BAD_REQUEST
+            )
         except ValidationError as exc:
-            error_response = Response(error_details_to_dictionary(reason=exc.message), status=400)
+            error_response = Response(
+                error_details_to_dictionary(reason=exc.message), status=http_status.HTTP_400_BAD_REQUEST
+            )
 
         if error_response:
             return error_response
