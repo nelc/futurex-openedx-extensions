@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Tuple
 
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db.models import Exists, OuterRef, Q, Subquery
 from django_mysql.models import QuerySet
 from opaque_keys.edx.django.models import CourseKeyField
@@ -588,3 +589,73 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments
     queryset = queryset.filter(org__in=list(orgs_filter_set))
 
     return _apply_special_filters(queryset, course_ids_filter, remove_redundant, exclude_role_type)
+
+
+def cache_refresh_course_access_roles() -> None:
+    """Refresh the course access roles cache."""
+    cache.delete(cs.CACHE_NAME_ALL_COURSE_ACCESS_ROLES)
+    get_all_course_access_roles()
+
+
+def delete_course_access_roles(tenant_ids: list[int], user: get_user_model) -> None:
+    """
+    Delete the course access roles for the given tenant IDs and user.
+
+    :param tenant_ids: The tenant IDs to filter on
+    :type tenant_ids: list
+    :param user: The user to filter on
+    :type user: get_user_model
+    """
+    orgs = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
+
+    CourseAccessRole.objects.filter(user=user).filter(
+        Q(org__in=orgs) | Q(org=''),
+    ).delete()
+
+    cache_refresh_course_access_roles()
+
+
+# def add_course_access_roles(
+#     tenant_ids: list[int],
+#     users: list[get_user_model],
+#     roles: dict,
+#     dry_run: bool = False) -> dict:
+#     """
+#     Add the course access roles for the given tenant IDs and user.
+#
+#     :param tenant_ids: The tenant IDs to filter on
+#     :type tenant_ids: list
+#     :param users: List of users
+#     :type users: list[get_user_model]
+#     :param roles: The roles to add
+#     :type roles: dict
+#     :param dry_run: True for dry run, False otherwise
+#     :type dry_run: bool
+#     :return: Operation details
+#     :type: dict
+#     """
+#     orgs = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
+#
+#     # failed = []
+#     # for user in users:
+#     #     try:
+#     #         user = get_user_by_username_or_email(user)
+#     #     except get_user_model().DoesNotExist:
+#     #         failed.append(user)
+#     # added = []
+#     # updated = []
+#     # not_updated = []
+#
+#     CourseAccessRole.objects.filter(user__in=users).filter(
+#         org__in=orgs,
+#     ).
+#     for role, course_ids in roles.items():
+#         for course_id in course_ids:
+#             CourseAccessRole.objects.create(
+#                 user=user,
+#                 role=role,
+#                 org=orgs[0],
+#                 course_id=course_id,
+#             )
+#
+#     cache_refresh_course_access_roles()
