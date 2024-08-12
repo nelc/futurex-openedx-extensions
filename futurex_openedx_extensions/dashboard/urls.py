@@ -2,7 +2,8 @@
 URLs for dashboard.
 """
 from django.conf import settings
-from django.urls import re_path
+from django.urls import include, re_path
+from rest_framework.routers import DefaultRouter
 
 from futurex_openedx_extensions.dashboard import views
 from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_QUERY_SLUG_PATTERN, COURSE_ID_REGX
@@ -11,6 +12,9 @@ from futurex_openedx_extensions.helpers.models import ClickhouseQuery
 app_name = 'fx_dashboard'
 
 QUERY_ALLOWED_SCOPES = '|'.join(ClickhouseQuery.allowed_scopes())
+
+router = DefaultRouter()
+router.register(r'user_roles', views.UserRolesManagementView, basename='user-roles')
 
 urlpatterns = [
     re_path(r'^api/fx/accessible/v1/info/$', views.AccessibleTenantsInfoView.as_view(), name='accessible-info'),
@@ -29,6 +33,7 @@ urlpatterns = [
         views.LearnerCoursesView.as_view(),
         name='learner-courses'
     ),
+    re_path(r'^api/fx/roles/v1/', include(router.urls)),
     re_path(r'^api/fx/statistics/v1/course_statuses/$', views.CourseStatusesView.as_view(), name='course-statuses'),
     re_path(r'^api/fx/statistics/v1/rating/$', views.GlobalRatingView.as_view(), name='statistics-rating'),
     re_path(r'^api/fx/statistics/v1/total_counts/$', views.TotalCountsView.as_view(), name='total-counts'),

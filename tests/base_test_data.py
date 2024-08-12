@@ -184,21 +184,72 @@ _base_data = {
     'super_users': [1, 60],
     'staff_users': [2, 60],
     'inactive_users': [61, 62, 63],
-    'course_access_roles': {  # roles, user ids per org
+    'course_access_roles_org_wide': {  # roles, user ids per org
         'staff': {
             'ORG1': [3],
-            'ORG2': [8, 9],
+            'ORG2': [8],
             'ORG3': [9, 18],
             'ORG4': [10, 23],
             'ORG5': [23],
         },
         'org_course_creator_group': {
             'ORG1': [4],
-            'ORG2': [1, 2, 4, 9],
-            'ORG3': [4, 10, 11],
+            'ORG2': [1, 2, 4],
+            'ORG3': [4],
             'ORG4': [23, 48],
             'ORG5': [23],
             'ORG8': [23],
+        },
+        'data_researcher': {
+            'ORG3': [9, 10],
+        }
+    },
+    'course_access_roles_course_specific': {  # org id, course id, roles, user ids
+        'ORG1': {
+            1: {
+                'staff': [1],
+                'org_course_creator_group': [1],
+            },
+            2: {
+                'staff': [1],
+                'org_course_creator_group': [2],
+            },
+            3: {
+                'staff': [3],
+                'org_course_creator_group': [3],
+            },
+            4: {
+                'staff': [4],
+                'org_course_creator_group': [3],
+            },
+        },
+        'ORG2': {
+            1: {
+                'staff': [9],
+                'org_course_creator_group': [1],
+            },
+            2: {
+                'staff': [1],
+                'org_course_creator_group': [2],
+            },
+            3: {
+                'staff': [9],
+                'org_course_creator_group': [8],
+            },
+        },
+        'ORG3': {
+            1: {
+                'staff': [4],
+                'org_course_creator_group': [4],
+            },
+            2: {
+                'data_researcher': [9],
+                'org_course_creator_group': [11],
+            },
+            3: {
+                'staff': [18],
+                'org_course_creator_group': [9],
+            },
         },
     },
     'ignored_course_access_roles': {

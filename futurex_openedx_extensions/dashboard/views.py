@@ -5,10 +5,13 @@ from typing import Any, Dict
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from common.djangoapps.student.models import get_user_by_username_or_email
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
+from rest_framework import viewsets
+from rest_framework.exceptions import ParseError
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -39,12 +42,17 @@ from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
+    FXHasTenantAllCoursesAccess,
     FXHasTenantCourseAccess,
     IsAnonymousOrSystemStaff,
     IsSystemStaff,
     get_tenant_limited_fx_permission_info,
 )
-from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin, get_usernames_with_access_roles
+from futurex_openedx_extensions.helpers.roles import (
+    FXViewRoleInfoMixin,
+    get_course_access_roles_queryset,
+    get_usernames_with_access_roles,
+)
 from futurex_openedx_extensions.helpers.tenants import (
     get_accessible_tenant_ids,
     get_tenants_info,
@@ -350,6 +358,55 @@ class GlobalRatingView(APIView, FXViewRoleInfoMixin):
         }
 
         return JsonResponse(result)
+
+
+class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # pylint: disable=too-many-ancestors
+    """View to get the user roles"""
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    fx_view_name = 'user_roles'
+    fx_default_read_only_roles = ['org_course_creator_group']
+    fx_default_read_write_roles = ['org_course_creator_group']
+    fx_allowed_write_methods = ['POST', 'PUT', 'DELETE']
+    fx_view_description = 'api/fx/roles/v1/user_roles/: user roles management APIs'
+
+    lookup_field = 'username'
+    serializer_class = serializers.UserRolesSerializer
+    pagination_class = DefaultPagination
+
+    def get_queryset(self) -> QuerySet:
+        """Get the list of users"""
+        dummy_serializers = serializers.UserRolesSerializer(context={'request': self.request})
+
+        try:
+            q_set = get_user_model().objects.filter(
+                id__in=get_course_access_roles_queryset(
+                    orgs_filter=dummy_serializers.orgs_filter,
+                    remove_redundant=True,
+                    users=None,
+                    search_text=dummy_serializers.query_params['search_text'],
+                    roles_filter=dummy_serializers.query_params['roles_filter'],
+                    active_filter=dummy_serializers.query_params['active_filter'],
+                    course_ids_filter=dummy_serializers.query_params['course_ids_filter'],
+                    exclude_role_type=dummy_serializers.query_params['exclude_role_type'],
+                    user_id_distinct=True,
+                )
+            ).select_related('profile').order_by('id')
+        except ValueError as exc:
+            raise ParseError(f'Invalid parameter: {exc}') from exc
+
+        return q_set
+
+    def create(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """Create a new user role"""
+        return Response(error_details_to_dictionary(reason='Not implemented yet'), status=501)
+
+    def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """Update a user role"""
+        return Response(error_details_to_dictionary(reason='Not implemented yet'), status=501)
+
+    def destroy(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """Delete a user role"""
+        return Response(error_details_to_dictionary(reason='Not implemented yet'), status=501)
 
 
 class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
