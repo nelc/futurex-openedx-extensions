@@ -143,10 +143,9 @@ def get_all_course_access_roles() -> dict:
         if course_id:
             if course_id not in course_org:
                 course_org[course_id] = org
-            if course_id not in result[user_id][role]['course_limited_access']:
-                result[user_id][role]['course_limited_access'].append(course_id)
+            result[user_id][role]['course_limited_access'].append(course_id)
 
-        elif org not in result[user_id][role]['orgs_full_access']:
+        else:
             result[user_id][role]['orgs_full_access'].append(org)
 
     optimize_access_roles_result(result, course_org)

@@ -8,7 +8,7 @@ from opaque_keys.edx.django.models import CourseKeyField, LearningContextKeyFiel
 class CourseOverview(models.Model):
     """Mock"""
     id = models.CharField(max_length=255, primary_key=True)  # pylint: disable=invalid-name
-    org = models.CharField(max_length=255)
+    org = models.CharField(max_length=255, db_collation='NOCASE')
     catalog_visibility = models.TextField(null=True)
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True)
@@ -28,12 +28,13 @@ class CourseAccessRole(models.Model):
     """Mock"""
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
     role = models.CharField(max_length=255)
-    org = models.CharField(blank=True, max_length=255)
+    org = models.CharField(blank=True, max_length=255, db_collation='NOCASE')
     course_id = CourseKeyField(max_length=255, db_index=True, blank=True)
 
     class Meta:
         app_label = 'fake_models'
         db_table = 'student_courseaccessrole'
+        unique_together = ('user', 'org', 'course_id', 'role')
 
 
 class CourseEnrollment(models.Model):

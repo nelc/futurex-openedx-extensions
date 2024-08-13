@@ -195,21 +195,9 @@ def test_get_all_course_access_roles(base_data):  # pylint: disable=unused-argum
     CourseAccessRole.objects.create(
         user_id=3,
         role='staff',
-        org='ORG1',
-    )
-    CourseAccessRole.objects.create(
-        user_id=3,
-        role='staff',
         org='ORG2',
         course_id='course-v1:ORG2+2+2',
     )
-    for _ in range(2):
-        CourseAccessRole.objects.create(
-            user_id=4,
-            role='staff',
-            org='ORG2',
-            course_id='course-v1:ORG2+2+2',
-        )
 
     expected_result['staff']['orgs_of_courses'] = ['ORG2']
     expected_result['staff']['course_limited_access'] = ['course-v1:ORG2+2+2']
