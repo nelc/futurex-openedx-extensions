@@ -6,7 +6,7 @@ _base_data = {
             'lms_configs': {
                 'LMS_BASE': 's1.sample.com',
                 'SITE_NAME': 's1.sample.com',
-                'course_org_filter': ['ORG1', 'ORG2'],
+                'course_org_filter': ['ORG1', 'ORG2', 'Org1'],
                 'IS_FX_DASHBOARD_ENABLED': True,
             },
         },
@@ -106,16 +106,21 @@ _base_data = {
         'dah.sample.com': [1, 2, 3, 4, 5],  # This is not a valid domain
     },
     'course_overviews': {  # count of courses per org
-        'ORG1': 5,
-        'ORG2': 7,
-        'ORG3': 3,
-        'ORG4': 1,
-        'ORG5': 0,
-        'ORG6': 1,  # This is an org with no tenant
-        'ORG8': 2,
+        'Org1': (1, 1),
+        'ORG1': (2, 5),
+        'ORG2': (1, 7),
+        'ORG3': (1, 3),
+        'ORG4': (1, 1),
+        'ORG5': None,
+        'ORG6': (1, 1),  # This is an org with no tenant
+        'ORG8': (1, 2),
+        'incompatible_org_case': {
+            'course-v1:Org1+1+1': 'oRg1',
+            'course-v1:ORG1+3+3': 'org1',
+        },
     },
     'course_attributes': {  # org id, course id
-        'course-v1:ORG1+1+1': {
+        'course-v1:Org1+1+1': {
             'start': 'F',
         },
         'course-v1:ORG1+2+2': {
@@ -150,8 +155,10 @@ _base_data = {
         },
     },
     'course_enrollments': {  # org id, course id, user ids
-        'ORG1': {
+        'Org1': {
             1: [4, 5],
+        },
+        'ORG1': {
             2: [3],
             3: [],
             4: [4],
@@ -186,11 +193,11 @@ _base_data = {
     'inactive_users': [61, 62, 63],
     'course_access_roles_org_wide': {  # roles, user ids per org
         'staff': {
-            'ORG1': [3],
-            'ORG2': [8],
-            'ORG3': [9, 18],
-            'ORG4': [10, 23],
-            'ORG5': [23],
+            'Org1': [3],
+            'Org2': [8],
+            'Org3': [9, 18],
+            'Org4': [10, 23],
+            'Org5': [23],
         },
         'org_course_creator_group': {
             'ORG1': [4],
@@ -205,48 +212,48 @@ _base_data = {
         }
     },
     'course_access_roles_course_specific': {  # org id, course id, roles, user ids
-        'ORG1': {
-            1: {
+        'Org1': {
+            'course-v1:Org1+1+1': {
                 'staff': [1],
                 'org_course_creator_group': [1],
             },
-            2: {
+            'course-v1:ORG1+2+2': {
                 'staff': [1],
                 'org_course_creator_group': [2],
             },
-            3: {
+            'course-v1:ORG1+3+3': {
                 'staff': [3],
                 'org_course_creator_group': [3],
             },
-            4: {
+            'course-v1:ORG1+4+4': {
                 'staff': [4],
                 'org_course_creator_group': [3],
             },
         },
-        'ORG2': {
-            1: {
+        'Org2': {
+            'course-v1:ORG2+1+1': {
                 'staff': [9],
                 'org_course_creator_group': [1],
             },
-            2: {
+            'course-v1:ORG2+2+2': {
                 'staff': [1],
                 'org_course_creator_group': [2],
             },
-            3: {
+            'course-v1:ORG2+3+3': {
                 'staff': [9],
                 'org_course_creator_group': [8],
             },
         },
-        'ORG3': {
-            1: {
+        'Org3': {
+            'course-v1:ORG3+1+1': {
                 'staff': [4],
                 'org_course_creator_group': [4],
             },
-            2: {
+            'course-v1:ORG3+2+2': {
                 'data_researcher': [9],
                 'org_course_creator_group': [11],
             },
-            3: {
+            'course-v1:ORG3+3+3': {
                 'staff': [18],
                 'org_course_creator_group': [9],
             },
