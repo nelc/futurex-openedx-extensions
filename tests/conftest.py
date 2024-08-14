@@ -28,8 +28,11 @@ def user1_fx_permission_info():
 
 
 @pytest.fixture(scope='session')
-def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-argument
+def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-argument, too-many-statements
     """Create base data for tests."""
+    def _get_course_id(org, course_index):
+        return f'course-v1:{org}+{course_index}+{course_index}'
+
     def _create_users():
         """Create users."""
         user = get_user_model()
@@ -83,10 +86,11 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
                         org=org,
                     )
         for org, courses in _base_data['course_access_roles_course_specific'].items():
-            for course_index, roles in courses.items():
+            for course_id, roles in courses.items():
                 for role, users in roles.items():
                     for user_id in users:
-                        course_id = f'course-v1:{org}+{course_index}+{course_index}'
+                        assert CourseOverview.objects.filter(id=course_id).exists(), \
+                            f'Bad course_id in access roles testing data for org: {org}, course: {course_id}'
                         CourseAccessRole.objects.create(
                             user_id=user_id,
                             role=role,
@@ -109,15 +113,21 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
 
     def _create_course_overviews():
         """Create course overviews."""
-        for org, count in _base_data['course_overviews'].items():
-            for i in range(1, count + 1):
+        incompatible_org_case = _base_data['course_overviews'].pop('incompatible_org_case')
+        for org, index_range in _base_data['course_overviews'].items():
+            if index_range is None:
+                continue
+            for i in range(index_range[0], index_range[1] + 1):
+                course_id = _get_course_id(org, i)
                 CourseOverview.objects.create(
-                    id=f'course-v1:{org}+{i}+{i}',
-                    org=org,
+                    id=course_id,
+                    org=org if course_id not in incompatible_org_case else incompatible_org_case[course_id],
                     catalog_visibility='both',
                     display_name=f'Course {i} of {org}',
                 )
-
+        for course_id in incompatible_org_case:
+            assert CourseOverview.objects.filter(id=course_id).exists(), \
+                f'Bad course_id in course_overviews testing data for incompatible_org_case: {course_id}'
         now_time = timezone.now()
         for course_id, data in _base_data['course_attributes'].items():
             course = CourseOverview.objects.get(id=course_id)
@@ -142,15 +152,16 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
     def _create_course_enrollments():
         """Create course enrollments."""
         for org, enrollments in _base_data['course_enrollments'].items():
-            for course_id, users in enrollments.items():
+            for course_index, users in enrollments.items():
                 for user_id in users:
-                    assert 0 < course_id <= _base_data['course_overviews'][org], \
+                    course_id = _get_course_id(org, course_index)
+                    assert CourseOverview.objects.filter(id=course_id).exists(), \
                         f'Bad course_id in enrollment testing data for org: {org}, course: {course_id}'
                     assert 0 < user_id <= _base_data['users_count'], \
                         f'Bad user_id in enrollment testing data for org: {org}, user: {user_id}, course: {course_id}'
                     CourseEnrollment.objects.create(
                         user_id=user_id,
-                        course_id=f'course-v1:{org}+{course_id}+{course_id}',
+                        course_id=course_id,
                         is_active=True,
                     )
 
@@ -161,7 +172,7 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
                 for user_id in user_ids:
                     GeneratedCertificate.objects.create(
                         user_id=user_id,
-                        course_id=f'course-v1:{org}+{course_id}+{course_id}',
+                        course_id=_get_course_id(org, course_id),
                         status='downloadable',
                     )
 
@@ -170,8 +181,8 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
         _create_tenants()
         _create_routes()
         _create_user_signup_sources()
+        _create_course_overviews()
         _create_course_access_roles()
         _create_ignored_course_access_roles()
-        _create_course_overviews()
         _create_course_enrollments()
         _create_certificates()
