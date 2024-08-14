@@ -154,7 +154,7 @@ def get_all_course_org_filter_list() -> Dict[int, List[str]]:
         course_org_filter = config.get('course_org_filter', [])
         if isinstance(course_org_filter, str):
             course_org_filter = [course_org_filter]
-        result[t_id] = course_org_filter
+        result[t_id] = sorted(list({org.strip().lower() for org in course_org_filter}))
 
     return result
 
@@ -246,7 +246,7 @@ def get_accessible_tenant_ids(user: get_user_model, roles_filter: List[str] | No
     accessible_orgs = accessible_orgs.values_list('org', flat=True).distinct()
 
     return [t_id for t_id, course_org_filter in course_org_filter_list.items() if any(
-        org in course_org_filter for org in accessible_orgs
+        org.lower() in [org_filter.lower() for org_filter in course_org_filter] for org in accessible_orgs
     )]
 
 
@@ -260,7 +260,10 @@ def get_tenants_by_org(org: str) -> List[int]:
     :rtype: List[int]
     """
     tenant_configs = get_all_course_org_filter_list()
-    return [t_id for t_id, course_org_filter in tenant_configs.items() if org in course_org_filter]
+    result = [t_id for t_id, course_org_filter in tenant_configs.items() if org.lower() in [
+        org_filter.lower() for org_filter in course_org_filter
+    ]]
+    return list(set(result))
 
 
 def get_tenants_sites(tenant_ids: List[int]) -> List[str]:

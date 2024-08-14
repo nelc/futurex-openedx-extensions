@@ -6,6 +6,7 @@ from typing import Dict
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Exists, OuterRef, Q, Subquery
+from django.db.models.functions import Lower
 from django.db.models.query import QuerySet
 
 from futurex_openedx_extensions.helpers.permissions import get_tenant_limited_fx_permission_info
@@ -41,7 +42,7 @@ def get_learners_count_having_enrollment_per_org(
         active_filter=active_courses_filter,
     )
 
-    return queryset.values('org').annotate(
+    return queryset.values(org_lower_case=Lower('org')).annotate(
         learners_count=Count(
             'courseenrollment__user_id',
             filter=~Exists(
@@ -195,7 +196,7 @@ def get_learners_count(fx_permission_info: dict) -> Dict[int, Dict[str, int]]:
     }
     for tenant_id in fx_permission_info['permitted_tenant_ids']:
         result[tenant_id]['learners_count_per_org'] = {
-            item['org']: item['learners_count']
+            item['org_lower_case'].lower(): item['learners_count']
             for item in get_learners_count_having_enrollment_per_org(fx_permission_info, tenant_id)
         }
     return result

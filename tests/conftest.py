@@ -16,7 +16,7 @@ def fx_permission_info():
     """Fixture for permission information."""
     return {
         'is_system_staff_user': True,
-        'view_allowed_full_access_orgs': ['ORG1', 'ORG2'],
+        'view_allowed_full_access_orgs': ['org1', 'org2'],
         'view_allowed_course_access_orgs': [],
     }
 

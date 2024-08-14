@@ -165,8 +165,8 @@ def test_fx_base_authenticated_permission_selected_tenants(
 ):  # pylint: disable=unused-argument, redefined-outer-name
     """Verify that FXBaseAuthenticatedPermission recognizes selected tenants."""
     user_id = 9
-    tenant_1_and_2_orgs = ['ORG1', 'ORG2', 'ORG3', 'ORG8']
-    tenant_3_orgs = ['ORG4', 'ORG5']
+    tenant_1_and_2_orgs = ['org1', 'org2', 'org3', 'org8']
+    tenant_3_orgs = ['org4', 'org5']
     assert CourseAccessRole.objects.filter(user_id=user_id, org__in=tenant_1_and_2_orgs).exists(), \
         f'Bad test data, user{user_id} should have access to Tenant 1 and 2'
     assert not CourseAccessRole.objects.filter(user_id=user_id, org__in=tenant_3_orgs).exists(), \
@@ -267,15 +267,15 @@ def test_get_tenant_limited_fx_permission_info():
         'permitted_tenant_ids': 'list of tenants, replace with the given tenant_id',
         'view_allowed_roles': 'list of roles, copy as it is',
         'view_allowed_full_access_orgs': [
-            'intersection of this list and the list of orgs for the given tenant', 'ORG1', 'ORG3'
+            'intersection of this list and the list of orgs for the given tenant', 'org1', 'org3'
         ],
         'view_allowed_course_access_orgs': [
-            'intersection of this list and the list of orgs for the given tenant', 'ORG2', 'ORG3', 'ORG4'
+            'intersection of this list and the list of orgs for the given tenant', 'org2', 'org3', 'org4'
         ],
     }
 
     with patch('futurex_openedx_extensions.helpers.permissions.get_course_org_filter_list', return_value={
-        'course_org_filter_list': ['ORG1', 'ORG2']
+        'course_org_filter_list': ['org1', 'org2']
     }):
         assert get_tenant_limited_fx_permission_info(fx_permission_info, 1) == {
             'user': fx_permission_info['user'],
@@ -283,6 +283,6 @@ def test_get_tenant_limited_fx_permission_info():
             'is_system_staff_user': fx_permission_info['is_system_staff_user'],
             'permitted_tenant_ids': [1],
             'view_allowed_roles': fx_permission_info['view_allowed_roles'],
-            'view_allowed_full_access_orgs': ['ORG1'],
-            'view_allowed_course_access_orgs': ['ORG2'],
+            'view_allowed_full_access_orgs': ['org1'],
+            'view_allowed_course_access_orgs': ['org2'],
         }

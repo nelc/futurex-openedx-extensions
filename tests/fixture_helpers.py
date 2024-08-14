@@ -20,20 +20,20 @@ def get_user1_fx_permission_info():
 
 def get_all_orgs():
     """Get all test valid organizations."""
-    return ['ORG1', 'ORG2', 'ORG3', 'ORG8', 'ORG4', 'ORG5']
+    return ['org1', 'org2', 'org3', 'org8', 'org4', 'org5']
 
 
 def get_tenants_orgs(tenant_id):
     """Get test valid organizations for a tenants."""
     orgs = {
-        1: ['ORG1', 'ORG2'],
-        2: ['ORG3', 'ORG8'],
-        3: ['ORG4', 'ORG5'],
+        1: ['org1', 'org2'],
+        2: ['org3', 'org8'],
+        3: ['org4', 'org5'],
         4: [],
         5: [],
         6: [],
-        7: ['ORG3'],
-        8: ['ORG8'],
+        7: ['org3'],
+        8: ['org8'],
     }
     result = set()
     for tenant in tenant_id:
@@ -55,47 +55,47 @@ def get_test_data_dict():
     """Get the test data dictionary."""
     return {
         'user3': {
-            'ORG1': {
+            'org1': {
                 'None': ['staff'],
                 'course-v1:ORG1+3+3': ['staff', 'org_course_creator_group'],
                 'course-v1:ORG1+4+4': ['org_course_creator_group'],
             }
         },
         'user8': {
-            'ORG2': {'None': ['staff'], 'course-v1:ORG2+3+3': ['org_course_creator_group']}
+            'org2': {'None': ['staff'], 'course-v1:ORG2+3+3': ['org_course_creator_group']}
         },
         'user9': {
-            'ORG3': {
+            'org3': {
                 'None': ['staff', 'data_researcher'],
                 'course-v1:ORG3+2+2': ['data_researcher'],
                 'course-v1:ORG3+3+3': ['org_course_creator_group'],
             },
-            'ORG2': {'course-v1:ORG2+1+1': ['staff'], 'course-v1:ORG2+3+3': ['staff']},
+            'org2': {'course-v1:ORG2+1+1': ['staff'], 'course-v1:ORG2+3+3': ['staff']},
         },
-        'user18': {'ORG3': {'None': ['staff'], 'course-v1:ORG3+3+3': ['staff']}},
+        'user18': {'org3': {'None': ['staff'], 'course-v1:ORG3+3+3': ['staff']}},
         'user10': {
-            'ORG4': {'None': ['staff']},
-            'ORG3': {'None': ['data_researcher']},
+            'org4': {'None': ['staff']},
+            'org3': {'None': ['data_researcher']},
         },
         'user23': {
-            'ORG4': {'None': ['staff', 'org_course_creator_group']},
-            'ORG5': {'None': ['staff', 'org_course_creator_group']},
-            'ORG8': {'None': ['org_course_creator_group']},
+            'org4': {'None': ['staff', 'org_course_creator_group']},
+            'org5': {'None': ['staff', 'org_course_creator_group']},
+            'org8': {'None': ['org_course_creator_group']},
         },
         'user4': {
-            'ORG1': {'None': ['org_course_creator_group'], 'course-v1:ORG1+4+4': ['staff']},
-            'ORG2': {'None': ['org_course_creator_group']},
-            'ORG3': {
+            'org1': {'None': ['org_course_creator_group'], 'course-v1:ORG1+4+4': ['staff']},
+            'org2': {'None': ['org_course_creator_group']},
+            'org3': {
                 'None': ['org_course_creator_group'],
                 'course-v1:ORG3+1+1': ['staff', 'org_course_creator_group'],
             },
         },
         'user11': {
-            'ORG3': {
+            'org3': {
                 'course-v1:ORG3+2+2': ['org_course_creator_group'],
             }
         },
-        'user48': {'ORG4': {'None': ['org_course_creator_group']}},
+        'user48': {'org4': {'None': ['org_course_creator_group']}},
     }
 
 
@@ -103,36 +103,36 @@ def get_test_data_dict_without_course_roles():
     """Get the test data dictionary without course roles."""
     return {
         'user3': {
-            'ORG1': {
+            'org1': {
                 'None': ['staff'],
             }
         },
         'user8': {
-            'ORG2': {'None': ['staff']}
+            'org2': {'None': ['staff']}
         },
         'user9': {
-            'ORG3': {
+            'org3': {
                 'None': ['staff', 'data_researcher'],
             },
         },
-        'user18': {'ORG3': {'None': ['staff']}},
+        'user18': {'org3': {'None': ['staff']}},
         'user10': {
-            'ORG4': {'None': ['staff']},
-            'ORG3': {'None': ['data_researcher']},
+            'org4': {'None': ['staff']},
+            'org3': {'None': ['data_researcher']},
         },
         'user23': {
-            'ORG4': {'None': ['staff', 'org_course_creator_group']},
-            'ORG5': {'None': ['staff', 'org_course_creator_group']},
-            'ORG8': {'None': ['org_course_creator_group']},
+            'org4': {'None': ['staff', 'org_course_creator_group']},
+            'org5': {'None': ['staff', 'org_course_creator_group']},
+            'org8': {'None': ['org_course_creator_group']},
         },
         'user4': {
-            'ORG1': {'None': ['org_course_creator_group']},
-            'ORG2': {'None': ['org_course_creator_group']},
-            'ORG3': {
+            'org1': {'None': ['org_course_creator_group']},
+            'org2': {'None': ['org_course_creator_group']},
+            'org3': {
                 'None': ['org_course_creator_group'],
             },
         },
-        'user48': {'ORG4': {'None': ['org_course_creator_group']}}
+        'user48': {'org4': {'None': ['org_course_creator_group']}}
     }
 
 
@@ -140,19 +140,19 @@ def get_test_data_dict_without_course_roles_org3():
     """Get the test data dictionary without course roles filtered on org3 and 8."""
     return {
         'user9': {
-            'ORG3': {
+            'org3': {
                 'None': ['staff', 'data_researcher'],
             },
         },
-        'user18': {'ORG3': {'None': ['staff']}},
+        'user18': {'org3': {'None': ['staff']}},
         'user10': {
-            'ORG3': {'None': ['data_researcher']},
+            'org3': {'None': ['data_researcher']},
         },
         'user23': {
-            'ORG8': {'None': ['org_course_creator_group']},
+            'org8': {'None': ['org_course_creator_group']},
         },
         'user4': {
-            'ORG3': {
+            'org3': {
                 'None': ['org_course_creator_group'],
             },
         },

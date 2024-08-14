@@ -9,14 +9,14 @@ from futurex_openedx_extensions.dashboard.statistics import learners
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('tenant_id, expected_result', [
-    (1, {'ORG1': 4, 'ORG2': 17}),
-    (2, {'ORG3': 13, 'ORG8': 6}),
-    (3, {'ORG4': 4}),
+    (1, {'org1': 4, 'org2': 17}),
+    (2, {'org3': 13, 'org8': 6}),
+    (3, {'org4': 4}),
     (4, {}),
     (5, {}),
     (6, {}),
-    (7, {'ORG3': 13}),
-    (8, {'ORG8': 6}),
+    (7, {'org3': 13}),
+    (8, {'org8': 6}),
 ])
 def test_get_learners_count_having_enrollment_per_org(
     base_data, user1_fx_permission_info, tenant_id, expected_result
@@ -26,9 +26,10 @@ def test_get_learners_count_having_enrollment_per_org(
     assert result.count() == len(expected_result), 'Wrong number of organizations returned'
 
     for result_tenant_id in result:
-        assert result_tenant_id['org'] in expected_result, f'Unexpected org: {result_tenant_id["org"]}'
-        assert result_tenant_id['learners_count'] == expected_result[result_tenant_id['org']], \
-            f'Wrong learners count: {result_tenant_id["learners_count"]}, org: {result_tenant_id["org"]}'
+        assert result_tenant_id['org_lower_case'] in expected_result, \
+            f'Unexpected org: {result_tenant_id["org_lower_case"]}'
+        assert result_tenant_id['learners_count'] == expected_result[result_tenant_id['org_lower_case']], \
+            f'Wrong learners count: {result_tenant_id["learners_count"]}, org: {result_tenant_id["org_lower_case"]}'
 
 
 @pytest.mark.django_db
@@ -41,7 +42,7 @@ def test_get_learners_count_having_enrollment_per_org_inactive_enrollment(
     tenant1_org1 = learners.get_learners_count_having_enrollment_per_org(
         user1_fx_permission_info, 1
     )
-    assert tenant1_org1[0]['org'] == 'ORG1', 'bad test data'
+    assert tenant1_org1[0]['org_lower_case'] == 'org1', 'bad test data'
     assert tenant1_org1[0]['learners_count'] == 4, 'bad test data'
 
     enrollment.is_active = False
@@ -49,7 +50,7 @@ def test_get_learners_count_having_enrollment_per_org_inactive_enrollment(
     tenant1_org1 = learners.get_learners_count_having_enrollment_per_org(
         user1_fx_permission_info, 1
     )
-    assert tenant1_org1[0]['org'] == 'ORG1', 'bad test data'
+    assert tenant1_org1[0]['org_lower_case'] == 'org1', 'bad test data'
     assert tenant1_org1[0]['learners_count'] == 3, 'inactive enrollment should not be counted'
 
 
@@ -77,7 +78,7 @@ def test_get_learners_count_having_enrollment_for_tenant_inactive_enrollment(
     base_data, user1_fx_permission_info
 ):  # pylint: disable=unused-argument
     """Verify that get_learners_count_having_enrollment_for_tenant is not counting inactive enrollments."""
-    enrollments = CourseEnrollment.objects.filter(user_id=21, course__org__in=['ORG1', 'ORG2'])
+    enrollments = CourseEnrollment.objects.filter(user_id=21, course__org__in=['org1', 'org2'])
     assert enrollments.filter(is_active=True).count() == 3, 'bad test data'
     assert enrollments.filter(is_active=False).count() == 0, 'bad test data'
     assert learners.get_learners_count_having_enrollment_for_tenant(user1_fx_permission_info, 1) == 17, \
@@ -117,14 +118,14 @@ def test_get_learners_count_having_no_enrollment_without_full_access_to_tenant()
         'user_roles': [],
         'permitted_tenant_ids': [tenant_id],
         'view_allowed_roles': [],
-        'view_allowed_full_access_orgs': ['ORG3', 'ORG8'],
+        'view_allowed_full_access_orgs': ['org3', 'org8'],
         'view_allowed_course_access_orgs': [],
     }
     assert learners.get_learners_count_having_no_enrollment(fx_permission_info, tenant_id) > 0
     fx_permission_info.update({
         'is_system_staff_user': False,
-        'view_allowed_full_access_orgs': ['ORG3'],
-        'view_allowed_course_access_orgs': ['ORG8'],
+        'view_allowed_full_access_orgs': ['org3'],
+        'view_allowed_course_access_orgs': ['org8'],
     })
     assert learners.get_learners_count_having_no_enrollment(fx_permission_info, tenant_id) == 0
 
@@ -135,7 +136,7 @@ def test_get_learners_count_having_no_enrollment_inactive_enrollment(
 ):  # pylint: disable=unused-argument
     """Verify that get_learners_count_having_no_enrollment is counting inactive enrollments correctly."""
     user_id = 5
-    enrollments = CourseEnrollment.objects.filter(user_id=user_id, course__org__in=['ORG1', 'ORG2'])
+    enrollments = CourseEnrollment.objects.filter(user_id=user_id, course__org__in=['org1', 'org2'])
     signup = UserSignupSource.objects.filter(user_id=user_id, site='s1.sample.com')
     assert enrollments.filter(is_active=True).count() == 2, 'bad test data'
     assert enrollments.filter(is_active=False).count() == 0, 'bad test data'
@@ -163,10 +164,10 @@ def test_get_learners_count(base_data, user1_fx_permission_info):  # pylint: dis
     """Test get_learners_count function."""
     result = learners.get_learners_count(user1_fx_permission_info)
     assert result == {
-        1: {'learners_count': 17, 'learners_count_no_enrollment': 0, 'learners_count_per_org': {'ORG1': 4, 'ORG2': 17}},
-        2: {'learners_count': 16, 'learners_count_no_enrollment': 5, 'learners_count_per_org': {'ORG3': 13, 'ORG8': 6}},
-        3: {'learners_count': 4, 'learners_count_no_enrollment': 2, 'learners_count_per_org': {'ORG4': 4}},
+        1: {'learners_count': 17, 'learners_count_no_enrollment': 0, 'learners_count_per_org': {'org1': 4, 'org2': 17}},
+        2: {'learners_count': 16, 'learners_count_no_enrollment': 5, 'learners_count_per_org': {'org3': 13, 'org8': 6}},
+        3: {'learners_count': 4, 'learners_count_no_enrollment': 2, 'learners_count_per_org': {'org4': 4}},
         4: {'learners_count': 0, 'learners_count_no_enrollment': 0, 'learners_count_per_org': {}},
-        7: {'learners_count': 13, 'learners_count_no_enrollment': 4, 'learners_count_per_org': {'ORG3': 13}},
-        8: {'learners_count': 6, 'learners_count_no_enrollment': 3, 'learners_count_per_org': {'ORG8': 6}}
+        7: {'learners_count': 13, 'learners_count_no_enrollment': 4, 'learners_count_per_org': {'org3': 13}},
+        8: {'learners_count': 6, 'learners_count_no_enrollment': 3, 'learners_count_per_org': {'org8': 6}}
     }, f'Wrong learners count: {result}'

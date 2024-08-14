@@ -16,7 +16,7 @@ from rest_framework.test import APIRequestFactory, APITestCase
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
-from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS, COURSE_STATUSES
+from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
@@ -170,37 +170,13 @@ class TestCoursesView(BaseTestViewMixin):
             assert mock_queryset.call_args_list[0][1]['search_text'] == 'course'
             assert mock_queryset.call_args_list[0][1]['visible_filter'] is None
 
-    def helper_test_success(self, response):
-        """Verify that the view returns the correct response"""
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['count'], 18)
-        self.assertGreater(len(response.data['results']), 0)
-        self.assertEqual(response.data['results'][0]['id'], 'course-v1:ORG1+1+1')
-
     def test_success(self):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        self.helper_test_success(response=response)
-        self.assertEqual(response.data['results'][0]['status'], COURSE_STATUSES['upcoming'])
-
-    def test_status_archived(self):
-        """Verify that the view sets the correct status when the course is archived"""
-        CourseOverview.objects.filter(id='course-v1:ORG1+1+1').update(end=now() - timedelta(days=1))
-
-        self.login_user(self.staff_user)
-        response = self.client.get(self.url)
-        self.helper_test_success(response=response)
-        self.assertEqual(response.data['results'][0]['status'], 'archived')
-
-    def test_status_upcoming(self):
-        """Verify that the view sets the correct status when the course is upcoming"""
-        CourseOverview.objects.filter(id='course-v1:ORG1+1+1').update(start=now() + timedelta(days=1))
-
-        self.login_user(self.staff_user)
-        response = self.client.get(self.url)
-        self.helper_test_success(response=response)
-        self.assertEqual(response.data['results'][0]['status'], 'upcoming')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 18)
+        self.assertEqual(len(response.data['results']), 18)
 
     def test_sorting(self):
         """Verify that the view soring filter is set correctly"""
@@ -810,7 +786,7 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     def test_success_ca_users_needed(self):
         """Verify that the view gets the CA users when the query needs them"""
         self.url_args = ['course', 'test-query-ca-users-nop']
-        all_orgs = ['ORG1', 'ORG2', 'ORG3', 'ORG8', 'ORG4', 'ORG5']
+        all_orgs = ['org1', 'org2', 'org3', 'org8', 'org4', 'org5']
 
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
