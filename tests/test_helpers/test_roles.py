@@ -52,13 +52,13 @@ def reset_fx_views_with_roles():
     ({
         'id': 99,
         'org': '',
-        'course_id': 'course-v1:ORG1+1+1',
+        'course_id': 'course-v1:Org1+1+1',
         'course_org': 'ORG1',
     }, ('Invalid course access role (course_id with no org!): id=%s', 99)),
     ({
         'id': 99,
         'org': 'ORG2',
-        'course_id': 'course-v1:ORG1+1+1',
+        'course_id': 'course-v1:Org1+1+1',
         'course_org': 'ORG1',
     }, ('Invalid course access role (org mismatch!): id=%s', 99)),
 ])
@@ -75,10 +75,10 @@ def test_optimize_access_roles_result():
     access_roles = {
         1: {
             'whatever1': {
-                'orgs_full_access': ['ORG1'], 'course_limited_access': ['course-v1:ORG1+1+1', 'course2']
+                'orgs_full_access': ['ORG1'], 'course_limited_access': ['course-v1:Org1+1+1', 'course2']
             },
             'whatever2': {
-                'orgs_full_access': ['ORG3'], 'course_limited_access': ['course-v1:ORG1+1+1']
+                'orgs_full_access': ['ORG3'], 'course_limited_access': ['course-v1:Org1+1+1']
             },
             'whatever3': {
                 'orgs_full_access': ['ORG1'], 'course_limited_access': ['course2', 'course-v1:ORG2+2+2']
@@ -86,14 +86,14 @@ def test_optimize_access_roles_result():
         },
         2: {
             'staff': {
-                'orgs_full_access': [], 'course_limited_access': ['course-v1:ORG1+1+1']},
+                'orgs_full_access': [], 'course_limited_access': ['course-v1:Org1+1+1']},
             'admin': {
-                'orgs_full_access': ['ORG2'], 'course_limited_access': ['course-v1:ORG1+1+1', 'course2']
+                'orgs_full_access': ['ORG2'], 'course_limited_access': ['course-v1:Org1+1+1', 'course2']
             },
         },
     }
     course_org = {
-        'course-v1:ORG1+1+1': 'ORG1',
+        'course-v1:Org1+1+1': 'ORG1',
         'course-v1:ORG2+2+2': 'ORG2',
         'course2': 'ORG2',
     }
@@ -105,7 +105,7 @@ def test_optimize_access_roles_result():
             },
             'whatever2': {
                 'orgs_full_access': ['ORG3'],
-                'course_limited_access': ['course-v1:ORG1+1+1'],
+                'course_limited_access': ['course-v1:Org1+1+1'],
                 'orgs_of_courses': ['ORG1'],
             },
             'whatever3': {
@@ -116,11 +116,11 @@ def test_optimize_access_roles_result():
         },
         2: {
             'staff': {
-                'orgs_full_access': [], 'course_limited_access': ['course-v1:ORG1+1+1'], 'orgs_of_courses': ['ORG1']
+                'orgs_full_access': [], 'course_limited_access': ['course-v1:Org1+1+1'], 'orgs_of_courses': ['ORG1']
             },
             'admin': {
                 'orgs_full_access': ['ORG2'],
-                'course_limited_access': ['course-v1:ORG1+1+1'],
+                'course_limited_access': ['course-v1:Org1+1+1'],
                 'orgs_of_courses': ['ORG1'],
             },
         },
@@ -631,11 +631,11 @@ def roles_records_to_dict(records):
         record.user.username: {} for record in records
     }
     for record in records:
-        result[record.user.username][record.org] = {}
+        result[record.user.username][record.org.upper()] = {}
     for record in records:
-        result[record.user.username][record.org][str(record.course_id or 'None')] = []
+        result[record.user.username][record.org.upper()][str(record.course_id or 'None')] = []
     for record in records:
-        result[record.user.username][record.org][str(record.course_id or 'None')].append(record.role)
+        result[record.user.username][record.org.upper()][str(record.course_id or 'None')].append(record.role)
 
     return result
 
@@ -954,7 +954,7 @@ def assert_roles_result(result, expected):
     for index in range(expected_length):
         assert result[index].user_id == expected[index]['user_id']
         assert result[index].role == expected[index]['role']
-        assert result[index].org == expected[index]['org']
+        assert result[index].org.upper() == expected[index]['org'].upper()
         assert str(result[index].course_id) == expected[index]['course_id']
 
 

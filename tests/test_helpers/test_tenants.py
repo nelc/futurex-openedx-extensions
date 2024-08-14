@@ -283,7 +283,8 @@ def test_get_tenant_site(base_data, tenant_id, expected):  # pylint: disable=unu
 ])
 def test_get_tenants_by_org(base_data, org, expected):  # pylint: disable=unused-argument
     """Verify get_tenants_by_org function."""
-    assert expected == tenants.get_tenants_by_org(org)
+    assert len(expected) == len(tenants.get_tenants_by_org(org))
+    assert set(expected) == set(tenants.get_tenants_by_org(org))
 
 
 @pytest.mark.django_db

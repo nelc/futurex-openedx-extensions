@@ -39,7 +39,7 @@ def test_get_courses_queryset(
 def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_courses_queryset excludes staff users from enrollment, but not from certificates."""
     expected_results = {
-        'course-v1:ORG1+1+1': [1, 0],
+        'course-v1:Org1+1+1': [1, 0],
         'course-v1:ORG1+2+2': [0, 0],
         'course-v1:ORG1+3+3': [0, 0],
         'course-v1:ORG1+4+4': [0, 0],

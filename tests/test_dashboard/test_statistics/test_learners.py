@@ -26,9 +26,10 @@ def test_get_learners_count_having_enrollment_per_org(
     assert result.count() == len(expected_result), 'Wrong number of organizations returned'
 
     for result_tenant_id in result:
-        assert result_tenant_id['org'] in expected_result, f'Unexpected org: {result_tenant_id["org"]}'
-        assert result_tenant_id['learners_count'] == expected_result[result_tenant_id['org']], \
-            f'Wrong learners count: {result_tenant_id["learners_count"]}, org: {result_tenant_id["org"]}'
+        assert result_tenant_id['org_upper_case'] in expected_result, \
+            f'Unexpected org: {result_tenant_id["org_upper_case"]}'
+        assert result_tenant_id['learners_count'] == expected_result[result_tenant_id['org_upper_case']], \
+            f'Wrong learners count: {result_tenant_id["learners_count"]}, org: {result_tenant_id["org_upper_case"]}'
 
 
 @pytest.mark.django_db
@@ -41,7 +42,7 @@ def test_get_learners_count_having_enrollment_per_org_inactive_enrollment(
     tenant1_org1 = learners.get_learners_count_having_enrollment_per_org(
         user1_fx_permission_info, 1
     )
-    assert tenant1_org1[0]['org'] == 'ORG1', 'bad test data'
+    assert tenant1_org1[0]['org_upper_case'] == 'ORG1', 'bad test data'
     assert tenant1_org1[0]['learners_count'] == 4, 'bad test data'
 
     enrollment.is_active = False
@@ -49,7 +50,7 @@ def test_get_learners_count_having_enrollment_per_org_inactive_enrollment(
     tenant1_org1 = learners.get_learners_count_having_enrollment_per_org(
         user1_fx_permission_info, 1
     )
-    assert tenant1_org1[0]['org'] == 'ORG1', 'bad test data'
+    assert tenant1_org1[0]['org_upper_case'] == 'ORG1', 'bad test data'
     assert tenant1_org1[0]['learners_count'] == 3, 'inactive enrollment should not be counted'
 
 
