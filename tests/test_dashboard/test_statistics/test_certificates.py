@@ -8,17 +8,17 @@ from tests.fixture_helpers import get_tenants_orgs
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('tenant_ids, expected_result', [
-    ([1], {'ORG1': 4, 'ORG2': 10}),
-    ([2], {'ORG3': 7, 'ORG8': 2}),
+    ([1], {'org1': 4, 'org2': 10}),
+    ([2], {'org3': 7, 'org8': 2}),
     ([3], {}),
     ([4], {}),
     ([5], {}),
     ([6], {}),
-    ([7], {'ORG3': 7}),
-    ([8], {'ORG8': 2}),
-    ([1, 2], {'ORG1': 4, 'ORG2': 10, 'ORG3': 7, 'ORG8': 2}),
-    ([2, 7], {'ORG3': 7, 'ORG8': 2}),
-    ([7, 8], {'ORG3': 7, 'ORG8': 2}),
+    ([7], {'org3': 7}),
+    ([8], {'org8': 2}),
+    ([1, 2], {'org1': 4, 'org2': 10, 'org3': 7, 'org8': 2}),
+    ([2, 7], {'org3': 7, 'org8': 2}),
+    ([7, 8], {'org3': 7, 'org8': 2}),
 ])
 def test_get_certificates_count(
     base_data, fx_permission_info, tenant_ids, expected_result
@@ -34,7 +34,7 @@ def test_get_certificates_count(
 def test_get_certificates_count_not_downloadable(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_certificates_count function with empty tenant_ids."""
     result = certificates.get_certificates_count(fx_permission_info)
-    assert result == {'ORG1': 4, 'ORG2': 10}, f'Wrong certificates result. expected: {result}'
+    assert result == {'org1': 4, 'org2': 10}, f'Wrong certificates result. expected: {result}'
 
     some_status_not_downloadable = 'whatever'
     GeneratedCertificate.objects.filter(
@@ -42,4 +42,4 @@ def test_get_certificates_count_not_downloadable(base_data, fx_permission_info):
         user_id=40,
     ).update(status=some_status_not_downloadable)
     result = certificates.get_certificates_count(fx_permission_info)
-    assert result == {'ORG1': 3, 'ORG2': 10}, f'Wrong certificates result. expected: {result}'
+    assert result == {'org1': 3, 'org2': 10}, f'Wrong certificates result. expected: {result}'

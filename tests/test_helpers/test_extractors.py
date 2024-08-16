@@ -21,9 +21,9 @@ def test_get_first_not_empty_item(items, expected, error_message):
 
 
 @pytest.mark.parametrize('uri, expected_course_id', [
-    ('http://domain/path/course-v1:ORG1+1+1/?page=1&page_size=%2F', 'course-v1:ORG1+1+1'),
+    ('http://domain/path/course-v1:Org1+1+1/?page=1&page_size=%2F', 'course-v1:Org1+1+1'),
     ('http://domain/path/course-v1:ORG2+2+2/?page=2&page_size=10', 'course-v1:ORG2+2+2'),
-    ('http://domain/path/course-v1:ORG1+1+1', 'course-v1:ORG1+1+1'),
+    ('http://domain/path/course-v1:Org1+1+1', 'course-v1:Org1+1+1'),
     ('http://domain/path/course-v1:ORG3+3+3/', 'course-v1:ORG3+3+3'),
     ('http://domain/path', None),
     ('http://domain/path?course_id=course-v1:ORG2+2+2', None),

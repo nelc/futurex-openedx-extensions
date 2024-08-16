@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Dict
 
 from django.db.models import Count, OuterRef, Subquery
+from django.db.models.functions import Lower
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
@@ -36,7 +37,7 @@ def get_certificates_count(
     ).annotate(course_org=Subquery(
         CourseOverview.objects.filter(
             id=OuterRef('course_id')
-        ).values('org')
+        ).values(org_lower_case=Lower('org'))
     )).values('course_org').annotate(certificates_count=Count('id')).values_list('course_org', 'certificates_count'))
 
     return dict(result)

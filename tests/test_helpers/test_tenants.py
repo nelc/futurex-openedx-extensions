@@ -104,11 +104,11 @@ def test_get_all_course_org_filter_list(base_data):  # pylint: disable=unused-ar
     """Verify get_all_course_org_filter_list function."""
     result = tenants.get_all_course_org_filter_list()
     assert result == {
-        1: ['ORG1', 'ORG2'],
-        2: ['ORG3', 'ORG8'],
-        3: ['ORG4', 'ORG5'],
-        7: ['ORG3'],
-        8: ['ORG8'],
+        1: ['org1', 'org2'],
+        2: ['org3', 'org8'],
+        3: ['org4', 'org5'],
+        7: ['org3'],
+        8: ['org8'],
     }
 
 
@@ -125,7 +125,7 @@ def test_get_all_course_org_filter_list_is_being_cached():
 @pytest.mark.django_db
 @pytest.mark.parametrize('tenant_ids, expected', [
     ([1, 2, 3, 7], {
-        'course_org_filter_list': ['ORG1', 'ORG2', 'ORG3', 'ORG8', 'ORG4', 'ORG5'],
+        'course_org_filter_list': ['org1', 'org2', 'org3', 'org8', 'org4', 'org5'],
         'duplicates': {
             2: [7],
             7: [2],
@@ -133,17 +133,17 @@ def test_get_all_course_org_filter_list_is_being_cached():
         'invalid': [],
     }),
     ([2, 3], {
-        'course_org_filter_list': ['ORG3', 'ORG8', 'ORG4', 'ORG5'],
+        'course_org_filter_list': ['org3', 'org8', 'org4', 'org5'],
         'duplicates': {},
         'invalid': [],
     }),
     ([2, 3, 4], {
-        'course_org_filter_list': ['ORG3', 'ORG8', 'ORG4', 'ORG5'],
+        'course_org_filter_list': ['org3', 'org8', 'org4', 'org5'],
         'duplicates': {},
         'invalid': [4],
     }),
     ([2, 3, 7, 8], {
-        'course_org_filter_list': ['ORG3', 'ORG8', 'ORG4', 'ORG5'],
+        'course_org_filter_list': ['org3', 'org8', 'org4', 'org5'],
         'duplicates': {
             2: [7, 8],
             7: [2],
@@ -274,16 +274,17 @@ def test_get_tenant_site(base_data, tenant_id, expected):  # pylint: disable=unu
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('org, expected', [
-    ('ORG1', [1]),
-    ('ORG2', [1]),
-    ('ORG3', [2, 7]),
-    ('ORG4', [3]),
-    ('ORG5', [3]),
-    ('ORG8', [2, 8]),
+    ('org1', [1]),
+    ('org2', [1]),
+    ('org3', [2, 7]),
+    ('org4', [3]),
+    ('org5', [3]),
+    ('org8', [2, 8]),
 ])
 def test_get_tenants_by_org(base_data, org, expected):  # pylint: disable=unused-argument
     """Verify get_tenants_by_org function."""
-    assert expected == tenants.get_tenants_by_org(org)
+    assert len(expected) == len(tenants.get_tenants_by_org(org))
+    assert set(expected) == set(tenants.get_tenants_by_org(org))
 
 
 @pytest.mark.django_db
@@ -337,9 +338,9 @@ def test_get_user_id_from_username_tenants_bad_tenant(base_data, tenant_ids):  #
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('username, tenant_ids, orgs, sites, is_enrolled, is_signup', [
-    ('user15', [1], ['ORG1', 'ORG2'], ['s1.sample.com'], True, False),
-    ('user50', [7], ['ORG3'], ['s7.sample.com'], False, True),
-    ('user4', [1], ['ORG1', 'ORG2'], ['s1.sample.com'], True, True),
+    ('user15', [1], ['org1', 'org2'], ['s1.sample.com'], True, False),
+    ('user50', [7], ['org3'], ['s7.sample.com'], False, True),
+    ('user4', [1], ['org1', 'org2'], ['s1.sample.com'], True, True),
 ])
 def test_get_user_id_from_username_tenants(
     base_data, username, tenant_ids, orgs, sites, is_enrolled, is_signup
@@ -382,7 +383,7 @@ def test_get_user_id_from_username_tenants_inactive_enrollment(base_data):  # py
     assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])
     CourseEnrollment.objects.filter(
         user__username=username,
-        course__org__in=['ORG1', 'ORG2'],
+        course__org__in=['org1', 'org2'],
     ).update(is_active=False)
     assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])
 

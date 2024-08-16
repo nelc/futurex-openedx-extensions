@@ -33,7 +33,7 @@ def test_get_base_queryset_courses_non_staff(base_data, fx_permission_info):  # 
 @pytest.mark.django_db
 def test_get_base_queryset_courses_visible_filter(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_base_queryset_courses function with visible_filter."""
-    course = CourseOverview.objects.filter(org='ORG1').first()
+    course = CourseOverview.objects.filter(org='org1').first()
     assert course.catalog_visibility == 'both', 'Catalog visibility should be initialized as (both) for test courses'
     course.catalog_visibility = 'none'
     course.save()
@@ -66,15 +66,15 @@ def test_get_base_queryset_courses_limited_course_roles(
         'user': get_user_model().objects.get(username='user4'),
         'is_system_staff_user': False,
         'view_allowed_full_access_orgs': [],
-        'view_allowed_course_access_orgs': ['ORG2'],
+        'view_allowed_course_access_orgs': ['org2'],
         'view_allowed_roles': ['org_course_creator_group'],
     })
-    course_role = CourseAccessRole.objects.get(user_id=4, org='ORG2')
+    course_role = CourseAccessRole.objects.get(user_id=4, org='org2')
     course_role.course_id = 'course-v1:ORG2+2+2'
     course_role.save()
     result = querysets.get_base_queryset_courses(fx_permission_info)
     assert result.count() == 1
-    assert result.first().org == 'ORG2'
+    assert result.first().org.lower() == 'org2'
 
 
 @pytest.mark.django_db

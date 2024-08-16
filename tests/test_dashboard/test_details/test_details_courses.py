@@ -17,13 +17,13 @@ from futurex_openedx_extensions.dashboard.details.courses import (
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('orgs, search_text, expected_count', [
-    (['ORG3', 'ORG8'], None, 5),
-    (['ORG3'], None, 3),
-    (['ORG8'], None, 2),
-    (['ORG3'], 'Course 1', 1),
-    (['ORG3'], 'Course 3', 1),
-    (['ORG3'], 'course 3', 1),
-    (['ORG3'], 'course 4', 0),
+    (['org3', 'org8'], None, 5),
+    (['org3'], None, 3),
+    (['org8'], None, 2),
+    (['org3'], 'Course 1', 1),
+    (['org3'], 'Course 3', 1),
+    (['org3'], 'course 3', 1),
+    (['org3'], 'course 4', 0),
     (['ORGX'], None, 0),
     ([], None, 0),
 ])
@@ -39,7 +39,7 @@ def test_get_courses_queryset(
 def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_courses_queryset excludes staff users from enrollment, but not from certificates."""
     expected_results = {
-        'course-v1:ORG1+1+1': [1, 0],
+        'course-v1:Org1+1+1': [1, 0],
         'course-v1:ORG1+2+2': [0, 0],
         'course-v1:ORG1+3+3': [0, 0],
         'course-v1:ORG1+4+4': [0, 0],
@@ -96,7 +96,7 @@ def test_annotate_courses_rating_queryset(base_data, fx_permission_info):  # pyl
             course_id=course,
             rating_content=rating,
         )
-    queryset = annotate_courses_rating_queryset(CourseOverview.objects.filter(org__in=['ORG1', 'ORG2']))
+    queryset = annotate_courses_rating_queryset(CourseOverview.objects.filter(org__in=['org1', 'org2']))
     for record in queryset:
         if record.id != course.id:
             continue

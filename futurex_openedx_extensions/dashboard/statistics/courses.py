@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Dict
 
 from django.db.models import Case, CharField, Count, Q, Sum, Value, When
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Lower
 from django.db.models.query import QuerySet
 from django.utils.timezone import now
 
@@ -32,9 +32,9 @@ def get_courses_count(
         fx_permission_info, visible_filter=visible_filter, active_filter=active_filter
     )
 
-    return q_set.values('org').annotate(
+    return q_set.values(org_lower_case=Lower('org')).annotate(
         courses_count=Count('id')
-    ).order_by('org')
+    ).order_by(Lower('org'))
 
 
 def get_courses_count_by_status(

@@ -49,7 +49,7 @@ def is_valid_course_access_role(course_access_role: dict) -> bool:
         logger.error('Invalid course access role (course_id with no org!): id=%s', course_access_role['id'])
         return False
 
-    if course_id and org != course_access_role['course_org']:
+    if course_id and org.lower() != course_access_role['course_org'].lower():
         logger.error('Invalid course access role (org mismatch!): id=%s', course_access_role['id'])
         return False
 
@@ -128,7 +128,7 @@ def get_all_course_access_roles() -> dict:
 
         user_id = access_role['user_id']
         role = access_role['role']
-        org = access_role['org']
+        org = access_role['org'].lower()
         course_id = str(access_role['course_id']) if access_role['course_id'] else None
 
         if user_id not in result:
@@ -143,10 +143,9 @@ def get_all_course_access_roles() -> dict:
         if course_id:
             if course_id not in course_org:
                 course_org[course_id] = org
-            if course_id not in result[user_id][role]['course_limited_access']:
-                result[user_id][role]['course_limited_access'].append(course_id)
+            result[user_id][role]['course_limited_access'].append(course_id)
 
-        elif org not in result[user_id][role]['orgs_full_access']:
+        else:
             result[user_id][role]['orgs_full_access'].append(org)
 
     optimize_access_roles_result(result, course_org)

@@ -42,8 +42,8 @@ def serializer_context():
     return {
         'request': Mock(
             fx_permission_info={
-                'view_allowed_full_access_orgs': ['ORG1', 'ORG2'],
-                'view_allowed_course_access_orgs': ['ORG3'],
+                'view_allowed_full_access_orgs': ['org1', 'org2'],
+                'view_allowed_course_access_orgs': ['org3'],
                 'permitted_tenant_ids': [1, 3],
             },
             query_params={},
@@ -369,7 +369,7 @@ def test_user_roles_serializer_init(
 
     assert mock_construct_roles_data.called
     assert mock_construct_roles_data.call_args[0][0] == [user3]
-    assert serializer.orgs_filter == ['ORG1', 'ORG2', 'ORG3']
+    assert serializer.orgs_filter == ['org1', 'org2', 'org3']
     assert serializer.permitted_tenant_ids == \
            serializer_context['request'].fx_permission_info['permitted_tenant_ids']
     assert serializer.data == {
@@ -424,12 +424,12 @@ def test_user_roles_serializer_get_org_tenants(
         mock_get_tenants_by_org.return_value = [1, 2]
         assert isinstance(serializer._org_tenant, dict)  # pylint: disable=protected-access
         assert not serializer._org_tenant  # pylint: disable=protected-access
-        assert serializer.get_org_tenants('ORG1') == [1, 2]
-        assert serializer._org_tenant == {'ORG1': [1, 2]}  # pylint: disable=protected-access
+        assert serializer.get_org_tenants('org1') == [1, 2]
+        assert serializer._org_tenant == {'org1': [1, 2]}  # pylint: disable=protected-access
         mock_get_tenants_by_org.assert_called_once()
 
         mock_get_tenants_by_org.reset_mock()
-        assert serializer.get_org_tenants('ORG1') == [1, 2]
+        assert serializer.get_org_tenants('org1') == [1, 2]
         mock_get_tenants_by_org.assert_not_called()
 
 
