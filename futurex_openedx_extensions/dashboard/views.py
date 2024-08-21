@@ -8,6 +8,7 @@ from common.djangoapps.student.models import get_user_by_username_or_email
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage
+from django.db import transaction
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from rest_framework import status as http_status
@@ -55,6 +56,7 @@ from futurex_openedx_extensions.helpers.roles import (
     delete_course_access_roles,
     get_course_access_roles_queryset,
     get_usernames_with_access_roles,
+    update_course_access_roles,
 )
 from futurex_openedx_extensions.helpers.tenants import (
     get_accessible_tenant_ids,
@@ -386,6 +388,10 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
     serializer_class = serializers.UserRolesSerializer
     pagination_class = DefaultPagination
 
+    @transaction.non_atomic_requests
+    def dispatch(self, *args: Any, **kwargs: Any) -> Response:
+        return super().dispatch(*args, **kwargs)
+
     def get_queryset(self) -> QuerySet:
         """Get the list of users"""
         dummy_serializers = serializers.UserRolesSerializer(context={'request': self.request})
@@ -448,11 +454,38 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
             status=http_status.HTTP_201_CREATED,
         )
 
+    @staticmethod
+    def verify_username(username: str) -> Response | Dict[str, Any]:
+        """Verify the username"""
+        user_info = get_user_by_key(username)
+        if not user_info['user']:
+            return Response(
+                error_details_to_dictionary(reason=f'({user_info["error_code"]}) {user_info["error_message"]}'),
+                status=http_status.HTTP_404_NOT_FOUND
+            )
+        return user_info
+
     def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """Update a user role"""
+        user_info = self.verify_username(kwargs['username'])
+        if isinstance(user_info, Response):
+            return user_info
+
+        result = update_course_access_roles(
+            user=user_info['user'],
+            new_roles_details=request.data or {},
+            dry_run=False,
+        )
+
+        if result['error_code']:
+            return Response(
+                error_details_to_dictionary(reason=f'({result["error_code"]}) {result["error_message"]}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
         return Response(
-            error_details_to_dictionary(reason='Not implemented yet'),
-            status=http_status.HTTP_501_NOT_IMPLEMENTED
+            self.serializer_class(user_info['user'], context={'request': request}).data,
+            status=http_status.HTTP_200_OK,
         )
 
     def destroy(self, request: Any, *args: Any, **kwargs: Any) -> Response:
@@ -463,20 +496,16 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
                 status=http_status.HTTP_400_BAD_REQUEST
             )
 
-        username = kwargs.get('username')
-        user_info = get_user_by_key(username)
-        if not user_info['user']:
-            return Response(
-                error_details_to_dictionary(reason=f'({user_info["error_code"]}) {user_info["error_message"]}'),
-                status=http_status.HTTP_404_NOT_FOUND
-            )
+        user_info = self.verify_username(kwargs['username'])
+        if isinstance(user_info, Response):
+            return user_info
 
         delete_course_access_roles(
             tenant_ids=self.fx_permission_info['permitted_tenant_ids'],
             user=user_info['user'],
         )
 
-        return Response(status=204)
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
 class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):

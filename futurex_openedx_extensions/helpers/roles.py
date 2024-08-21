@@ -1,4 +1,5 @@
 """Roles helpers for FutureX Open edX Extensions."""
+# pylint: disable=too-many-lines
 from __future__ import annotations
 
 import logging
@@ -786,14 +787,14 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
         return 'not_updated'
 
     if not dry_run:
-        with transaction.atomic():
-            _clean_course_access_roles(
-                redundant_hashes=existing_roles_hash - clean_existing_roles_hash,
-                user=user,
-                separator=separator,
-            )
+        _clean_course_access_roles(
+            redundant_hashes=existing_roles_hash - clean_existing_roles_hash,
+            user=user,
+            separator=separator,
+        )
 
-            try:
+        try:
+            with transaction.atomic():
                 bulk_roles = [CourseAccessRole(
                     user=user,
                     role=new_role['role'],
@@ -802,11 +803,11 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
                 ) for new_role in new_roles]
                 CourseAccessRole.objects.bulk_create(bulk_roles)
 
-            except DatabaseError as exc:
-                raise FXCodedException(
-                    code=FXExceptionCodes.ROLE_CREATE,
-                    message='Database error while adding course access roles!',
-                ) from exc
+        except DatabaseError as exc:
+            raise FXCodedException(
+                code=FXExceptionCodes.ROLE_CREATE,
+                message='Database error while adding course access roles!',
+            ) from exc
 
     return 'added' if new_entry else 'updated'
 
@@ -817,7 +818,8 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     role: str,
     tenant_wide: bool,
     course_ids: list[str] | None,
-    dry_run: bool = False
+    dry_run: bool = False,
+    skip_cache_refresh: bool = False,
 ) -> dict:
     """
     Add the course access roles for the given tenant IDs and user.
@@ -837,6 +839,8 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     :type course_ids: list
     :param dry_run: True for dry run, False otherwise
     :type dry_run: bool
+    :param skip_cache_refresh: True to skip cache refresh, False otherwise
+    :type skip_cache_refresh: bool
     :return: Operation details
     :type: dict
     """
@@ -871,8 +875,7 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     }
     for user_key in user_keys:
         user_info = get_user_by_key(user_key, fail_if_inactive=True)
-        user = user_info['user']
-        if not user:
+        if not user_info['user']:
             result['failed'].append({
                 'user_id': user_key if user_info['key_type'] == cs.USER_KEY_TYPE_ID else None,
                 'username': None if user_info['key_type'] == cs.USER_KEY_TYPE_ID else user_key,
@@ -887,20 +890,128 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
 
         try:
             status = _add_course_access_roles_one_user(
-                user, role, orgs, course_ids, orgs_of_courses['courses'], dry_run
+                user_info['user'], role, orgs, course_ids, orgs_of_courses['courses'], dry_run
             )
         except Exception as exc:  # pylint: disable=broad-except
             result['failed'].append({
-                'user_id': user.id,
-                'username': user.username,
-                'email': user.email,
+                'user_id': user_info['user'].id,
+                'username': user_info['user'].username,
+                'email': user_info['user'].email,
                 'reason_code': exc.code if isinstance(exc, FXCodedException) else FXExceptionCodes.UNKNOWN_ERROR.value,
                 'reason_message': str(exc),
             })
         else:
             result[status].append(user_key)
 
-    if not dry_run:
+    if not dry_run and not skip_cache_refresh:
         cache_refresh_course_access_roles()
 
     return result
+
+
+def update_course_access_roles(  # pylint: disable=too-many-branches
+    user: get_user_model,
+    new_roles_details: Dict[str, Any],
+    dry_run: bool = False
+) -> Dict[str, str | None]:
+    """
+    Update the course access roles for the given tenant ID and user.
+
+    :param user: The user to update the roles for
+    :type user: get_user_model
+    :param new_roles_details: The new roles details
+    :type new_roles_details: dict
+    :param dry_run: True for dry run, False otherwise
+    :type dry_run: bool
+    """
+    tenant_id = new_roles_details.get('tenant_id', 0)
+    tenant_roles = new_roles_details.get('tenant_roles', [])
+    course_roles = new_roles_details.get('course_roles', {})
+    result: Dict[str, list] = {'failed': []}
+
+    if not user or not isinstance(user, get_user_model()):
+        raise ValueError('Invalid user provided!')
+
+    try:
+        if not tenant_id or not isinstance(tenant_id, int):
+            raise ValueError('No valid tenant ID provided')
+
+        if not isinstance(tenant_roles, list) or not all(isinstance(role, str) for role in tenant_roles):
+            raise ValueError('tenant_roles must be a list of strings, or an empty list')
+
+        if not isinstance(course_roles, dict):
+            raise ValueError('course_roles must be a dictionary of (roles: course_ids)')
+        for course_id, roles in course_roles.items():
+            if not isinstance(roles, list) or not all(isinstance(role, str) for role in roles):
+                raise ValueError('roles of courses must be a list of strings')
+
+        grouped_roles: Dict[str, list] = {}
+        for course_id, roles in course_roles.items():
+            for role in roles:
+                if role in tenant_roles:
+                    continue
+                if role not in grouped_roles:
+                    grouped_roles[role] = []
+                grouped_roles[role].append(course_id)
+
+        if not grouped_roles and not tenant_roles:
+            raise ValueError('Cannot use empty data in roles update! use delete instead')
+
+        if not dry_run:
+            with transaction.atomic():
+                tenant_roles = list(set(tenant_roles))
+                delete_course_access_roles([tenant_id], user)
+
+                for role in tenant_roles:
+                    result = add_course_access_roles(
+                        tenant_ids=[tenant_id],
+                        user_keys=[user],
+                        role=role,
+                        tenant_wide=True,
+                        course_ids=None,
+                        dry_run=False,
+                        skip_cache_refresh=True,
+                    )
+                    if result['failed']:
+                        break
+
+                if not result['failed']:
+                    for role, course_ids in grouped_roles.items():
+                        course_ids = list(set(course_ids))
+                        result = add_course_access_roles(
+                            tenant_ids=[tenant_id],
+                            user_keys=[user],
+                            role=role,
+                            tenant_wide=False,
+                            course_ids=course_ids,
+                            dry_run=False,
+                            skip_cache_refresh=True,
+                        )
+                        if result['failed']:
+                            break
+
+    except ValueError as exc:
+        result['failed'].append({
+            'reason_code': FXExceptionCodes.INVALID_INPUT.value,
+            'reason_message': str(exc),
+        })
+
+    except Exception as exc:  # pylint: disable=broad-except
+        result['failed'].append({
+            'reason_code': FXExceptionCodes.UNKNOWN_ERROR.value,
+            'reason_message': str(exc),
+        })
+
+    if result['failed']:
+        return {
+            'error_code': result['failed'][0]['reason_code'],
+            'error_message': result['failed'][0]['reason_message'],
+        }
+
+    if not dry_run:
+        cache_refresh_course_access_roles()
+
+    return {
+        'error_code': None,
+        'error_message': None,
+    }

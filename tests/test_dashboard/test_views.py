@@ -1,4 +1,5 @@
 """Test views for the dashboard app"""
+# pylint: disable=too-many-lines
 import json
 from unittest.mock import Mock, patch
 
@@ -16,6 +17,7 @@ from rest_framework import status as http_status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
+from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
@@ -637,6 +639,15 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         if action == 'detail':
             self.url_args = ['user4']
 
+    def test_dispatch_is_non_atomic(self):
+        """Verify that the view has the correct dispatch method"""
+        dispatch_method = UserRolesManagementView.dispatch
+        is_non_atomic = getattr(dispatch_method, '_non_atomic_requests', False)
+        self.assertTrue(
+            is_non_atomic,
+            'dispatch method should be decorated with non_atomic_requests. atomic is used internally when needed'
+        )
+
     @ddt.data('list', 'detail')
     def test_permission_classes(self, action):
         """Verify that the view has the correct permission classes"""
@@ -762,13 +773,40 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data, {'reason': error_message, 'details': {}})
 
-    def test_put_not_implemented(self):
-        """Verify that the view returns 501 for PUT"""
+    def test_put_bad_username(self):
+        """Verify that the view returns 404 when the given username is invalid"""
         self.set_action('detail')
+        self.url_args = ['invalid_username']
 
         self.login_user(self.staff_user)
         response = self.client.put(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_501_NOT_IMPLEMENTED)
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data, {
+            'reason': '(1001) User with username/email (invalid_username) does not exist!', 'details': {}
+        })
+
+    def test_put_success(self):
+        """Verify that the view returns 204 for PUT"""
+        self.set_action('detail')
+
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.update_course_access_roles') as mock_update_users:
+            with patch(
+                'futurex_openedx_extensions.dashboard.views.UserRolesManagementView.verify_username'
+            ) as mock_verify_username:
+                mock_update_users.return_value = {
+                    'error_code': None,
+                    'error_message': None,
+                }
+                mock_verify_username.return_value = {
+                    'user': get_user_model().objects.get(id=4),
+                    'key_type': cs.USER_KEY_TYPE_USERNAME,
+                    'error_code': None,
+                    'error_message': None,
+                }
+                response = self.client.put(self.url, data={'the data': 'whatever, the function is mocked'})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.data['user_id'], 4)
 
     @patch('futurex_openedx_extensions.dashboard.views.get_user_by_key')
     def test_delete_bad_username(self, mock_get_user):

@@ -17,6 +17,8 @@ class FXExceptionCodes(Enum):
 
     BAD_HASH_CODE = 3001
 
+    INVALID_INPUT = 4001
+
 
 class FXCodedException(Exception):
     """Exception with a code."""
