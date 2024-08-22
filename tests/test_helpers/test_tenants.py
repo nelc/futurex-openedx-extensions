@@ -156,6 +156,11 @@ def test_get_all_course_org_filter_list_is_being_cached():
         'duplicates': {},
         'invalid': [],
     }),
+    (None, {
+        'course_org_filter_list': [],
+        'duplicates': {},
+        'invalid': [],
+    }),
 ])
 def test_get_course_org_filter_list(base_data, tenant_ids, expected):  # pylint: disable=unused-argument
     """Verify get_course_org_filter_list function."""
