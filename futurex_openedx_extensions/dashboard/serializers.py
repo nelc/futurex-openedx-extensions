@@ -327,8 +327,8 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
         """Return the certificate URL."""
         user = get_user_model().objects.get(id=obj.related_user_id)
         certificate = get_certificates_for_user_by_course_keys(user, [obj.id])
-        if certificate and obj.id in certificate:
-            return certificate[obj.id].get('download_url')
+        if certificate and str(obj.id) in certificate:
+            return certificate[str(obj.id)].get('download_url')
 
         return None
 

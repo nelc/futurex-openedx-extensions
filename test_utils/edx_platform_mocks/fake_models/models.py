@@ -7,7 +7,7 @@ from opaque_keys.edx.django.models import CourseKeyField, LearningContextKeyFiel
 
 class CourseOverview(models.Model):
     """Mock"""
-    id = models.CharField(max_length=255, primary_key=True)  # pylint: disable=invalid-name
+    id = CourseKeyField(db_index=True, primary_key=True, max_length=255)  # pylint: disable=invalid-name
     org = models.CharField(max_length=255, db_collation='NOCASE')
     catalog_visibility = models.TextField(null=True)
     start = models.DateTimeField(null=True)

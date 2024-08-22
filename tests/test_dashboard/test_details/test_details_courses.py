@@ -54,8 +54,8 @@ def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_inf
     }
     queryset = get_courses_queryset(fx_permission_info)
     for record in queryset:
-        assert record.enrolled_count == expected_results[record.id][0]
-        assert record.certificates_count == expected_results[record.id][1]
+        assert record.enrolled_count == expected_results[str(record.id)][0]
+        assert record.certificates_count == expected_results[str(record.id)][1]
 
 
 @pytest.mark.django_db
@@ -136,7 +136,8 @@ def test_get_learner_courses_info_queryset(base_data, fx_permission_info):  # py
 
     assert result.count() == len(test_data)
     for record in result:
-        assert record.id in test_data, f'failed for: {record.id}'
-        assert record.related_user_id == user_id, f'failed for: {record.id}'
-        assert record.enrollment_date == test_data[record.id]['enrollment_date'], f'failed for: {record.id}'
-        assert record.last_activity == test_data[record.id]['last_activity'], f'failed for: {record.id}'
+        course_id = str(record.id)
+        assert course_id in test_data, f'failed for: {course_id}'
+        assert record.related_user_id == user_id, f'failed for: {course_id}'
+        assert record.enrollment_date == test_data[course_id]['enrollment_date'], f'failed for: {course_id}'
+        assert record.last_activity == test_data[course_id]['last_activity'], f'failed for: {course_id}'
