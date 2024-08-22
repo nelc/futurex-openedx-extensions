@@ -471,7 +471,6 @@ def test_user_roles_serializer_parse_query_params_defaults(
     base_data, serializer_context
 ):  # pylint: disable=unused-argument, redefined-outer-name
     """Verify that the parse_query_params method correctly parses the query parameters."""
-    print(UserRolesSerializer.parse_query_params({}))
     assert UserRolesSerializer.parse_query_params({}) == {
         'search_text': '',
         'course_ids_filter': [],

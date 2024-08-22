@@ -189,6 +189,7 @@ def get_course_org_filter_list(tenant_ids: List[int], ignore_invalid_tenant_ids:
     """
     tenant_configs = get_all_course_org_filter_list()
 
+    tenant_ids = tenant_ids or []
     orgs_list = []
     duplicate_trace = {}
     duplicates = {}
