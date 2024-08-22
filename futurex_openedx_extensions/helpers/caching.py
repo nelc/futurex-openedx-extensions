@@ -63,7 +63,6 @@ def cache_dict(timeout: int | str, key_generator_or_name: str | Callable) -> Cal
                         timeout_seconds,
                     )
                 elif cache_key and result:
-                    # log: cache_dict: expecting dictionary result from <<function name>> but got <<result type>>
                     log.error(
                         'cache_dict: expecting dictionary result from %s but got %s',
                         func.__name__, type(result)

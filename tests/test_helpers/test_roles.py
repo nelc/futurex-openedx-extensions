@@ -1,20 +1,28 @@
 """Test permissions helper classes"""
+# pylint: disable=too-many-lines
 from unittest.mock import Mock, patch
 
 import pytest
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db import DatabaseError
 from django.test import override_settings
 from opaque_keys.edx.django.models import CourseKeyField
 
-from futurex_openedx_extensions.helpers.constants import CACHE_NAME_ALL_COURSE_ACCESS_ROLES
+from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.extractors import DictHashcode
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
 from futurex_openedx_extensions.helpers.roles import (
     FXViewRoleInfoMetaClass,
     FXViewRoleInfoMixin,
     RoleType,
+    _clean_course_access_roles,
+    add_course_access_roles,
+    cache_refresh_course_access_roles,
     check_tenant_access,
+    delete_course_access_roles,
     get_all_course_access_roles,
     get_course_access_roles_queryset,
     get_fx_view_with_roles,
@@ -23,7 +31,9 @@ from futurex_openedx_extensions.helpers.roles import (
     is_view_exist,
     is_view_support_write,
     optimize_access_roles_result,
+    update_course_access_roles,
 )
+from futurex_openedx_extensions.helpers.tenants import get_all_tenant_ids
 from tests.fixture_helpers import (
     get_all_orgs,
     get_test_data_dict,
@@ -208,10 +218,10 @@ def test_get_all_course_access_roles(base_data):  # pylint: disable=unused-argum
 @override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 def test_get_all_course_access_roles_being_cached():
     """Verify that get_all_course_access_roles is being cached."""
-    assert cache.get(CACHE_NAME_ALL_COURSE_ACCESS_ROLES) is None
+    assert cache.get(cs.CACHE_NAME_ALL_COURSE_ACCESS_ROLES) is None
     result = get_all_course_access_roles()
-    assert cache.get(CACHE_NAME_ALL_COURSE_ACCESS_ROLES)['data'] == result
-    cache.set(CACHE_NAME_ALL_COURSE_ACCESS_ROLES, None)
+    assert cache.get(cs.CACHE_NAME_ALL_COURSE_ACCESS_ROLES)['data'] == result
+    cache.set(cs.CACHE_NAME_ALL_COURSE_ACCESS_ROLES, None)
 
 
 @pytest.mark.django_db
@@ -949,8 +959,6 @@ def assert_roles_result(result, expected):
     expected_length = len(expected)
     assert result.count() == expected_length
     result = result.order_by('user_id', 'role', 'org', 'course_id')
-    for i in result:
-        print('user_id:', i.user_id, 'role:', i.role, 'org:', i.org, 'course_id:', i.course_id)
     for index in range(expected_length):
         assert result[index].user_id == expected[index]['user_id']
         assert result[index].role == expected[index]['role']
@@ -981,3 +989,511 @@ def test_get_roles_for_users_queryset_remove_redundant(base_data):  # pylint: di
         {'user_id': 3, 'role': 'org_course_creator_group', 'org': 'org1', 'course_id': 'course-v1:ORG1+4+4'},
         {'user_id': 3, 'role': 'staff', 'org': 'org1', 'course_id': 'None'},
     ])
+
+
+@pytest.mark.django_db
+def test_delete_course_access_roles(base_data):  # pylint: disable=unused-argument
+    """Verify that delete_course_access_roles deletes the expected records."""
+    user3 = get_user_model().objects.get(username='user3')
+    CourseAccessRole.objects.create(
+        user=user3, org='', role='staff', course_id='course-v1:ORG1+3+3',
+    )
+    q_user3 = CourseAccessRole.objects.filter(user=user3)
+    assert q_user3.filter(org='').count() > 0
+    assert q_user3.exclude(org='').filter(course_id=CourseKeyField.Empty).count() > 0
+    assert q_user3.exclude(org='', course_id=CourseKeyField.Empty).count() > 0
+    delete_course_access_roles(get_all_tenant_ids(), user3)
+    assert q_user3.count() == 0
+
+
+@pytest.mark.django_db
+def test_delete_course_access_roles_nothing_to_delete(base_data):  # pylint: disable=unused-argument
+    """Verify that delete_course_access_roles does not raise an error when there are no records to delete."""
+    user23 = get_user_model().objects.get(username='user23')
+    assert CourseAccessRole.objects.filter(user_id=user23).exclude(
+        org__in=['org1', 'org2']
+    ).count() == 5, 'bad test data'
+    assert CourseAccessRole.objects.filter(user_id=user23, org__in=['org1', 'org2']).count() == 0, 'bad test data'
+
+    with pytest.raises(FXCodedException) as exc_info:
+        delete_course_access_roles([1], user23)
+    assert str(exc_info.value) == 'No role found to delete for the user (user23) within the given tenants [1]!'
+
+    assert CourseAccessRole.objects.filter(user_id=user23).exclude(
+        org__in=['org1', 'org2']
+    ).count() == 5, 'bad test data'
+    assert CourseAccessRole.objects.filter(user_id=user23, org__in=['org1', 'org2']).count() == 0, 'bad test data'
+
+
+@pytest.mark.django_db
+@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+@patch('futurex_openedx_extensions.helpers.roles.get_all_course_access_roles')
+def test_cache_refresh_course_access_roles(mock_get_roles):
+    """Verify that cache_refresh_course_access_roles calls the expected functions."""
+    def mocked_get_all_course_access_roles():
+        """Mocked get_all_course_access_roles function."""
+        cache.set(cs.CACHE_NAME_ALL_COURSE_ACCESS_ROLES, {'some': 'new data'}, timeout=None)
+
+    cache.set(cs.CACHE_NAME_ALL_COURSE_ACCESS_ROLES, {'some': 'data'}, timeout=None)
+    assert cache.get(cs.CACHE_NAME_ALL_COURSE_ACCESS_ROLES) == {'some': 'data'}
+    mock_get_roles.side_effect = mocked_get_all_course_access_roles
+    cache_refresh_course_access_roles()
+    assert cache.get(cs.CACHE_NAME_ALL_COURSE_ACCESS_ROLES) == {'some': 'new data'}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('tenant_ids, expected_error_message', [
+    ([], 'No valid tenant IDs provided'),
+    (None, 'No valid tenant IDs provided'),
+    ([1, 2, 999], 'Invalid tenant IDs: [999]'),
+])
+def test_add_course_access_roles_invalid_tenants(tenant_ids, expected_error_message):
+    """Verify that add_course_access_roles raises an error if the tenant_ids parameter is invalid."""
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles(tenant_ids, ['user1'], 'staff', True, [])
+    assert str(exc_info.value) == expected_error_message
+
+
+@pytest.mark.django_db
+def test_add_course_access_roles_users_count_limit():
+    """Verify that add_course_access_roles raises an error when the number of users exceeds the limit"""
+    limit = cs.COURSE_ACCESS_ROLES_MAX_USERS_PER_OPERATION
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles(
+            tenant_ids=[1],
+            user_keys=[f'user{i}' for i in range(1, limit + 2)],
+            role='staff',
+            tenant_wide=True,
+            course_ids=[],
+        )
+    assert str(exc_info.value) == \
+           f'add_course_access_roles cannot proces more than {limit} users at a time!'
+
+
+@pytest.mark.django_db
+def test_add_course_access_roles_invalid_role():
+    """Verify that add_course_access_roles raises an error if the role parameter is invalid."""
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles([1, 2], ['user1'], 'superman', False, [])
+    assert str(exc_info.value) == 'Invalid role: superman'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('tenant_wide, course_ids', [
+    (True, ['course-v1:ORG1+3+3']),
+    (False, []),
+    (False, None),
+])
+def test_add_course_access_roles_conflict_tenant_wide(tenant_wide, course_ids):
+    """Verify that add_course_access_roles raises an error if there is a conflict with tenant-wide roles."""
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles([1, 2], ['user1'], 'staff', tenant_wide, course_ids)
+    assert str(exc_info.value) == 'Conflict between tenant_wide and course_ids'
+
+
+@pytest.mark.django_db
+def test_add_course_access_roles_invalid_course_ids():
+    """Verify that add_course_access_roles raises an error if the course_ids parameter is invalid."""
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles(
+            [1, 2], ['user1'], 'staff', False,
+            ['course-v1:ORG1+3+3', 'course-v1:ORG1+bad_course_id+1', 'course-v1:ORG1+4+4'],
+        )
+    assert str(exc_info.value) == 'Invalid course IDs provided: [\'course-v1:ORG1+bad_course_id+1\']'
+
+
+@pytest.mark.django_db
+def test_add_course_access_roles_foreign_course_id():
+    """Verify that add_course_access_roles raises an error if the course_id is not in the tenant."""
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles([1, 8], ['user1'], 'staff', False, ['course-v1:ORG3+1+1'])
+    assert str(exc_info.value) == 'Course ID course-v1:ORG3+1+1 does not belong to the provided tenant IDs'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_keys, error_message', [
+    (None, 'No users provided!'),
+    ([], 'No users provided!'),
+    ({'user1', 'not a list'}, 'Invalid user keys provided! must be a list'),
+])
+def test_add_course_access_roles_no_user_list(user_keys, error_message):
+    """Verify that add_course_access_roles raises an error if no user is provided, or it's not a list."""
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles([1, 8], user_keys, 'staff', False, ['course-v1:ORG3+1+1'])
+    assert str(exc_info.value) == error_message
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles.cache_refresh_course_access_roles')
+def test_add_course_access_roles_dry_run(mock_cache_refresh, base_data):  # pylint: disable=unused-argument
+    """Verify that add_course_access_roles does not create records when dry_run is True."""
+    user = get_user_model().objects.get(username='user43')
+    expected_result = {'failed': [], 'added': [43], 'updated': [], 'not_updated': []}
+
+    assert CourseAccessRole.objects.filter(user=user).count() == 0, 'Bad test data'
+    assert add_course_access_roles(
+        [1], [user], 'staff', True, [], dry_run=True
+    ) == expected_result
+    assert CourseAccessRole.objects.filter(user=user).count() == 0
+    mock_cache_refresh.assert_not_called()
+
+    mock_cache_refresh.reset_mock()
+    assert add_course_access_roles(
+        [1], [user], 'staff', True, [],
+    ) == expected_result
+    mock_cache_refresh.assert_called_once()
+    assert CourseAccessRole.objects.filter(user=user).count() == 2
+    org1 = org2 = False
+    for record in CourseAccessRole.objects.filter(user=user):
+        assert record.role == 'staff'
+        assert record.course_id is None
+        org1 |= record.org.lower() == 'org1'
+        org2 |= record.org.lower() == 'org2'
+    assert org1 and org2
+
+
+@pytest.mark.django_db
+def test_add_course_access_roles_bad_user_key(base_data):  # pylint: disable=unused-argument
+    """Verify that add_course_access_roles raises an error if the user parameter is invalid."""
+    result = add_course_access_roles([1], [999], 'staff', True, [])
+    assert not any(result[data] for data in ('added', 'updated', 'not_updated'))
+
+    assert len(result['failed']) == 1
+    assert result['failed'][0]['reason_code'] == FXExceptionCodes.USER_NOT_FOUND.value
+    assert result['failed'][0]['reason_message'] == 'User with ID (999) does not exist!'
+    assert result['failed'][0]['user_id'] == 999
+    assert result['failed'][0]['username'] is None
+    assert result['failed'][0]['email'] is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_key', ['user3@example.com', 'user3', 3])
+@patch('futurex_openedx_extensions.helpers.users.get_user_by_username_or_email')
+def test_add_course_access_roles_success_list_contains_user_key(
+    mock_get_user, base_data, user_key
+):  # pylint: disable=unused-argument
+    """Verify that add_course_access_roles returns the expected result according to the user_key"""
+    mock_get_user.return_value = get_user_model().objects.get(id=3)
+    result = add_course_access_roles(
+        [1], [user_key], 'beta_testers', False, ['course-v1:ORG1+3+3']
+    )
+
+    assert result == {
+        'failed': [],
+        'added': [],
+        'updated': [user_key],
+        'not_updated': [],
+    }
+
+
+@pytest.mark.django_db
+def test_add_course_access_roles_success_user_key_same_as_id(base_data):  # pylint: disable=unused-argument
+    """Verify that add_course_access_roles returns the expected result when the user_key is a User object."""
+    user_key = get_user_model().objects.get(username='user3')
+    result = add_course_access_roles(
+        [1], [user_key], 'beta_testers', False, ['course-v1:ORG1+3+3']
+    )
+
+    assert result == {
+        'failed': [],
+        'added': [],
+        'updated': [user_key.id],
+        'not_updated': [],
+    }
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.users.get_user_by_username_or_email')
+def test_add_course_access_roles_data_cleaning(mocked_get_user, base_data):  # pylint: disable=unused-argument
+    """
+    Verify that add_course_access_roles returns the expected result when the data needs cleaning. The second call
+    should not update since the data already cleaned
+    """
+    username = 'user3'
+    staff_role = 'staff'
+    mocked_get_user.return_value = get_user_model().objects.get(username=username)
+
+    user3_org1_data = [
+        (staff_role, CourseKeyField.Empty),
+        ('org_course_creator_group', 'course-v1:ORG1+3+3'),
+        ('org_course_creator_group', 'course-v1:ORG1+4+4'),
+    ]
+    user3_org1_redundant_data = [
+        (staff_role, 'course-v1:ORG1+3+3'),
+    ]
+    assert all(CourseAccessRole.objects.filter(
+        user__username=username, org='org1', role=data[0], course_id=data[1],
+    ).exists() for data in user3_org1_data), 'Bad test data'
+    assert all(CourseAccessRole.objects.filter(
+        user__username=username, org='org1', role=data[0], course_id=data[1],
+    ).exists() for data in user3_org1_redundant_data), 'Bad test data'
+
+    assert not CourseAccessRole.objects.filter(user__username=username, org='org2').exists(), \
+        'Bad test data. we need to test the case when an org role is missing from one org of the tenant'
+
+    result = add_course_access_roles([1], [username], staff_role, True, [])
+    assert result == {
+        'failed': [],
+        'added': [],
+        'updated': [username],
+        'not_updated': [],
+    }
+    assert all(CourseAccessRole.objects.filter(
+        user__username=username, org='org1', role=data[0], course_id=data[1],
+    ).exists() for data in user3_org1_data), 'Bad test data'
+    assert not any(CourseAccessRole.objects.filter(
+        user__username=username, org='org1', role=data[0], course_id=data[1],
+    ).exists() for data in user3_org1_redundant_data), 'Bad test data'
+    assert CourseAccessRole.objects.filter(user__username=username, org='org2').count() == 1
+
+    second_call = add_course_access_roles([1], [username], staff_role, True, [])
+    assert second_call == {
+        'failed': [],
+        'added': [],
+        'updated': [],
+        'not_updated': [username],
+    }
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.users.get_user_by_username_or_email')
+@patch('futurex_openedx_extensions.helpers.roles.CourseAccessRole.objects.bulk_create')
+def test_add_course_access_roles_bulk_create_failed(
+    mock_bulk_create, mocked_get_user, base_data
+):  # pylint: disable=unused-argument
+    """
+    Verify that add_course_access_roles returns the expected result when the bulk_create fails.
+    """
+    username = 'user3'
+    mocked_get_user.return_value = get_user_model().objects.get(username=username)
+    mock_bulk_create.side_effect = DatabaseError('Some error')
+    result = add_course_access_roles([1], [username], 'staff', True, [])
+
+    assert result == {
+        'failed': [{
+            'user_id': 3,
+            'username': 'user3',
+            'email': 'user3@example.com',
+            'reason_code': FXExceptionCodes.ROLE_CREATE.value,
+            'reason_message': 'Database error while adding course access roles!'
+        }],
+        'added': [],
+        'updated': [],
+        'not_updated': [],
+    }
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles.cache_refresh_course_access_roles')
+def test_add_course_access_roles_skip_cache_refresh(mock_cache_refresh):
+    """Verify that add_course_access_roles does not refresh the cache when skip_cache_refresh is True."""
+    add_course_access_roles([1], ['user1'], 'staff', True, [], skip_cache_refresh=True)
+    mock_cache_refresh.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_clean_course_access_roles_no_record_to_delete():
+    """Verify that clean_course_access_roles returns the expected result when there are no records to delete."""
+    hash_code = DictHashcode({'role': 'role1', 'org_lower_case': 'org1', 'course_id': None})
+    with pytest.raises(FXCodedException) as exc_info:
+        _clean_course_access_roles(
+            {hash_code},
+            get_user_model().objects.get(username='user3'),
+        )
+    assert exc_info.value.code == FXExceptionCodes.ROLE_DELETE.value
+    assert str(exc_info.value) == f'No role found to delete! {hash_code}'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles.CourseAccessRole.objects.filter')
+def test_clean_course_access_roles_db_error_on_delete(mock_filter):
+    """Verify that clean_course_access_roles returns the expected result when deletion failed for DB reasons."""
+    mock_filter.return_value.delete.side_effect = DatabaseError('somthing!')
+    hash_code = DictHashcode({'role': 'staff', 'org_lower_case': 'org1', 'course_id': None})
+    with pytest.raises(FXCodedException) as exc_info:
+        _clean_course_access_roles(
+            {hash_code},
+            get_user_model().objects.get(username='user3'),
+        )
+    assert exc_info.value.code == FXExceptionCodes.ROLE_DELETE.value
+    assert str(exc_info.value) == f'Database error while deleting course access roles! {hash_code}. Error: somthing!'
+
+
+@pytest.mark.django_db
+def test_clean_course_access_roles_kry_error_on_delete():
+    """Verify that clean_course_access_roles returns the expected result when deletion failed for DB reasons."""
+    hash_code = DictHashcode({'role': 'staff', 'missing_org_lower_case': 'org1', 'course_id': None})
+    with pytest.raises(FXCodedException) as exc_info:
+        _clean_course_access_roles(
+            {hash_code},
+            get_user_model().objects.get(username='user3'),
+        )
+    assert exc_info.value.code == FXExceptionCodes.ROLE_DELETE.value
+    assert str(exc_info.value) == 'Unexpected internal error! \'org_lower_case\' is missing from the hashcode!'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user', [
+    None, '', 'must be a user object', 3,
+])
+def test_update_course_access_roles_invalid_user(user):
+    """Verify that update_course_access_roles raises an error if the user parameter is invalid."""
+    with pytest.raises(ValueError) as exc_info:
+        update_course_access_roles(user, {})
+    assert str(exc_info.value) == 'Invalid user provided!'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('key, value, expected_error_message', [
+    ('tenant_id', 'not int', 'No valid tenant ID provided'),
+    ('tenant_roles', 'not list', 'tenant_roles must be a list of strings, or an empty list'),
+    ('tenant_roles', [1, 'not list of strings'], 'tenant_roles must be a list of strings, or an empty list'),
+    ('course_roles', 'not dict', 'course_roles must be a dictionary of (roles: course_ids)'),
+    ('course_roles', {'course': 'not list'}, 'roles of courses must be a list of strings'),
+    ('course_roles', {'course': [1, 'not list of strings']}, 'roles of courses must be a list of strings'),
+])
+def test_update_course_access_roles_invalid_input(key, value, expected_error_message):
+    """Verify that update_course_access_roles raises an error if the user parameter is invalid."""
+    user = get_user_model().objects.get(username='user3')
+    new_roles_details = {
+        'tenant_id': 1,
+        'tenant_roles': ['staff'],
+        'course_roles': {
+            'course-v1:ORG1+3+3': ['staff'],
+        },
+    }
+    new_roles_details.update({key: value})
+    result = update_course_access_roles(user, new_roles_details)
+    assert result['error_code'] == FXExceptionCodes.INVALID_INPUT.value
+    assert result['error_message'] == expected_error_message
+
+
+def _run_update_roles(test_data_update, dry_run=False):
+    """Helper function to run update_course_access_roles."""
+    user = get_user_model().objects.get(username='user3')
+    new_roles_details = {
+        'tenant_id': 1,
+        'tenant_roles': ['staff'],
+        'course_roles': {
+            'course-v1:ORG1+3+3': ['staff'],
+        },
+    }
+    new_roles_details.update(test_data_update)
+    return update_course_access_roles(user, new_roles_details, dry_run=dry_run)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('empty_data', [
+    {'tenant_roles': [], 'course_roles': {}}, {'tenant_roles': [], 'course_roles': {'course': []}}
+])
+def test_update_course_access_roles_empty(empty_data):
+    """Verify that update_course_access_roles returns an error when the update data is empty."""
+    result = _run_update_roles(empty_data)
+    assert result == {
+        'error_code': FXExceptionCodes.INVALID_INPUT.value,
+        'error_message': 'Cannot use empty data in roles update! use delete instead',
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('test_data_update', [
+    {'tenant_roles': []}, {'course_roles': {}}
+])
+@patch('futurex_openedx_extensions.helpers.roles.delete_course_access_roles')
+@patch('futurex_openedx_extensions.helpers.roles.add_course_access_roles')
+def test_update_course_access_course_add_failed(mock_add, mock_delete, test_data_update):
+    """Verify that update_course_access_roles returns an error when the add_course_access_roles fails."""
+    mock_add.return_value = {'failed': [{
+        'reason_code': FXExceptionCodes.ROLE_CREATE.value,
+        'reason_message': 'Failed to create role for some reason!!',
+    }]}
+
+    result = _run_update_roles(test_data_update)
+    mock_delete.assert_called_once()
+    mock_add.assert_called_once()
+    assert result == {
+        'error_code': mock_add.return_value['failed'][0]['reason_code'],
+        'error_message': mock_add.return_value['failed'][0]['reason_message'],
+    }
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles.delete_course_access_roles')
+def test_unexpected_error(mock_delete):
+    """Verify that update_course_access_roles returns an error when an unexpected error occurs."""
+    mock_delete.side_effect = Exception('Some unexpected error')
+    result = _run_update_roles({})
+    mock_delete.assert_called_once()
+    assert result['error_code'] == FXExceptionCodes.UNKNOWN_ERROR.value
+    assert result['error_message'] == 'Some unexpected error'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles.cache_refresh_course_access_roles')
+@patch('futurex_openedx_extensions.helpers.roles.delete_course_access_roles')
+@patch('futurex_openedx_extensions.helpers.roles.add_course_access_roles')
+def test_update_course_access_roles_dry_run(
+    mock_add, mock_delete, mock_cache_refresh, base_data
+):  # pylint: disable=unused-argument
+    """Verify that update_course_access_roles does not update records when dry_run is True."""
+    user = get_user_model().objects.get(username='user3')
+
+    mock_add.return_value = {'failed': []}
+    result = _run_update_roles({}, dry_run=True)
+    mock_delete.assert_not_called()
+    mock_add.assert_not_called()
+    mock_cache_refresh.assert_not_called()
+    assert result['error_code'] is None
+
+    result = _run_update_roles({})
+    mock_delete.assert_called_once_with([1], user)
+    mock_add.assert_called_once_with(
+        tenant_ids=[1],
+        user_keys=[user],
+        role='staff',
+        tenant_wide=True,
+        course_ids=None,
+        dry_run=False,
+        skip_cache_refresh=True,
+    )
+    mock_cache_refresh.assert_called_once()
+    assert result['error_code'] is None
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles.delete_course_access_roles')
+@patch('futurex_openedx_extensions.helpers.roles.add_course_access_roles')
+def test_update_course_access_course_roles_grouping(mock_add, mock_delete):
+    """Verify that update_course_access_roles groups the roles and course_ids correctly."""
+    mock_add.return_value = {'failed': []}
+    result = _run_update_roles({
+        'tenant_roles': [],
+        'course_roles': {
+            'course-v1:ORG1+1+1': ['staff', 'org_course_creator_group'],
+            'course-v1:ORG1+2+2': ['staff', 'org_course_creator_group'],
+            'course-v1:ORG1+3+3': ['staff', 'org_course_creator_group'],
+            'course-v1:ORG1+4+4': ['staff', 'org_course_creator_group'],
+        }
+    })
+    mock_delete.assert_called_once()
+
+    role_staff = False
+    role_org_course_creator_group = False
+    assert mock_add.call_count == 2
+    for call_index in range(2):
+        add_args = dict(mock_add.call_args_list[call_index].kwargs)
+        role_staff |= 'staff' == add_args['role']
+        role_org_course_creator_group |= 'org_course_creator_group' == add_args['role']
+        add_args.pop('role')
+        add_args['course_ids'] = sorted(add_args['course_ids'])
+        assert add_args == {
+            'tenant_ids': [1],
+            'user_keys': [get_user_model().objects.get(username='user3')],
+            'tenant_wide': False,
+            'course_ids': [
+                'course-v1:ORG1+1+1', 'course-v1:ORG1+2+2', 'course-v1:ORG1+3+3', 'course-v1:ORG1+4+4'
+            ],
+            'dry_run': False,
+            'skip_cache_refresh': True,
+        }
+    assert result['error_code'] is None
