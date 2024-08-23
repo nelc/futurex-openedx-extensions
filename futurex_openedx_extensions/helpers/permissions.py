@@ -7,7 +7,7 @@ from typing import Any, List
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.permissions import BasePermission, IsAuthenticated
 
-from futurex_openedx_extensions.helpers.roles import check_tenant_access, get_all_course_access_roles
+from futurex_openedx_extensions.helpers.roles import check_tenant_access, get_user_course_access_roles
 from futurex_openedx_extensions.helpers.tenants import get_accessible_tenant_ids, get_course_org_filter_list
 
 
@@ -57,14 +57,13 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
                 f'permission class ({self.__class__.__name__})'
             )
 
-        if not super().has_permission(request, view):
+        if not super().has_permission(request, view) or not request.user.is_active:
             raise NotAuthenticated()
 
         is_system_staff_user = request.user.is_staff or request.user.is_superuser
         view_allowed_roles: List[str] = view.get_allowed_roles_all_views()[view.fx_view_name]
         tenant_ids_string: str | None = request.GET.get('tenant_ids')
-        user_roles: dict = {} if is_system_staff_user else get_all_course_access_roles(
-        ).get(request.user.id, {})
+        user_roles: dict = {} if is_system_staff_user else get_user_course_access_roles(request.user.id)['roles']
 
         list_of_roles: List[str] = list(user_roles.keys())
         if tenant_ids_string:

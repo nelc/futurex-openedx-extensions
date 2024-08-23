@@ -6,30 +6,39 @@ from common.djangoapps.student.models import CourseAccessRole
 from django.core.cache import cache
 from django.test import override_settings
 
-from futurex_openedx_extensions.helpers.constants import CACHE_NAME_ALL_COURSE_ACCESS_ROLES, CACHE_NAME_ALL_VIEW_ROLES
+from futurex_openedx_extensions.helpers.constants import CACHE_NAME_ALL_VIEW_ROLES
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
+from futurex_openedx_extensions.helpers.roles import cache_name_user_course_access_roles
 
 
 @override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @pytest.mark.django_db
 def test_refresh_course_access_role_cache_on_save(base_data):  # pylint: disable=unused-argument
     """Verify that the cache is deleted when a CourseAccessRole is saved"""
-    cache.set(CACHE_NAME_ALL_COURSE_ACCESS_ROLES, 'test')
-    dummy = CourseAccessRole.objects.create(user_id=1, role='test')
-    assert cache.get(CACHE_NAME_ALL_COURSE_ACCESS_ROLES) is None
+    user_id = 1
+    cache_name = cache_name_user_course_access_roles(user_id)
+    cache.set(cache_name, 'test')
+    dummy = CourseAccessRole.objects.create(user_id=user_id, role='test')
+    assert cache.get(cache_name) is None
 
-    cache.set(CACHE_NAME_ALL_COURSE_ACCESS_ROLES, 'test')
+    cache.set(cache_name, 'test')
     dummy.save()
-    assert cache.get(CACHE_NAME_ALL_COURSE_ACCESS_ROLES) is None
+    assert cache.get(cache_name) is None
 
 
 @override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @pytest.mark.django_db
 def test_refresh_view_allowed_roles_cache_on_delete(base_data):  # pylint: disable=unused-argument
     """Verify that the cache is deleted when a CourseAccessRole record is deleted"""
-    cache.set(CACHE_NAME_ALL_COURSE_ACCESS_ROLES, 'test')
-    CourseAccessRole.objects.first().delete()
-    assert cache.get(CACHE_NAME_ALL_COURSE_ACCESS_ROLES) is None
+    user_id = 3
+    cache_name = cache_name_user_course_access_roles(user_id)
+    cache.set(cache_name, 'test')
+
+    CourseAccessRole.objects.filter(user_id=user_id + 1).delete()
+    assert cache.get(cache_name) == 'test'
+
+    CourseAccessRole.objects.filter(user_id=user_id).delete()
+    assert cache.get(cache_name) is None
 
 
 @patch('futurex_openedx_extensions.helpers.roles.is_view_exist', return_value=True)
