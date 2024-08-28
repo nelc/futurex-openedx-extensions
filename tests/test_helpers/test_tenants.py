@@ -60,9 +60,8 @@ def test_get_all_course_org_filter_list(base_data):  # pylint: disable=unused-ar
     }
 
 
-@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @pytest.mark.django_db
-def test_get_all_course_org_filter_list_is_being_cached():
+def test_get_all_course_org_filter_list_is_being_cached(cache_testing):  # pylint: disable=unused-argument
     """Verify that get_all_course_org_filter_list is being cached."""
     assert cache.get(cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST) is None
     result = tenants.get_all_course_org_filter_list()
@@ -189,9 +188,8 @@ def test_get_all_tenants_info_config_priorities(
     ]
 
 
-@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @pytest.mark.django_db
-def test_get_all_tenants_info_is_being_cached():
+def test_get_all_tenants_info_is_being_cached(cache_testing):  # pylint: disable=unused-argument
     """Verify that get_all_tenants_info is being cached."""
     assert cache.get(cs.CACHE_NAME_ALL_TENANTS_INFO) is None
     result = tenants.get_all_tenants_info()

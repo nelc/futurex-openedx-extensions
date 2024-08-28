@@ -7,6 +7,7 @@ from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict, List, Tuple
 
+from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -38,79 +39,107 @@ from futurex_openedx_extensions.helpers.users import get_user_by_key
 logger = logging.getLogger(__name__)
 
 
-def validate_course_access_role(course_access_role: dict) -> bool:
+def validate_course_access_role(course_access_role: dict) -> None:
     """
-    Validate the course access role. And check if the role data is clean. Clean entry means that no field
-    is filled with a value that is not used by the role. For example, org or course_id should be empty for
-    a global role. The function cleans the entry when needed.
+    Validate the course access role.
 
     :param course_access_role: The course access role
     :type course_access_role: dict
-    :return: True if the course access role is valid and there is no useless entry within it, False otherwise
-    :rtype: bool
     """
-    def log_error(message: str) -> None:
-        """Log the error message."""
-        logger.error('Invalid course access role: %s (id: %s)', message, course_access_role['id'])
+    def check_broken_rule(broken_rule: bool, code: FXExceptionCodes, message: str) -> None:
+        """Validate the rule."""
+        message = f'Invalid course access role: {message} (id: {course_access_role["id"]})'
+        if broken_rule:
+            raise FXCodedException(code=code, message=message)
 
     org = course_access_role['org'].strip()
-    course_id = course_access_role['course_id'] or ''
+    course_id = course_access_role['course_id']
     role = course_access_role['role']
 
-    try:
-        if role not in cs.COURSE_ACCESS_ROLES_ALL:
-            raise FXCodedException(
-                code=FXExceptionCodes.ROLE_INVALID_ENTRY,
-                message=f'invalid role ({role})!',
-            )
+    check_broken_rule(
+        role not in cs.COURSE_ACCESS_ROLES_ALL,
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+        f'invalid role ({role})!',
+    )
 
-        if role not in cs.COURSE_ACCESS_ROLES_SUPPORTED_READ:
-            raise FXCodedException(
-                code=FXExceptionCodes.ROLE_UNSUPPORTED,
-                message=f'unsupported role ({role})!',
-            )
+    check_broken_rule(
+        role not in cs.COURSE_ACCESS_ROLES_SUPPORTED_READ,
+        FXExceptionCodes.ROLE_UNSUPPORTED,
+        f'unsupported role ({role})!',
+    )
 
-        if role in cs.COURSE_ACCESS_ROLES_COURSE_ONLY and not (course_id and org):
-            raise FXCodedException(
-                code=FXExceptionCodes.ROLE_INVALID_ENTRY,
-                message=f'role {role} must have both course_id and org!',
-            )
+    check_broken_rule(
+        role in cs.COURSE_ACCESS_ROLES_COURSE_ONLY and not (course_id and org),
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+        f'role {role} must have both course_id and org!',
+    )
 
-        if role in cs.COURSE_ACCESS_ROLES_TENANT_ONLY and not org:
-            raise FXCodedException(
-                code=FXExceptionCodes.ROLE_INVALID_ENTRY,
-                message=f'role {role} must have an org!',
-            )
+    check_broken_rule(
+        role in cs.COURSE_ACCESS_ROLES_TENANT_ONLY and (course_id or not org),
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+        f'role {role} must have an org without course_id!',
+    )
 
-        if role in cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE and not org:
-            raise FXCodedException(
-                code=FXExceptionCodes.ROLE_INVALID_ENTRY,
-                message=f'role {role} must have at least an org, it can also have a course_id!',
-            )
+    check_broken_rule(
+        role in cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE and not org,
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+        f'role {role} must have at least an org, it can also have a course_id!',
+    )
 
-        if role in cs.COURSE_ACCESS_ROLES_COURSE_ONLY + cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE and (
-            course_id and org.lower() != course_access_role['course_org'].lower()
-        ):
-            raise FXCodedException(
-                code=FXExceptionCodes.ROLE_INVALID_ENTRY,
-                message=f'expected org value to be ({course_access_role["course_org"]}), but got ({org})!',
-            )
+    check_broken_rule(
+        role in cs.COURSE_ACCESS_ROLES_ACCEPT_COURSE_ID and course_id and (
+            org.lower() != course_access_role['course_org'].lower()
+        ),
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+        f'expected org value to be ({course_access_role["course_org"]}), but got ({org})!',
+    )
 
-    except FXCodedException as exc:
-        if exc.code == FXExceptionCodes.ROLE_INVALID_ENTRY.value:
-            log_error(str(exc))
-        raise exc
+    check_broken_rule(
+        role in cs.COURSE_ACCESS_ROLES_GLOBAL and (course_id or org),
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+        f'{role} role must have both org and course_id empty!',
+    )
 
-    if role in cs.COURSE_ACCESS_ROLES_GLOBAL and (org or course_id):
-        course_access_role['org'] = ''
-        course_access_role['course_id'] = None
-        return False
+    if role in [cs.COURSE_CREATOR_ROLE_GLOBAL, cs.COURSE_CREATOR_ROLE_TENANT]:
+        creator = CourseCreator.objects.filter(
+            user_id=course_access_role['user_id'],
+        ).first()
 
-    if role in cs.COURSE_ACCESS_ROLES_TENANT_ONLY and course_id:
-        course_access_role['course_id'] = None
-        return False
+        check_broken_rule(
+            not creator,
+            FXExceptionCodes.ROLE_INVALID_ENTRY,
+            f'missing course-creator record for {role} role!',
+        )
 
-    return True
+        check_broken_rule(
+            creator.state != CourseCreator.GRANTED,
+            FXExceptionCodes.ROLE_INACTIVE,
+            f'course-creator record for {role} role is inactive!',
+        )
+
+        check_broken_rule(
+            role == cs.COURSE_CREATOR_ROLE_GLOBAL and (
+                not creator.all_organizations or creator.organizations.exists()
+            ),
+            FXExceptionCodes.ROLE_INVALID_ENTRY,
+            f'{role} role must have all_organizations=True with no details for organizations!',
+        )
+
+        check_broken_rule(
+            role == cs.COURSE_CREATOR_ROLE_TENANT and (
+                creator.all_organizations or not creator.organizations.exists()
+            ),
+            FXExceptionCodes.ROLE_INVALID_ENTRY,
+            f'{role} role must have all_organizations=False with at least one organization set!',
+        )
+
+        check_broken_rule(
+            role == cs.COURSE_CREATOR_ROLE_TENANT and org not in creator.organizations.values_list(
+                'short_name', flat=True,
+            ),
+            FXExceptionCodes.ROLE_INACTIVE,
+            f'missing organization in course-creator record for {role} role!',
+        )
 
 
 def cache_name_user_course_access_roles(user_id: int) -> str:
@@ -163,43 +192,56 @@ def get_user_course_access_roles(user_id: int) -> dict:
         ),
     ).values(
         'id', 'user_id', 'role', 'org', 'course_id', 'course_org',
-    ).order_by('role', 'org', 'course_id')
+    ).order_by('role', 'org', 'course_id')  # ordering is crucial for the result
 
     result: Dict[str, Any] = {}
     useless_entry = False
     for access_role in access_roles:
-        try:
-            clean_entry = validate_course_access_role(access_role)
-        except FXCodedException:
-            continue
+        if access_role['course_id'] is None or access_role['course_id'] == CourseKeyField.Empty:
+            access_role['course_id'] = ''
+        else:
+            access_role['course_id'] = str(access_role['course_id'])
 
-        if not clean_entry:
+        try:
+            validate_course_access_role(access_role)
+        except FXCodedException:
             useless_entry = True
+            continue
 
         role = access_role['role']
         org = access_role['org'].lower() if access_role['org'] else None
-        course_id = str(access_role['course_id']) if access_role['course_id'] else None
+        course_id = access_role['course_id']
         course_org = access_role['course_org'].lower() if access_role['course_org'] else None
 
         if role not in result:
             result[role] = {
                 'global_role': False,
-                'orgs_full_access': [],
+                'orgs_full_access': set(),
                 'course_limited_access': [],
-                'orgs_of_courses': [],
+                'orgs_of_courses': set(),
+                'tenant_ids': set(),
             }
 
         if role in cs.COURSE_ACCESS_ROLES_GLOBAL:
             result[role]['global_role'] = True
+            result[role]['tenant_ids'] = get_all_tenant_ids()
             continue
 
-        if course_id and course_org not in result[role]['orgs_full_access']:
+        # ordering of access_roles is crucial for the following logic
+        if not course_id:
+            result[role]['orgs_full_access'].add(org)
+            result[role]['tenant_ids'].update(get_tenants_by_org(org))
+        elif course_org in result[role]['orgs_full_access']:
+            useless_entry = True
+        else:
             result[role]['course_limited_access'].append(course_id)
-            if course_org not in result[role]['orgs_of_courses']:
-                result[role]['orgs_of_courses'].append(course_org)
+            result[role]['orgs_of_courses'].add(course_org)
+            result[role]['tenant_ids'].update(get_tenants_by_org(course_org))
 
-        elif org and org not in result[role]['orgs_full_access']:
-            result[role]['orgs_full_access'].append(org)
+    for _, role_data in result.items():
+        role_data['orgs_full_access'] = list(role_data['orgs_full_access'])
+        role_data['orgs_of_courses'] = list(role_data['orgs_of_courses'])
+        role_data['tenant_ids'] = list(role_data['tenant_ids'])
 
     return {
         'roles': result,

@@ -223,6 +223,35 @@ def get_course_org_filter_list(tenant_ids: List[int], ignore_invalid_tenant_ids:
     }
 
 
+@cache_dict(timeout='FX_CACHE_TIMEOUT_TENANTS_INFO', key_generator_or_name=cs.CACHE_NAME_ORG_TO_TENANT_MAP)
+def get_org_to_tenant_map() -> Dict[str, List[int]]:
+    """
+    Get the map of orgs to tenant IDs
+
+    {
+        'org1': [1, 2, 3],
+        'org2': [2, 3, 4],
+        ....
+    }
+
+    :return: Dictionary of orgs and their tenant IDs
+    :rtype: Dict[str, List[int]]
+    """
+    tenant_configs = get_all_course_org_filter_list()
+    result: Dict[str, Any] = {}
+    for t_id, course_org_filter in tenant_configs.items():
+        for org in course_org_filter:
+            if org not in result:
+                result[org] = {t_id}
+            else:
+                result[org].add(t_id)
+
+    for org, tenant_ids in result.items():
+        result[org] = list(tenant_ids)
+
+    return result
+
+
 def get_tenants_by_org(org: str) -> List[int]:
     """
     Get the tenants that have <org> in their course org filter
@@ -232,11 +261,7 @@ def get_tenants_by_org(org: str) -> List[int]:
     :return: List of tenant IDs
     :rtype: List[int]
     """
-    tenant_configs = get_all_course_org_filter_list()
-    result = [t_id for t_id, course_org_filter in tenant_configs.items() if org.lower() in [
-        org_filter.lower() for org_filter in course_org_filter
-    ]]
-    return list(set(result))
+    return get_org_to_tenant_map().get(org.lower(), [])
 
 
 def get_tenants_sites(tenant_ids: List[int]) -> List[str]:

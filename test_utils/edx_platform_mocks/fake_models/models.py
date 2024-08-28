@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models.fields import AutoField
 from opaque_keys.edx.django.models import CourseKeyField, LearningContextKeyField, UsageKeyField
+from organizations.models import Organization
 
 
 class CourseOverview(models.Model):
@@ -212,3 +213,26 @@ class StudentModule(models.Model):
     class Meta:
         app_label = 'fake_models'
         unique_together = (('student', 'module_state_key', 'course_id'),)
+
+
+class CourseCreator(models.Model):
+    """Mock"""
+    UNREQUESTED = 'unrequested'
+    PENDING = 'pending'
+    GRANTED = 'granted'
+    DENIED = 'denied'
+
+    STATES = (
+        (UNREQUESTED, UNREQUESTED),
+        (PENDING, UNREQUESTED),
+        (GRANTED, UNREQUESTED),
+        (DENIED, UNREQUESTED),
+    )
+
+    user = models.OneToOneField(get_user_model(), on_delete=models.CASCADE)
+    state = models.CharField(max_length=24, blank=False, choices=STATES, default=UNREQUESTED)
+    organizations = models.ManyToManyField(Organization, blank=True)
+    all_organizations = models.BooleanField(default=True)
+
+    class Meta:
+        app_label = 'fake_models'
