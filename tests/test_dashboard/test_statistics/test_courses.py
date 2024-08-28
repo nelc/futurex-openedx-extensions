@@ -14,13 +14,15 @@ def test_get_courses_count(base_data, fx_permission_info):  # pylint: disable=un
     """Verify get_courses_count function."""
     all_tenants = _base_data['tenant_config'].keys()
     fx_permission_info['view_allowed_full_access_orgs'] = get_course_org_filter_list(
-        list(all_tenants)
+        list(all_tenants), ignore_invalid_tenant_ids=True,
     )['course_org_filter_list']
     result = courses.get_courses_count(fx_permission_info)
     orgs_in_result = [org['org_lower_case'] for org in result]
 
     for tenant_id in all_tenants:
-        course_org_filter_list = get_course_org_filter_list([tenant_id])['course_org_filter_list']
+        course_org_filter_list = get_course_org_filter_list(
+            [tenant_id], ignore_invalid_tenant_ids=True,
+        )['course_org_filter_list']
         for org in course_org_filter_list:
             expected_count = 0
             for data_org, course_index_range in _base_data['course_overviews'].items():

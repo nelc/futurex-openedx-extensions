@@ -223,7 +223,7 @@ def test_course_details_base_serializer(base_data):  # pylint: disable=unused-ar
         mock_get_tenants_by_org.return_value = [1, 2]
         data = CourseDetailsBaseSerializer(course).data
 
-    assert data['id'] == course.id
+    assert data['id'] == str(course.id)
     assert data['self_paced'] == course.self_paced
     assert data['start_date'] == course.start
     assert data['end_date'] == course.end
@@ -275,7 +275,7 @@ def test_course_details_serializer(base_data):  # pylint: disable=unused-argumen
     course.certificates_count = 3
     course.save()
     data = CourseDetailsSerializer(course).data
-    assert data['id'] == course.id
+    assert data['id'] == str(course.id)
     assert data['enrolled_count'] == course.enrolled_count
     assert data['active_count'] == course.active_count
     assert data['certificates_count'] == course.certificates_count
@@ -334,13 +334,13 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
         ) as mock_get_certificates:
             mock_get_completion_summary.return_value = completion_summary
             mock_get_certificates.return_value = {
-                course.id: {
+                str(course.id): {
                     'download_url': 'https://test.com/courses/course-v1:dummy+key/certificate/',
                 }
             }
             data = LearnerCoursesDetailsSerializer(course, context={'request': request}).data
 
-    assert data['id'] == course.id
+    assert data['id'] == str(course.id)
     assert data['enrollment_date'] == enrollment_date.isoformat()
     assert data['last_activity'] == last_activity.isoformat()
     assert data['progress_url'] == f'https://test.com/learning/course/{course.id}/progress/{course.related_user_id}/'
@@ -471,7 +471,6 @@ def test_user_roles_serializer_parse_query_params_defaults(
     base_data, serializer_context
 ):  # pylint: disable=unused-argument, redefined-outer-name
     """Verify that the parse_query_params method correctly parses the query parameters."""
-    print(UserRolesSerializer.parse_query_params({}))
     assert UserRolesSerializer.parse_query_params({}) == {
         'search_text': '',
         'course_ids_filter': [],

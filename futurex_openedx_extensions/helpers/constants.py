@@ -28,7 +28,10 @@ CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS = '__ca_users_of_tenants__'
 
 CLICKHOUSE_QUERY_SLUG_PATTERN = r'[a-z0-9_\-.]+'
 
-COURSE_ID_REGX = r'(?P<course_id>course-v1:(?P<org>[a-zA-Z0-9_]+)\+(?P<course>[a-zA-Z0-9_]+)\+(?P<run>[a-zA-Z0-9_]+))'
+COURSE_ID_PART = r'[a-zA-Z0-9_-]+'
+COURSE_ID_REGX = \
+    fr'(?P<course_id>course-v1:(?P<org>{COURSE_ID_PART})\+(?P<course>{COURSE_ID_PART})\+(?P<run>{COURSE_ID_PART}))'
+COURSE_ID_REGX_EXACT = rf'^{COURSE_ID_REGX}$'
 
 COURSE_STATUSES = {
     'active': 'active',
@@ -38,4 +41,22 @@ COURSE_STATUSES = {
 
 COURSE_STATUS_SELF_PREFIX = 'self_'
 
-TENANT_LIMITED_ADMIN_ROLES = ['org_course_creator_group']
+ALLOWED_NEW_COURSE_ACCESS_ROLES = [
+    'beta_testers',
+    'ccx_coach',
+    'course_creator_group',
+    'data_researcher',
+    'finance_admin',
+    'instructor',
+    'library_user',
+    'org_course_creator_group',
+    'staff',
+    'support',
+]
+
+COURSE_ACCESS_ROLES_MAX_USERS_PER_OPERATION = 20
+
+USER_KEY_TYPE_ID = 'ID'
+USER_KEY_TYPE_USERNAME = 'username'
+USER_KEY_TYPE_EMAIL = 'email'
+USER_KEY_TYPE_NOT_ID = 'username/email'

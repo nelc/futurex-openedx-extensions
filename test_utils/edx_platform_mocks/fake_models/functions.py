@@ -1,6 +1,8 @@
 """Mocks"""
 
 from django.contrib.auth import get_user_model
+from opaque_keys.edx.django.models import CourseKeyField
+from opaque_keys.edx.locator import CourseLocator
 
 
 def get_course_blocks_completion_summary(course_key, user):  # pylint: disable=unused-argument, useless-return
@@ -12,8 +14,8 @@ def get_course_blocks_completion_summary(course_key, user):  # pylint: disable=u
 
 def get_block_structure_manager(course_key):
     """get_block_structure_manager Mock"""
-    if not isinstance(course_key, str):
-        raise TypeError(f'Expects a coruse_key as string but got "{course_key}" of type "{type(course_key)}"')
+    if not isinstance(course_key, (CourseLocator, CourseKeyField)):
+        raise TypeError(f'Expects a CourseKeyField but got "{course_key}" of type "{type(course_key)}"')
 
     class Dummy:  # pylint: disable=too-few-public-methods
         """dummy class"""

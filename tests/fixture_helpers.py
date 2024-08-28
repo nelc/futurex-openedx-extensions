@@ -11,7 +11,7 @@ def get_user1_fx_permission_info():
         'user': Mock(username='dummy'),
         'is_system_staff_user': True,
         'user_roles': [],
-        'permitted_tenant_ids': [1, 2, 3, 4, 7, 8],
+        'permitted_tenant_ids': [1, 2, 3, 7, 8],
         'view_allowed_roles': [],
         'view_allowed_full_access_orgs': get_all_orgs(),
         'view_allowed_course_access_orgs': [],

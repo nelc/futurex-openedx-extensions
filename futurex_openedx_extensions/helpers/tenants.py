@@ -159,7 +159,7 @@ def get_all_course_org_filter_list() -> Dict[int, List[str]]:
     return result
 
 
-def get_course_org_filter_list(tenant_ids: List[int]) -> Dict[str, Any]:
+def get_course_org_filter_list(tenant_ids: List[int], ignore_invalid_tenant_ids: bool = False) -> Dict[str, Any]:
     """
     Get the filters to use for course orgs.
 
@@ -181,11 +181,15 @@ def get_course_org_filter_list(tenant_ids: List[int]) -> Dict[str, Any]:
 
     :param tenant_ids: List of tenant IDs to get the filters for
     :type tenant_ids: List[int]
+    :param ignore_invalid_tenant_ids: If True, don't raise an error if a tenant ID is invalid. Otherwise, raise an error
+        with the list of invalid tenant IDs.
+    :type ignore_invalid_tenant_ids: bool
     :return: Dictionary of course org filters and duplicates
     :rtype: Dict[str, List | Dict[str, List[int]]]
     """
     tenant_configs = get_all_course_org_filter_list()
 
+    tenant_ids = tenant_ids or []
     orgs_list = []
     duplicate_trace = {}
     duplicates = {}
@@ -208,6 +212,9 @@ def get_course_org_filter_list(tenant_ids: List[int]) -> Dict[str, Any]:
                         duplicates[other_id].append(tenant_id)
                 duplicates[tenant_id] = list(duplicate_trace[org])
                 duplicate_trace[org].append(tenant_id)
+
+    if invalid and not ignore_invalid_tenant_ids:
+        raise ValueError(f'Invalid tenant IDs: {invalid}')
 
     return {
         'course_org_filter_list': orgs_list,
@@ -299,7 +306,9 @@ def get_user_id_from_username_tenants(username: str, tenant_ids: List[int]) -> i
     if not tenant_ids or not username:
         return 0
 
-    course_org_filter_list = get_course_org_filter_list(tenant_ids)['course_org_filter_list']
+    course_org_filter_list = get_course_org_filter_list(
+        tenant_ids, ignore_invalid_tenant_ids=True
+    )['course_org_filter_list']
     tenant_sites = get_tenants_sites(tenant_ids)
 
     user_id = get_user_model().objects.filter(username=username).annotate(

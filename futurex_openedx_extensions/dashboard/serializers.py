@@ -327,8 +327,8 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
         """Return the certificate URL."""
         user = get_user_model().objects.get(id=obj.related_user_id)
         certificate = get_certificates_for_user_by_course_keys(user, [obj.id])
-        if certificate and obj.id in certificate:
-            return certificate[obj.id].get('download_url')
+        if certificate and str(obj.id) in certificate:
+            return certificate[str(obj.id)].get('download_url')
 
         return None
 
@@ -369,10 +369,6 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 class UserRolesSerializer(LearnerBasicDetailsSerializer):
     """Serializer for user roles."""
     tenants = serializers.SerializerMethodField()
-
-    def __new__(cls, *args: Any, **kwargs: Any) -> UserRolesSerializer:
-        """Create a new instance of the serializer."""
-        return super().__new__(cls, *args, **kwargs)
 
     def __init__(self, instance: Any | None = None, data: Any = empty, **kwargs: Any):
         """Initialize the serializer."""
