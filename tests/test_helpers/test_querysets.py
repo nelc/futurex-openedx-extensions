@@ -67,7 +67,7 @@ def test_get_base_queryset_courses_limited_course_roles(
         'is_system_staff_user': False,
         'view_allowed_full_access_orgs': [],
         'view_allowed_course_access_orgs': ['org2'],
-        'view_allowed_roles': ['org_course_creator_group'],
+        'view_allowed_roles': ['instructor'],
     })
     course_role = CourseAccessRole.objects.get(user_id=4, org='org2')
     course_role.course_id = 'course-v1:ORG2+2+2'

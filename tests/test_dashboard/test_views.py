@@ -276,7 +276,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
         ViewAllowedRoles.objects.create(
             view_name=view_class.fx_view_name,
             view_description=view_class.fx_view_description,
-            allowed_role='org_course_creator_group',
+            allowed_role='instructor',
         )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
@@ -292,7 +292,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
         ViewAllowedRoles.objects.create(
             view_name=view_class.fx_view_name,
             view_description=view_class.fx_view_description,
-            allowed_role='org_course_creator_group',
+            allowed_role='instructor',
         )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
@@ -304,7 +304,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
         ViewAllowedRoles.objects.create(
             view_name=view_class.fx_view_name,
             view_description=view_class.fx_view_description,
-            allowed_role='org_course_creator_group',
+            allowed_role='instructor',
         )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
@@ -705,9 +705,9 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
         assert response.data['tenants'] == {
-            1: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG1+4+4': ['staff']}},
-            2: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}},
-            7: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}}
+            1: {'tenant_roles': ['instructor'], 'course_roles': {'course-v1:ORG1+4+4': ['staff']}},
+            2: {'tenant_roles': ['instructor'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}},
+            7: {'tenant_roles': ['instructor'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}}
         }
 
     @patch('futurex_openedx_extensions.dashboard.views.add_course_access_roles')

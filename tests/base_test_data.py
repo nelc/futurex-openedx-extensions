@@ -199,7 +199,7 @@ _base_data = {
             'Org4': [10, 23],
             'Org5': [23],
         },
-        'org_course_creator_group': {
+        'instructor': {
             'ORG1': [4],
             'ORG2': [1, 2, 4],
             'ORG3': [4],
@@ -215,47 +215,47 @@ _base_data = {
         'Org1': {
             'course-v1:Org1+1+1': {
                 'staff': [1],
-                'org_course_creator_group': [1],
+                'instructor': [1],
             },
             'course-v1:ORG1+2+2': {
                 'staff': [1],
-                'org_course_creator_group': [2],
+                'instructor': [2],
             },
             'course-v1:ORG1+3+3': {
                 'staff': [3],
-                'org_course_creator_group': [3],
+                'instructor': [3],
             },
             'course-v1:ORG1+4+4': {
                 'staff': [4],
-                'org_course_creator_group': [3],
+                'instructor': [3],
             },
         },
         'Org2': {
             'course-v1:ORG2+1+1': {
                 'staff': [9],
-                'org_course_creator_group': [1],
+                'instructor': [1],
             },
             'course-v1:ORG2+2+2': {
                 'staff': [1],
-                'org_course_creator_group': [2],
+                'instructor': [2],
             },
             'course-v1:ORG2+3+3': {
                 'staff': [9],
-                'org_course_creator_group': [8],
+                'instructor': [8],
             },
         },
         'Org3': {
             'course-v1:ORG3+1+1': {
                 'staff': [4],
-                'org_course_creator_group': [4],
+                'instructor': [4],
             },
             'course-v1:ORG3+2+2': {
                 'data_researcher': [9],
-                'org_course_creator_group': [11],
+                'instructor': [11],
             },
             'course-v1:ORG3+3+3': {
                 'staff': [18],
-                'org_course_creator_group': [9],
+                'instructor': [9],
             },
         },
     },

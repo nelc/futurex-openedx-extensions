@@ -450,14 +450,14 @@ def test_user_roles_serializer_construct_roles_data(
             1: {
                 'tenant_roles': ['staff'],
                 'course_roles': {
-                    'course-v1:ORG1+3+3': ['org_course_creator_group'],
-                    'course-v1:ORG1+4+4': ['org_course_creator_group']
+                    'course-v1:ORG1+3+3': ['instructor'],
+                    'course-v1:ORG1+4+4': ['instructor']
                 }
             }
         },
         4: {
             1: {
-                'tenant_roles': ['org_course_creator_group'],
+                'tenant_roles': ['instructor'],
                 'course_roles': {
                     'course-v1:ORG1+4+4': ['staff']
                 }

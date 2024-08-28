@@ -40,6 +40,7 @@ INSTALLED_APPS = (
     'common',
     'fake_models',
     'openedx',
+    'organizations',
 )
 
 USE_TZ = True

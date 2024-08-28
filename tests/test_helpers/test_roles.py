@@ -128,7 +128,7 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
     _remove_course_access_roles_causing_error_logs()
     expected_result = {
         'roles': {
-            'org_course_creator_group': {
+            'instructor': {
                 'global_role': False,
                 'orgs_full_access': ['org1', 'org2', 'org3'],
                 'course_limited_access': [],
@@ -141,7 +141,7 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
                 'orgs_of_courses': ['org1', 'org3']
             },
         },
-        'useless_entries_exist': True,
+        'useless_entries_exist': False,
     }
     assert get_user_course_access_roles(user_id) == expected_result
 
@@ -157,6 +157,7 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
         'course_limited_access': [],
         'orgs_of_courses': []
     }
+    expected_result['useless_entries_exist'] = True
 
     CourseAccessRole.objects.create(
         user_id=user_id,
@@ -164,7 +165,12 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
         org='org8',
         course_id='course-v1:ORG8+1+1',
     )
-    expected_result['roles']['org_course_creator_group']['orgs_full_access'].append('org8')
+    expected_result['roles']['org_course_creator_group'] = {
+        'global_role': False,
+        'orgs_full_access': ['org8'],
+        'course_limited_access': [],
+        'orgs_of_courses': []
+    }
 
     CourseAccessRole.objects.create(
         user_id=user_id,
@@ -183,6 +189,8 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
     expected_result['roles']['staff']['course_limited_access'].append('course-v1:ORG2+2+2')
 
     result = get_user_course_access_roles(user_id)
+    print(result)
+    print(expected_result)
     assert not DeepDiff(result, expected_result, ignore_order=True)
 
 
@@ -703,17 +711,17 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
         'user3': {
             'org1': {
                 'None': ['staff'],
-                'course-v1:ORG1+3+3': ['org_course_creator_group'],
-                'course-v1:ORG1+4+4': ['org_course_creator_group'],
+                'course-v1:ORG1+3+3': ['instructor'],
+                'course-v1:ORG1+4+4': ['instructor'],
             }
         },
         'user8': {
-            'org2': {'None': ['staff'], 'course-v1:ORG2+3+3': ['org_course_creator_group']}
+            'org2': {'None': ['staff'], 'course-v1:ORG2+3+3': ['instructor']}
         },
         'user9': {
             'org3': {
                 'None': ['staff', 'data_researcher'],
-                'course-v1:ORG3+3+3': ['org_course_creator_group'],
+                'course-v1:ORG3+3+3': ['instructor'],
             },
             'org2': {'course-v1:ORG2+1+1': ['staff'], 'course-v1:ORG2+3+3': ['staff']},
         },
@@ -723,39 +731,39 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
             'org3': {'None': ['data_researcher']},
         },
         'user23': {
-            'org4': {'None': ['staff', 'org_course_creator_group']},
-            'org5': {'None': ['staff', 'org_course_creator_group']},
-            'org8': {'None': ['org_course_creator_group']},
+            'org4': {'None': ['staff', 'instructor']},
+            'org5': {'None': ['staff', 'instructor']},
+            'org8': {'None': ['instructor']},
         },
         'user4': {
-            'org1': {'None': ['org_course_creator_group'], 'course-v1:ORG1+4+4': ['staff']},
-            'org2': {'None': ['org_course_creator_group']},
+            'org1': {'None': ['instructor'], 'course-v1:ORG1+4+4': ['staff']},
+            'org2': {'None': ['instructor']},
             'org3': {
-                'None': ['org_course_creator_group'],
+                'None': ['instructor'],
                 'course-v1:ORG3+1+1': ['staff'],
             },
         },
         'user11': {
             'org3': {
-                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+                'course-v1:ORG3+2+2': ['instructor'],
             }
         },
-        'user48': {'org4': {'None': ['org_course_creator_group']}},
+        'user48': {'org4': {'None': ['instructor']}},
     }),
     ([], False, RoleType.ORG_WIDE, {
         'user3': {
             'org1': {
-                'course-v1:ORG1+3+3': ['staff', 'org_course_creator_group'],
-                'course-v1:ORG1+4+4': ['org_course_creator_group'],
+                'course-v1:ORG1+3+3': ['staff', 'instructor'],
+                'course-v1:ORG1+4+4': ['instructor'],
             }
         },
         'user8': {
-            'org2': {'course-v1:ORG2+3+3': ['org_course_creator_group']}
+            'org2': {'course-v1:ORG2+3+3': ['instructor']}
         },
         'user9': {
             'org3': {
                 'course-v1:ORG3+2+2': ['data_researcher'],
-                'course-v1:ORG3+3+3': ['org_course_creator_group'],
+                'course-v1:ORG3+3+3': ['instructor'],
             },
             'org2': {'course-v1:ORG2+1+1': ['staff'], 'course-v1:ORG2+3+3': ['staff']},
         },
@@ -763,28 +771,28 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
         'user4': {
             'org1': {'course-v1:ORG1+4+4': ['staff']},
             'org3': {
-                'course-v1:ORG3+1+1': ['staff', 'org_course_creator_group'],
+                'course-v1:ORG3+1+1': ['staff', 'instructor'],
             },
         },
         'user11': {
             'org3': {
-                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+                'course-v1:ORG3+2+2': ['instructor'],
             }
         },
     }),
     ([], True, RoleType.ORG_WIDE, {
         'user3': {
             'org1': {
-                'course-v1:ORG1+3+3': ['org_course_creator_group'],
-                'course-v1:ORG1+4+4': ['org_course_creator_group'],
+                'course-v1:ORG1+3+3': ['instructor'],
+                'course-v1:ORG1+4+4': ['instructor'],
             }
         },
         'user8': {
-            'org2': {'course-v1:ORG2+3+3': ['org_course_creator_group']}
+            'org2': {'course-v1:ORG2+3+3': ['instructor']}
         },
         'user9': {
             'org3': {
-                'course-v1:ORG3+3+3': ['org_course_creator_group'],
+                'course-v1:ORG3+3+3': ['instructor'],
             },
             'org2': {'course-v1:ORG2+1+1': ['staff'], 'course-v1:ORG2+3+3': ['staff']},
         },
@@ -796,7 +804,7 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
         },
         'user11': {
             'org3': {
-                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+                'course-v1:ORG3+2+2': ['instructor'],
             }
         },
     }),
@@ -814,16 +822,16 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
             'org3': {'None': ['data_researcher']},
         },
         'user23': {
-            'org8': {'None': ['org_course_creator_group']},
+            'org8': {'None': ['instructor']},
         },
         'user4': {
             'org3': {
-                'None': ['org_course_creator_group'],
+                'None': ['instructor'],
             },
         },
         'user11': {
             'org3': {
-                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+                'course-v1:ORG3+2+2': ['instructor'],
             }
         },
     }),
@@ -838,16 +846,16 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
             'org3': {'None': ['data_researcher']},
         },
         'user23': {
-            'org8': {'None': ['org_course_creator_group']},
+            'org8': {'None': ['instructor']},
         },
         'user4': {
             'org3': {
-                'None': ['org_course_creator_group'],
+                'None': ['instructor'],
             },
         },
         'user11': {
             'org3': {
-                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+                'course-v1:ORG3+2+2': ['instructor'],
             }
         },
     }),
@@ -859,14 +867,14 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
         },
         'user11': {
             'org3': {
-                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+                'course-v1:ORG3+2+2': ['instructor'],
             }
         },
     }),
     (['course-v1:ORG3+2+2'], True, RoleType.ORG_WIDE, {
         'user11': {
             'org3': {
-                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+                'course-v1:ORG3+2+2': ['instructor'],
             }
         },
     }),
@@ -950,16 +958,16 @@ def test_get_roles_for_users_queryset_remove_redundant(base_data):  # pylint: di
 
     result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=False, users=[user])
     assert_roles_result(result, [
-        {'user_id': 3, 'role': 'org_course_creator_group', 'org': 'org1', 'course_id': 'course-v1:ORG1+3+3'},
-        {'user_id': 3, 'role': 'org_course_creator_group', 'org': 'org1', 'course_id': 'course-v1:ORG1+4+4'},
+        {'user_id': 3, 'role': 'instructor', 'org': 'org1', 'course_id': 'course-v1:ORG1+3+3'},
+        {'user_id': 3, 'role': 'instructor', 'org': 'org1', 'course_id': 'course-v1:ORG1+4+4'},
         {'user_id': 3, 'role': 'staff', 'org': 'org1', 'course_id': 'None'},
         {'user_id': 3, 'role': 'staff', 'org': 'org1', 'course_id': 'course-v1:ORG1+3+3'},
     ])
 
     result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=True, users=[user])
     assert_roles_result(result, [
-        {'user_id': 3, 'role': 'org_course_creator_group', 'org': 'org1', 'course_id': 'course-v1:ORG1+3+3'},
-        {'user_id': 3, 'role': 'org_course_creator_group', 'org': 'org1', 'course_id': 'course-v1:ORG1+4+4'},
+        {'user_id': 3, 'role': 'instructor', 'org': 'org1', 'course_id': 'course-v1:ORG1+3+3'},
+        {'user_id': 3, 'role': 'instructor', 'org': 'org1', 'course_id': 'course-v1:ORG1+4+4'},
         {'user_id': 3, 'role': 'staff', 'org': 'org1', 'course_id': 'None'},
     ])
 
@@ -1191,8 +1199,8 @@ def test_add_course_access_roles_data_cleaning(mocked_get_user, base_data):  # p
 
     user3_org1_data = [
         (staff_role, CourseKeyField.Empty),
-        ('org_course_creator_group', 'course-v1:ORG1+3+3'),
-        ('org_course_creator_group', 'course-v1:ORG1+4+4'),
+        ('instructor', 'course-v1:ORG1+3+3'),
+        ('instructor', 'course-v1:ORG1+4+4'),
     ]
     user3_org1_redundant_data = [
         (staff_role, 'course-v1:ORG1+3+3'),

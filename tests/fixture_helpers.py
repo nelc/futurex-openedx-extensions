@@ -57,18 +57,18 @@ def get_test_data_dict():
         'user3': {
             'org1': {
                 'None': ['staff'],
-                'course-v1:ORG1+3+3': ['staff', 'org_course_creator_group'],
-                'course-v1:ORG1+4+4': ['org_course_creator_group'],
+                'course-v1:ORG1+3+3': ['staff', 'instructor'],
+                'course-v1:ORG1+4+4': ['instructor'],
             }
         },
         'user8': {
-            'org2': {'None': ['staff'], 'course-v1:ORG2+3+3': ['org_course_creator_group']}
+            'org2': {'None': ['staff'], 'course-v1:ORG2+3+3': ['instructor']}
         },
         'user9': {
             'org3': {
                 'None': ['staff', 'data_researcher'],
                 'course-v1:ORG3+2+2': ['data_researcher'],
-                'course-v1:ORG3+3+3': ['org_course_creator_group'],
+                'course-v1:ORG3+3+3': ['instructor'],
             },
             'org2': {'course-v1:ORG2+1+1': ['staff'], 'course-v1:ORG2+3+3': ['staff']},
         },
@@ -78,24 +78,24 @@ def get_test_data_dict():
             'org3': {'None': ['data_researcher']},
         },
         'user23': {
-            'org4': {'None': ['staff', 'org_course_creator_group']},
-            'org5': {'None': ['staff', 'org_course_creator_group']},
-            'org8': {'None': ['org_course_creator_group']},
+            'org4': {'None': ['staff', 'instructor']},
+            'org5': {'None': ['staff', 'instructor']},
+            'org8': {'None': ['instructor']},
         },
         'user4': {
-            'org1': {'None': ['org_course_creator_group'], 'course-v1:ORG1+4+4': ['staff']},
-            'org2': {'None': ['org_course_creator_group']},
+            'org1': {'None': ['instructor'], 'course-v1:ORG1+4+4': ['staff']},
+            'org2': {'None': ['instructor']},
             'org3': {
-                'None': ['org_course_creator_group'],
-                'course-v1:ORG3+1+1': ['staff', 'org_course_creator_group'],
+                'None': ['instructor'],
+                'course-v1:ORG3+1+1': ['staff', 'instructor'],
             },
         },
         'user11': {
             'org3': {
-                'course-v1:ORG3+2+2': ['org_course_creator_group'],
+                'course-v1:ORG3+2+2': ['instructor'],
             }
         },
-        'user48': {'org4': {'None': ['org_course_creator_group']}},
+        'user48': {'org4': {'None': ['instructor']}},
     }
 
 
@@ -121,18 +121,18 @@ def get_test_data_dict_without_course_roles():
             'org3': {'None': ['data_researcher']},
         },
         'user23': {
-            'org4': {'None': ['staff', 'org_course_creator_group']},
-            'org5': {'None': ['staff', 'org_course_creator_group']},
-            'org8': {'None': ['org_course_creator_group']},
+            'org4': {'None': ['staff', 'instructor']},
+            'org5': {'None': ['staff', 'instructor']},
+            'org8': {'None': ['instructor']},
         },
         'user4': {
-            'org1': {'None': ['org_course_creator_group']},
-            'org2': {'None': ['org_course_creator_group']},
+            'org1': {'None': ['instructor']},
+            'org2': {'None': ['instructor']},
             'org3': {
-                'None': ['org_course_creator_group'],
+                'None': ['instructor'],
             },
         },
-        'user48': {'org4': {'None': ['org_course_creator_group']}}
+        'user48': {'org4': {'None': ['instructor']}}
     }
 
 
@@ -149,11 +149,11 @@ def get_test_data_dict_without_course_roles_org3():
             'org3': {'None': ['data_researcher']},
         },
         'user23': {
-            'org8': {'None': ['org_course_creator_group']},
+            'org8': {'None': ['instructor']},
         },
         'user4': {
             'org3': {
-                'None': ['org_course_creator_group'],
+                'None': ['instructor'],
             },
         },
     }
