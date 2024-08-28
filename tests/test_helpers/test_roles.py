@@ -3,13 +3,15 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import DatabaseError
-from django.test import override_settings
 from opaque_keys.edx.django.models import CourseKeyField
+from opaque_keys.edx.keys import CourseKey
+from organizations.models import Organization
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -56,7 +58,11 @@ def reset_fx_views_with_roles():
 
 @pytest.mark.parametrize('update_course_access_role, error_msg, error_code', [
     ({'role': 'bad_role'}, 'invalid role ({role})!', FXExceptionCodes.ROLE_INVALID_ENTRY),
-    ({'role': cs.COURSE_ACCESS_ROLES_UNSUPPORTED[0]}, None, FXExceptionCodes.ROLE_UNSUPPORTED),
+    (
+        {'role': cs.COURSE_ACCESS_ROLES_UNSUPPORTED[0]},
+        'unsupported role ({role})!',
+        FXExceptionCodes.ROLE_UNSUPPORTED
+    ),
     (
         {'role': cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0]},
         'role {role} must have both course_id and org!',
@@ -68,13 +74,13 @@ def reset_fx_views_with_roles():
         FXExceptionCodes.ROLE_INVALID_ENTRY,
     ),
     (
-        {'role': cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0], 'course_id': 'course_v1:course'},
+        {'role': cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0], 'course_id': 'yes'},
         'role {role} must have both course_id and org!',
         FXExceptionCodes.ROLE_INVALID_ENTRY,
     ),
     (
         {'role': cs.COURSE_ACCESS_ROLES_TENANT_ONLY[0]},
-        'role {role} must have an org!',
+        'role {role} must have an org without course_id!',
         FXExceptionCodes.ROLE_INVALID_ENTRY,
     ),
     (
@@ -83,16 +89,27 @@ def reset_fx_views_with_roles():
         FXExceptionCodes.ROLE_INVALID_ENTRY,
     ),
     (
-        {'role': cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE[0], 'course_id': 'course_v1:course'},
+        {'role': cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE[0], 'course_id': 'yes'},
         'role {role} must have at least an org, it can also have a course_id!',
         FXExceptionCodes.ROLE_INVALID_ENTRY,
     ),
     (
-        {'role': cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0], 'org': 'org1', 'course_id': 'an id', 'course_org': 'org2'},
+        {'role': cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0], 'org': 'org1', 'course_id': 'yes', 'course_org': 'org2'},
         'expected org value to be (org2), but got (org1)!',
         FXExceptionCodes.ROLE_INVALID_ENTRY,
     ),
+    (
+        {'role': cs.COURSE_CREATOR_ROLE_GLOBAL},
+        'missing course-creator record for {role} role!',
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+    ),
+    (
+        {'role': cs.COURSE_CREATOR_ROLE_TENANT, 'org': 'org1'},
+        'missing course-creator record for {role} role!',
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+    ),
 ])
+@pytest.mark.django_db
 def test_validate_course_access_role_invalid(update_course_access_role, error_msg, error_code):
     """Verify that validate_course_access_role raises FXCodedException when the access role record is invalid."""
     bad_course_access_role = {
@@ -103,18 +120,96 @@ def test_validate_course_access_role_invalid(update_course_access_role, error_ms
         'course_org': '',
     }
     bad_course_access_role.update(update_course_access_role)
+    if bad_course_access_role['course_id']:
+        bad_course_access_role['course_id'] = CourseKey.from_string('course-v1:ORG1+1+1')
+
     if error_msg and '{role}' in error_msg:
         error_msg = error_msg.format(role=update_course_access_role['role'])
 
-    with patch('futurex_openedx_extensions.helpers.roles.logger.error') as mock_logger:
-        with pytest.raises(FXCodedException) as exc_info:
-            validate_course_access_role(bad_course_access_role)
+    with pytest.raises(FXCodedException) as exc_info:
+        validate_course_access_role(bad_course_access_role)
 
     assert exc_info.value.code == error_code.value
-    if error_msg:
-        mock_logger.assert_called_with(*('Invalid course access role: %s (id: %s)', error_msg, 99))
-    else:
-        mock_logger.assert_not_called()
+    assert str(exc_info.value) == f'Invalid course access role: {error_msg} (id: 99)'
+
+
+def _initialize_creator_role_test(role, org, all_organizations):
+    """Helper function to initialize the tests for course-creator roles."""
+    course_access_role = {
+        'id': 99,
+        'user_id': 33,
+        'org': org,
+        'course_id': '',
+        'course_org': '',
+        'role': role,
+    }
+    creator = CourseCreator.objects.create(user_id=33, all_organizations=all_organizations)
+    if not all_organizations:
+        creator.organizations.add(Organization.objects.create(name=org, description=org, short_name=org))
+    with pytest.raises(FXCodedException) as exc_info:
+        validate_course_access_role(course_access_role)
+    assert exc_info.value.code == FXExceptionCodes.ROLE_INACTIVE.value
+    assert str(exc_info.value) == \
+           f'Invalid course access role: course-creator record for {role} role is inactive! (id: 99)'
+
+    creator.state = CourseCreator.GRANTED
+    creator.save()
+    validate_course_access_role(course_access_role)
+
+    return course_access_role, creator
+
+
+@pytest.mark.django_db
+def test_validate_course_access_role_invalid_creator_role_global(base_data):  # pylint: disable=unused-argument
+    """Verify that validate_course_access_role raises FXCodedException when the global creator role is invalid."""
+    role = cs.COURSE_CREATOR_ROLE_GLOBAL
+    course_access_role, creator = _initialize_creator_role_test(role, '', True)
+
+    expected_error_msg = (
+        'Invalid course access role: '
+        f'{role} role must have all_organizations=True with no details for organizations! (id: 99)'
+    )
+    creator.all_organizations = False
+    creator.save()
+    with pytest.raises(FXCodedException) as exc_info:
+        validate_course_access_role(course_access_role)
+    assert exc_info.value.code == FXExceptionCodes.ROLE_INVALID_ENTRY.value
+    assert str(exc_info.value) == expected_error_msg
+
+    creator.organizations.add(Organization.objects.create(name='org1', description='org1', short_name='org1'))
+    with pytest.raises(FXCodedException) as exc_info:
+        validate_course_access_role(course_access_role)
+    assert exc_info.value.code == FXExceptionCodes.ROLE_INVALID_ENTRY.value
+    assert str(exc_info.value) == expected_error_msg
+
+
+@pytest.mark.django_db
+def test_validate_course_access_role_invalid_creator_role_tenant(base_data):  # pylint: disable=unused-argument
+    """Verify that validate_course_access_role raises FXCodedException when the tenant creator role is invalid."""
+    role = cs.COURSE_CREATOR_ROLE_TENANT
+    course_access_role, creator = _initialize_creator_role_test(role, 'org1', False)
+
+    creator.all_organizations = True
+    creator.save()
+    with pytest.raises(FXCodedException) as exc_info:
+        validate_course_access_role(course_access_role)
+    assert exc_info.value.code == FXExceptionCodes.ROLE_INVALID_ENTRY.value
+    assert str(exc_info.value) == (
+        f'Invalid course access role: {role} role must have all_organizations=False with '
+        'at least one organization set! (id: 99)'
+    )
+
+    creator.all_organizations = False
+    creator.save()
+    creator.organizations.clear()
+    creator.organizations.add(
+        Organization.objects.create(name='org2', description='org2', short_name='org2')
+    )
+    with pytest.raises(FXCodedException) as exc_info:
+        validate_course_access_role(course_access_role)
+    assert exc_info.value.code == FXExceptionCodes.ROLE_INACTIVE.value
+    assert str(exc_info.value) == \
+           f'Invalid course access role: missing organization in course-creator record for {role} role! (id: 99)'
 
 
 def _remove_course_access_roles_causing_error_logs():
@@ -126,6 +221,12 @@ def _remove_course_access_roles_causing_error_logs():
 def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argument
     """Verify that get_user_course_access_roles returns the expected structure."""
     user_id = 4
+
+    def assert_expected_result(step, _expected_result):
+        """Assert that the expected result is returned."""
+        diff = DeepDiff(get_user_course_access_roles(user_id), _expected_result, ignore_order=True)
+        assert not diff, f'Step {step} failed: {diff}'
+
     _remove_course_access_roles_causing_error_logs()
     expected_result = {
         'roles': {
@@ -133,52 +234,67 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
                 'global_role': False,
                 'orgs_full_access': ['org1', 'org2', 'org3'],
                 'course_limited_access': [],
-                'orgs_of_courses': []
+                'orgs_of_courses': [],
+                'tenant_ids': [1, 2, 7],
             },
             'staff': {
                 'global_role': False,
                 'orgs_full_access': [],
                 'course_limited_access': ['course-v1:ORG1+4+4', 'course-v1:ORG3+1+1'],
-                'orgs_of_courses': ['org1', 'org3']
+                'orgs_of_courses': ['org1', 'org3'],
+                'tenant_ids': [1, 2, 7],
             },
         },
-        'useless_entries_exist': False,
+        'useless_entries_exist': True,
     }
-    assert get_user_course_access_roles(user_id) == expected_result
+    assert_expected_result(1, expected_result)
 
     CourseAccessRole.objects.create(
         user_id=user_id,
         role='support',
-        org='org8',
-        course_id='course-v1:ORG8+1+1',
+        org='',
+        course_id='',
     )
     expected_result['roles']['support'] = {
         'global_role': True,
         'orgs_full_access': [],
         'course_limited_access': [],
-        'orgs_of_courses': []
+        'orgs_of_courses': [],
+        'tenant_ids': get_all_tenant_ids(),
     }
-    expected_result['useless_entries_exist'] = True
+    assert_expected_result(2, expected_result)
+
+    CourseAccessRole.objects.filter(
+        user_id=user_id, role='instructor', org='org3',
+    ).exclude(course_id=CourseKeyField.Empty).delete()
+    expected_result['useless_entries_exist'] = False
+    assert_expected_result(3, expected_result)
 
     CourseAccessRole.objects.create(
         user_id=user_id,
         role='org_course_creator_group',
         org='org8',
-        course_id='course-v1:ORG8+1+1',
+        course_id='',
     )
+    org8 = Organization.objects.create(
+        name='org8',
+        description='org8',
+        short_name='org8',
+        active=True,
+    )
+    CourseCreator.objects.create(
+        user_id=user_id,
+        state=CourseCreator.GRANTED,
+        all_organizations=False,
+    ).organizations.add(org8)
     expected_result['roles']['org_course_creator_group'] = {
         'global_role': False,
         'orgs_full_access': ['org8'],
         'course_limited_access': [],
-        'orgs_of_courses': []
+        'orgs_of_courses': [],
+        'tenant_ids': [2, 8],
     }
-
-    CourseAccessRole.objects.create(
-        user_id=user_id,
-        role='staff',
-        org='org2',
-        course_id='course-v1:ORG8+1+1',
-    )  # This should not be included in the result because the course is not in the org
+    assert_expected_result(4, expected_result)
 
     CourseAccessRole.objects.create(
         user_id=user_id,
@@ -188,16 +304,20 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
     )
     expected_result['roles']['staff']['orgs_of_courses'].append('org2')
     expected_result['roles']['staff']['course_limited_access'].append('course-v1:ORG2+2+2')
+    assert_expected_result(5, expected_result)
 
-    result = get_user_course_access_roles(user_id)
-    print(result)
-    print(expected_result)
-    assert not DeepDiff(result, expected_result, ignore_order=True)
+    CourseAccessRole.objects.create(
+        user_id=user_id,
+        role='support',
+        org='org2',
+        course_id='',
+    )
+    expected_result['useless_entries_exist'] = True
+    assert_expected_result(6, expected_result)
 
 
 @pytest.mark.django_db
-@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
-def test_get_user_course_access_roles_being_cached():
+def test_get_user_course_access_roles_being_cached(cache_testing):  # pylint: disable=unused-argument
     """Verify that get_user_course_access_roles is being cached."""
     cache_name = cache_name_user_course_access_roles(3)
     assert cache.get(cache_name) is None
@@ -1008,9 +1128,8 @@ def test_delete_course_access_roles_nothing_to_delete(base_data):  # pylint: dis
 
 
 @pytest.mark.django_db
-@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @patch('futurex_openedx_extensions.helpers.roles.get_user_course_access_roles')
-def test_cache_refresh_course_access_roles(mock_get_roles):
+def test_cache_refresh_course_access_roles(mock_get_roles, cache_testing):  # pylint: disable=unused-argument
     """Verify that cache_refresh_course_access_roles calls the expected functions."""
     def mocked_get_user_course_access_roles(dummy):  # pylint: disable=unused-argument
         """Mocked get_user_course_access_roles function."""

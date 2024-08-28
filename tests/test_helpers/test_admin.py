@@ -5,7 +5,6 @@ import pytest
 from django.contrib.admin.sites import AdminSite
 from django.core.cache import cache
 from django.http import Http404, HttpResponseRedirect
-from django.test import override_settings
 from django.utils.timezone import now
 from rest_framework.test import APIRequestFactory
 
@@ -91,8 +90,9 @@ def test_cache_invalidator_admin_changelist_view(
 
 
 @pytest.mark.django_db
-@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
-def test_cache_invalidator_admin_invalidate_cache(cache_invalidator_admin):  # pylint: disable=redefined-outer-name
+def test_cache_invalidator_admin_invalidate_cache(
+    cache_invalidator_admin, cache_testing
+):  # pylint: disable=redefined-outer-name, unused-argument
     """Verify the invalidate_cache method of the CacheInvalidatorAdmin."""
     cache_name = list(CACHE_NAMES.keys())[0]
     cache.set(cache_name, {
@@ -121,10 +121,9 @@ def test_cache_invalidator_admin_invalidate_cache_invalid_name(
 
 
 @pytest.mark.django_db
-@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 def test_cache_invalidator_admin_changelist_view_context(
-    cache_invalidator_admin
-):  # pylint: disable=redefined-outer-name
+    cache_invalidator_admin, cache_testing
+):  # pylint: disable=redefined-outer-name, unused-argument
     """Verify the context of the changelist_view method of the CacheInvalidatorAdmin."""
     request = APIRequestFactory().get('/admin/fx_helpers/cacheinvalidator/')
     set_user(request, 1)

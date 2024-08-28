@@ -2,6 +2,8 @@
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import override_settings
 from django.utils import timezone
 from eox_tenant.models import Route, TenantConfig
 from lms.djangoapps.certificates.models import GeneratedCertificate
@@ -9,6 +11,14 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 
 from tests.base_test_data import _base_data
 from tests.fixture_helpers import get_user1_fx_permission_info
+
+
+@pytest.fixture
+def cache_testing():
+    """Fixture for temporary enabling cache for testing."""
+    with override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}):
+        yield
+        cache.clear()  # Clear the cache after each test
 
 
 @pytest.fixture

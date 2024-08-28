@@ -2,6 +2,7 @@
 CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST = 'fx_course_org_filter_list'
 CACHE_NAME_ALL_TENANTS_INFO = 'fx_tenants_info'
 CACHE_NAME_ALL_VIEW_ROLES = 'fx_view_roles'
+CACHE_NAME_ORG_TO_TENANT_MAP = 'fx_org_to_tenant_mapping'
 CACHE_NAME_USER_COURSE_ACCESS_ROLES = 'fx_user_course_access_roles'
 
 CACHE_NAMES = {
@@ -17,6 +18,10 @@ CACHE_NAMES = {
         'short_description': 'View Accessible Roles',
         'long_description': 'Information about accessible roles for all supported views',
     },
+    CACHE_NAME_ORG_TO_TENANT_MAP: {
+        'short_description': 'Organization to Tenant Mapping',
+        'long_description': 'Mapping of organization to tenant',
+    }
 }
 
 CLICKHOUSE_FX_BUILTIN_ORG_IN_TENANTS = '__orgs_of_tenants__'
@@ -66,6 +71,8 @@ COURSE_ACCESS_ROLES_SUPPORTED_EDIT = \
     COURSE_ACCESS_ROLES_TENANT_OR_COURSE
 
 COURSE_ACCESS_ROLES_SUPPORTED_READ = COURSE_ACCESS_ROLES_SUPPORTED_EDIT + COURSE_ACCESS_ROLES_GLOBAL
+
+COURSE_ACCESS_ROLES_ACCEPT_COURSE_ID = COURSE_ACCESS_ROLES_COURSE_ONLY + COURSE_ACCESS_ROLES_TENANT_OR_COURSE
 
 COURSE_ACCESS_ROLES_UNSUPPORTED = [
     'library_user',  # not supported yet, it requires a library ID instead of a course ID
