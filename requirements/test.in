@@ -1,16 +1,18 @@
 # Requirements for test runs.
 -c constraints.txt
 
--r base.txt               # Core dependencies for this package
+-r base.txt                     # Core dependencies for this package
 
-pytest-cov                # pytest extension for code coverage statistics
-pytest-django             # pytest extension for better Django support
-code-annotations          # provides commands used by the pii_check make target.
+pytest-cov                      # pytest extension for code coverage statistics
+pytest-django                   # pytest extension for better Django support
+code-annotations                # provides commands used by the pii_check make target.
 ddt
+deepdiff
+numpy                           # Required by deepdiff
 
 # eox-tenant requirements
 six
-djangorestframework<3.15.2  # 3.15.2 dropped support for Django 3.2
+djangorestframework<3.15.2      # 3.15.2 dropped support for Django 3.2
 django-crum
 django-mysql
 jsonfield
@@ -21,5 +23,7 @@ openedx_filters
 backports.zoneinfo;python_version<"3.9"
 
 # other requirements
-django-simple-history<3.7.0  # 3.7.0 dropped support for Django 3.2
+django-simple-history<3.7.0     # 3.7.0 dropped support for Django 3.2
 python-dateutil
+edx-organizations==6.11.1
+edx-drf-extensions==8.6.0       # pinned for compatibility with edx-organizations
