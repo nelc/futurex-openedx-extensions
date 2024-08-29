@@ -1,9 +1,9 @@
 """Courses details collectors"""
 from __future__ import annotations
 
-from common.djangoapps.student.models import CourseAccessRole
 from completion.models import BlockCompletion
 from django.db.models import (
+    BooleanField,
     Case,
     Count,
     DateTimeField,
@@ -23,7 +23,7 @@ from django.db.models.query import QuerySet
 from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
 
-from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
+from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
 
 
 def annotate_courses_rating_queryset(
@@ -63,7 +63,8 @@ def get_courses_queryset(
     fx_permission_info: dict,
     search_text: str | None = None,
     visible_filter: bool | None = True,
-    active_filter: bool | None = None
+    active_filter: bool | None = None,
+    include_staff: bool = False,
 ) -> QuerySet:
     """
     Get the courses queryset for the given tenant IDs and search text.
@@ -76,6 +77,8 @@ def get_courses_queryset(
     :type visible_filter: bool | None
     :param active_filter: Value to filter courses on active status. None means no filter
     :type active_filter: bool | None
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
     :return: QuerySet of courses
     :rtype: QuerySet
     """
@@ -92,6 +95,11 @@ def get_courses_queryset(
 
     queryset = annotate_courses_rating_queryset(queryset)
 
+    if include_staff:
+        is_staff_queryset = Q(Value(False, output_field=BooleanField()))
+    else:
+        is_staff_queryset = check_staff_exist_queryset('courseenrollment__user_id', 'org', 'id')
+
     queryset = queryset.annotate(
         enrolled_count=Count(
             'courseenrollment',
@@ -100,12 +108,7 @@ def get_courses_queryset(
                 Q(courseenrollment__user__is_active=True) &
                 Q(courseenrollment__user__is_staff=False) &
                 Q(courseenrollment__user__is_superuser=False) &
-                ~Exists(
-                    CourseAccessRole.objects.filter(
-                        user_id=OuterRef('courseenrollment__user_id'),
-                        org=OuterRef('org'),
-                    ),
-                )
+                ~is_staff_queryset
             ),
         )
     ).annotate(
@@ -116,12 +119,7 @@ def get_courses_queryset(
                 Q(courseenrollment__user__is_active=True) &
                 Q(courseenrollment__user__is_staff=False) &
                 Q(courseenrollment__user__is_superuser=False) &
-                ~Exists(
-                    CourseAccessRole.objects.filter(
-                        user_id=OuterRef('courseenrollment__user_id'),
-                        org=OuterRef('org'),
-                    ),
-                )
+                ~is_staff_queryset
             ),
         )
     ).annotate(

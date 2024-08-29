@@ -50,6 +50,28 @@ def test_count_for_learner_queryset(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('username, expected_count', [
+    ('user4', 4),
+    ('user3', 3),
+])
+def test_get_courses_count_for_learner_queryset_with_staff(
+    base_data, fx_permission_info, username, expected_count
+):  # pylint: disable=unused-argument
+    """
+    Verify that get_certificates_count_for_learner_queryset and get_courses_count_for_learner_queryset
+    return the correct QuerySet.
+    """
+    queryset = get_user_model().objects.filter(username=username)
+    assert queryset.count() == 1, f'bad test data (username = {username})'
+
+    queryset = get_user_model().objects.filter(username=username).annotate(
+        result=get_courses_count_for_learner_queryset(fx_permission_info, include_staff=True)
+    )
+
+    assert queryset.first().result == expected_count
+
+
+@pytest.mark.django_db
 def test_get_courses_count_for_learner_queryset_inactive_enrollment(
     base_data, fx_permission_info
 ):  # pylint: disable=unused-argument
@@ -129,8 +151,8 @@ def test_get_learners_search_queryset_active_filter(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('tenant_ids, expected_count', [
-    ([7, 8], 22),
-    ([7], 17),
+    ([7, 8], 23),
+    ([7], 18),
     ([4], 0),
 ])
 def test_get_learners_queryset(
@@ -163,3 +185,13 @@ def test_get_learners_by_course_queryset(base_data):  # pylint: disable=unused-a
 
     user15.courseenrollment_set.update(is_active=False)
     assert get_learners_by_course_queryset('course-v1:ORG1+5+5').count() == 2, 'inactive enrollments should be counted'
+
+
+@pytest.mark.django_db
+def test_get_learners_by_course_queryset_include_staff(base_data):  # pylint: disable=unused-argument
+    """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
+    queryset = get_learners_by_course_queryset('course-v1:ORG1+5+5')
+    assert queryset.count() == 3, 'unexpected test data'
+
+    queryset = get_learners_by_course_queryset('course-v1:ORG1+5+5', include_staff=True)
+    assert queryset.count() == 5, 'unexpected test data'
