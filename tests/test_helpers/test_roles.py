@@ -1014,16 +1014,31 @@ def test_get_roles_for_users_queryset(
     )
     assert roles_records_to_dict(result) == expected_result
 
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('remove_redundant, exclude_role_type, expected_result', [
+    (False, None, {'user62': {'': {'None': ['course_creator_group']}}}),
+    (False, RoleType.COURSE_SPECIFIC, {'user62': {'': {'None': ['course_creator_group']}}}),
+    (False, RoleType.ORG_WIDE, {}),
+])
+def test_get_roles_for_users_queryset_global(
+    base_data, remove_redundant, exclude_role_type, expected_result,
+):  # pylint: disable=unused-argument
+    """Verify that get_roles_for_users_queryset removes global roles when excluding org roles."""
+    user62 = get_user_model().objects.get(username='user62')
+    CourseAccessRole.objects.create(
+        user=user62,
+        role=cs.COURSE_ACCESS_ROLES_GLOBAL[0],
+    )
+    test_orgs = get_all_orgs()
+
     result = get_course_access_roles_queryset(
-        orgs_filter=get_all_orgs(),
-        course_ids_filter=course_ids,
+        orgs_filter=test_orgs,
         remove_redundant=remove_redundant,
         exclude_role_type=exclude_role_type,
-        user_id_distinct=True,
+        users=[user62],
     )
-    user_ids = [record['user_id'] for record in result]
-    expected_user_ids = [int(username[4:]) for username in expected_result.keys()]
-    assert set(user_ids) == set(expected_user_ids)
+    assert roles_records_to_dict(result) == expected_result
 
 
 @pytest.mark.django_db
@@ -1094,18 +1109,52 @@ def test_get_roles_for_users_queryset_remove_redundant(base_data):  # pylint: di
 
 
 @pytest.mark.django_db
+def test_get_roles_for_users_queryset_exclude_bad_roles():
+    """Verify that get_roles_for_users_queryset does not include roles that are excluded for having bad entry."""
+    test_org = 'org1'
+    user = get_user_model().objects.get(username='user3')
+    expected_result = [
+        {'user_id': 3, 'role': 'instructor', 'org': 'org1', 'course_id': 'course-v1:ORG1+3+3'},
+        {'user_id': 3, 'role': 'instructor', 'org': 'org1', 'course_id': 'course-v1:ORG1+4+4'},
+        {'user_id': 3, 'role': 'staff', 'org': 'org1', 'course_id': 'None'},
+        {'user_id': 3, 'role': 'staff', 'org': 'org1', 'course_id': 'course-v1:ORG1+3+3'},
+    ]
+    result = get_course_access_roles_queryset(orgs_filter=[test_org], remove_redundant=False, users=[user])
+    assert_roles_result(result, expected_result)
+
+    CourseAccessRole.objects.create(
+        user=user,
+        org=test_org,
+        role=cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0],
+    )
+    result = get_course_access_roles_queryset(orgs_filter=[test_org], remove_redundant=False, users=[user])
+    assert_roles_result(result, expected_result)
+
+
+@pytest.mark.django_db
 def test_delete_course_access_roles(base_data):  # pylint: disable=unused-argument
     """Verify that delete_course_access_roles deletes the expected records."""
     user3 = get_user_model().objects.get(username='user3')
-    CourseAccessRole.objects.create(
-        user=user3, org='', role='staff', course_id='course-v1:ORG1+3+3',
-    )
     q_user3 = CourseAccessRole.objects.filter(user=user3)
-    assert q_user3.filter(org='').count() > 0
-    assert q_user3.exclude(org='').filter(course_id=CourseKeyField.Empty).count() > 0
-    assert q_user3.exclude(org='', course_id=CourseKeyField.Empty).count() > 0
+    assert q_user3.count() == 4, 'bad test data'
+
+    CourseAccessRole.objects.create(
+        user=user3, org='', role=cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0], course_id='course-v1:ORG1+3+3',
+    )
+    keep1 = CourseAccessRole.objects.create(user=user3, role=cs.COURSE_ACCESS_ROLES_GLOBAL[0])
+    CourseAccessRole.objects.create(
+        user=user3, org='', role=cs.COURSE_ACCESS_ROLES_GLOBAL[0], course_id='course-v1:ORG1+3+3',
+    )
+    CourseAccessRole.objects.create(user=user3, org='org1', role=cs.COURSE_ACCESS_ROLES_GLOBAL[0])
+    keep2 = CourseAccessRole.objects.create(
+        user=user3, org='', role=cs.COURSE_ACCESS_ROLES_UNSUPPORTED[0],
+    )
+    assert q_user3.count() == 9
+
     delete_course_access_roles(get_all_tenant_ids(), user3)
-    assert q_user3.count() == 0
+    assert q_user3.count() == 2
+    for record in q_user3:
+        assert record in [keep1, keep2]
 
 
 @pytest.mark.django_db
@@ -1640,7 +1689,7 @@ def test_get_accessible_tenant_ids_no_staff_no_sueperuser(
     user = get_user_model().objects.get(id=user_id)
     assert not user.is_staff and not user.is_superuser, 'only users with no staff and no superuser allowed in this test'
     result = get_accessible_tenant_ids(user)
-    assert result == expected
+    assert not DeepDiff(result, expected, ignore_order=True)
     result = get_accessible_tenant_ids(user, roles_filter=[])
     assert not result and isinstance(result, list)
 
@@ -1657,3 +1706,12 @@ def test_get_accessible_tenant_ids(base_data, user_id, expected):  # pylint: dis
     user = get_user_model().objects.get(id=user_id)
     result = get_accessible_tenant_ids(user)
     assert result == expected
+
+
+@pytest.mark.django_db
+def test_get_accessible_tenant_ids_bad_roles_filter():
+    """Verify get_accessible_tenant_ids function raises an error when the roles_filter is invalid."""
+    user = get_user_model().objects.get(id=4)
+    with pytest.raises(TypeError) as exc_info:
+        get_accessible_tenant_ids(user, roles_filter='not a list')
+    assert str(exc_info.value) == 'roles_filter must be a list'

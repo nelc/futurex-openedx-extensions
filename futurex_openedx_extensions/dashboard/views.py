@@ -405,8 +405,7 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
                     active_filter=dummy_serializers.query_params['active_filter'],
                     course_ids_filter=dummy_serializers.query_params['course_ids_filter'],
                     exclude_role_type=dummy_serializers.query_params['exclude_role_type'],
-                    user_id_distinct=True,
-                )
+                ).values('user_id').distinct().order_by()
             ).select_related('profile').order_by('id')
         except ValueError as exc:
             raise ParseError(f'Invalid parameter: {exc}') from exc
