@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
-from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment
+from common.djangoapps.student.models import CourseEnrollment
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef
@@ -221,40 +221,6 @@ def get_course_org_filter_list(tenant_ids: List[int], ignore_invalid_tenant_ids:
         'duplicates': duplicates,
         'invalid': invalid,
     }
-
-
-def get_accessible_tenant_ids(user: get_user_model, roles_filter: List[str] | None = None) -> List[int]:
-    """
-    Get the tenants that the user has access to.
-
-    :param user: The user to check.
-    :type user: get_user_model
-    :param roles_filter: List of roles to filter by. None means no filter. Empty list means no access at all.
-    :type roles_filter: List[str] | None
-    :return: List of accessible tenant IDs
-    :rtype: List[int]
-    """
-    if not user:
-        return []
-    if user.is_superuser or user.is_staff:
-        return get_all_tenant_ids()
-
-    if not roles_filter and isinstance(roles_filter, list):
-        return []
-
-    course_org_filter_list = get_all_course_org_filter_list()
-    accessible_orgs = CourseAccessRole.objects.filter(
-        user_id=user.id,
-    )
-    if roles_filter is not None:
-        accessible_orgs = accessible_orgs.filter(
-            role__in=roles_filter
-        )
-    accessible_orgs = accessible_orgs.values_list('org', flat=True).distinct()
-
-    return [t_id for t_id, course_org_filter in course_org_filter_list.items() if any(
-        org.lower() in [org_filter.lower() for org_filter in course_org_filter] for org in accessible_orgs
-    )]
 
 
 def get_tenants_by_org(org: str) -> List[int]:

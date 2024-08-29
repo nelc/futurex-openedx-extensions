@@ -7,8 +7,12 @@ from typing import Any, List
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.permissions import BasePermission, IsAuthenticated
 
-from futurex_openedx_extensions.helpers.roles import check_tenant_access, get_user_course_access_roles
-from futurex_openedx_extensions.helpers.tenants import get_accessible_tenant_ids, get_course_org_filter_list
+from futurex_openedx_extensions.helpers.roles import (
+    check_tenant_access,
+    get_accessible_tenant_ids,
+    get_user_course_access_roles,
+)
+from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list
 
 
 def get_tenant_limited_fx_permission_info(fx_permission_info: dict, tenant_id: int) -> dict:

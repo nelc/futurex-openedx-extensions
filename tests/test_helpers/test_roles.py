@@ -25,6 +25,7 @@ from futurex_openedx_extensions.helpers.roles import (
     cache_refresh_course_access_roles,
     check_tenant_access,
     delete_course_access_roles,
+    get_accessible_tenant_ids,
     get_course_access_roles_queryset,
     get_fx_view_with_roles,
     get_user_course_access_roles,
@@ -1471,3 +1472,69 @@ def test_update_course_access_course_roles_grouping(mock_add, mock_delete):
             'dry_run': False,
         }
     assert result['error_code'] is None
+
+
+@pytest.mark.django_db
+def test_get_accessible_tenant_ids_none(base_data):  # pylint: disable=unused-argument
+    """Verify that get_accessible_tenant_ids returns an empty list when user is None."""
+    result = get_accessible_tenant_ids(None)
+    assert result == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id, expected', [
+    (1, [1, 2, 3, 7, 8]),
+])
+def test_get_accessible_tenant_ids_super_users(base_data, user_id, expected):  # pylint: disable=unused-argument
+    """Verify get_accessible_tenant_ids function for super users."""
+    user = get_user_model().objects.get(id=user_id)
+    assert user.is_superuser, 'only super users allowed in this test'
+    result = get_accessible_tenant_ids(user)
+    assert result == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id, expected', [
+    (2, [1, 2, 3, 7, 8]),
+])
+def test_get_accessible_tenant_ids_staff(base_data, user_id, expected):  # pylint: disable=unused-argument
+    """Verify get_accessible_tenant_ids function for staff users."""
+    user = get_user_model().objects.get(id=user_id)
+    assert user.is_staff, 'only staff users allowed in this test'
+    result = get_accessible_tenant_ids(user)
+    assert result == expected
+    result = get_accessible_tenant_ids(user, roles_filter=[])
+    assert result == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id, expected', [
+    (3, [1]),
+    (4, [1, 2, 7]),
+    (9, [1, 2, 7]),
+    (23, [2, 3, 8]),
+])
+def test_get_accessible_tenant_ids_no_staff_no_sueperuser(
+    base_data, user_id, expected
+):  # pylint: disable=unused-argument
+    """Verify get_accessible_tenant_ids function for users with no staff and no superuser."""
+    user = get_user_model().objects.get(id=user_id)
+    assert not user.is_staff and not user.is_superuser, 'only users with no staff and no superuser allowed in this test'
+    result = get_accessible_tenant_ids(user)
+    assert result == expected
+    result = get_accessible_tenant_ids(user, roles_filter=[])
+    assert not result and isinstance(result, list)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id, expected', [
+    (1, [1, 2, 3, 7, 8]),
+    (2, [1, 2, 3, 7, 8]),
+    (3, [1]),
+    (15, []),
+])
+def test_get_accessible_tenant_ids(base_data, user_id, expected):  # pylint: disable=unused-argument
+    """Verify get_accessible_tenant_ids function."""
+    user = get_user_model().objects.get(id=user_id)
+    result = get_accessible_tenant_ids(user)
+    assert result == expected

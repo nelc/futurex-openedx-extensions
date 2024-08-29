@@ -55,15 +55,12 @@ from futurex_openedx_extensions.helpers.roles import (
     FXViewRoleInfoMixin,
     add_course_access_roles,
     delete_course_access_roles,
+    get_accessible_tenant_ids,
     get_course_access_roles_queryset,
     get_usernames_with_access_roles,
     update_course_access_roles,
 )
-from futurex_openedx_extensions.helpers.tenants import (
-    get_accessible_tenant_ids,
-    get_tenants_info,
-    get_user_id_from_username_tenants,
-)
+from futurex_openedx_extensions.helpers.tenants import get_tenants_info, get_user_id_from_username_tenants
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 

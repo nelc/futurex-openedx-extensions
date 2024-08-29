@@ -28,7 +28,7 @@ from futurex_openedx_extensions.helpers.extractors import (
 )
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
 from futurex_openedx_extensions.helpers.tenants import (
-    get_accessible_tenant_ids,
+    get_all_course_org_filter_list,
     get_all_tenant_ids,
     get_course_org_filter_list,
     get_tenants_by_org,
@@ -205,6 +205,40 @@ def get_user_course_access_roles(user_id: int) -> dict:
         'roles': result,
         'useless_entries_exist': useless_entry,
     }
+
+
+def get_accessible_tenant_ids(user: get_user_model, roles_filter: List[str] | None = None) -> List[int]:
+    """
+    Get the tenants that the user has access to.
+
+    :param user: The user to check.
+    :type user: get_user_model
+    :param roles_filter: List of roles to filter by. None means no filter. Empty list means no access at all.
+    :type roles_filter: List[str] | None
+    :return: List of accessible tenant IDs
+    :rtype: List[int]
+    """
+    if not user:
+        return []
+    if user.is_superuser or user.is_staff:
+        return get_all_tenant_ids()
+
+    if not roles_filter and isinstance(roles_filter, list):
+        return []
+
+    course_org_filter_list = get_all_course_org_filter_list()
+    accessible_orgs = CourseAccessRole.objects.filter(
+        user_id=user.id,
+    )
+    if roles_filter is not None:
+        accessible_orgs = accessible_orgs.filter(
+            role__in=roles_filter
+        )
+    accessible_orgs = accessible_orgs.values_list('org', flat=True).distinct()
+
+    return [t_id for t_id, course_org_filter in course_org_filter_list.items() if any(
+        org.lower() in [org_filter.lower() for org_filter in course_org_filter] for org in accessible_orgs
+    )]
 
 
 def check_tenant_access(user: get_user_model, tenant_ids_string: str) -> tuple[bool, dict]:
