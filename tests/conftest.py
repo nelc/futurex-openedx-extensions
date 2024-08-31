@@ -1,4 +1,6 @@
 """PyTest fixtures for tests."""
+from unittest.mock import patch
+
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
@@ -35,6 +37,16 @@ def fx_permission_info():
 def user1_fx_permission_info():
     """Fixture for permission information for user1."""
     return get_user1_fx_permission_info()
+
+
+@pytest.fixture
+def roles_authorize_caller():
+    """Fixture for temporary enabling cache for testing."""
+    with patch('futurex_openedx_extensions.helpers.roles._verify_can_add_course_access_roles'):
+        with patch('futurex_openedx_extensions.helpers.roles._verify_can_add_org_course_creator'):
+            with patch('futurex_openedx_extensions.helpers.roles._verify_can_delete_course_access_roles'):
+                with patch('futurex_openedx_extensions.helpers.roles._verify_can_delete_course_access_roles_partial'):
+                    yield
 
 
 @pytest.fixture(scope='session')
