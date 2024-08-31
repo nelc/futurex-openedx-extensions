@@ -16,6 +16,7 @@ from django.db.models import BooleanField, Exists, OuterRef, Q, QuerySet, Subque
 from django.db.models.functions import Lower
 from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from organizations.models import Organization
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
@@ -672,6 +673,8 @@ def delete_course_access_roles(tenant_ids: list[int], user: get_user_model) -> N
             message=f'No role found to delete for the user ({user.username}) within the given tenants {tenant_ids}!',
         )
 
+    CourseCreator.objects.filter(user=user).delete()
+
     cache_refresh_course_access_roles(user.id)
 
 
@@ -714,6 +717,68 @@ def _clean_course_access_roles(redundant_hashes: set[DictHashcode], user: get_us
                 code=FXExceptionCodes.ROLE_DELETE,
                 message=f'Database error while deleting course access roles! {hashcode}. Error: {exc}',
             ) from exc
+
+
+def add_org_course_creator(user: get_user_model, orgs: list[str]) -> None:
+    """
+    Add the course creator role for the given user and orgs.
+
+    :param user: The user to add the role for
+    :type user: get_user_model
+    :param orgs: The orgs to filter on
+    :type orgs: list
+    """
+    cache_refresh_course_access_roles(user.id)
+    access_roles = get_user_course_access_roles(user.id)
+
+    if cs.COURSE_CREATOR_ROLE_GLOBAL in access_roles['roles']:
+        return
+    if access_roles['useless_entries_exist']:
+        raise FXCodedException(
+            code=FXExceptionCodes.ROLE_INVALID_ENTRY,
+            message=f'Cannot add course creator role due to invalid entries in CourseAccessRole! user: {user.username}',
+        )
+
+    role = access_roles['roles'].get(cs.COURSE_CREATOR_ROLE_TENANT, {})
+    to_add = []
+    for org in orgs:
+        if org not in role.get('orgs_full_access', []):
+            to_add.append(CourseAccessRole(
+                user=user,
+                role=cs.COURSE_CREATOR_ROLE_TENANT,
+                org=org,
+            ))
+    if not to_add:
+        return
+
+    course_creator = CourseCreator.objects.filter(user=user).first()
+    if not course_creator:
+        CourseCreator.objects.bulk_create([
+            CourseCreator(
+                user=user,
+                all_organizations=False,
+                state=CourseCreator.GRANTED,
+            ),
+        ])
+        course_creator = CourseCreator.objects.get(user=user)
+
+    new_orgs = []
+    for new_role in to_add:
+        if not Organization.objects.filter(short_name=new_role.org).exists():
+            new_orgs.append(Organization(name=new_role.org, short_name=new_role.org))
+
+    if new_orgs:
+        Organization.objects.bulk_create(new_orgs)
+
+    CourseAccessRole.objects.bulk_create(to_add)
+    all_orgs = list(course_creator.organizations.all())
+    for org_name in orgs:
+        org_object = Organization.objects.get(short_name=org_name)
+        if org_object not in all_orgs:
+            all_orgs.append(org_object)
+    course_creator.organizations.set(all_orgs)
+
+    cache_refresh_course_access_roles(user.id)
 
 
 def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
@@ -802,13 +867,16 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
 
         try:
             with transaction.atomic():
-                bulk_roles = [CourseAccessRole(
-                    user=user,
-                    role=new_role['role'],
-                    org=new_role['org_lower_case'],
-                    course_id=new_role['course_id'],
-                ) for new_role in new_roles]
-                CourseAccessRole.objects.bulk_create(bulk_roles)
+                if role == cs.COURSE_CREATOR_ROLE_TENANT:
+                    add_org_course_creator(user, orgs)
+                else:
+                    bulk_roles = [CourseAccessRole(
+                        user=user,
+                        role=new_role['role'],
+                        org=new_role['org_lower_case'],
+                        course_id=new_role['course_id'],
+                    ) for new_role in new_roles]
+                    CourseAccessRole.objects.bulk_create(bulk_roles)
 
         except DatabaseError as exc:
             raise FXCodedException(
@@ -858,6 +926,9 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
         role = role.strip().lower()
         if role not in cs.COURSE_ACCESS_ROLES_SUPPORTED_EDIT:
             raise ValueError(f'Invalid role: {role}')
+
+        if role in cs.COURSE_ACCESS_ROLES_TENANT_ONLY and not tenant_wide:
+            raise ValueError(f'Role ({role}) can only be tenant-wide!')
 
         if (tenant_wide and course_ids) or (not tenant_wide and not course_ids):
             raise ValueError('Conflict between tenant_wide and course_ids')

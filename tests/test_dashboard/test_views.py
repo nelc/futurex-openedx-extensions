@@ -90,7 +90,6 @@ class TestTotalCountsView(BaseTestViewMixin):
         response = self.client.get(self.url + '?stats=certificates,courses,hidden_courses,learners')
         self.assertTrue(isinstance(response, JsonResponse))
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        print(json.loads(response.content))
         self.assertDictEqual(json.loads(response.content), expected_statistics)
 
     def test_selected_tenants(self):

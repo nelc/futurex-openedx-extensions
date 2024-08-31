@@ -23,6 +23,7 @@ from futurex_openedx_extensions.helpers.roles import (
     RoleType,
     _clean_course_access_roles,
     add_course_access_roles,
+    add_org_course_creator,
     cache_name_user_course_access_roles,
     cache_refresh_course_access_roles,
     check_tenant_access,
@@ -143,7 +144,10 @@ def _initialize_creator_role_test(role, org, all_organizations):
         'course_org': '',
         'role': role,
     }
-    creator = CourseCreator.objects.create(user_id=33, all_organizations=all_organizations)
+    CourseCreator.objects.bulk_create([CourseCreator(
+        user_id=33, all_organizations=all_organizations,
+    )])
+    creator = CourseCreator.objects.get(user_id=33)
     if not all_organizations:
         creator.organizations.add(Organization.objects.create(name=org, description=org, short_name=org))
     with pytest.raises(FXCodedException) as exc_info:
@@ -152,8 +156,7 @@ def _initialize_creator_role_test(role, org, all_organizations):
     assert str(exc_info.value) == \
            f'Invalid course access role: course-creator record for {role} role is inactive! (id: 99)'
 
-    creator.state = CourseCreator.GRANTED
-    creator.save()
+    CourseCreator.objects.filter(user_id=33).update(state=CourseCreator.GRANTED)
     validate_course_access_role(course_access_role)
 
     return course_access_role, creator
@@ -169,8 +172,7 @@ def test_validate_course_access_role_invalid_creator_role_global(base_data):  # 
         'Invalid course access role: '
         f'{role} role must have all_organizations=True with no details for organizations! (id: 99)'
     )
-    creator.all_organizations = False
-    creator.save()
+    CourseCreator.objects.filter(user_id=33).update(all_organizations=False)
     with pytest.raises(FXCodedException) as exc_info:
         validate_course_access_role(course_access_role)
     assert exc_info.value.code == FXExceptionCodes.ROLE_INVALID_ENTRY.value
@@ -189,8 +191,7 @@ def test_validate_course_access_role_invalid_creator_role_tenant(base_data):  # 
     role = cs.COURSE_CREATOR_ROLE_TENANT
     course_access_role, creator = _initialize_creator_role_test(role, 'org1', False)
 
-    creator.all_organizations = True
-    creator.save()
+    CourseCreator.objects.filter(user_id=33).update(all_organizations=True)
     with pytest.raises(FXCodedException) as exc_info:
         validate_course_access_role(course_access_role)
     assert exc_info.value.code == FXExceptionCodes.ROLE_INVALID_ENTRY.value
@@ -199,8 +200,7 @@ def test_validate_course_access_role_invalid_creator_role_tenant(base_data):  # 
         'at least one organization set! (id: 99)'
     )
 
-    creator.all_organizations = False
-    creator.save()
+    CourseCreator.objects.filter(user_id=33).update(all_organizations=False)
     creator.organizations.clear()
     creator.organizations.add(
         Organization.objects.create(name='org2', description='org2', short_name='org2')
@@ -282,11 +282,13 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
         short_name='org8',
         active=True,
     )
-    CourseCreator.objects.create(
+    CourseCreator.objects.bulk_create([CourseCreator(
         user_id=user_id,
         state=CourseCreator.GRANTED,
         all_organizations=False,
-    ).organizations.add(org8)
+    )])
+    creator = CourseCreator.objects.get(user_id=user_id)
+    creator.organizations.add(org8)
     expected_result['roles']['org_course_creator_group'] = {
         'global_role': False,
         'orgs_full_access': ['org8'],
@@ -1264,6 +1266,15 @@ def test_add_course_access_roles_foreign_course_id():
 
 
 @pytest.mark.django_db
+def test_add_course_access_roles_tenant_wide_role():
+    """Verify that add_course_access_roles raises an error adding tenant-wide-role with tenant-wide flag is not set."""
+    role = cs.COURSE_ACCESS_ROLES_TENANT_ONLY[0]
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles([1, 8], ['user1'], role, False, ['course-v1:ORG3+1+1'])
+    assert str(exc_info.value) == f'Role ({role}) can only be tenant-wide!'
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize('user_keys, error_message', [
     (None, 'No users provided!'),
     ([], 'No users provided!'),
@@ -1434,6 +1445,20 @@ def test_add_course_access_roles_bulk_create_failed(
         'updated': [],
         'not_updated': [],
     }
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles.add_org_course_creator')
+def test_add_course_access_roles_add_creator_role(mock_add_org_course_creator):
+    """Verify that add_course_access_roles adds the creator role to the user."""
+    user = get_user_model().objects.get(username='user69')
+    assert CourseAccessRole.objects.filter(user=user).count() == 0
+
+    add_course_access_roles([1], [user], cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE[0], True, [])
+    mock_add_org_course_creator.assert_not_called()
+
+    add_course_access_roles([1], [user], cs.COURSE_CREATOR_ROLE_TENANT, True, [])
+    mock_add_org_course_creator.assert_called_once_with(user, ['org1', 'org2'])
 
 
 @pytest.mark.django_db
@@ -1715,3 +1740,132 @@ def test_get_accessible_tenant_ids_bad_roles_filter():
     with pytest.raises(TypeError) as exc_info:
         get_accessible_tenant_ids(user, roles_filter='not a list')
     assert str(exc_info.value) == 'roles_filter must be a list'
+
+
+def _assert_creator_records(  # pylint: disable=too-many-arguments
+    user, expected_org_roles_count, expected_global_roles_count, expected_creator, expected_orgs_of_creator, all_orgs,
+):
+    """Helper function to assert the creator records."""
+    assert not expected_orgs_of_creator or (expected_orgs_of_creator and expected_creator), \
+        'Opps, bad testing logic!'
+
+    assert CourseAccessRole.objects.filter(
+        user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, course_id=CourseKeyField.Empty,
+    ).exclude(org='').count() == expected_org_roles_count
+
+    assert CourseAccessRole.objects.filter(
+        user=user, role=cs.COURSE_CREATOR_ROLE_GLOBAL, org='', course_id=CourseKeyField.Empty,
+    ).count() == expected_global_roles_count
+
+    assert CourseCreator.objects.filter(user=user).exists() == expected_creator
+    if expected_orgs_of_creator:
+        assert list(CourseCreator.objects.get(
+            user=user
+        ).organizations.all().values_list('short_name', flat=True)) == expected_orgs_of_creator
+
+    if all_orgs:
+        assert not CourseCreator.objects.get(user=user).organizations.all().exists()
+        assert CourseCreator.objects.get(user=user).all_organizations is True
+
+
+@pytest.mark.django_db
+def test_add_org_course_creator_nothing_exist(base_data):  # pylint: disable=unused-argument
+    """Verify add_org_course_creator adds the org_course_creator_group role when nothing exists."""
+    orgs = ['org1', 'org2']
+    user = get_user_model().objects.get(username='user69')
+    _assert_creator_records(user, 0, 0, False, [], False)
+
+    add_org_course_creator(user, orgs)
+    _assert_creator_records(user, 2, 0, True, orgs, False)
+
+
+@pytest.mark.django_db
+def test_add_org_course_creator_global_role_but_no_creator(base_data):  # pylint: disable=unused-argument
+    """
+    Verify add_org_course_creator adds the org_course_creator_group role when the global creator exists as a role
+    but the creator record is missing.
+    """
+    orgs = ['org1', 'org2']
+    user = get_user_model().objects.get(username='user69')
+    CourseAccessRole.objects.create(user=user, role=cs.COURSE_CREATOR_ROLE_GLOBAL)
+
+    _assert_creator_records(user, 0, 1, False, [], False)
+
+    with pytest.raises(FXCodedException) as exc_info:
+        add_org_course_creator(user, orgs)
+    assert str(exc_info.value) == (
+        f'Cannot add course creator role due to invalid entries in CourseAccessRole! user: {user.username}'
+    )
+
+    _assert_creator_records(user, 0, 1, False, [], False)
+
+
+@pytest.mark.django_db
+def test_add_org_course_creator_global_role(base_data):  # pylint: disable=unused-argument
+    """Verify add_org_course_creator adds the org_course_creator_group role when the global creator exists."""
+    orgs = ['org1', 'org2']
+    user = get_user_model().objects.get(username='user69')
+    CourseAccessRole.objects.create(user=user, role=cs.COURSE_CREATOR_ROLE_GLOBAL)
+    CourseCreator.objects.bulk_create([CourseCreator(user=user, all_organizations=True, state=CourseCreator.GRANTED)])
+
+    _assert_creator_records(user, 0, 1, True, [], True)
+
+    add_org_course_creator(user, orgs)
+    _assert_creator_records(user, 0, 1, True, [], True)
+
+
+@pytest.mark.django_db
+def test_add_org_course_creator_tenant_roles_but_no_creator(base_data):  # pylint: disable=unused-argument
+    """
+    Verify add_org_course_creator adds the org_course_creator_group role when roles are already created, but
+    the creator record is missing.
+    """
+    orgs = ['org1', 'org2']
+    user = get_user_model().objects.get(username='user69')
+    CourseAccessRole.objects.create(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, org='org1')
+    CourseAccessRole.objects.create(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, org='org2')
+    CourseCreator.objects.bulk_create([CourseCreator(user=user, all_organizations=False, state=CourseCreator.GRANTED)])
+
+    _assert_creator_records(user, 2, 0, True, [], False)
+
+    with pytest.raises(FXCodedException) as exc_info:
+        add_org_course_creator(user, orgs)
+    assert str(exc_info.value) == (
+        f'Cannot add course creator role due to invalid entries in CourseAccessRole! user: {user.username}'
+    )
+
+
+@pytest.mark.django_db
+def test_add_org_course_creator_tenant_roles_exist(base_data):  # pylint: disable=unused-argument
+    """Verify add_org_course_creator adds the org_course_creator_group role when roles already exist."""
+    orgs = ['org1', 'org2']
+    user = get_user_model().objects.get(username='user69')
+    CourseCreator.objects.bulk_create([CourseCreator(user=user, all_organizations=False, state=CourseCreator.GRANTED)])
+    creator = CourseCreator.objects.get(user=user)
+    creator.organizations.add(Organization.objects.create(short_name='org1'))
+    creator.organizations.add(Organization.objects.create(short_name='org2'))
+    CourseAccessRole.objects.create(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, org='org1')
+    CourseAccessRole.objects.create(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, org='org2')
+
+    _assert_creator_records(user, 2, 0, True, orgs, False)
+
+    add_org_course_creator(user, orgs)
+    _assert_creator_records(user, 2, 0, True, orgs, False)
+
+
+@pytest.mark.django_db
+def test_add_org_course_creator_not_all_tenant_roles_exist(base_data):  # pylint: disable=unused-argument
+    """Verify add_org_course_creator adds the org_course_creator_group role when some roles already exist."""
+    orgs = ['org1', 'org2']
+    user = get_user_model().objects.get(username='user69')
+    CourseAccessRole.objects.create(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, org='org1')
+    CourseCreator.objects.bulk_create([CourseCreator(user=user, all_organizations=False, state=CourseCreator.GRANTED)])
+    creator = CourseCreator.objects.get(user=user)
+    org1 = Organization.objects.create(short_name='org1')
+    Organization.objects.create(short_name='org2')
+    creator.organizations.add(org1)
+
+    _assert_creator_records(user, 1, 0, True, ['org1'], False)
+
+    add_org_course_creator(user, orgs)
+    _assert_creator_records(user, 2, 0, True, orgs, False)
