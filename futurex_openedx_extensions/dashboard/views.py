@@ -101,13 +101,13 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         return sum(org_count['courses_count'] for org_count in collector_result)
 
     @staticmethod
-    def _get_learners_count_data(one_tenant_permission_info: dict, tenant_id: int) -> int:
+    def _get_learners_count_data(one_tenant_permission_info: dict, tenant_id: int, include_staff: bool) -> int:
         """Get the count of learners for the given tenant"""
-        collector_result = get_learners_count(one_tenant_permission_info)
+        collector_result = get_learners_count(one_tenant_permission_info, include_staff=include_staff)
         return collector_result[tenant_id]['learners_count'] + \
             collector_result[tenant_id]['learners_count_no_enrollment']
 
-    def _get_stat_count(self, stat: str, tenant_id: int) -> int:
+    def _get_stat_count(self, stat: str, tenant_id: int, include_staff: bool) -> int:
         """Get the count of the given stat for the given tenant"""
         one_tenant_permission_info = get_tenant_limited_fx_permission_info(self.fx_permission_info, tenant_id)
         if stat == self.STAT_CERTIFICATES:
@@ -119,7 +119,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         if stat == self.STAT_HIDDEN_COURSES:
             return self._get_courses_count_data(one_tenant_permission_info, visible_filter=False)
 
-        return self._get_learners_count_data(one_tenant_permission_info, tenant_id)
+        return self._get_learners_count_data(one_tenant_permission_info, tenant_id, include_staff)
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
         """
@@ -140,6 +140,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
                 error_details_to_dictionary(reason='Invalid stats type', invalid=invalid_stats),
                 status=http_status.HTTP_400_BAD_REQUEST
             )
+        include_staff = request.query_params.get('include_staff', '0') == '1'
 
         tenant_ids = self.fx_permission_info['permitted_tenant_ids']
 
@@ -149,7 +150,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         })
         for tenant_id in tenant_ids:
             for stat in stats:
-                count = self._get_stat_count(stat, tenant_id)
+                count = self._get_stat_count(stat, tenant_id, include_staff)
                 result[tenant_id][self.STAT_RESULT_KEYS[stat]] = count
                 result[f'total_{self.STAT_RESULT_KEYS[stat]}'] += count
 
@@ -168,9 +169,12 @@ class LearnersView(ListAPIView, FXViewRoleInfoMixin):
     def get_queryset(self) -> QuerySet:
         """Get the list of learners"""
         search_text = self.request.query_params.get('search_text')
+        include_staff = self.request.query_params.get('include_staff', '0') == '1'
+
         return get_learners_queryset(
             fx_permission_info=self.fx_permission_info,
             search_text=search_text,
+            include_staff=include_staff,
         )
 
 
@@ -192,10 +196,13 @@ class CoursesView(ListAPIView, FXViewRoleInfoMixin):
     def get_queryset(self) -> QuerySet:
         """Get the list of learners"""
         search_text = self.request.query_params.get('search_text')
+        include_staff = self.request.query_params.get('include_staff', '0') == '1'
+
         return get_courses_queryset(
             fx_permission_info=self.fx_permission_info,
             search_text=search_text,
             visible_filter=None,
+            include_staff=include_staff,
         )
 
 
@@ -245,6 +252,7 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
         """
         tenant_ids = self.fx_permission_info['permitted_tenant_ids']
         user_id = get_user_id_from_username_tenants(username, tenant_ids)
+        include_staff = request.query_params.get('include_staff', '0') == '1'
 
         if not user_id:
             return Response(
@@ -252,7 +260,7 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
                 status=http_status.HTTP_404_NOT_FOUND
             )
 
-        user = get_learner_info_queryset(self.fx_permission_info, user_id).first()
+        user = get_learner_info_queryset(self.fx_permission_info, user_id, include_staff=include_staff).first()
 
         return JsonResponse(
             serializers.LearnerDetailsExtendedSerializer(user, context={'request': request}).data
@@ -339,10 +347,12 @@ class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
         """Get the list of learners for a course"""
         search_text = self.request.query_params.get('search_text')
         course_id = self.kwargs.get('course_id')
+        include_staff = self.request.query_params.get('include_staff', '0') == '1'
 
         return get_learners_by_course_queryset(
             course_id=course_id,
             search_text=search_text,
+            include_staff=include_staff,
         )
 
 

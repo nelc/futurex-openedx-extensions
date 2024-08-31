@@ -138,7 +138,8 @@ def get_learners_queryset(
     fx_permission_info: dict,
     search_text: str | None = None,
     visible_courses_filter: bool | None = True,
-    active_courses_filter: bool | None = None
+    active_courses_filter: bool | None = None,
+    include_staff: bool = False,
 ) -> QuerySet:
     """
     Get the learners queryset for the given tenant IDs and search text.
@@ -151,6 +152,8 @@ def get_learners_queryset(
     :type visible_courses_filter: bool
     :param active_courses_filter: Value to filter courses on active status. None means no filter
     :type active_courses_filter: bool
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
     :return: QuerySet of learners
     :rtype: QuerySet
     """
@@ -163,6 +166,7 @@ def get_learners_queryset(
             fx_permission_info,
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
+            include_staff=include_staff,
         )
     ).annotate(
         certificates_count=get_certificates_count_for_learner_queryset(
@@ -244,7 +248,8 @@ def get_learner_info_queryset(
     fx_permission_info: dict,
     user_id: int,
     visible_courses_filter: bool | None = True,
-    active_courses_filter: bool | None = None
+    active_courses_filter: bool | None = None,
+    include_staff: bool = False,
 ) -> QuerySet:
     """
     Get the learner queryset for the given user ID. This method assumes a valid user ID.
@@ -257,6 +262,8 @@ def get_learner_info_queryset(
     :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter
     :type active_courses_filter: bool | None
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
     :return: QuerySet of learners
     :rtype: QuerySet
     """
@@ -265,6 +272,7 @@ def get_learner_info_queryset(
             fx_permission_info,
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
+            include_staff=include_staff,
         )
     ).annotate(
         certificates_count=get_certificates_count_for_learner_queryset(
