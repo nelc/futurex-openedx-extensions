@@ -241,9 +241,9 @@ class CourseCreator(models.Model):
 
 
 @receiver(post_save, sender=CourseCreator)
-def post_save_never_user_create_or_save(sender, **kwargs):  # pylint: disable=unused-argument
+def post_save_never_user_create_or_save(sender, **kwargs):
     """Mock"""
-    raise ValueError(  # pylint: disable=raise-missing-from
+    raise ValueError(
         'This exception means that you have used `create` or `save` methods of the CourseCreator model. '
         'These methods trigger signals in CMS which is outside the scope of the Dashboard. Please use our '
         'add_org_course_creator function instead. It will use bulk_create to avoid triggering signals.'

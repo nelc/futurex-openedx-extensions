@@ -209,7 +209,7 @@ _base_data = {
         },
         'data_researcher': {
             'ORG3': [9, 10],
-        }
+        },
     },
     'course_access_roles_course_specific': {  # org id, course id, roles, user ids
         'Org1': {
@@ -256,6 +256,7 @@ _base_data = {
             'course-v1:ORG3+3+3': {
                 'staff': [18],
                 'instructor': [9],
+                'sales_admin': [11],  # This is an unsupported role
             },
         },
     },

@@ -903,6 +903,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         response = self.client.delete(self.url + '?tenant_ids=1,2')
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
         self.assertIsNone(response.data)
+        mock_delete_user.call_args_list[0][1].pop('caller')
         mock_delete_user.assert_called_once_with(tenant_ids=[1, 2], user=mock_get_user.return_value['user'])
 
     @patch('futurex_openedx_extensions.dashboard.views.get_user_by_key')

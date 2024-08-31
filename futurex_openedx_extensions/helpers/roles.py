@@ -170,14 +170,18 @@ def get_user_course_access_roles(user_id: int) -> dict:
             <role1>: {
                 'global_role': bool,
                 'orgs_full_access': [org1, org2, ...],
+                'tenant_ids_full_access': [1, 2, ...],
                 'course_limited_access': [course_id1, course_id2, ...],
                 'orgs_of_courses': [org1, org2, ...],
+                'tenant_ids': [1, 2, 3, ...],
             },
             <role2>: {
                 'global_role': bool,
                 'orgs_full_access': [org1, org2, ...],
+                'tenant_ids_full_access': [1, 2, ...],
                 'course_limited_access': [course_id1, course_id2, ...],
                 'orgs_of_courses': [org1, org2, ...],
+                'tenant_ids': [1, 2, 3, ...],
             },
             ...
         },
@@ -222,6 +226,7 @@ def get_user_course_access_roles(user_id: int) -> dict:
             result[role] = {
                 'global_role': False,
                 'orgs_full_access': set(),
+                'tenant_ids_full_access': set(),
                 'course_limited_access': [],
                 'orgs_of_courses': set(),
                 'tenant_ids': set(),
@@ -229,12 +234,12 @@ def get_user_course_access_roles(user_id: int) -> dict:
 
         if role in cs.COURSE_ACCESS_ROLES_GLOBAL:
             result[role]['global_role'] = True
-            result[role]['tenant_ids'] = get_all_tenant_ids()
             continue
 
         # ordering of access_roles is crucial for the following logic
         if not course_id:
             result[role]['orgs_full_access'].add(org)
+            result[role]['tenant_ids_full_access'].update(get_tenants_by_org(org))
             result[role]['tenant_ids'].update(get_tenants_by_org(org))
         elif course_org in result[role]['orgs_full_access']:
             useless_entry = True
@@ -245,6 +250,7 @@ def get_user_course_access_roles(user_id: int) -> dict:
 
     for _, role_data in result.items():
         role_data['orgs_full_access'] = list(role_data['orgs_full_access'])
+        role_data['tenant_ids_full_access'] = list(role_data['tenant_ids_full_access'])
         role_data['orgs_of_courses'] = list(role_data['orgs_of_courses'])
         role_data['tenant_ids'] = list(role_data['tenant_ids'])
 
@@ -648,7 +654,103 @@ def cache_refresh_course_access_roles(user_id: int) -> None:
         get_user_course_access_roles(user_id)
 
 
-def delete_course_access_roles(tenant_ids: list[int], user: get_user_model) -> None:
+def _verify_can_delete_course_access_roles_partial(
+    caller: get_user_model, tenant_ids: list[int], user_roles: Dict[str, Any], username: str,
+) -> None:
+    """
+    Verify if the caller can delete the course access roles for the given tenant IDs and user.
+
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
+    :param tenant_ids: The tenant IDs to filter on
+    :type tenant_ids: list
+    :param user_roles: The user roles
+    :type user_roles: Dict[str, Any]
+    :return: True if the caller can delete the course access roles, False otherwise
+    :rtype: bool
+    """
+    def collect_user_tenant_ids(list_name: str) -> set[int]:
+        """Collect the tenant IDs."""
+        result = set()
+        for role_name, role_info in user_roles.items():
+            if role_name in cs.COURSE_ACCESS_ROLES_SUPPORTED_EDIT:
+                result.update(set(role_info[list_name]))
+        return result
+
+    if caller.is_staff or caller.is_superuser:
+        return
+
+    tenant_ids_with_staff_role: set | list = set(tenant_ids).intersection(
+        set(user_roles.get(cs.COURSE_ACCESS_ROLES_STAFF_EDITOR, {}).get('tenant_ids_full_access', []))
+    )
+    if tenant_ids_with_staff_role:
+        tenant_ids_with_staff_role = sorted(list(tenant_ids_with_staff_role))
+        raise FXCodedException(
+            code=FXExceptionCodes.ROLE_DELETE,
+            message=(
+                f'Permission denied: cannot delete roles of user ({username}) from tenants '
+                f'{tenant_ids_with_staff_role}, because the user has a tenant-wide '
+                f'[{cs.COURSE_ACCESS_ROLES_STAFF_EDITOR}] role there! the caller must be a system-staff or a superuser '
+                'to perform this operation.'
+            ),
+        )
+
+    caller_roles = get_user_course_access_roles(caller.id)['roles']
+    caller_allowed = {
+        'tenant_wide': set(caller_roles.get(cs.COURSE_ACCESS_ROLES_STAFF_EDITOR, {}).get('tenant_ids_full_access', [])),
+        'course_limited': set(caller_roles.get(cs.COURSE_CREATOR_ROLE_TENANT, {}).get('tenant_ids_full_access', [])),
+    }
+    caller_allowed['course_limited'].update(caller_allowed['tenant_wide'])
+
+    restricted_tenant_ids: set | list = set(tenant_ids).intersection(
+        collect_user_tenant_ids('tenant_ids_full_access')
+    ) - caller_allowed['tenant_wide']
+    if restricted_tenant_ids:
+        restricted_tenant_ids = sorted(list(restricted_tenant_ids))
+        raise FXCodedException(
+            code=FXExceptionCodes.ROLE_DELETE,
+            message=(
+                f'Permission denied: cannot delete roles of user ({username}) from tenants '
+                f'{restricted_tenant_ids}, because the user has a tenant-wide roles there! the caller must have '
+                f'[{cs.COURSE_ACCESS_ROLES_STAFF_EDITOR}] role in the tenant to perform this operation.'
+            ),
+        )
+
+    restricted_tenant_ids = set(tenant_ids).intersection(
+        collect_user_tenant_ids('tenant_ids')
+    ) - caller_allowed['course_limited']
+    if restricted_tenant_ids:
+        restricted_tenant_ids = sorted(list(restricted_tenant_ids))
+        raise FXCodedException(
+            code=FXExceptionCodes.ROLE_DELETE,
+            message=(
+                f'Permission denied: cannot delete roles of user ({username}) from tenants '
+                f'{restricted_tenant_ids}, because the caller has no enough authority there! the caller must have '
+                f'[{cs.COURSE_ACCESS_ROLES_STAFF_EDITOR}] or [{cs.COURSE_CREATOR_ROLE_TENANT}] role in the tenant to '
+                'perform this operation.'
+            ),
+        )
+
+
+def _verify_can_delete_course_access_roles(caller: get_user_model, tenant_ids: list[int], user: get_user_model) -> None:
+    """
+    Verify if the caller can delete the course access roles for the given tenant IDs and user.
+
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
+    :param tenant_ids: The tenant IDs to filter on
+    :type tenant_ids: list
+    :param user: The user to filter on
+    :type user: get_user_model
+    :return: True if the caller can delete the course access roles, False otherwise
+    :rtype: bool
+    """
+    user_roles = get_user_course_access_roles(user.id)['roles']
+
+    _verify_can_delete_course_access_roles_partial(caller, tenant_ids, user_roles, user.username)
+
+
+def _delete_course_access_roles(tenant_ids: list[int], user: get_user_model) -> None:
     """
     Delete the course access roles for the given tenant IDs and user
 
@@ -661,10 +763,8 @@ def delete_course_access_roles(tenant_ids: list[int], user: get_user_model) -> N
 
     delete_count, _ = CourseAccessRole.objects.filter(user=user).filter(
         Q(org__in=orgs) | Q(org=''),
-    ).exclude(
-        role__in=cs.COURSE_ACCESS_ROLES_UNSUPPORTED
-    ).exclude(
-        Q(role__in=cs.COURSE_ACCESS_ROLES_GLOBAL) & Q(org='') & Q(course_id=CourseKeyField.Empty)
+    ).filter(
+        role__in=cs.COURSE_ACCESS_ROLES_SUPPORTED_EDIT
     ).delete()
 
     if not delete_count:
@@ -673,7 +773,25 @@ def delete_course_access_roles(tenant_ids: list[int], user: get_user_model) -> N
             message=f'No role found to delete for the user ({user.username}) within the given tenants {tenant_ids}!',
         )
 
-    CourseCreator.objects.filter(user=user).delete()
+    CourseCreator.objects.filter(user=user, all_organizations=True).delete()
+
+    cache_refresh_course_access_roles(user.id)
+
+
+def delete_course_access_roles(caller: get_user_model, tenant_ids: list[int], user: get_user_model) -> None:
+    """
+    Delete the course access roles for the given tenant IDs and user
+
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
+    :param tenant_ids: The tenant IDs to filter on
+    :type tenant_ids: list
+    :param user: The user to filter on
+    :type user: get_user_model
+    """
+    _verify_can_delete_course_access_roles(caller, tenant_ids, user)
+
+    _delete_course_access_roles(tenant_ids, user)
 
     cache_refresh_course_access_roles(user.id)
 
@@ -719,15 +837,50 @@ def _clean_course_access_roles(redundant_hashes: set[DictHashcode], user: get_us
             ) from exc
 
 
-def add_org_course_creator(user: get_user_model, orgs: list[str]) -> None:
+def _verify_can_add_org_course_creator(caller: get_user_model, orgs: list[str]) -> None:
+    """
+    Verify if the caller can add the course creator role for the given user and orgs.
+
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
+    :param orgs: The orgs to filter on
+    :type orgs: list
+    """
+    if caller.is_staff or caller.is_superuser:
+        return
+
+    caller_roles = get_user_course_access_roles(caller.id)['roles']
+    allowed_tenants = set(caller_roles.get(cs.COURSE_ACCESS_ROLES_STAFF_EDITOR, {}).get('tenant_ids_full_access', []))
+    to_check_tenants = set()
+    for org in orgs:
+        to_check_tenants.update(get_tenants_by_org(org))
+
+    restricted_tenant_ids: set | list = to_check_tenants - allowed_tenants
+    if restricted_tenant_ids:
+        restricted_tenant_ids = sorted(list(restricted_tenant_ids))
+        raise FXCodedException(
+            code=FXExceptionCodes.ROLE_CREATE,
+            message=(
+                f'Permission denied: caller ({caller.username}) does not have enough authority to add course-creator '
+                f'role to other users in tenants {restricted_tenant_ids}. The caller must have '
+                f'[{cs.COURSE_ACCESS_ROLES_STAFF_EDITOR}] role there!'
+            ),
+        )
+
+
+def add_org_course_creator(caller: get_user_model, user: get_user_model, orgs: list[str]) -> None:
     """
     Add the course creator role for the given user and orgs.
 
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
     :param user: The user to add the role for
     :type user: get_user_model
     :param orgs: The orgs to filter on
     :type orgs: list
     """
+    _verify_can_add_org_course_creator(caller, orgs)
+
     cache_refresh_course_access_roles(user.id)
     access_roles = get_user_course_access_roles(user.id)
 
@@ -781,7 +934,73 @@ def add_org_course_creator(user: get_user_model, orgs: list[str]) -> None:
     cache_refresh_course_access_roles(user.id)
 
 
+def _verify_can_add_course_access_roles(
+    caller: get_user_model,
+    course_access_roles: list[CourseAccessRole],
+) -> None:
+    """
+    Verify if the caller can add the course access roles for the given user. This is a helper function for
+    add_course_access_roles that assumes valid inputs.
+
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
+    :param course_access_roles: The course access roles to add
+    :type course_access_roles: list
+    """
+    if caller.is_staff or caller.is_superuser:
+        return
+
+    caller_roles = get_user_course_access_roles(caller.id)['roles']
+    caller_allowed = {
+        'tenant_wide': set(caller_roles.get(cs.COURSE_ACCESS_ROLES_STAFF_EDITOR, {}).get('tenant_ids_full_access', [])),
+        'course_limited': set(caller_roles.get(cs.COURSE_CREATOR_ROLE_TENANT, {}).get('tenant_ids_full_access', [])),
+    }
+    caller_allowed['course_limited'].update(caller_allowed['tenant_wide'])
+
+    for role in course_access_roles:
+        if role.role in cs.COURSE_ACCESS_ROLES_STAFF_EDITOR and (
+            role.course_id is None or role.course_id == CourseKeyField.Empty
+        ):
+            raise FXCodedException(
+                code=FXExceptionCodes.ROLE_CREATE,
+                message=(
+                    f'Permission denied: caller ({caller.username}) does not have enough authority to add tenant-wide '
+                    f'[{cs.COURSE_ACCESS_ROLES_STAFF_EDITOR}] role to other users. The caller must be a system-staff '
+                    f'or superuser to perform this operation.'
+                ),
+            )
+
+        org_tenants = set(get_tenants_by_org(role.org))
+        if role.course_id is None or role.course_id == CourseKeyField.Empty:
+            restricted_tenant_ids: set | list = org_tenants - caller_allowed['tenant_wide']
+            if restricted_tenant_ids:
+                restricted_tenant_ids = sorted(list(restricted_tenant_ids))
+                raise FXCodedException(
+                    code=FXExceptionCodes.ROLE_CREATE,
+                    message=(
+                        f'Permission denied: caller ({caller.username}) does not have enough authority to add '
+                        f'tenant-wide role [{role.role}] to other users in tenants {restricted_tenant_ids}. The '
+                        f'caller must have [{cs.COURSE_ACCESS_ROLES_STAFF_EDITOR}] role to perform this operation.'
+                    ),
+                )
+
+        else:
+            restricted_tenant_ids = org_tenants - caller_allowed['course_limited']
+            if restricted_tenant_ids:
+                restricted_tenant_ids = sorted(list(restricted_tenant_ids))
+                raise FXCodedException(
+                    code=FXExceptionCodes.ROLE_CREATE,
+                    message=(
+                        f'Permission denied: caller ({caller.username}) does not have enough authority to add '
+                        f'[{role.role}] role to other users in tenants {restricted_tenant_ids}. The caller must have '
+                        f'[{cs.COURSE_ACCESS_ROLES_STAFF_EDITOR}] or [{cs.COURSE_CREATOR_ROLE_TENANT}] role to '
+                        'perform this operation.'
+                    ),
+                )
+
+
 def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
+    caller: get_user_model,
     user: get_user_model,
     role: str,
     orgs: list[str],
@@ -793,6 +1012,8 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
     Add the course access roles for the given user. This is a helper function for add_course_access_roles that
     assumes valid inputs.
 
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
     :param user: The user to add the roles for
     :type user: get_user_model
     :param role: The role to add
@@ -868,7 +1089,7 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
         try:
             with transaction.atomic():
                 if role == cs.COURSE_CREATOR_ROLE_TENANT:
-                    add_org_course_creator(user, orgs)
+                    add_org_course_creator(caller, user, orgs)
                 else:
                     bulk_roles = [CourseAccessRole(
                         user=user,
@@ -876,6 +1097,7 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
                         org=new_role['org_lower_case'],
                         course_id=new_role['course_id'],
                     ) for new_role in new_roles]
+                    _verify_can_add_course_access_roles(caller, bulk_roles)
                     CourseAccessRole.objects.bulk_create(bulk_roles)
 
         except DatabaseError as exc:
@@ -890,6 +1112,7 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
 
 
 def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-branches
+    caller: get_user_model,
     tenant_ids: list[int],
     user_keys: list[get_user_model | str | int],
     role: str,
@@ -900,6 +1123,8 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     """
     Add the course access roles for the given tenant IDs and user.
 
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
     :param tenant_ids: The tenant IDs to filter on. If more than one tenant is provided, then tenant_wide must be set
         True, and course_ids must be None or empty list
     :type tenant_ids: list
@@ -947,8 +1172,6 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
 
         course_ids = list(set(course_ids or []))
         orgs_of_courses = get_orgs_of_courses(course_ids)
-        if orgs_of_courses['invalid_course_ids']:
-            raise ValueError(f'Invalid course IDs provided: {orgs_of_courses["invalid_course_ids"]}')
 
         for course_id in course_ids:
             if orgs_of_courses['courses'][course_id] not in orgs:
@@ -982,7 +1205,7 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
 
         try:
             status = _add_course_access_roles_one_user(
-                user_info['user'], role, orgs, course_ids, orgs_of_courses['courses'], dry_run
+                caller, user_info['user'], role, orgs, course_ids, orgs_of_courses['courses'], dry_run
             )
         except Exception as exc:  # pylint: disable=broad-except
             result['failed'].append({
@@ -990,7 +1213,9 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
                 'username': user_info['user'].username,
                 'email': user_info['user'].email,
                 'reason_code': exc.code if isinstance(exc, FXCodedException) else FXExceptionCodes.UNKNOWN_ERROR.value,
-                'reason_message': str(exc),
+                'reason_message': f'{type(exc).__name__}: {str(exc)}' if not (
+                    isinstance(exc, FXCodedException)
+                ) else str(exc),
             })
         else:
             result[status].append(user_key)
@@ -998,14 +1223,149 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     return result
 
 
-def update_course_access_roles(  # pylint: disable=too-many-branches
+def get_tenant_user_roles(tenant_id: int, user_id: int, only_editable_roles: bool = False) -> dict:
+    """
+    Get the tenant user roles.
+
+    :param tenant_id: The tenant ID
+    :type tenant_id: int
+    :param user_id: The user ID
+    :type user_id: int
+    :param only_editable_roles: True to get only editable roles, False otherwise
+    :type only_editable_roles: bool
+    :return: The tenant user roles
+    :rtype: dict
+    """
+    roles = get_user_course_access_roles(user_id)['roles']
+
+    result: dict = {
+        'tenant_id': tenant_id,
+        'tenant_roles': [],
+        'course_roles': {},
+    }
+
+    all_roles = cs.COURSE_ACCESS_ROLES_SUPPORTED_EDIT if only_editable_roles else cs.COURSE_ACCESS_ROLES_SUPPORTED_READ
+    course_ids = set()
+    for role_name, role_info in roles.items():
+        if role_name in all_roles:
+            if role_info['global_role'] or tenant_id in role_info['tenant_ids_full_access']:
+                result['tenant_roles'].append(role_name)
+            course_ids.update(role_info['course_limited_access'])
+
+    org_of_courses = get_orgs_of_courses(list(course_ids))['courses']
+    orgs_of_tenant = get_course_org_filter_list([tenant_id])['course_org_filter_list']
+    for role_name, role_info in roles.items():
+        if role_name in all_roles and role_name not in result['tenant_roles']:
+            for course_id in role_info['course_limited_access']:
+                course_org = org_of_courses[course_id]
+                if course_org in orgs_of_tenant:
+                    if course_id not in result['course_roles']:
+                        result['course_roles'][course_id] = []
+                    result['course_roles'][course_id].append(role_name)
+
+    return result
+
+
+def _clean_course_access_roles_partial(
+    tenant_ids: list[int], user: get_user_model, roles_to_restore: List[CourseAccessRole] | None,
+) -> None:
+    """
+    Clean the course access roles by deleting related records of the given tenant IDs and user. This function
+
+    :param tenant_ids: The tenant IDs to filter on
+    :type tenant_ids: list
+    :param user: The user to filter on
+    :type user: get_user_model
+    :param roles_to_restore: The roles to restore
+    :type roles_to_restore: list | None
+    """
+    _delete_course_access_roles(tenant_ids, user)
+    if roles_to_restore:
+        CourseAccessRole.objects.bulk_create(roles_to_restore)
+
+
+def _group_clean_extract_roles_to_keep(
+    tenant_id: int,
+    cleaned_course_roles: Dict[str, list],
+    user_roles: Dict[str, Any],
+    user: get_user_model,
+    keep_roles: list,
+) -> None:
+    """
+    Helper to process the user roles by:
+    1- Verify that all courses are in the given tenant
+    2- Extract the roles to keep from the user_roles['course_roles'] and append them into the keep_roles list
+    3- Remove the extracted roles from cleaned_course_roles
+    4- Group the course roles by the role name and save that into the user_roles['course_roles']
+
+    :param tenant_id: The tenant ID
+    :type tenant_id: int
+    :param cleaned_course_roles: The cleaned course roles
+    :type cleaned_course_roles: dict
+    :param user_roles: The user roles
+    :type user_roles: dict
+    :param user: The user object
+    :type user: get_user_model
+    :param keep_roles: The roles to keep
+    :type keep_roles: list
+    """
+    all_course_ids = []
+    for role, course_ids in cleaned_course_roles.items():
+        all_course_ids.extend(course_ids)
+    all_course_ids = list(set(all_course_ids))
+    org_of_courses = get_orgs_of_courses(all_course_ids)['courses']
+    invalid_org_of_courses = list(set(org_of_courses.values()) - set(
+        get_course_org_filter_list([tenant_id])['course_org_filter_list']
+    ))
+    if invalid_org_of_courses:
+        raise FXCodedException(
+            code=FXExceptionCodes.ROLE_INVALID_ENTRY,
+            message=(
+                f'Courses are related to organizations that are not in the tenant ({tenant_id})! '
+                f'invalid organizations: {invalid_org_of_courses}'
+            ),
+        )
+
+    grouped_course_roles: Dict[str, List[str]] = {}
+    print('cleaned_course_roles', cleaned_course_roles)
+    for course_id, _course_roles in user_roles['course_roles'].items():
+        print('course_id, _course_roles', course_id, _course_roles)
+        for role in _course_roles:
+            print('role', role)
+            if course_id in cleaned_course_roles.get(role, []):
+                print('role in cleaned_course_roles and course_id in cleaned_course_roles[role]')
+                keep_roles.append(CourseAccessRole(
+                    user=user,
+                    role=role,
+                    org=org_of_courses[course_id],
+                    course_id=course_id,
+                ))
+                print('cleaned_course_roles[role]', cleaned_course_roles[role])
+                cleaned_course_roles[role].remove(course_id)
+                print('cleaned_course_roles[role]', cleaned_course_roles[role])
+                if not cleaned_course_roles[role]:
+                    print('del cleaned_course_roles[role]')
+                    del cleaned_course_roles[role]
+            else:
+                print('role not in cleaned_course_roles or course_id not in cleaned_course_roles[role]')
+                if role not in grouped_course_roles:
+                    grouped_course_roles[role] = []
+                grouped_course_roles[role].append(course_id)
+
+    user_roles['course_roles'] = grouped_course_roles
+
+
+def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-statements, too-many-locals
+    caller: get_user_model,
     user: get_user_model,
     new_roles_details: Dict[str, Any],
     dry_run: bool = False
 ) -> Dict[str, str | None]:
     """
-    Update the course access roles for the given tenant ID and user.
+    Update the course access roles for the given tenant ID and user. And returns error details if any.
 
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
     :param user: The user to update the roles for
     :type user: get_user_model
     :param new_roles_details: The new roles details
@@ -1027,32 +1387,52 @@ def update_course_access_roles(  # pylint: disable=too-many-branches
 
         if not isinstance(tenant_roles, list) or not all(isinstance(role, str) for role in tenant_roles):
             raise ValueError('tenant_roles must be a list of strings, or an empty list')
+        tenant_roles = list(set(tenant_roles))
 
         if not isinstance(course_roles, dict):
             raise ValueError('course_roles must be a dictionary of (roles: course_ids)')
         for course_id, roles in course_roles.items():
             if not isinstance(roles, list) or not all(isinstance(role, str) for role in roles):
                 raise ValueError('roles of courses must be a list of strings')
+            course_roles[course_id] = list(set(roles))
 
-        grouped_roles: Dict[str, list] = {}
+        cleaned_course_roles: Dict[str, list] = {}
         for course_id, roles in course_roles.items():
             for role in roles:
                 if role in tenant_roles:
                     continue
-                if role not in grouped_roles:
-                    grouped_roles[role] = []
-                grouped_roles[role].append(course_id)
+                if role not in cleaned_course_roles:
+                    cleaned_course_roles[role] = []
+                cleaned_course_roles[role].append(course_id)
 
-        if not grouped_roles and not tenant_roles:
+        if not cleaned_course_roles and not tenant_roles:
             raise ValueError('Cannot use empty data in roles update! use delete instead')
+
+        user_roles = get_tenant_user_roles(tenant_id, user.id, only_editable_roles=True)
+        keep_roles: List[str] = []
+        _group_clean_extract_roles_to_keep(tenant_id, cleaned_course_roles, user_roles, user, keep_roles)
+
+        tenant_orgs = get_course_org_filter_list([tenant_id])['course_org_filter_list']
+        for role in set(user_roles['tenant_roles']).intersection(set(tenant_roles)):
+            for org in tenant_orgs:
+                keep_roles.append(CourseAccessRole(
+                    user=user,
+                    role=role,
+                    org=org,
+                    course_id=CourseKeyField.Empty,
+                ))
+        _temp: set | Dict[str, Any] = set(user_roles['tenant_roles']) - set(tenant_roles)
+        tenant_roles = list(set(tenant_roles) - set(user_roles['tenant_roles']))
+        user_roles['tenant_roles'] = list(_temp)
 
         if not dry_run:
             with transaction.atomic():
-                tenant_roles = list(set(tenant_roles))
-                delete_course_access_roles([tenant_id], user)
+                _verify_can_delete_course_access_roles_partial(caller, [tenant_id], user_roles, user.username)
+                _clean_course_access_roles_partial([tenant_id], user, keep_roles)
 
                 for role in tenant_roles:
                     result = add_course_access_roles(
+                        caller=caller,
                         tenant_ids=[tenant_id],
                         user_keys=[user],
                         role=role,
@@ -1064,9 +1444,9 @@ def update_course_access_roles(  # pylint: disable=too-many-branches
                         break
 
                 if not result['failed']:
-                    for role, course_ids in grouped_roles.items():
-                        course_ids = list(set(course_ids))
+                    for role, course_ids in cleaned_course_roles.items():
                         result = add_course_access_roles(
+                            caller=caller,
                             tenant_ids=[tenant_id],
                             user_keys=[user],
                             role=role,
@@ -1083,10 +1463,16 @@ def update_course_access_roles(  # pylint: disable=too-many-branches
             'reason_message': str(exc),
         })
 
+    except FXCodedException as exc:
+        result['failed'].append({
+            'reason_code': exc.code,
+            'reason_message': f'{type(exc).__name__}: {str(exc)}',
+        })
+
     except Exception as exc:  # pylint: disable=broad-except
         result['failed'].append({
             'reason_code': FXExceptionCodes.UNKNOWN_ERROR.value,
-            'reason_message': str(exc),
+            'reason_message': f'{type(exc).__name__}: {str(exc)}',
         })
 
     if result['failed']:

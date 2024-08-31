@@ -130,16 +130,22 @@ def get_orgs_of_courses(course_ids: List[str]) -> Dict[str, Any]:
     """
     Get the organization of the courses with the given course IDs.
 
+
     :param course_ids: List of course IDs to get the organization of.
     :type course_ids: List[str]
     :return: Dictionary containing the organization of each course ID.
     :rtype: Dict[str, Any]
     """
     verify_course_ids(course_ids)
+
     courses = CourseOverview.objects.filter(id__in=course_ids)
 
     result: Dict[str, Any] = {
-        'courses': {str(courses.id): courses.org.lower() for courses in courses},
+        'courses': {str(course.id): course.org.lower() for course in courses},
     }
-    result['invalid_course_ids'] = [course_id for course_id in course_ids if course_id not in result['courses']]
+
+    invalid_course_ids = [course_id for course_id in course_ids if course_id not in result['courses']]
+    if invalid_course_ids:
+        raise ValueError(f'Invalid course IDs provided: {invalid_course_ids}')
+
     return result

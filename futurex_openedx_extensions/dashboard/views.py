@@ -460,6 +460,7 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
                 )
 
             result = add_course_access_roles(
+                caller=self.fx_permission_info['user'],
                 tenant_ids=data['tenant_ids'],
                 user_keys=data['users'],
                 role=data['role'],
@@ -500,6 +501,7 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
             return user_info
 
         result = update_course_access_roles(
+            caller=self.fx_permission_info['user'],
             user=user_info['user'],
             new_roles_details=request.data or {},
             dry_run=False,
@@ -530,6 +532,7 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
 
         try:
             delete_course_access_roles(
+                caller=self.fx_permission_info['user'],
                 tenant_ids=self.fx_permission_info['permitted_tenant_ids'],
                 user=user_info['user'],
             )
