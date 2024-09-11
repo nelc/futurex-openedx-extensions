@@ -191,12 +191,10 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
                         assert 0 < _tenant_id < 9, f'Bad tenant_id in enrollment testing data for org: {org}'
                         if _tenant_id == 6:
                             continue
-                        _site = _base_data['routes'][_tenant_id]['domain']
-                        if _site:
-                            UserSignupSource.objects.get_or_create(
-                                site=_site,
-                                user_id=user_id,
-                            )
+                        UserSignupSource.objects.get_or_create(
+                            site=_base_data['routes'][_tenant_id]['domain'],
+                            user_id=user_id,
+                        )
 
     def _create_certificates():
         """Create certificates."""

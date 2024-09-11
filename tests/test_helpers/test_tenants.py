@@ -2,7 +2,7 @@
 from unittest.mock import patch
 
 import pytest
-from common.djangoapps.student.models import CourseEnrollment, UserSignupSource
+from common.djangoapps.student.models import UserSignupSource
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import override_settings
@@ -10,6 +10,7 @@ from eox_tenant.models import TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
+from tests.base_test_data import _base_data
 
 
 @pytest.mark.django_db
@@ -278,55 +279,32 @@ def test_get_user_id_from_username_tenants_bad_tenant(base_data, tenant_ids):  #
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('username, tenant_ids, orgs, sites, is_enrolled, is_signup', [
-    ('user15', [1], ['org1', 'org2'], ['s1.sample.com'], True, False),
-    ('user50', [7], ['org3'], ['s7.sample.com'], False, True),
-    ('user4', [1], ['org1', 'org2'], ['s1.sample.com'], True, True),
+@pytest.mark.parametrize('username, tenant_ids, expected_result', [
+    ('user55', [1], 0),
+    ('user55', [8], 55),
+    ('user55', [1, 8], 55),
+    ('user50', [7], 50),
+    ('user4', [1], 4),
 ])
 def test_get_user_id_from_username_tenants(
-    base_data, username, tenant_ids, orgs, sites, is_enrolled, is_signup
-):  # pylint: disable=unused-argument, too-many-arguments
+    base_data, username, tenant_ids, expected_result,
+):  # pylint: disable=unused-argument
     """
     Verify get_user_id_from_username_tenants function returns the expected result according
     to course enrollment and signup source.
     """
     assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
 
-    enrollment_qs = CourseEnrollment.objects.filter(
-        user__username=username,
-        course__org__in=orgs,
-    )
     signup_qs = UserSignupSource.objects.filter(
         user__username=username,
-        site__in=sites,
+        site__in=[_base_data['routes'][tenant_id]['domain'] for tenant_id in tenant_ids],
     )
-    assert enrollment_qs.exists() is is_enrolled, 'test data is not as expected'
-    assert signup_qs.exists() is is_signup, 'test data is not as expected'
+    assert signup_qs.exists() is (expected_result != 0), 'test data is not as expected'
 
-    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])
+    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == expected_result
 
-    enrollment_qs.delete()
     signup_qs.delete()
     assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == 0
-
-
-@pytest.mark.django_db
-def test_get_user_id_from_username_tenants_inactive_enrollment(base_data):  # pylint: disable=unused-argument
-    """Verify get_user_id_from_username_tenants function for inactive enrollment."""
-    username = 'user15'
-    tenant_ids = [1]
-    assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
-    assert not UserSignupSource.objects.filter(
-        user__username=username,
-        site__in=['s1.sample.com'],
-    ).exists(), 'test data is not as expected'
-
-    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])
-    CourseEnrollment.objects.filter(
-        user__username=username,
-        course__org__in=['org1', 'org2'],
-    ).update(is_active=False)
-    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == int(username[len('user'):])
 
 
 @pytest.mark.parametrize('lms_root_scheme, domain_name, expected_result', [
