@@ -1401,7 +1401,14 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
         if not cleaned_course_roles and not tenant_roles:
             raise ValueError('Cannot use empty data in roles update! use delete instead')
 
+        cache_refresh_course_access_roles(user.id)
         user_roles = get_tenant_user_roles(tenant_id, user.id, only_editable_roles=True)
+        if not user_roles['tenant_roles'] and not user_roles['course_roles']:
+            raise FXCodedException(
+                code=FXExceptionCodes.ROLE_UPDATE,
+                message=f'No roles found to update for user ({user.username}) in tenant ({tenant_id})!',
+            )
+
         keep_roles: List[str] = []
         _group_clean_extract_roles_to_keep(tenant_id, cleaned_course_roles, user_roles, user, keep_roles)
 
@@ -1459,7 +1466,7 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
     except FXCodedException as exc:
         result['failed'].append({
             'reason_code': exc.code,
-            'reason_message': f'{type(exc).__name__}: {str(exc)}',
+            'reason_message': str(exc),
         })
 
     except Exception as exc:  # pylint: disable=broad-except

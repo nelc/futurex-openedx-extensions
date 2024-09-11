@@ -1643,6 +1643,18 @@ def test_update_course_access_roles_empty(empty_data):
 
 
 @pytest.mark.django_db
+def test_update_course_access_existing_roles_empty(base_data):  # pylint: disable=unused-argument
+    """Verify that update_course_access_roles returns an error when no roles already exist for the user."""
+    CourseAccessRole.objects.filter(user__username='user11').delete()
+
+    result = _run_update_roles({}, assert_not_failed=False)
+    assert result == {
+        'error_code': FXExceptionCodes.ROLE_UPDATE.value,
+        'error_message': 'No roles found to update for user (user11) in tenant (2)!',
+    }
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize('test_data_update', [
     {'tenant_roles': [cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE[0]], 'course_roles': {}},
     {'course_roles': {'course-v1:ORG3+2+2': [cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE[0]]}},
@@ -1694,10 +1706,11 @@ def test_update_course_access_roles_dry_run(
     mock_verify_can_delete.assert_not_called()
     mock_clean.assert_not_called()
     mock_add.assert_not_called()
-    mock_cache_refresh.assert_not_called()
+    mock_cache_refresh.assert_called_once()
 
     assert result['error_code'] is None
 
+    mock_cache_refresh.reset_mock()
     result = _run_update_roles({})
     mock_verify_can_delete.assert_called_once_with(
         None,
@@ -1712,7 +1725,7 @@ def test_update_course_access_roles_dry_run(
     assert mock_clean.call_args_list[0][0][2][0].org == 'org3'
     assert mock_clean.call_args_list[0][0][2][0].course_id == CourseKey.from_string('course-v1:ORG3+2+2')
     mock_add.assert_not_called()
-    mock_cache_refresh.assert_called_once()
+    assert mock_cache_refresh.call_count == 2
     assert result['error_code'] is None
 
 
@@ -1728,7 +1741,7 @@ def test_update_course_access_course_roles_invalid_courses(
         }
     }, assert_not_failed=False)
     assert result['error_message'] == (
-        'FXCodedException: Courses are related to organizations that are not in the tenant (2)! '
+        'Courses are related to organizations that are not in the tenant (2)! '
         'invalid organizations: [\'org1\']'
     )
     assert result['error_code'] == FXExceptionCodes.ROLE_INVALID_ENTRY.value
