@@ -12,7 +12,7 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from tests.base_test_data import _base_data
-from tests.fixture_helpers import get_user1_fx_permission_info
+from tests.fixture_helpers import get_tenants_of_org, get_user1_fx_permission_info
 
 
 @pytest.fixture
@@ -53,6 +53,7 @@ def roles_authorize_caller():
 def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-argument, too-many-statements
     """Create base data for tests."""
     def _get_course_id(org, course_index):
+        """Get course ID."""
         return f'course-v1:{org}+{course_index}+{course_index}'
 
     def _create_users():
@@ -186,6 +187,16 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
                         course_id=course_id,
                         is_active=True,
                     )
+                    for _tenant_id in get_tenants_of_org(org, _base_data['tenant_config']):
+                        assert 0 < _tenant_id < 9, f'Bad tenant_id in enrollment testing data for org: {org}'
+                        if _tenant_id == 6:
+                            continue
+                        _site = _base_data['routes'][_tenant_id]['domain']
+                        if _site:
+                            UserSignupSource.objects.get_or_create(
+                                site=_site,
+                                user_id=user_id,
+                            )
 
     def _create_certificates():
         """Create certificates."""

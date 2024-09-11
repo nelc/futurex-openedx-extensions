@@ -41,6 +41,20 @@ def get_tenants_orgs(tenant_id):
     return list(result)
 
 
+def get_tenants_of_org(org, base_data_tenant_config):
+    """Get tenants of an organization."""
+    result = set()
+    for tenant_id, tenant_info in base_data_tenant_config.items():
+        if isinstance(tenant_info['lms_configs']['course_org_filter'], str):
+            _course_org_filter = [tenant_info['lms_configs']['course_org_filter']]
+        else:
+            _course_org_filter = tenant_info['lms_configs']['course_org_filter']
+        for _org in _course_org_filter:
+            if _org.lower() == org.lower():
+                result.add(tenant_id)
+    return list(result)
+
+
 def set_user(request, user_id=1):
     """Set user for request."""
     if user_id is None:

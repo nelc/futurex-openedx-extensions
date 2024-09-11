@@ -151,8 +151,8 @@ def test_get_learners_search_queryset_active_filter(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('tenant_ids, expected_count', [
-    ([7, 8], 23),
-    ([7], 18),
+    ([7, 8], 26),
+    ([7], 20),
     ([4], 0),
 ])
 def test_get_learners_queryset(

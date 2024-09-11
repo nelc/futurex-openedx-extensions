@@ -101,11 +101,9 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         return sum(org_count['courses_count'] for org_count in collector_result)
 
     @staticmethod
-    def _get_learners_count_data(one_tenant_permission_info: dict, tenant_id: int, include_staff: bool) -> int:
+    def _get_learners_count_data(one_tenant_permission_info: dict, include_staff: bool) -> int:
         """Get the count of learners for the given tenant"""
-        collector_result = get_learners_count(one_tenant_permission_info, include_staff=include_staff)
-        return collector_result[tenant_id]['learners_count'] + \
-            collector_result[tenant_id]['learners_count_no_enrollment']
+        return get_learners_count(one_tenant_permission_info, include_staff=include_staff)
 
     def _get_stat_count(self, stat: str, tenant_id: int, include_staff: bool) -> int:
         """Get the count of the given stat for the given tenant"""
@@ -119,7 +117,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         if stat == self.STAT_HIDDEN_COURSES:
             return self._get_courses_count_data(one_tenant_permission_info, visible_filter=False)
 
-        return self._get_learners_count_data(one_tenant_permission_info, tenant_id, include_staff)
+        return self._get_learners_count_data(one_tenant_permission_info, include_staff)
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
         """
