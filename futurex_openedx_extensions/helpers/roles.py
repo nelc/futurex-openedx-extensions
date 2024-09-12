@@ -773,7 +773,7 @@ def _delete_course_access_roles(tenant_ids: list[int], user: get_user_model) -> 
             message=f'No role found to delete for the user ({user.username}) within the given tenants {tenant_ids}!',
         )
 
-    CourseCreator.objects.filter(user=user, all_organizations=True).delete()
+    remove_orgs_from_course_creator(user.id, orgs)
 
     cache_refresh_course_access_roles(user.id)
 
@@ -898,6 +898,35 @@ def add_orgs_to_course_creator_record(course_creator: CourseCreator, orgs: list[
     ])
 
 
+def remove_orgs_from_course_creator(user_id: int, orgs: list[str], delete_on_empty: bool = True) -> None:
+    """
+    Remove the orgs from the course creator record. Doing that through the many-to-many relationship to avoid
+    triggering signals of the CourseCreator model.
+
+    :param user_id: The user ID
+    :type user_id: int
+    :param orgs: The orgs to remove
+    :type orgs: list
+    :param delete_on_empty: True to delete the record if empty, False otherwise
+    :type delete_on_empty: bool
+    """
+    orgs = [org.lower() for org in orgs]
+    user = get_user_model().objects.get(id=user_id)
+    course_creator_qs = CourseCreator.objects.filter(user=user, all_organizations=False)
+    course_creator = course_creator_qs.first()
+    if not course_creator:
+        return
+
+    organizations_many_to_many = CourseCreator.organizations.through
+    organizations_many_to_many.objects.filter(
+        coursecreator_id=course_creator.id,
+        organization__short_name__in=orgs,
+    ).delete()
+
+    if delete_on_empty and not course_creator.organizations.exists():
+        course_creator_qs.delete()
+
+
 def add_org_course_creator(caller: get_user_model, user: get_user_model, orgs: list[str]) -> None:
     """
     Add the course creator role for the given user and orgs.
@@ -909,6 +938,9 @@ def add_org_course_creator(caller: get_user_model, user: get_user_model, orgs: l
     :param orgs: The orgs to filter on
     :type orgs: list
     """
+    if not orgs:
+        return
+
     orgs = [org.lower() for org in orgs]
     _verify_can_add_org_course_creator(caller, orgs)
 
@@ -1291,11 +1323,16 @@ def get_tenant_user_roles(tenant_id: int, user_id: int, only_editable_roles: boo
 
 
 def _clean_course_access_roles_partial(
-    tenant_ids: list[int], user: get_user_model, roles_to_restore: List[CourseAccessRole] | None,
+    caller: get_user_model,
+    user: get_user_model,
+    tenant_ids: list[int],
+    roles_to_restore: List[CourseAccessRole] | None,
 ) -> None:
     """
     Clean the course access roles by deleting related records of the given tenant IDs and user. This function
 
+    :param caller: The caller user to check the authority
+    :type caller: get_user_model
     :param tenant_ids: The tenant IDs to filter on
     :type tenant_ids: list
     :param user: The user to filter on
@@ -1304,8 +1341,16 @@ def _clean_course_access_roles_partial(
     :type roles_to_restore: list | None
     """
     _delete_course_access_roles(tenant_ids, user)
-    if roles_to_restore:
-        CourseAccessRole.objects.bulk_create(roles_to_restore)
+    if not roles_to_restore:
+        return
+
+    CourseAccessRole.objects.bulk_create(roles_to_restore)
+    creator_orgs = []
+    for role in roles_to_restore:
+        if role.role == cs.COURSE_CREATOR_ROLE_TENANT:
+            creator_orgs.append(role.org)
+
+    add_org_course_creator(caller, user, creator_orgs)
 
 
 def _group_clean_extract_roles_to_keep(
@@ -1452,7 +1497,7 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
         if not dry_run:
             with transaction.atomic():
                 _verify_can_delete_course_access_roles_partial(caller, [tenant_id], user_roles, user.username)
-                _clean_course_access_roles_partial([tenant_id], user, keep_roles)
+                _clean_course_access_roles_partial(caller, user, [tenant_id], keep_roles)
 
                 for role in tenant_roles:
                     result = add_course_access_roles(

@@ -44,6 +44,7 @@ from futurex_openedx_extensions.helpers.roles import (
     get_usernames_with_access_roles,
     is_view_exist,
     is_view_support_write,
+    remove_orgs_from_course_creator,
     update_course_access_roles,
     validate_course_access_role,
 )
@@ -1196,6 +1197,28 @@ def test_delete_course_access_roles(roles_authorize_caller, base_data):  # pylin
 
 
 @pytest.mark.django_db
+def test_delete_course_access_roles_course_creator(
+    roles_authorize_caller, base_data,
+):  # pylint: disable=unused-argument
+    """Verify that delete_course_access_roles deleted tenant creators, but not global creators."""
+    user70 = get_user_model().objects.get(username='user70')
+    CourseAccessRole.objects.create(
+        user=user70, org='org1', role=cs.COURSE_CREATOR_ROLE_TENANT, course_id=CourseKeyField.Empty,
+    )
+    CourseCreator.objects.bulk_create([
+        CourseCreator(user=user70, all_organizations=False),
+    ])
+    creator = CourseCreator.objects.get(user=user70)
+    for org in ['org1', 'org2', 'org3']:
+        _add_clear_org_to_course_creator(creator, Organization.objects.create(short_name=org))
+
+    assert creator.organizations.all().count() == 3
+    delete_course_access_roles(None, [1], user70)
+    assert creator.organizations.all().count() == 1
+    assert creator.organizations.all()[0].short_name == 'org3'
+
+
+@pytest.mark.django_db
 def test_delete_course_access_roles_nothing_to_delete(
     roles_authorize_caller, base_data,
 ):  # pylint: disable=unused-argument
@@ -1786,11 +1809,12 @@ def test_update_course_access_roles_dry_run(
         user.username
     )
     mock_clean.assert_called_once()
-    assert mock_clean.call_args_list[0][0][0] == [2]
+    assert mock_clean.call_args_list[0][0][0] is None
     assert mock_clean.call_args_list[0][0][1] == user
-    assert mock_clean.call_args_list[0][0][2][0].role == 'instructor'
-    assert mock_clean.call_args_list[0][0][2][0].org == 'org3'
-    assert mock_clean.call_args_list[0][0][2][0].course_id == CourseKey.from_string('course-v1:ORG3+2+2')
+    assert mock_clean.call_args_list[0][0][2] == [2]
+    assert mock_clean.call_args_list[0][0][3][0].role == 'instructor'
+    assert mock_clean.call_args_list[0][0][3][0].org == 'org3'
+    assert mock_clean.call_args_list[0][0][3][0].course_id == CourseKey.from_string('course-v1:ORG3+2+2')
     mock_add.assert_not_called()
     assert mock_cache_refresh.call_count == 2
     assert result['error_code'] is None
@@ -2334,33 +2358,44 @@ def test_get_tenant_user_roles_editable_only(base_data):  # pylint: disable=unus
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.roles.CourseAccessRole.objects.bulk_create')
 @patch('futurex_openedx_extensions.helpers.roles._delete_course_access_roles')
-def test_clean_course_access_roles_partial(mock_delete, mock_create, base_data):  # pylint: disable=unused-argument
+def test_clean_course_access_roles_partial(
+    mock_delete, mock_create, roles_authorize_caller, base_data,
+):  # pylint: disable=unused-argument
     """Verify that _clean_course_access_roles_partial returns the expected result."""
-    user = get_user_model().objects.get(username='user3')
+    user = get_user_model().objects.get(username='user70')
     tenant_ids = [1, 2]
-    roles_to_keep = ['list', 'of', 'CourseAccessRole', 'objects']
+    roles_to_keep = []
+    for org in ['org1', 'org2']:
+        roles_to_keep.append(CourseAccessRole(user=user, role='staff', org=org))
+        roles_to_keep.append(CourseAccessRole(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, org=org))
+        Organization.objects.create(short_name=org)
 
-    _clean_course_access_roles_partial(tenant_ids, user, None)
+    _clean_course_access_roles_partial(None, user, tenant_ids, None)
     mock_delete.assert_called_once_with(tenant_ids, user)
     mock_create.assert_not_called()
 
     mock_delete.reset_mock()
     mock_create.reset_mock()
-    _clean_course_access_roles_partial(tenant_ids, user, roles_to_keep)
+    _clean_course_access_roles_partial(None, user, tenant_ids, roles_to_keep)
     mock_delete.assert_called_once_with(tenant_ids, user)
-    mock_create.assert_called_once_with(roles_to_keep)
+    assert mock_create.call_count == 2
 
 
-@pytest.mark.django_db
-def test_add_orgs_to_course_creator_record():
-    """Verify that add_orgs_to_course_creator_record adds the organizations to the course creator record."""
+@pytest.fixture
+def empty_course_creator():
+    """Create a CourseCreator record for user 33 with no organizations."""
     CourseCreator.objects.bulk_create([CourseCreator(
         user_id=33, all_organizations=False, state=CourseCreator.GRANTED,
     )])
-    empty_course_creator = CourseCreator.objects.get(user_id=33)
     for org_index in range(1, 5):
         org_name = f'org{org_index}'
         Organization.objects.create(name=org_name, description=org_name, short_name=org_name)
+    return CourseCreator.objects.get(user_id=33)
+
+
+@pytest.mark.django_db
+def test_add_orgs_to_course_creator_record(empty_course_creator):  # pylint: disable=redefined-outer-name
+    """Verify that add_orgs_to_course_creator_record adds the organizations to the course creator record."""
 
     add_orgs_to_course_creator_record(empty_course_creator, ['org1', 'org2'])
     assert empty_course_creator.organizations.count() == 2
@@ -2373,3 +2408,36 @@ def test_add_orgs_to_course_creator_record():
     add_orgs_to_course_creator_record(empty_course_creator, [])
     assert empty_course_creator.organizations.count() == 3
     assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org1', 'org2', 'org3'}
+
+
+@pytest.mark.django_db
+def test_remove_orgs_from_course_creator(empty_course_creator):  # pylint: disable=redefined-outer-name
+    """Verify that remove_orgs_from_course_creator removes the organizations from the course creator record."""
+    user_id = 33
+    add_orgs_to_course_creator_record(empty_course_creator, ['org1', 'org2', 'org3', 'org4'])
+
+    remove_orgs_from_course_creator(user_id, ['org1', 'org2', 'invalid_org'])
+    assert empty_course_creator.organizations.count() == 2
+    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org3', 'org4'}
+
+    remove_orgs_from_course_creator(user_id, ['org1', 'org3'])
+    assert empty_course_creator.organizations.count() == 1
+    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org4'}
+
+    remove_orgs_from_course_creator(user_id, [])
+    assert empty_course_creator.organizations.count() == 1
+    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org4'}
+
+    remove_orgs_from_course_creator(user_id, ['org4'], delete_on_empty=False)
+    assert CourseCreator.objects.filter(user_id=33).exists()
+    assert empty_course_creator.organizations.count() == 0
+
+    remove_orgs_from_course_creator(user_id, [], delete_on_empty=False)
+    assert CourseCreator.objects.filter(user_id=33).exists()
+    assert empty_course_creator.organizations.count() == 0
+
+    remove_orgs_from_course_creator(user_id, [])
+    assert not CourseCreator.objects.filter(user_id=33).exists()
+
+    remove_orgs_from_course_creator(user_id, ['org1'])
+    assert not CourseCreator.objects.filter(user_id=33).exists()
