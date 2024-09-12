@@ -1155,6 +1155,9 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
         if role in cs.COURSE_ACCESS_ROLES_TENANT_ONLY and not tenant_wide:
             raise ValueError(f'Role ({role}) can only be tenant-wide!')
 
+        if role in cs.COURSE_ACCESS_ROLES_COURSE_ONLY and tenant_wide:
+            raise ValueError(f'Role ({role}) can not be tenant-wide!')
+
         if (tenant_wide and course_ids) or (not tenant_wide and not course_ids):
             raise ValueError('Conflict between tenant_wide and course_ids')
 

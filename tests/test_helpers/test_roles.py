@@ -1313,6 +1313,21 @@ def test_add_course_access_roles_no_user_list(
 
 
 @pytest.mark.django_db
+def test_add_course_access_roles_only_course_roles(roles_authorize_caller):  # pylint: disable=unused-argument
+    """Verify that add_course_access_roles raises an error when trying to add an only-course-role as tenant-wide"""
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles(
+            caller=None,
+            tenant_ids=[1],
+            user_keys=['user3'],
+            role=cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0],
+            tenant_wide=True,
+            course_ids=[],
+        )
+    assert str(exc_info.value) == f'Role ({cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0]}) can not be tenant-wide!'
+
+
+@pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.roles.cache_refresh_course_access_roles')
 def test_add_course_access_roles_dry_run(
     mock_cache_refresh, roles_authorize_caller, base_data
