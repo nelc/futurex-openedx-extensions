@@ -1467,6 +1467,38 @@ def test_add_course_access_roles_data_cleaning(
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.users.get_user_by_username_or_email')
+def test_add_course_access_roles_success_new_tenant_role_with_existing_course_role(
+    mocked_get_user, roles_authorize_caller, base_data
+):  # pylint: disable=unused-argument
+    """
+    Verify that add_course_access_roles removes the existing course role when adding the same role as tenant-wide.
+    """
+    user = get_user_model().objects.get(username='user66')
+    assert CourseAccessRole.objects.filter(user=user).count() == 0, 'Bad test data'
+    role = cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE[0]
+    CourseAccessRole.objects.create(
+        user=user, org='org1', role=role, course_id='course-v1:ORG1+3+3',
+    )
+
+    mocked_get_user.return_value = user
+    result = add_course_access_roles(
+        caller=None, tenant_ids=[1], user_keys=[user], role=role, tenant_wide=True, course_ids=[],
+    )
+    assert result == {
+        'failed': [],
+        'added': [],
+        'updated': [user.id],
+        'not_updated': [],
+    }
+    tenant_1_org_count = 2
+    assert CourseAccessRole.objects.filter(
+        user=user, role=role, course_id=CourseKeyField.Empty,
+    ).count() == tenant_1_org_count
+    assert CourseAccessRole.objects.filter(user=user, role=role).exclude(course_id=CourseKeyField.Empty).count() == 0
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.users.get_user_by_username_or_email')
 @patch('futurex_openedx_extensions.helpers.roles.CourseAccessRole.objects.bulk_create')
 def test_add_course_access_roles_bulk_create_failed(
     mock_bulk_create, mocked_get_user, roles_authorize_caller, base_data,

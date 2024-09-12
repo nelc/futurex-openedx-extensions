@@ -1063,6 +1063,9 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
             {'role': role, 'org_lower_case': orgs_of_courses[course_id], 'course_id': ''},
         ) not in existing_roles_hash]
     else:
+        for item in list(clean_existing_roles_hash.dict_hash_codes):
+            if item.dict_item['course_id'] is not None and item.dict_item['role'] == role:
+                clean_existing_roles_hash.dict_hash_codes.remove(item)
         new_roles = [{
             'role': role,
             'org_lower_case': org.lower(),
