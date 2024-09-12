@@ -2,7 +2,7 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models.fields import AutoField
-from django.db.models.signals import post_save
+from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from opaque_keys.edx.django.models import CourseKeyField, LearningContextKeyField, UsageKeyField
 from organizations.models import Organization
@@ -241,10 +241,22 @@ class CourseCreator(models.Model):
 
 
 @receiver(post_save, sender=CourseCreator)
-def post_save_never_user_create_or_save(sender, **kwargs):
+def post_save_never_use_create_or_save(sender, **kwargs):
     """Mock"""
     raise ValueError(
         'This exception means that you have used `create` or `save` methods of the CourseCreator model. '
         'These methods trigger signals in CMS which is outside the scope of the Dashboard. Please use our '
         'add_org_course_creator function instead. It will use bulk_create to avoid triggering signals.'
+    )
+
+
+@receiver(m2m_changed, sender=CourseCreator.organizations.through)
+def m2m_changed_never_use_set_add_remove_or_clear(sender, **kwargs):
+    """Mock"""
+    raise ValueError(
+        'This exception means that you have used `set`, `add`, remove` or `clear` methods of '
+        'CourseCreator.organizations. These methods trigger signals in CMS which is outside the scope of the '
+        'Dashboard. Please use our add_orgs_to_course_creator_record function instead. It will use bulk_create '
+        'to avoid triggering signals. You cal also use add_clear_org_to_course_creator in tests which will '
+        'temporarily disable the signal.'
     )

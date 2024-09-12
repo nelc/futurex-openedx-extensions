@@ -9,6 +9,8 @@ from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import DatabaseError
+from django.db.models.signals import m2m_changed
+from fake_models.models import m2m_changed_never_use_set_add_remove_or_clear as my_signal_handler
 from opaque_keys.edx.django.models import CourseKeyField
 from opaque_keys.edx.keys import CourseKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
@@ -29,6 +31,7 @@ from futurex_openedx_extensions.helpers.roles import (
     _verify_can_delete_course_access_roles,
     add_course_access_roles,
     add_org_course_creator,
+    add_orgs_to_course_creator_record,
     cache_name_user_course_access_roles,
     cache_refresh_course_access_roles,
     check_tenant_access,
@@ -140,6 +143,19 @@ def test_validate_course_access_role_invalid(update_course_access_role, error_ms
     assert str(exc_info.value) == f'Invalid course access role: {error_msg} (id: 99)'
 
 
+def _add_clear_org_to_course_creator(course_creator, org_instance=None):
+    """
+    Helper to add orgs or clear all orgs to the course-creator record. When org_instance is None, all orgs are cleared.
+    Otherwise, org_instance is added to the course-creator record.
+    """
+    m2m_changed.disconnect(receiver=my_signal_handler, sender=CourseCreator.organizations.through)
+    if org_instance:
+        course_creator.organizations.add(org_instance)
+    else:
+        course_creator.organizations.clear()
+    m2m_changed.connect(receiver=my_signal_handler, sender=CourseCreator.organizations.through)
+
+
 def _initialize_creator_role_test(role, org, all_organizations):
     """Helper function to initialize the tests for course-creator roles."""
     course_access_role = {
@@ -155,7 +171,9 @@ def _initialize_creator_role_test(role, org, all_organizations):
     )])
     creator = CourseCreator.objects.get(user_id=33)
     if not all_organizations:
-        creator.organizations.add(Organization.objects.create(name=org, description=org, short_name=org))
+        _add_clear_org_to_course_creator(
+            creator, Organization.objects.create(name=org, description=org, short_name=org),
+        )
     with pytest.raises(FXCodedException) as exc_info:
         validate_course_access_role(course_access_role)
     assert exc_info.value.code == FXExceptionCodes.ROLE_INACTIVE.value
@@ -184,7 +202,9 @@ def test_validate_course_access_role_invalid_creator_role_global(base_data):  # 
     assert exc_info.value.code == FXExceptionCodes.ROLE_INVALID_ENTRY.value
     assert str(exc_info.value) == expected_error_msg
 
-    creator.organizations.add(Organization.objects.create(name='org1', description='org1', short_name='org1'))
+    _add_clear_org_to_course_creator(
+        creator, Organization.objects.create(name='org1', description='org1', short_name='org1'),
+    )
     with pytest.raises(FXCodedException) as exc_info:
         validate_course_access_role(course_access_role)
     assert exc_info.value.code == FXExceptionCodes.ROLE_INVALID_ENTRY.value
@@ -207,9 +227,9 @@ def test_validate_course_access_role_invalid_creator_role_tenant(base_data):  # 
     )
 
     CourseCreator.objects.filter(user_id=33).update(all_organizations=False)
-    creator.organizations.clear()
-    creator.organizations.add(
-        Organization.objects.create(name='org2', description='org2', short_name='org2')
+    _add_clear_org_to_course_creator(creator, None)  # clear all orgs
+    _add_clear_org_to_course_creator(
+        creator, Organization.objects.create(name='org2', description='org2', short_name='org2'),
     )
     with pytest.raises(FXCodedException) as exc_info:
         validate_course_access_role(course_access_role)
@@ -297,7 +317,7 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
         all_organizations=False,
     )])
     creator = CourseCreator.objects.get(user_id=user_id)
-    creator.organizations.add(org8)
+    _add_clear_org_to_course_creator(creator, org8)
     expected_result['roles']['org_course_creator_group'] = {
         'global_role': False,
         'orgs_full_access': ['org8'],
@@ -1960,6 +1980,8 @@ def test_add_org_course_creator_nothing_exist(roles_authorize_caller, base_data)
     user = get_user_model().objects.get(username='user69')
     _assert_creator_records(user, 0, 0, False, [], False)
 
+    for org in orgs:
+        Organization.objects.create(short_name=org)
     add_org_course_creator(None, user, orgs)
     _assert_creator_records(user, 2, 0, True, orgs, False)
 
@@ -2033,8 +2055,8 @@ def test_add_org_course_creator_tenant_roles_exist(
     user = get_user_model().objects.get(username='user69')
     CourseCreator.objects.bulk_create([CourseCreator(user=user, all_organizations=False, state=CourseCreator.GRANTED)])
     creator = CourseCreator.objects.get(user=user)
-    creator.organizations.add(Organization.objects.create(short_name='org1'))
-    creator.organizations.add(Organization.objects.create(short_name='org2'))
+    _add_clear_org_to_course_creator(creator, Organization.objects.create(short_name='org1'))
+    _add_clear_org_to_course_creator(creator, Organization.objects.create(short_name='org2'))
     CourseAccessRole.objects.create(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, org='org1')
     CourseAccessRole.objects.create(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, org='org2')
 
@@ -2056,7 +2078,7 @@ def test_add_org_course_creator_not_all_tenant_roles_exist(
     creator = CourseCreator.objects.get(user=user)
     org1 = Organization.objects.create(short_name='org1')
     Organization.objects.create(short_name='org2')
-    creator.organizations.add(org1)
+    _add_clear_org_to_course_creator(creator, org1)
 
     _assert_creator_records(user, 1, 0, True, ['org1'], False)
 
@@ -2213,7 +2235,9 @@ def test_verify_can_add_course_access_roles_org_course_creator(base_data):  # py
     CourseCreator.objects.bulk_create([
         CourseCreator(user=caller, all_organizations=False, state=CourseCreator.GRANTED)
     ])
-    CourseCreator.objects.get(user=caller).organizations.add(Organization.objects.create(short_name='org1'))
+    _add_clear_org_to_course_creator(
+        CourseCreator.objects.get(user=caller), Organization.objects.create(short_name='org1'),
+    )
 
     roles_to_add = [
         CourseAccessRole(
@@ -2325,3 +2349,27 @@ def test_clean_course_access_roles_partial(mock_delete, mock_create, base_data):
     _clean_course_access_roles_partial(tenant_ids, user, roles_to_keep)
     mock_delete.assert_called_once_with(tenant_ids, user)
     mock_create.assert_called_once_with(roles_to_keep)
+
+
+@pytest.mark.django_db
+def test_add_orgs_to_course_creator_record():
+    """Verify that add_orgs_to_course_creator_record adds the organizations to the course creator record."""
+    CourseCreator.objects.bulk_create([CourseCreator(
+        user_id=33, all_organizations=False, state=CourseCreator.GRANTED,
+    )])
+    empty_course_creator = CourseCreator.objects.get(user_id=33)
+    for org_index in range(1, 5):
+        org_name = f'org{org_index}'
+        Organization.objects.create(name=org_name, description=org_name, short_name=org_name)
+
+    add_orgs_to_course_creator_record(empty_course_creator, ['org1', 'org2'])
+    assert empty_course_creator.organizations.count() == 2
+    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org1', 'org2'}
+
+    add_orgs_to_course_creator_record(empty_course_creator, ['org1', 'org3'])
+    assert empty_course_creator.organizations.count() == 3
+    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org1', 'org2', 'org3'}
+
+    add_orgs_to_course_creator_record(empty_course_creator, [])
+    assert empty_course_creator.organizations.count() == 3
+    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org1', 'org2', 'org3'}

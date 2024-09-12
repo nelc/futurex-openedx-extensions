@@ -868,6 +868,36 @@ def _verify_can_add_org_course_creator(caller: get_user_model, orgs: list[str]) 
         )
 
 
+def add_orgs_to_course_creator_record(course_creator: CourseCreator, orgs: list[str]) -> None:
+    """
+    Add the orgs to the course creator record. Doing that through the many-to-many relationship to avoid
+    triggering signals of the CourseCreator model.
+
+    :param course_creator: The course creator record
+    :type course_creator: CourseCreator
+    :param orgs: The orgs to add
+    :type orgs: list
+    """
+    orgs = [org.lower() for org in orgs]
+    existing_orgs = set(course_creator.organizations.all().annotate(
+        short_name_lower=Lower('short_name')
+    ).values_list('short_name_lower', flat=True))
+
+    orgs = list(set(orgs) - existing_orgs)
+    if not orgs:
+        return
+
+    organizations_many_to_many = CourseCreator.organizations.through
+
+    new_orgs = [Organization.objects.get(short_name=org) for org in orgs]
+    organizations_many_to_many.objects.bulk_create([
+        organizations_many_to_many(
+            coursecreator_id=course_creator.id,
+            organization_id=org.id,
+        ) for org in new_orgs
+    ])
+
+
 def add_org_course_creator(caller: get_user_model, user: get_user_model, orgs: list[str]) -> None:
     """
     Add the course creator role for the given user and orgs.
@@ -879,6 +909,7 @@ def add_org_course_creator(caller: get_user_model, user: get_user_model, orgs: l
     :param orgs: The orgs to filter on
     :type orgs: list
     """
+    orgs = [org.lower() for org in orgs]
     _verify_can_add_org_course_creator(caller, orgs)
 
     cache_refresh_course_access_roles(user.id)
@@ -915,21 +946,8 @@ def add_org_course_creator(caller: get_user_model, user: get_user_model, orgs: l
         ])
         course_creator = CourseCreator.objects.get(user=user)
 
-    new_orgs = []
-    for new_role in to_add:
-        if not Organization.objects.filter(short_name=new_role.org).exists():
-            new_orgs.append(Organization(name=new_role.org, short_name=new_role.org))
-
-    if new_orgs:
-        Organization.objects.bulk_create(new_orgs)
-
     CourseAccessRole.objects.bulk_create(to_add)
-    all_orgs = list(course_creator.organizations.all())
-    for org_name in orgs:
-        org_object = Organization.objects.get(short_name=org_name)
-        if org_object not in all_orgs:
-            all_orgs.append(org_object)
-    course_creator.organizations.set(all_orgs)
+    add_orgs_to_course_creator_record(course_creator, orgs)
 
     cache_refresh_course_access_roles(user.id)
 
