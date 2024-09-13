@@ -93,7 +93,7 @@ def validate_course_access_role(course_access_role: dict) -> None:
 
     check_broken_rule(
         role in cs.COURSE_ACCESS_ROLES_ACCEPT_COURSE_ID and course_id and (
-            org.lower() != course_access_role['course_org'].lower()
+            org != course_access_role['course_org']
         ),
         FXExceptionCodes.ROLE_INVALID_ENTRY,
         f'expected org value to be ({course_access_role["course_org"]}), but got ({org})!',
@@ -199,13 +199,19 @@ def get_user_course_access_roles(user_id: int) -> dict:
         course_org=Subquery(
             CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')
         ),
+    ).annotate(
+        org_lower_case=Lower('org'),
+    ).annotate(
+        course_org_lower_case=Lower('course_org'),
     ).values(
-        'id', 'user_id', 'role', 'org', 'course_id', 'course_org',
-    ).order_by('role', 'org', 'course_id')  # ordering is crucial for the result
+        'id', 'user_id', 'role', 'org_lower_case', 'course_id', 'course_org_lower_case',
+    ).order_by('role', 'org_lower_case', 'course_id')  # ordering is crucial for the result
 
     result: Dict[str, Any] = {}
     useless_entry = False
     for access_role in access_roles:
+        access_role['org'] = access_role['org_lower_case']
+        access_role['course_org'] = access_role['course_org_lower_case']
         if access_role['course_id'] is None or access_role['course_id'] == CourseKeyField.Empty:
             access_role['course_id'] = ''
         else:
