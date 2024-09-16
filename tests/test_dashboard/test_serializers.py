@@ -273,12 +273,14 @@ def test_course_details_serializer(base_data):  # pylint: disable=unused-argumen
     course.enrolled_count = 10
     course.active_count = 5
     course.certificates_count = 3
+    course.completion_rate = 0.3
     course.save()
     data = CourseDetailsSerializer(course).data
     assert data['id'] == str(course.id)
     assert data['enrolled_count'] == course.enrolled_count
     assert data['active_count'] == course.active_count
     assert data['certificates_count'] == course.certificates_count
+    assert data['completion_rate'] == course.completion_rate
 
 
 @pytest.mark.django_db
@@ -303,6 +305,7 @@ def test_course_details_serializer_rating(
     course.enrolled_count = 1
     course.active_count = 1
     course.certificates_count = 1
+    course.completion_rate = 1
     course.save()
     data = CourseDetailsSerializer(course).data
     assert data['rating'] == expected_rating

@@ -184,7 +184,7 @@ class CoursesView(ListAPIView, FXViewRoleInfoMixin):
     filter_backends = [DefaultOrderingFilter]
     ordering_fields = [
         'id', 'self_paced', 'enrolled_count', 'active_count',
-        'certificates_count', 'display_name', 'org',
+        'certificates_count', 'display_name', 'org', 'completion_rate',
     ]
     ordering = ['display_name']
     fx_view_name = 'courses_list'
