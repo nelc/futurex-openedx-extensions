@@ -159,7 +159,6 @@ def get_user_course_access_roles(user_id: int) -> dict:
     {
         'roles': {
             <role1>: {
-                'global_role': bool,
                 'orgs_full_access': [org1, org2, ...],
                 'tenant_ids_full_access': [1, 2, ...],
                 'course_limited_access': [course_id1, course_id2, ...],
@@ -167,7 +166,6 @@ def get_user_course_access_roles(user_id: int) -> dict:
                 'tenant_ids': [1, 2, 3, ...],
             },
             <role2>: {
-                'global_role': bool,
                 'orgs_full_access': [org1, org2, ...],
                 'tenant_ids_full_access': [1, 2, ...],
                 'course_limited_access': [course_id1, course_id2, ...],
@@ -221,7 +219,6 @@ def get_user_course_access_roles(user_id: int) -> dict:
 
         if role not in result:
             result[role] = {
-                'global_role': False,
                 'orgs_full_access': set(),
                 'tenant_ids_full_access': set(),
                 'course_limited_access': [],
@@ -230,7 +227,6 @@ def get_user_course_access_roles(user_id: int) -> dict:
             }
 
         if role in cs.COURSE_ACCESS_ROLES_GLOBAL:
-            result[role]['global_role'] = True
             continue
 
         # ordering of access_roles is crucial for the following logic
@@ -1233,7 +1229,7 @@ def get_tenant_user_roles(tenant_id: int, user_id: int, only_editable_roles: boo
     course_ids = set()
     for role_name, role_info in roles.items():
         if role_name in all_roles:
-            if role_info['global_role'] or tenant_id in role_info['tenant_ids_full_access']:
+            if role_name in cs.COURSE_ACCESS_ROLES_GLOBAL or tenant_id in role_info['tenant_ids_full_access']:
                 result['tenant_roles'].append(role_name)
             course_ids.update(role_info['course_limited_access'])
 
