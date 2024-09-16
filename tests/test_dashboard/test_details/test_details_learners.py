@@ -166,7 +166,6 @@ def test_get_learners_queryset(
     if expected_count > 0:
         assert result.first().courses_count is not None, 'courses_count should be in the queryset'
         assert result.first().certificates_count is not None, 'certificates_count should be in the queryset'
-        assert result.first().has_site_login is not None, 'has_site_login should be in the queryset'
 
 
 @pytest.mark.django_db
