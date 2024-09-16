@@ -4,17 +4,16 @@ from __future__ import annotations
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
-from common.djangoapps.student.models import CourseEnrollment
+from common.djangoapps.student.models import UserSignupSource
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef
-from django.db.models.query import Q, QuerySet
+from django.db.models.query import QuerySet
 from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
-from futurex_openedx_extensions.helpers.querysets import get_has_site_login_queryset
 
 
 def get_excluded_tenant_ids() -> List[int]:
@@ -297,20 +296,13 @@ def get_user_id_from_username_tenants(username: str, tenant_ids: List[int]) -> i
     if not tenant_ids or not username:
         return 0
 
-    course_org_filter_list = get_course_org_filter_list(
-        tenant_ids, ignore_invalid_tenant_ids=True
-    )['course_org_filter_list']
-    tenant_sites = get_tenants_sites(tenant_ids)
-
-    user_id = get_user_model().objects.filter(username=username).annotate(
-        courseenrollment_count=Exists(
-            CourseEnrollment.objects.filter(
+    user_id = get_user_model().objects.filter(username=username).filter(
+        Exists(
+            UserSignupSource.objects.filter(
                 user_id=OuterRef('id'),
-                course__org__in=course_org_filter_list,
+                site__in=get_tenants_sites(tenant_ids),
             )
         )
-    ).annotate(
-        has_site_login=get_has_site_login_queryset(tenant_sites)
-    ).filter(Q(courseenrollment_count=True) | Q(has_site_login=True)).values_list('id', flat=True)
+    ).values_list('id', flat=True)
 
     return user_id[0] if user_id else 0

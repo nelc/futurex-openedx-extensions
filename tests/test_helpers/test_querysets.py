@@ -111,26 +111,6 @@ def test_get_base_queryset_courses_global_roles(base_data, fx_permission_info): 
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('sites, expected', [
-    (['s1.sample.com'], True),
-    (['s2.sample.com'], True),
-    (['s3.sample.com'], False),
-    (['s1.sample.com', 's2.sample.com'], True),
-    (['s1.sample.com', 's3.sample.com'], True),
-    (['s2.sample.com', 's3.sample.com'], True),
-])
-def test_get_has_site_login_queryset(base_data, sites, expected):  # pylint: disable=unused-argument
-    """Verify get_has_site_login_queryset function."""
-    result = get_user_model().objects.filter(
-        username='user4',
-    ).annotate(
-        has_site_login=querysets.get_has_site_login_queryset(sites),
-    )
-    assert result.count() == 1
-    assert result.first().has_site_login == expected
-
-
-@pytest.mark.django_db
 @pytest.mark.parametrize('argument_name, bad_value, expected_error_msg', [
     ('ref_user_id', None, 'Invalid ref_user_id type (NoneType)'),
     ('ref_org', 0, 'Invalid ref_org type (int)'),

@@ -99,11 +99,11 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertTrue(isinstance(response, JsonResponse))
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         expected_response = {
-            '1': {'certificates_count': 14, 'courses_count': 12, 'learners_count': 17},
-            '2': {'certificates_count': 9, 'courses_count': 5, 'learners_count': 22},
+            '1': {'certificates_count': 14, 'courses_count': 12, 'learners_count': 16},
+            '2': {'certificates_count': 9, 'courses_count': 5, 'learners_count': 21},
             'total_certificates_count': 23,
             'total_courses_count': 17,
-            'total_learners_count': 39
+            'total_learners_count': 37,
         }
         self.assertDictEqual(json.loads(response.content), expected_response)
 

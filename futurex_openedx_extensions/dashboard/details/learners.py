@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from common.djangoapps.student.models import UserSignupSource
 from django.contrib.auth import get_user_model
 from django.db.models import BooleanField, Case, Count, Exists, OuterRef, Q, Subquery, Value, When
 from django.db.models.query import QuerySet
@@ -11,11 +12,7 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
-from futurex_openedx_extensions.helpers.querysets import (
-    check_staff_exist_queryset,
-    get_base_queryset_courses,
-    get_has_site_login_queryset,
-)
+from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 
 
@@ -161,7 +158,14 @@ def get_learners_queryset(
 
     queryset = get_learners_search_queryset(search_text)
 
-    queryset = queryset.annotate(
+    queryset = queryset.filter(
+        Exists(
+            UserSignupSource.objects.filter(
+                user_id=OuterRef('id'),
+                site__in=tenant_sites
+            )
+        )
+    ).annotate(
         courses_count=get_courses_count_for_learner_queryset(
             fx_permission_info,
             visible_courses_filter=visible_courses_filter,
@@ -174,10 +178,6 @@ def get_learners_queryset(
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
         )
-    ).annotate(
-        has_site_login=get_has_site_login_queryset(tenant_sites)
-    ).filter(
-        Q(courses_count__gt=0) | Q(has_site_login=True)
     ).select_related('profile').order_by('id')
 
     return queryset

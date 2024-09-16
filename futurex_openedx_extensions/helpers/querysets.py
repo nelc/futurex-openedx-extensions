@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
-from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
+from common.djangoapps.student.models import CourseAccessRole
 from django.db.models import BooleanField, Case, Exists, OuterRef, Q, Value, When
 from django.db.models.query import QuerySet
 from django.utils.timezone import now
@@ -140,20 +140,3 @@ def get_base_queryset_courses(
         q_set = q_set.filter(course_is_visible=visible_filter)
 
     return q_set
-
-
-def get_has_site_login_queryset(tenant_sites: List[str]) -> Exists:
-    """
-    Get the queryset of users who have logged in to any of the given tenant sites.
-
-    :param tenant_sites: List of tenant sites to check for
-    :type tenant_sites: List[str]
-    :return: QuerySet of users
-    :rtype: Exists
-    """
-    return Exists(
-        UserSignupSource.objects.filter(
-            user_id=OuterRef('id'),
-            site__in=tenant_sites
-        )
-    )

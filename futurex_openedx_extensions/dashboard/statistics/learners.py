@@ -1,219 +1,46 @@
 """functions for getting statistics about learners"""
 from __future__ import annotations
 
-from typing import Dict
+from common.djangoapps.student.models import UserSignupSource
+from django.db.models import BooleanField, Q, Value
 
-from common.djangoapps.student.models import CourseEnrollment, UserSignupSource
-from django.contrib.auth import get_user_model
-from django.db.models import BooleanField, Count, Exists, OuterRef, Q, Value
-from django.db.models.functions import Lower
-from django.db.models.query import QuerySet
-
-from futurex_openedx_extensions.helpers.permissions import get_tenant_limited_fx_permission_info
-from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
-from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list, get_tenant_site
+from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset
+from futurex_openedx_extensions.helpers.tenants import get_tenant_site
 
 
-def get_learners_count_having_enrollment_per_org(
+def get_learners_count(
     fx_permission_info: dict,
-    tenant_id: int,
-    visible_courses_filter: bool | None = True,
-    active_courses_filter: bool | None = None,
-    include_staff: bool = False,
-) -> QuerySet:
-    """
-    TODO: Cache the result of this function
-    Get the count of learners with enrollments per organization. Admins and staff are excluded from the count. This
-    function takes one tenant ID for performance reasons.
-
-    :param fx_permission_info: Dictionary containing permission information
-    :type fx_permission_info: dict
-    :param tenant_id: Tenant ID to get the count for
-    :type tenant_id: int
-    :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
-    :type visible_courses_filter: bool | None
-    :param active_courses_filter: Value to filter courses on active status. None means no filter.
-    :type active_courses_filter: bool | None
-    :param include_staff: flag to include staff users
-    :type include_staff: bool
-    :return: QuerySet of learners count per organization
-    :rtype: QuerySet
-    """
-    queryset = get_base_queryset_courses(
-        get_tenant_limited_fx_permission_info(fx_permission_info, tenant_id),
-        visible_filter=visible_courses_filter,
-        active_filter=active_courses_filter,
-    )
-
-    if include_staff:
-        is_staff_queryset = Q(Value(False, output_field=BooleanField()))
-    else:
-        is_staff_queryset = check_staff_exist_queryset(
-            ref_user_id='courseenrollment__user_id',
-            ref_org='org',
-            ref_course_id='id',
-        )
-
-    return queryset.values(org_lower_case=Lower('org')).annotate(
-        learners_count=Count(
-            'courseenrollment__user_id',
-            filter=~is_staff_queryset &
-            Q(courseenrollment__is_active=True) &
-            Q(courseenrollment__user__is_superuser=False) &
-            Q(courseenrollment__user__is_staff=False) &
-            Q(courseenrollment__user__is_active=True),
-            distinct=True
-        )
-    )
-
-
-def get_learners_count_having_enrollment_for_tenant(
-    fx_permission_info: dict,
-    tenant_id: int,
-    visible_courses_filter: bool | None = True,
-    active_courses_filter: bool | None = None,
-    include_staff: bool = False,
-) -> QuerySet:
-    """
-    TODO: Cache the result of this function
-    Get the count of learners with enrollments per organization. Admins and staff are excluded from the count
-
-    :param fx_permission_info: Dictionary containing permission information
-    :type fx_permission_info: dict
-    :param tenant_id: Tenant ID to get the count for
-    :type tenant_id: int
-    :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
-    :type visible_courses_filter: bool | None
-    :param active_courses_filter: Value to filter courses on active status. None means no filter.
-    :type active_courses_filter: bool | None
-    :param include_staff: flag to include staff users
-    :type include_staff: bool
-    :return: QuerySet of learners count per organization
-    :rtype: QuerySet
-    """
-    if include_staff:
-        is_staff_queryset = Q(Value(False, output_field=BooleanField()))
-    else:
-        is_staff_queryset = check_staff_exist_queryset(
-            ref_user_id='id', ref_org='courseenrollment__course__org', ref_course_id='courseenrollment__course_id',
-        )
-
-    return get_user_model().objects.filter(
-        is_superuser=False,
-        is_staff=False,
-        is_active=True,
-        courseenrollment__is_active=True,
-        courseenrollment__course_id__in=get_base_queryset_courses(
-            get_tenant_limited_fx_permission_info(fx_permission_info, tenant_id),
-            visible_filter=visible_courses_filter,
-            active_filter=active_courses_filter,
-        ),
-    ).exclude(is_staff_queryset).values('id').distinct().count()
-
-
-def get_learners_count_having_no_enrollment(
-    fx_permission_info: dict,
-    tenant_id: int,
-    visible_courses_filter: bool | None = True,
-    active_courses_filter: bool | None = None,
     include_staff: bool = False,
 ) -> int:
     """
-    TODO: Cache the result of this function
-    Get the count of learners with no enrollments per organization. Admins and staff are excluded from the count.
-    Since there is no enrollment, we'll use UserSignupSource
-
-    The function returns the count for one tenant for performance reasons.
+    Get the count of learners in the given list of tenants. Admins and staff are excluded from the count.
 
     :param fx_permission_info: Dictionary containing permission information
     :type fx_permission_info: dict
-    :param tenant_id: Tenant ID to get the count for
-    :type tenant_id: int
-    :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter.
-    :type visible_courses_filter: bool
-    :param active_courses_filter: Value to filter courses on active status. None means no filter.
-    :type active_courses_filter: bool
     :param include_staff: flag to include staff users
     :type include_staff: bool
-    :return: Number of learners count per organization
-    :rtype: int
+    :return: Dictionary of tenant ID and the count of learners
+    :rtype: Dict[int, Dict[str, int]]
     """
-    filtered_orgs = set(get_course_org_filter_list([tenant_id])['course_org_filter_list'])
-    tenant_fx_permission_info = get_tenant_limited_fx_permission_info(fx_permission_info, tenant_id)
-    if filtered_orgs - set(tenant_fx_permission_info['view_allowed_full_access_orgs']) != set():
-        return 0
-
-    tenant_site = get_tenant_site(tenant_id)
+    tenant_sites = [get_tenant_site(tenant_id) for tenant_id in fx_permission_info['permitted_tenant_ids']]
 
     if include_staff:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))
     else:
         is_staff_queryset = check_staff_exist_queryset(
             ref_user_id='user_id',
-            ref_org=list(filtered_orgs),
+            ref_org=fx_permission_info['view_allowed_full_access_orgs'],
             ref_course_id=None,
         )
 
     user_from_signup_source = UserSignupSource.objects.filter(
-        site=tenant_site
+        site__in=tenant_sites
     ).exclude(
-        Exists(
-            CourseEnrollment.objects.filter(
-                is_active=True,
-                course_id__in=get_base_queryset_courses(
-                    get_tenant_limited_fx_permission_info(fx_permission_info, tenant_id),
-                    visible_filter=visible_courses_filter,
-                    active_filter=active_courses_filter,
-                ),
-                user__is_superuser=False,
-                user__is_staff=False,
-                user__is_active=True,
-                user__id=OuterRef('user_id'),
-            )
-        )
+        Q(user__is_superuser=True) |
+        Q(user__is_staff=True) |
+        Q(user__is_active=False)
     ).exclude(
         is_staff_queryset
-    ).values('user_id').distinct()
+    ).values('user_id').order_by('user_id').distinct()
 
     return user_from_signup_source.count()
-
-
-def get_learners_count(
-    fx_permission_info: dict,
-    calculate_per_org: bool = False,
-    include_staff: bool = False,
-) -> Dict[int, Dict[str, int]]:
-    """
-    Get the count of learners in the given list of tenants. Admins and staff are excluded from the count.
-
-    :param fx_permission_info: Dictionary containing permission information
-    :type fx_permission_info: dict
-    :param calculate_per_org: Flag to calculate the count per organization
-    :type calculate_per_org: bool
-    :param include_staff: flag to include staff users
-    :type include_staff: bool
-    :return: Dictionary of tenant ID and the count of learners
-    :rtype: Dict[int, Dict[str, int]]
-    """
-    result = {
-        tenant_id: {
-            'learners_count': get_learners_count_having_enrollment_for_tenant(
-                fx_permission_info, tenant_id, include_staff=include_staff,
-            ),
-            'learners_count_no_enrollment': get_learners_count_having_no_enrollment(
-                fx_permission_info, tenant_id, include_staff=include_staff,
-            ),
-        }
-        for tenant_id in fx_permission_info['permitted_tenant_ids']
-    }
-
-    if calculate_per_org:
-        for tenant_id in fx_permission_info['permitted_tenant_ids']:
-            result[tenant_id]['learners_count_per_org'] = {
-                item['org_lower_case']: item['learners_count']
-                for item in get_learners_count_having_enrollment_per_org(
-                    fx_permission_info, tenant_id, include_staff=include_staff,
-                )
-            }
-
-    return result
