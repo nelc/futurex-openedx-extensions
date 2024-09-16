@@ -9,8 +9,6 @@ from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import DatabaseError
-from django.db.models.signals import m2m_changed
-from fake_models.models import m2m_changed_never_use_set_add_remove_or_clear as my_signal_handler
 from opaque_keys.edx.django.models import CourseKeyField
 from opaque_keys.edx.keys import CourseKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
@@ -31,7 +29,6 @@ from futurex_openedx_extensions.helpers.roles import (
     _verify_can_delete_course_access_roles,
     add_course_access_roles,
     add_org_course_creator,
-    add_orgs_to_course_creator_record,
     cache_name_user_course_access_roles,
     cache_refresh_course_access_roles,
     check_tenant_access,
@@ -44,7 +41,6 @@ from futurex_openedx_extensions.helpers.roles import (
     get_usernames_with_access_roles,
     is_view_exist,
     is_view_support_write,
-    remove_orgs_from_course_creator,
     update_course_access_roles,
     validate_course_access_role,
 )
@@ -55,6 +51,7 @@ from tests.fixture_helpers import (
     get_test_data_dict_without_course_roles,
     get_test_data_dict_without_course_roles_org3,
 )
+from tests.test_helpers.test_course_creator_manager import _add_clear_org_to_course_creator
 
 
 class FXViewRoleInfoMetaClassTestView(metaclass=FXViewRoleInfoMetaClass):  # pylint: disable=too-few-public-methods
@@ -121,7 +118,9 @@ def reset_fx_views_with_roles():
     ),
 ])
 @pytest.mark.django_db
-def test_validate_course_access_role_invalid(update_course_access_role, error_msg, error_code):
+def test_validate_course_access_role_invalid(
+    base_data, update_course_access_role, error_msg, error_code,
+):  # pylint: disable=unused-argument
     """Verify that validate_course_access_role raises FXCodedException when the access role record is invalid."""
     bad_course_access_role = {
         'id': 99,
@@ -142,19 +141,6 @@ def test_validate_course_access_role_invalid(update_course_access_role, error_ms
 
     assert exc_info.value.code == error_code.value
     assert str(exc_info.value) == f'Invalid course access role: {error_msg} (id: 99)'
-
-
-def _add_clear_org_to_course_creator(course_creator, org_instance=None):
-    """
-    Helper to add orgs or clear all orgs to the course-creator record. When org_instance is None, all orgs are cleared.
-    Otherwise, org_instance is added to the course-creator record.
-    """
-    m2m_changed.disconnect(receiver=my_signal_handler, sender=CourseCreator.organizations.through)
-    if org_instance:
-        course_creator.organizations.add(org_instance)
-    else:
-        course_creator.organizations.clear()
-    m2m_changed.connect(receiver=my_signal_handler, sender=CourseCreator.organizations.through)
 
 
 def _initialize_creator_role_test(role, org, all_organizations):
@@ -2372,65 +2358,3 @@ def test_clean_course_access_roles_partial(
     _clean_course_access_roles_partial(None, user, tenant_ids, roles_to_keep)
     mock_delete.assert_called_once_with(tenant_ids, user)
     assert mock_create.call_count == 2
-
-
-@pytest.fixture
-def empty_course_creator():
-    """Create a CourseCreator record for user 33 with no organizations."""
-    CourseCreator.objects.bulk_create([CourseCreator(
-        user_id=33, all_organizations=False, state=CourseCreator.GRANTED,
-    )])
-    for org_index in range(1, 5):
-        org_name = f'org{org_index}'
-        Organization.objects.create(name=org_name, description=org_name, short_name=org_name)
-    return CourseCreator.objects.get(user_id=33)
-
-
-@pytest.mark.django_db
-def test_add_orgs_to_course_creator_record(empty_course_creator):  # pylint: disable=redefined-outer-name
-    """Verify that add_orgs_to_course_creator_record adds the organizations to the course creator record."""
-
-    add_orgs_to_course_creator_record(empty_course_creator, ['org1', 'org2'])
-    assert empty_course_creator.organizations.count() == 2
-    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org1', 'org2'}
-
-    add_orgs_to_course_creator_record(empty_course_creator, ['org1', 'org3'])
-    assert empty_course_creator.organizations.count() == 3
-    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org1', 'org2', 'org3'}
-
-    add_orgs_to_course_creator_record(empty_course_creator, [])
-    assert empty_course_creator.organizations.count() == 3
-    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org1', 'org2', 'org3'}
-
-
-@pytest.mark.django_db
-def test_remove_orgs_from_course_creator(empty_course_creator):  # pylint: disable=redefined-outer-name
-    """Verify that remove_orgs_from_course_creator removes the organizations from the course creator record."""
-    user_id = 33
-    add_orgs_to_course_creator_record(empty_course_creator, ['org1', 'org2', 'org3', 'org4'])
-
-    remove_orgs_from_course_creator(user_id, ['org1', 'org2', 'invalid_org'])
-    assert empty_course_creator.organizations.count() == 2
-    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org3', 'org4'}
-
-    remove_orgs_from_course_creator(user_id, ['org1', 'org3'])
-    assert empty_course_creator.organizations.count() == 1
-    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org4'}
-
-    remove_orgs_from_course_creator(user_id, [])
-    assert empty_course_creator.organizations.count() == 1
-    assert set(empty_course_creator.organizations.values_list('short_name', flat=True)) == {'org4'}
-
-    remove_orgs_from_course_creator(user_id, ['org4'], delete_on_empty=False)
-    assert CourseCreator.objects.filter(user_id=33).exists()
-    assert empty_course_creator.organizations.count() == 0
-
-    remove_orgs_from_course_creator(user_id, [], delete_on_empty=False)
-    assert CourseCreator.objects.filter(user_id=33).exists()
-    assert empty_course_creator.organizations.count() == 0
-
-    remove_orgs_from_course_creator(user_id, [])
-    assert not CourseCreator.objects.filter(user_id=33).exists()
-
-    remove_orgs_from_course_creator(user_id, ['org1'])
-    assert not CourseCreator.objects.filter(user_id=33).exists()

@@ -1,11 +1,12 @@
 """edx-platform models mocks for testing purposes."""
+import re
+
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models.fields import AutoField
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from opaque_keys.edx.django.models import CourseKeyField, LearningContextKeyField, UsageKeyField
-import re
 
 
 class Organization(models.Model):
@@ -247,6 +248,7 @@ class CourseCreator(models.Model):
 
     class Meta:
         app_label = 'fake_models'
+        db_table = 'course_creators_coursecreator'
 
 
 @receiver(post_save, sender=CourseCreator)
