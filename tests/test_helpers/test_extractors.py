@@ -67,16 +67,23 @@ def test_verify_course_ids_fail(course_ids, error_message):
 @pytest.mark.django_db
 def test_get_orgs_of_courses(base_data):  # pylint: disable=unused-argument
     """Verify that get_orgs_of_courses returns the expected organization for each course ID."""
-    course_ids = ['course-v1:Org1+1+1', 'course-v1:ORG1+2+2', 'course-v1:ORG1+3+3', 'course-v1:ORG1+99+99']
+    course_ids = ['course-v1:Org1+1+1', 'course-v1:ORG1+2+2', 'course-v1:ORG1+3+3']
     assert CourseOverview.objects.get(id='course-v1:Org1+1+1').org == 'oRg1'
     assert get_orgs_of_courses(course_ids) == {
-        'invalid_course_ids': ['course-v1:ORG1+99+99'],
         'courses': {
             'course-v1:Org1+1+1': 'org1',
             'course-v1:ORG1+2+2': 'org1',
             'course-v1:ORG1+3+3': 'org1',
         },
     }
+
+
+@pytest.mark.django_db
+def test_get_orgs_of_courses_invalid_course(base_data):  # pylint: disable=unused-argument
+    """Verify that get_orgs_of_courses raises an error for an invalid course ID."""
+    with pytest.raises(ValueError) as exc_info:
+        get_orgs_of_courses(['course-v1:ORG1+2+99'])
+    assert str(exc_info.value) == 'Invalid course IDs provided: [\'course-v1:ORG1+2+99\']'
 
 
 def test_dict_hashcode_init():

@@ -10,9 +10,9 @@ from futurex_openedx_extensions.dashboard.statistics import learners
 @pytest.mark.django_db
 @pytest.mark.parametrize('tenant_id, expected_result', [
     (1, {'org1': 4, 'org2': 17}),
-    (2, {'org3': 13, 'org8': 6}),
+    (2, {'org3': 14, 'org8': 6}),
     (3, {'org4': 4}),
-    (7, {'org3': 13}),
+    (7, {'org3': 14}),
     (8, {'org8': 6}),
 ])
 def test_get_learners_count_having_enrollment_per_org(
@@ -54,9 +54,9 @@ def test_get_learners_count_having_enrollment_per_org_inactive_enrollment(
 @pytest.mark.django_db
 @pytest.mark.parametrize('tenant_id, expected_result', [
     (1, 17),
-    (2, 16),
+    (2, 17),
     (3, 4),
-    (7, 13),
+    (7, 14),
     (8, 6),
 ])
 def test_get_learners_count_having_enrollment_for_tenant(
@@ -144,20 +144,41 @@ def test_get_learners_count_having_no_enrollment_inactive_enrollment(
     assert learners.get_learners_count_having_no_enrollment(user1_fx_permission_info, 1) == 1, \
         'users with at least one inactive enrollment, and no active enrollments should be counted'
 
-    signup.delete()
-    assert learners.get_learners_count_having_no_enrollment(user1_fx_permission_info, 1) == 1, \
-        'users with at least one inactive enrollment, and no active enrollments '\
-        'should be counted even if they have no signup source'
-
 
 @pytest.mark.django_db
 def test_get_learners_count(base_data, user1_fx_permission_info):  # pylint: disable=unused-argument
     """Test get_learners_count function."""
+    expected_result = {
+        1: {'learners_count': 17, 'learners_count_no_enrollment': 0},
+        2: {'learners_count': 17, 'learners_count_no_enrollment': 5},
+        3: {'learners_count': 4, 'learners_count_no_enrollment': 2},
+        7: {'learners_count': 14, 'learners_count_no_enrollment': 4},
+        8: {'learners_count': 6, 'learners_count_no_enrollment': 3}
+    }
     result = learners.get_learners_count(user1_fx_permission_info)
+    assert result == expected_result, f'Wrong learners count: {result}'
+
+    result = learners.get_learners_count(user1_fx_permission_info, calculate_per_org=True)
+    for tenant_id, tenant_info in expected_result.items():
+        tenant_info['learners_count_per_org'] = {
+            1: {'org1': 4, 'org2': 17},
+            2: {'org3': 14, 'org8': 6},
+            3: {'org4': 4},
+            7: {'org3': 14},
+            8: {'org8': 6}
+        }[tenant_id]
+    assert result == expected_result, f'Wrong learners count: {result}'
+
+
+@pytest.mark.django_db
+def test_get_learners_count_include_staff(base_data, user1_fx_permission_info):  # pylint: disable=unused-argument
+    """Test get_learners_count function."""
+    result = learners.get_learners_count(user1_fx_permission_info, calculate_per_org=True, include_staff=True)
+
     assert result == {
-        1: {'learners_count': 17, 'learners_count_no_enrollment': 0, 'learners_count_per_org': {'org1': 4, 'org2': 17}},
-        2: {'learners_count': 16, 'learners_count_no_enrollment': 5, 'learners_count_per_org': {'org3': 13, 'org8': 6}},
+        1: {'learners_count': 18, 'learners_count_no_enrollment': 2, 'learners_count_per_org': {'org1': 6, 'org2': 18}},
+        2: {'learners_count': 20, 'learners_count_no_enrollment': 6, 'learners_count_per_org': {'org3': 16, 'org8': 7}},
         3: {'learners_count': 4, 'learners_count_no_enrollment': 2, 'learners_count_per_org': {'org4': 4}},
-        7: {'learners_count': 13, 'learners_count_no_enrollment': 4, 'learners_count_per_org': {'org3': 13}},
-        8: {'learners_count': 6, 'learners_count_no_enrollment': 3, 'learners_count_per_org': {'org8': 6}}
-    }, f'Wrong learners count: {result}'
+        7: {'learners_count': 16, 'learners_count_no_enrollment': 4, 'learners_count_per_org': {'org3': 16}},
+        8: {'learners_count': 7, 'learners_count_no_enrollment': 3, 'learners_count_per_org': {'org8': 7}}
+    }

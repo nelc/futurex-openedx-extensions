@@ -199,7 +199,7 @@ _base_data = {
             'Org4': [10, 23],
             'Org5': [23],
         },
-        'org_course_creator_group': {
+        'instructor': {
             'ORG1': [4],
             'ORG2': [1, 2, 4],
             'ORG3': [4],
@@ -209,53 +209,54 @@ _base_data = {
         },
         'data_researcher': {
             'ORG3': [9, 10],
-        }
+        },
     },
     'course_access_roles_course_specific': {  # org id, course id, roles, user ids
         'Org1': {
             'course-v1:Org1+1+1': {
                 'staff': [1],
-                'org_course_creator_group': [1],
+                'instructor': [1],
             },
             'course-v1:ORG1+2+2': {
                 'staff': [1],
-                'org_course_creator_group': [2],
+                'instructor': [2],
             },
             'course-v1:ORG1+3+3': {
                 'staff': [3],
-                'org_course_creator_group': [3],
+                'instructor': [3],
             },
             'course-v1:ORG1+4+4': {
                 'staff': [4],
-                'org_course_creator_group': [3],
+                'instructor': [3],
             },
         },
         'Org2': {
             'course-v1:ORG2+1+1': {
                 'staff': [9],
-                'org_course_creator_group': [1],
+                'instructor': [1],
             },
             'course-v1:ORG2+2+2': {
                 'staff': [1],
-                'org_course_creator_group': [2],
+                'instructor': [2],
             },
             'course-v1:ORG2+3+3': {
                 'staff': [9],
-                'org_course_creator_group': [8],
+                'instructor': [8],
             },
         },
         'Org3': {
             'course-v1:ORG3+1+1': {
                 'staff': [4],
-                'org_course_creator_group': [4],
+                'instructor': [4],
             },
             'course-v1:ORG3+2+2': {
                 'data_researcher': [9],
-                'org_course_creator_group': [11],
+                'instructor': [11],
             },
             'course-v1:ORG3+3+3': {
                 'staff': [18],
-                'org_course_creator_group': [9],
+                'instructor': [9],
+                'sales_admin': [11],  # This is an unsupported role
             },
         },
     },
@@ -293,12 +294,12 @@ _base_data = {
 
 expected_statistics = {
     '1': {'certificates_count': 14, 'courses_count': 12, 'hidden_courses_count': 0, 'learners_count': 17},
-    '2': {'certificates_count': 9, 'courses_count': 5, 'hidden_courses_count': 0, 'learners_count': 21},
+    '2': {'certificates_count': 9, 'courses_count': 5, 'hidden_courses_count': 0, 'learners_count': 22},
     '3': {'certificates_count': 0, 'courses_count': 1, 'hidden_courses_count': 0, 'learners_count': 6},
-    '7': {'certificates_count': 7, 'courses_count': 3, 'hidden_courses_count': 0, 'learners_count': 17},
+    '7': {'certificates_count': 7, 'courses_count': 3, 'hidden_courses_count': 0, 'learners_count': 18},
     '8': {'certificates_count': 2, 'courses_count': 2, 'hidden_courses_count': 0, 'learners_count': 9},
     'total_certificates_count': 32,
     'total_courses_count': 23,
     'total_hidden_courses_count': 0,
-    'total_learners_count': 70
+    'total_learners_count': 72
 }

@@ -1,7 +1,11 @@
 """PyTest fixtures for tests."""
+from unittest.mock import patch
+
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import override_settings
 from django.utils import timezone
 from eox_tenant.models import Route, TenantConfig
 from lms.djangoapps.certificates.models import GeneratedCertificate
@@ -9,6 +13,14 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 
 from tests.base_test_data import _base_data
 from tests.fixture_helpers import get_user1_fx_permission_info
+
+
+@pytest.fixture
+def cache_testing():
+    """Fixture for temporary enabling cache for testing."""
+    with override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}):
+        yield
+        cache.clear()  # Clear the cache after each test
 
 
 @pytest.fixture
@@ -25,6 +37,16 @@ def fx_permission_info():
 def user1_fx_permission_info():
     """Fixture for permission information for user1."""
     return get_user1_fx_permission_info()
+
+
+@pytest.fixture
+def roles_authorize_caller():
+    """Fixture for temporary enabling cache for testing."""
+    with patch('futurex_openedx_extensions.helpers.roles._verify_can_add_course_access_roles'):
+        with patch('futurex_openedx_extensions.helpers.roles._verify_can_add_org_course_creator'):
+            with patch('futurex_openedx_extensions.helpers.roles._verify_can_delete_course_access_roles'):
+                with patch('futurex_openedx_extensions.helpers.roles._verify_can_delete_course_access_roles_partial'):
+                    yield
 
 
 @pytest.fixture(scope='session')

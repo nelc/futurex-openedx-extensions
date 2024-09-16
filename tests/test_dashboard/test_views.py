@@ -100,10 +100,10 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         expected_response = {
             '1': {'certificates_count': 14, 'courses_count': 12, 'learners_count': 17},
-            '2': {'certificates_count': 9, 'courses_count': 5, 'learners_count': 21},
+            '2': {'certificates_count': 9, 'courses_count': 5, 'learners_count': 22},
             'total_certificates_count': 23,
             'total_courses_count': 17,
-            'total_learners_count': 38
+            'total_learners_count': 39
         }
         self.assertDictEqual(json.loads(response.content), expected_response)
 
@@ -276,7 +276,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
         ViewAllowedRoles.objects.create(
             view_name=view_class.fx_view_name,
             view_description=view_class.fx_view_description,
-            allowed_role='org_course_creator_group',
+            allowed_role='instructor',
         )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
@@ -292,7 +292,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
         ViewAllowedRoles.objects.create(
             view_name=view_class.fx_view_name,
             view_description=view_class.fx_view_description,
-            allowed_role='org_course_creator_group',
+            allowed_role='instructor',
         )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
@@ -304,7 +304,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
         ViewAllowedRoles.objects.create(
             view_name=view_class.fx_view_name,
             view_description=view_class.fx_view_description,
-            allowed_role='org_course_creator_group',
+            allowed_role='instructor',
         )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
@@ -705,9 +705,9 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
         assert response.data['tenants'] == {
-            1: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG1+4+4': ['staff']}},
-            2: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}},
-            7: {'tenant_roles': ['org_course_creator_group'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}}
+            1: {'tenant_roles': ['instructor'], 'course_roles': {'course-v1:ORG1+4+4': ['staff']}},
+            2: {'tenant_roles': ['instructor'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}},
+            7: {'tenant_roles': ['instructor'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}}
         }
 
     @patch('futurex_openedx_extensions.dashboard.views.add_course_access_roles')
@@ -903,6 +903,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         response = self.client.delete(self.url + '?tenant_ids=1,2')
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
         self.assertIsNone(response.data)
+        mock_delete_user.call_args_list[0][1].pop('caller')
         mock_delete_user.assert_called_once_with(tenant_ids=[1, 2], user=mock_get_user.return_value['user'])
 
     @patch('futurex_openedx_extensions.dashboard.views.get_user_by_key')

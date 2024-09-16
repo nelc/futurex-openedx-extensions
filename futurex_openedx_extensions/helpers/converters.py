@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from typing import Any, Callable, List
+from typing import Any, Callable, Dict, List
 from urllib.parse import urljoin
 
 from dateutil.relativedelta import relativedelta  # type: ignore
+
+from futurex_openedx_extensions.helpers import constants as cs
 
 
 def ids_string_to_list(ids_string: str) -> List[int]:
@@ -181,3 +183,25 @@ class DateMethods:
     def years(years: int) -> str:
         """Get the date after a number of years"""
         return (datetime.now() + relativedelta(years=years)).strftime(DateMethods.FMT)
+
+
+def get_allowed_roles(roles_filter: List[str] | None) -> Dict[str, List[str]]:
+    """
+    Get the refined roles.
+
+    :param roles_filter: The roles to filter.
+    :type roles_filter: List[str] | None
+    :return: The refined roles.
+    :rtype: Dict[str, List[str]]
+    """
+    allowed_roles = {
+        'global': cs.COURSE_ACCESS_ROLES_GLOBAL,
+        'tenant_only': cs.COURSE_ACCESS_ROLES_TENANT_ONLY,
+        'course_only': cs.COURSE_ACCESS_ROLES_COURSE_ONLY,
+        'tenant_or_course': cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE,
+    }
+    if roles_filter:
+        for role in allowed_roles:
+            allowed_roles[role] = list(set(allowed_roles[role]).intersection(roles_filter))
+
+    return allowed_roles

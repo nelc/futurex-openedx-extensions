@@ -39,23 +39,28 @@ def test_get_courses_queryset(
 def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_courses_queryset excludes staff users from enrollment, but not from certificates."""
     expected_results = {
-        'course-v1:Org1+1+1': [1, 0],
-        'course-v1:ORG1+2+2': [0, 0],
-        'course-v1:ORG1+3+3': [0, 0],
-        'course-v1:ORG1+4+4': [0, 0],
-        'course-v1:ORG1+5+5': [3, 4],
-        'course-v1:ORG2+1+1': [0, 0],
-        'course-v1:ORG2+2+2': [0, 0],
-        'course-v1:ORG2+3+3': [1, 0],
-        'course-v1:ORG2+4+4': [6, 4],
-        'course-v1:ORG2+5+5': [5, 3],
-        'course-v1:ORG2+6+6': [5, 0],
-        'course-v1:ORG2+7+7': [5, 3],
+        'course-v1:Org1+1+1': [1, 0, 2, 0],
+        'course-v1:ORG1+2+2': [0, 0, 1, 0],
+        'course-v1:ORG1+3+3': [0, 0, 0, 0],
+        'course-v1:ORG1+4+4': [0, 0, 1, 0],
+        'course-v1:ORG1+5+5': [3, 4, 5, 4],
+        'course-v1:ORG2+1+1': [0, 0, 0, 0],
+        'course-v1:ORG2+2+2': [0, 0, 0, 0],
+        'course-v1:ORG2+3+3': [1, 0, 1, 0],
+        'course-v1:ORG2+4+4': [6, 4, 7, 4],
+        'course-v1:ORG2+5+5': [5, 3, 5, 3],
+        'course-v1:ORG2+6+6': [5, 0, 5, 0],
+        'course-v1:ORG2+7+7': [5, 3, 5, 3],
     }
-    queryset = get_courses_queryset(fx_permission_info)
-    for record in queryset:
-        assert record.enrolled_count == expected_results[str(record.id)][0]
-        assert record.certificates_count == expected_results[str(record.id)][1]
+    result_no_staff = get_courses_queryset(fx_permission_info)
+    result_with_staff = get_courses_queryset(fx_permission_info, include_staff=True)
+
+    for record in result_no_staff:
+        assert record.enrolled_count == expected_results[str(record.id)][0], f'failed for: {record.id}'
+        assert record.certificates_count == expected_results[str(record.id)][1], f'failed for: {record.id}'
+    for record in result_with_staff:
+        assert record.enrolled_count == expected_results[str(record.id)][2], f'failed for: {record.id}'
+        assert record.certificates_count == expected_results[str(record.id)][3], f'failed for: {record.id}'
 
 
 @pytest.mark.django_db

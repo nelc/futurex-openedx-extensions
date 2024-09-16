@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.db.models import BooleanField, Case, Count, Exists, OuterRef, Q, Subquery, Value, When
 from django.db.models.query import QuerySet
@@ -12,7 +11,11 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
-from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses, get_has_site_login_queryset
+from futurex_openedx_extensions.helpers.querysets import (
+    check_staff_exist_queryset,
+    get_base_queryset_courses,
+    get_has_site_login_queryset,
+)
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 
 
@@ -20,6 +23,7 @@ def get_courses_count_for_learner_queryset(
     fx_permission_info: dict,
     visible_courses_filter: bool | None = True,
     active_courses_filter: bool | None = None,
+    include_staff: bool = False,
 ) -> Count:
     """
     Annotate the given queryset with the courses count for the learner.
@@ -30,9 +34,18 @@ def get_courses_count_for_learner_queryset(
     :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
     :type active_courses_filter: bool | None
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
     :return: Count of learners
     :rtype: Count
     """
+    if not include_staff:
+        is_staff_queryset = check_staff_exist_queryset(
+            ref_user_id='id', ref_org='courseenrollment__course__org', ref_course_id='courseenrollment__course_id',
+        )
+    else:
+        is_staff_queryset = Q(Value(False, output_field=BooleanField()))
+
     return Count(
         'courseenrollment',
         filter=(
@@ -42,12 +55,7 @@ def get_courses_count_for_learner_queryset(
                 active_filter=active_courses_filter,
             )) &
             Q(courseenrollment__is_active=True) &
-            ~Exists(
-                CourseAccessRole.objects.filter(
-                    user_id=OuterRef('id'),
-                    org=OuterRef('courseenrollment__course__org')
-                )
-            )
+            ~is_staff_queryset
         ),
         distinct=True
     )
@@ -130,7 +138,8 @@ def get_learners_queryset(
     fx_permission_info: dict,
     search_text: str | None = None,
     visible_courses_filter: bool | None = True,
-    active_courses_filter: bool | None = None
+    active_courses_filter: bool | None = None,
+    include_staff: bool = False,
 ) -> QuerySet:
     """
     Get the learners queryset for the given tenant IDs and search text.
@@ -143,6 +152,8 @@ def get_learners_queryset(
     :type visible_courses_filter: bool
     :param active_courses_filter: Value to filter courses on active status. None means no filter
     :type active_courses_filter: bool
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
     :return: QuerySet of learners
     :rtype: QuerySet
     """
@@ -155,6 +166,7 @@ def get_learners_queryset(
             fx_permission_info,
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
+            include_staff=include_staff,
         )
     ).annotate(
         certificates_count=get_certificates_count_for_learner_queryset(
@@ -171,7 +183,9 @@ def get_learners_queryset(
     return queryset
 
 
-def get_learners_by_course_queryset(course_id: str, search_text: str | None = None) -> QuerySet:
+def get_learners_by_course_queryset(
+    course_id: str, search_text: str | None = None, include_staff: bool = False,
+) -> QuerySet:
     """
     Get the learners queryset for the given course ID.
 
@@ -179,6 +193,8 @@ def get_learners_by_course_queryset(course_id: str, search_text: str | None = No
     :type course_id: str
     :param search_text: Search text to filter the learners by
     :type search_text: str | None
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
     :return: QuerySet of learners
     :rtype: QuerySet
     """
@@ -186,14 +202,14 @@ def get_learners_by_course_queryset(course_id: str, search_text: str | None = No
     queryset = queryset.filter(
         courseenrollment__course_id=course_id,
         courseenrollment__is_active=True,
-    ).filter(
-        ~Exists(
-            CourseAccessRole.objects.filter(
-                user_id=OuterRef('id'),
-                org=OuterRef('courseenrollment__course__org')
-            )
+    )
+
+    if not include_staff:
+        queryset = queryset.filter(
+            ~check_staff_exist_queryset('id', 'courseenrollment__course__org', Value(course_id)),
         )
-    ).annotate(
+
+    queryset = queryset.annotate(
         certificate_available=Exists(
             GeneratedCertificate.objects.filter(
                 user_id=OuterRef('id'),
@@ -232,7 +248,8 @@ def get_learner_info_queryset(
     fx_permission_info: dict,
     user_id: int,
     visible_courses_filter: bool | None = True,
-    active_courses_filter: bool | None = None
+    active_courses_filter: bool | None = None,
+    include_staff: bool = False,
 ) -> QuerySet:
     """
     Get the learner queryset for the given user ID. This method assumes a valid user ID.
@@ -245,6 +262,8 @@ def get_learner_info_queryset(
     :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter
     :type active_courses_filter: bool | None
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
     :return: QuerySet of learners
     :rtype: QuerySet
     """
@@ -253,6 +272,7 @@ def get_learner_info_queryset(
             fx_permission_info,
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
+            include_staff=include_staff,
         )
     ).annotate(
         certificates_count=get_certificates_count_for_learner_queryset(
