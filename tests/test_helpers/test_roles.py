@@ -172,9 +172,7 @@ def _initialize_creator_role_test(role, org, all_organizations):
     )])
     creator = CourseCreator.objects.get(user_id=33)
     if not all_organizations:
-        _add_clear_org_to_course_creator(
-            creator, Organization.objects.create(name=org, description=org, short_name=org),
-        )
+        _add_clear_org_to_course_creator(creator, Organization.objects.create(short_name=org))
     with pytest.raises(FXCodedException) as exc_info:
         validate_course_access_role(course_access_role)
     assert exc_info.value.code == FXExceptionCodes.ROLE_INACTIVE.value
@@ -204,7 +202,7 @@ def test_validate_course_access_role_invalid_creator_role_global(base_data):  # 
     assert str(exc_info.value) == expected_error_msg
 
     _add_clear_org_to_course_creator(
-        creator, Organization.objects.create(name='org1', description='org1', short_name='org1'),
+        creator, Organization.objects.create(short_name='OrG1'),
     )
     with pytest.raises(FXCodedException) as exc_info:
         validate_course_access_role(course_access_role)
@@ -230,7 +228,7 @@ def test_validate_course_access_role_invalid_creator_role_tenant(base_data):  # 
     CourseCreator.objects.filter(user_id=33).update(all_organizations=False)
     _add_clear_org_to_course_creator(creator, None)  # clear all orgs
     _add_clear_org_to_course_creator(
-        creator, Organization.objects.create(name='org2', description='org2', short_name='org2'),
+        creator, Organization.objects.create(short_name='oRg2'),
     )
     with pytest.raises(FXCodedException) as exc_info:
         validate_course_access_role(course_access_role)
@@ -306,12 +304,7 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
         org='org8',
         course_id='',
     )
-    org8 = Organization.objects.create(
-        name='org8',
-        description='org8',
-        short_name='org8',
-        active=True,
-    )
+    org8 = Organization.objects.create(short_name='Org8')
     CourseCreator.objects.bulk_create([CourseCreator(
         user_id=user_id,
         state=CourseCreator.GRANTED,

@@ -5,7 +5,16 @@ from django.db.models.fields import AutoField
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from opaque_keys.edx.django.models import CourseKeyField, LearningContextKeyField, UsageKeyField
-from organizations.models import Organization
+import re
+
+
+class Organization(models.Model):
+    """Mock"""
+    short_name = models.CharField(max_length=255, unique=True, db_collation='NOCASE')
+
+    def clean(self):
+        if not re.match('^[a-zA-Z0-9._-]*$', self.short_name):
+            raise ValueError('Short name must be alphanumeric and may contain periods, underscores, and hyphens.')
 
 
 class CourseOverview(models.Model):
