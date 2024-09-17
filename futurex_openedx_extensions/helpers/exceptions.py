@@ -24,6 +24,8 @@ class FXExceptionCodes(Enum):
 
     INVALID_INPUT = 4001
 
+    COURSE_CREATOR_NOT_FOUND = 5001
+
 
 class FXCodedException(Exception):
     """Exception with a code."""

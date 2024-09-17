@@ -7,7 +7,6 @@ from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict, List, Tuple
 
-from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -16,7 +15,6 @@ from django.db.models import BooleanField, Exists, OuterRef, Q, QuerySet, Subque
 from django.db.models.functions import Lower
 from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
-from organizations.models import Organization
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
@@ -25,6 +23,7 @@ from futurex_openedx_extensions.helpers.converters import (
     get_allowed_roles,
     ids_string_to_list,
 )
+from futurex_openedx_extensions.helpers.course_creator_manager import CourseCreatorManager
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import (
     DictHashcode,
@@ -106,42 +105,34 @@ def validate_course_access_role(course_access_role: dict) -> None:
     )
 
     if role in [cs.COURSE_CREATOR_ROLE_GLOBAL, cs.COURSE_CREATOR_ROLE_TENANT]:
-        creator = CourseCreator.objects.filter(
-            user_id=course_access_role['user_id'],
-        ).first()
+        creator = CourseCreatorManager(user_id=course_access_role['user_id'])
 
         check_broken_rule(
-            not creator,
+            not creator.db_record,
             FXExceptionCodes.ROLE_INVALID_ENTRY,
             f'missing course-creator record for {role} role!',
         )
 
         check_broken_rule(
-            creator.state != CourseCreator.GRANTED,
+            not creator.is_granted(),
             FXExceptionCodes.ROLE_INACTIVE,
             f'course-creator record for {role} role is inactive!',
         )
 
         check_broken_rule(
-            role == cs.COURSE_CREATOR_ROLE_GLOBAL and (
-                not creator.all_organizations or creator.organizations.exists()
-            ),
+            role == cs.COURSE_CREATOR_ROLE_GLOBAL and (not creator.is_all_orgs() or not creator.is_orgs_empty()),
             FXExceptionCodes.ROLE_INVALID_ENTRY,
             f'{role} role must have all_organizations=True with no details for organizations!',
         )
 
         check_broken_rule(
-            role == cs.COURSE_CREATOR_ROLE_TENANT and (
-                creator.all_organizations or not creator.organizations.exists()
-            ),
+            role == cs.COURSE_CREATOR_ROLE_TENANT and (creator.is_all_orgs() or creator.is_orgs_empty()),
             FXExceptionCodes.ROLE_INVALID_ENTRY,
             f'{role} role must have all_organizations=False with at least one organization set!',
         )
 
         check_broken_rule(
-            role == cs.COURSE_CREATOR_ROLE_TENANT and org not in creator.organizations.values_list(
-                'short_name', flat=True,
-            ),
+            role == cs.COURSE_CREATOR_ROLE_TENANT and org not in creator.get_orgs(),
             FXExceptionCodes.ROLE_INACTIVE,
             f'missing organization in course-creator record for {role} role!',
         )
@@ -779,7 +770,7 @@ def _delete_course_access_roles(tenant_ids: list[int], user: get_user_model) -> 
             message=f'No role found to delete for the user ({user.username}) within the given tenants {tenant_ids}!',
         )
 
-    remove_orgs_from_course_creator(user.id, orgs)
+    CourseCreatorManager(user.id).remove_orgs(orgs=orgs)
 
     cache_refresh_course_access_roles(user.id)
 
@@ -874,65 +865,6 @@ def _verify_can_add_org_course_creator(caller: get_user_model, orgs: list[str]) 
         )
 
 
-def add_orgs_to_course_creator_record(course_creator: CourseCreator, orgs: list[str]) -> None:
-    """
-    Add the orgs to the course creator record. Doing that through the many-to-many relationship to avoid
-    triggering signals of the CourseCreator model.
-
-    :param course_creator: The course creator record
-    :type course_creator: CourseCreator
-    :param orgs: The orgs to add
-    :type orgs: list
-    """
-    orgs = [org.lower() for org in orgs]
-    existing_orgs = set(course_creator.organizations.all().annotate(
-        short_name_lower=Lower('short_name')
-    ).values_list('short_name_lower', flat=True))
-
-    orgs = list(set(orgs) - existing_orgs)
-    if not orgs:
-        return
-
-    organizations_many_to_many = CourseCreator.organizations.through
-
-    new_orgs = [Organization.objects.get(short_name=org) for org in orgs]
-    organizations_many_to_many.objects.bulk_create([
-        organizations_many_to_many(
-            coursecreator_id=course_creator.id,
-            organization_id=org.id,
-        ) for org in new_orgs
-    ])
-
-
-def remove_orgs_from_course_creator(user_id: int, orgs: list[str], delete_on_empty: bool = True) -> None:
-    """
-    Remove the orgs from the course creator record. Doing that through the many-to-many relationship to avoid
-    triggering signals of the CourseCreator model.
-
-    :param user_id: The user ID
-    :type user_id: int
-    :param orgs: The orgs to remove
-    :type orgs: list
-    :param delete_on_empty: True to delete the record if empty, False otherwise
-    :type delete_on_empty: bool
-    """
-    orgs = [org.lower() for org in orgs]
-    user = get_user_model().objects.get(id=user_id)
-    course_creator_qs = CourseCreator.objects.filter(user=user, all_organizations=False)
-    course_creator = course_creator_qs.first()
-    if not course_creator:
-        return
-
-    organizations_many_to_many = CourseCreator.organizations.through
-    organizations_many_to_many.objects.filter(
-        coursecreator_id=course_creator.id,
-        organization__short_name__in=orgs,
-    ).delete()
-
-    if delete_on_empty and not course_creator.organizations.exists():
-        course_creator_qs.delete()
-
-
 def add_org_course_creator(caller: get_user_model, user: get_user_model, orgs: list[str]) -> None:
     """
     Add the course creator role for the given user and orgs.
@@ -973,19 +905,10 @@ def add_org_course_creator(caller: get_user_model, user: get_user_model, orgs: l
     if not to_add:
         return
 
-    course_creator = CourseCreator.objects.filter(user=user).first()
-    if not course_creator:
-        CourseCreator.objects.bulk_create([
-            CourseCreator(
-                user=user,
-                all_organizations=False,
-                state=CourseCreator.GRANTED,
-            ),
-        ])
-        course_creator = CourseCreator.objects.get(user=user)
-
     CourseAccessRole.objects.bulk_create(to_add)
-    add_orgs_to_course_creator_record(course_creator, orgs)
+
+    course_creator = CourseCreatorManager(user.id)
+    course_creator.add_orgs(orgs)
 
     cache_refresh_course_access_roles(user.id)
 

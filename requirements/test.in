@@ -25,5 +25,3 @@ backports.zoneinfo;python_version<"3.9"
 # other requirements
 django-simple-history<3.7.0     # 3.7.0 dropped support for Django 3.2
 python-dateutil
-edx-organizations==6.11.1
-edx-drf-extensions==8.6.0       # pinned for compatibility with edx-organizations
