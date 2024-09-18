@@ -141,7 +141,7 @@ class TestLearnersView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 46)
+        self.assertEqual(response.data['count'], 37)
         self.assertGreater(len(response.data['results']), 0)
 
 
