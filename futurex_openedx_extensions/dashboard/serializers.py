@@ -286,6 +286,7 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
     enrolled_count = serializers.IntegerField()
     active_count = serializers.IntegerField()
     certificates_count = serializers.IntegerField()
+    completion_rate = serializers.FloatField()
 
     class Meta:
         model = CourseOverview
@@ -294,6 +295,7 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
             'enrolled_count',
             'active_count',
             'certificates_count',
+            'completion_rate',
         ]
 
     def get_rating(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use

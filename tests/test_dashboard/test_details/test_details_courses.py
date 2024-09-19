@@ -6,6 +6,7 @@ from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
 from django.utils.timezone import now, timedelta
 from eox_nelp.course_experience.models import FeedbackCourse
+from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.dashboard.details.courses import (
@@ -61,6 +62,49 @@ def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_inf
     for record in result_with_staff:
         assert record.enrolled_count == expected_results[str(record.id)][2], f'failed for: {record.id}'
         assert record.certificates_count == expected_results[str(record.id)][3], f'failed for: {record.id}'
+
+
+@pytest.mark.django_db
+def test_get_courses_queryset_result_for_completion_rate(
+    base_data, fx_permission_info
+):  # pylint: disable=unused-argument
+    """Verify that get_courses_queryset is calculating completion_rate correctly."""
+
+    course_id = 'course-v1:ORG1+2+2'
+
+    # Initial state: no enrollments, expect completion rate to be 0
+    course = get_courses_queryset(fx_permission_info).get(id=course_id)
+    assert course.enrolled_count == 0
+    assert course.certificates_count == 0
+    assert course.completion_rate == 0.0
+
+    # Create 2 enrollments fr user_ids (23, 21)
+    CourseEnrollment.objects.create(user_id=23, course_id=course_id, is_active=True)
+    CourseEnrollment.objects.create(user_id=21, course_id=course_id, is_active=True)
+
+    # Assert values after 2 enrollments but 0 certificates
+    course = get_courses_queryset(fx_permission_info).get(id=course_id)
+    assert course.enrolled_count == 2
+    assert course.certificates_count == 0
+    assert course.completion_rate == 0.0
+
+    # Create 1 certificate for user_id=23
+    GeneratedCertificate.objects.create(course_id=course_id, user_id=23, status='downloadable')
+
+    # Assert values after 2 enrollments and 1 certificate
+    course = get_courses_queryset(fx_permission_info).get(id=course_id)
+    assert course.enrolled_count == 2
+    assert course.certificates_count == 1
+    assert course.completion_rate == 0.5
+
+    # Create another certificate for user_id=21
+    GeneratedCertificate.objects.create(course_id=course_id, user_id=21, status='downloadable')
+
+    # Assert values after 2 enrollments and 2 certificates
+    course = get_courses_queryset(fx_permission_info).get(id=course_id)
+    assert course.enrolled_count == 2
+    assert course.certificates_count == 2
+    assert course.completion_rate == 1.0
 
 
 @pytest.mark.django_db
