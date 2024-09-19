@@ -9,6 +9,7 @@ from django.db.models import (
     DateTimeField,
     Exists,
     F,
+    FloatField,
     IntegerField,
     Max,
     OuterRef,
@@ -130,6 +131,12 @@ def get_courses_queryset(
             ).values('course_id').annotate(count=Count('id')).values('count'),
             output_field=IntegerField(),
         ), 0),
+    ).annotate(
+        completion_rate=Case(
+            When(enrolled_count=0, then=Value(0.0)),
+            default=F('certificates_count') * 1.0 / F('enrolled_count'),
+            output_field=FloatField(),
+        )
     )
 
     return queryset

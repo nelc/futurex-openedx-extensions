@@ -14,9 +14,17 @@ from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyP
 from rest_framework import serializers
 from rest_framework.fields import empty
 
-from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREFIX, COURSE_STATUSES
+from futurex_openedx_extensions.helpers.constants import (
+    COURSE_ACCESS_ROLES_GLOBAL,
+    COURSE_STATUS_SELF_PREFIX,
+    COURSE_STATUSES,
+)
 from futurex_openedx_extensions.helpers.converters import relative_url_to_absolute_url
-from futurex_openedx_extensions.helpers.roles import RoleType, get_course_access_roles_queryset
+from futurex_openedx_extensions.helpers.roles import (
+    RoleType,
+    get_course_access_roles_queryset,
+    get_user_course_access_roles,
+)
 from futurex_openedx_extensions.helpers.tenants import get_tenants_by_org
 
 
@@ -286,6 +294,7 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
     enrolled_count = serializers.IntegerField()
     active_count = serializers.IntegerField()
     certificates_count = serializers.IntegerField()
+    completion_rate = serializers.FloatField()
 
     class Meta:
         model = CourseOverview
@@ -294,6 +303,7 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
             'enrolled_count',
             'active_count',
             'certificates_count',
+            'completion_rate',
         ]
 
     def get_rating(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
@@ -369,6 +379,7 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 class UserRolesSerializer(LearnerBasicDetailsSerializer):
     """Serializer for user roles."""
     tenants = serializers.SerializerMethodField()
+    global_roles = serializers.SerializerMethodField()
 
     def __init__(self, instance: Any | None = None, data: Any = empty, **kwargs: Any):
         """Initialize the serializer."""
@@ -506,6 +517,11 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
         """Return the tenants."""
         return self.roles_data.get(obj.id, {}) if self.roles_data else {}
 
+    def get_global_roles(self, obj: get_user_model) -> Any:  # pylint:disable=no-self-use
+        """Return the global roles."""
+        roles_dict = get_user_course_access_roles(obj)['roles']
+        return [role for role in roles_dict if role in COURSE_ACCESS_ROLES_GLOBAL]
+
     class Meta:
         model = get_user_model()
         fields = [
@@ -514,5 +530,6 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
             'username',
             'full_name',
             'alternative_full_name',
+            'global_roles',
             'tenants',
         ]

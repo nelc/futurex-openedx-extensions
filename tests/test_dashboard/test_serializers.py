@@ -2,7 +2,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
-from common.djangoapps.student.models import SocialLink, UserProfile
+from common.djangoapps.student.models import CourseAccessRole, SocialLink, UserProfile
 from django.contrib.auth import get_user_model
 from django.db.models import Value
 from django.utils.timezone import get_current_timezone, now, timedelta
@@ -273,12 +273,14 @@ def test_course_details_serializer(base_data):  # pylint: disable=unused-argumen
     course.enrolled_count = 10
     course.active_count = 5
     course.certificates_count = 3
+    course.completion_rate = 0.3
     course.save()
     data = CourseDetailsSerializer(course).data
     assert data['id'] == str(course.id)
     assert data['enrolled_count'] == course.enrolled_count
     assert data['active_count'] == course.active_count
     assert data['certificates_count'] == course.certificates_count
+    assert data['completion_rate'] == course.completion_rate
 
 
 @pytest.mark.django_db
@@ -303,6 +305,7 @@ def test_course_details_serializer_rating(
     course.enrolled_count = 1
     course.active_count = 1
     course.certificates_count = 1
+    course.completion_rate = 1
     course.save()
     data = CourseDetailsSerializer(course).data
     assert data['rating'] == expected_rating
@@ -378,6 +381,7 @@ def test_user_roles_serializer_init(
         'username': user3.username,
         'full_name': '',
         'alternative_full_name': '',
+        'global_roles': [],
         'tenants': {}
     }
 
@@ -431,6 +435,29 @@ def test_user_roles_serializer_get_org_tenants(
         mock_get_tenants_by_org.reset_mock()
         assert serializer.get_org_tenants('org1') == [1, 2]
         mock_get_tenants_by_org.assert_not_called()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('role, is_valid_global_role', [
+    ('support', True),
+    ('staff', False),
+])
+def test_user_roles_serializer_for_global_roles(
+    base_data, serializer_context, role, is_valid_global_role
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that the UserRolesSerializer correctly returns gloabl role list"""
+    user3 = get_user_model().objects.get(id=3)
+
+    # create global role for user
+    CourseAccessRole.objects.create(
+        user_id=user3.id,
+        role=role
+    )
+    serializer = UserRolesSerializer(user3, context=serializer_context)
+    if is_valid_global_role:
+        assert serializer.data.get('global_roles', []) == ['support']
+    else:
+        assert serializer.data.get('global_roles') == []
 
 
 @pytest.mark.django_db

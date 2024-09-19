@@ -242,7 +242,6 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
     expected_result = {
         'roles': {
             'instructor': {
-                'global_role': False,
                 'orgs_full_access': ['org1', 'org2', 'org3'],
                 'tenant_ids_full_access': [1, 2, 7],
                 'course_limited_access': [],
@@ -250,7 +249,6 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
                 'tenant_ids': [1, 2, 7],
             },
             'staff': {
-                'global_role': False,
                 'orgs_full_access': [],
                 'tenant_ids_full_access': [],
                 'course_limited_access': ['course-v1:ORG1+4+4', 'course-v1:ORG3+1+1'],
@@ -269,7 +267,6 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
         course_id='',
     )
     expected_result['roles']['support'] = {
-        'global_role': True,
         'orgs_full_access': [],
         'tenant_ids_full_access': [],
         'course_limited_access': [],
@@ -299,7 +296,6 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
     creator = CourseCreator.objects.get(user_id=user_id)
     _add_clear_org_to_course_creator(creator, org8)
     expected_result['roles']['org_course_creator_group'] = {
-        'global_role': False,
         'orgs_full_access': ['org8'],
         'tenant_ids_full_access': [2, 8],
         'course_limited_access': [],
