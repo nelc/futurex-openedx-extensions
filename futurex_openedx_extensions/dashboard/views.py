@@ -64,6 +64,19 @@ from futurex_openedx_extensions.helpers.tenants import get_tenants_info, get_use
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 
+
+import csv
+from django.http import HttpResponse
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+
+from rest_framework.renderers import JSONRenderer
+
+
+
+
 class TotalCountsView(APIView, FXViewRoleInfoMixin):
     """
     View to get the total count statistics
@@ -155,6 +168,19 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         return JsonResponse(result)
 
 
+class CSVAsJSONRenderer(JSONRenderer):
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        if renderer_context and renderer_context.get('request'):
+            request = renderer_context.get('request')
+            if request.query_params.get('download') == 'csv':
+                import pdb; pdb.set_trace()
+                csv_headers = renderer_context.get('view').serializer_class.Meta.fields
+                csv_data = data
+                # triger task and handle all required info
+                # return response to frontend that task has been innitiated.
+        return super().render(data, accepted_media_type, renderer_context)
+
+
 class LearnersView(ListAPIView, FXViewRoleInfoMixin):
     """View to get the list of learners"""
     serializer_class = serializers.LearnerDetailsSerializer
@@ -163,6 +189,7 @@ class LearnersView(ListAPIView, FXViewRoleInfoMixin):
     fx_view_name = 'learners_list'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learners/: Get the list of learners'
+    renderer_classes = [CSVAsJSONRenderer]
 
     def get_queryset(self) -> QuerySet:
         """Get the list of learners"""
@@ -190,6 +217,7 @@ class CoursesView(ListAPIView, FXViewRoleInfoMixin):
     fx_view_name = 'courses_list'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/courses/v1/courses/: Get the list of courses'
+    # renderer_classes = [CSVAsJSONRenderer]
 
     def get_queryset(self) -> QuerySet:
         """Get the list of learners"""
@@ -340,6 +368,7 @@ class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
     fx_view_name = 'learners_with_details_for_course'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learners/<course-id>: Get the list of learners for a course'
+    # renderer_classes = [CSVAsJSONRenderer]
 
     def get_queryset(self, *args: Any, **kwargs: Any) -> QuerySet:
         """Get the list of learners for a course"""

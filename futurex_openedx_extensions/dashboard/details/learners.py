@@ -162,7 +162,7 @@ def get_learners_queryset(
         Exists(
             UserSignupSource.objects.filter(
                 user_id=OuterRef('id'),
-                site__in=tenant_sites
+                # site__in=tenant_sites
             )
         )
     ).annotate(
