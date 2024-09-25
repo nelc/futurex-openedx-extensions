@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from simple_history.admin import SimpleHistoryAdmin
 
 from futurex_openedx_extensions.helpers.constants import CACHE_NAMES
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ViewAllowedRoles
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask, ViewAllowedRoles
 
 
 class ClickhouseQueryAdmin(SimpleHistoryAdmin):
@@ -137,6 +137,12 @@ class CacheInvalidatorAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(one_step_back_path)
 
 
+class DataExportTaskAdmin(admin.ModelAdmin):
+    """Admin class of DataExportTask model"""
+    list_display = ('id', 'view_name', 'status', 'progress', 'user', 'notes',)
+    search_fields = ('filename', 'user__email', 'user__username', 'notes')
+
+
 def register_admins() -> None:
     """Register the admin views."""
     CacheInvalidator._meta.abstract = False  # to be able to register the admin view
@@ -144,6 +150,7 @@ def register_admins() -> None:
     admin.site.register(CacheInvalidator, CacheInvalidatorAdmin)
     admin.site.register(ClickhouseQuery, ClickhouseQueryAdmin)
     admin.site.register(ViewAllowedRoles, ViewAllowedRolesHistoryAdmin)
+    admin.site.register(DataExportTask, DataExportTaskAdmin)
 
 
 register_admins()

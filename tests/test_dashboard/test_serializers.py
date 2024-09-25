@@ -14,6 +14,7 @@ from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyP
 from futurex_openedx_extensions.dashboard.serializers import (
     CourseDetailsBaseSerializer,
     CourseDetailsSerializer,
+    DataExportTaskSerializer,
     LearnerBasicDetailsSerializer,
     LearnerCoursesDetailsSerializer,
     LearnerDetailsExtendedSerializer,
@@ -22,6 +23,7 @@ from futurex_openedx_extensions.dashboard.serializers import (
     UserRolesSerializer,
 )
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.roles import RoleType
 
 
@@ -52,6 +54,30 @@ def serializer_context():
             query_params={},
         )
     }
+
+
+@pytest.mark.django_db
+def test_data_export_task_serializer_for_notes_max_len_limit(base_data):  # pylint: disable=unused-argument
+    """Verify the DataExportSerializer for notes max len limit."""
+    user = get_user_model().objects.get(id=10)
+    task = DataExportTask.objects.create(filename='test.csv', view_name='test', user=user, tenant_id=1)
+    data = {'notes': 'A' * 256}
+    serializer = DataExportTaskSerializer(instance=task, data=data)
+    assert serializer.is_valid() is False
+    assert 'notes' in serializer.errors
+    assert serializer.errors['notes'] == ['Ensure this field has no more than 255 characters.']
+
+
+@pytest.mark.django_db
+def test_data_export_task_serializer_for_notes_validation(base_data):  # pylint: disable=unused-argument
+    """Verify the DataExportSerializer for notes HTML tags validation."""
+    user = get_user_model().objects.get(id=10)
+    task = DataExportTask.objects.create(filename='test.csv', view_name='test', user=user, tenant_id=1)
+    text = 'hello'
+    text_with_html_tags = f'<h1>{text}</h1>'
+    serializer = DataExportTaskSerializer(instance=task, data={'notes': text_with_html_tags})
+    assert serializer.is_valid() is True
+    assert serializer.validated_data['notes'] == '&lt;h1&gt;hello&lt;/h1&gt;'
 
 
 @pytest.mark.django_db

@@ -11,6 +11,7 @@ from django.core.paginator import EmptyPage
 from django.db import transaction
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.exceptions import ParseError
@@ -43,8 +44,9 @@ from futurex_openedx_extensions.helpers.constants import (
 )
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -292,6 +294,39 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
         )
 
 
+class DataExportManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # pylint: disable=too-many-ancestors
+    """View to list and retrieve data export tasks."""
+    serializer_class = serializers.DataExportTaskSerializer
+    permission_classes = [FXHasTenantCourseAccess]
+    pagination_class = DefaultPagination
+    fx_view_name = 'exported_files_data'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_default_read_write_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_allowed_write_methods = ['PATCH']
+    fx_view_description = 'api/fx/export/v1/tasks/: Data Export Task Mangement APIs.'
+    http_method_names = ['get', 'patch']
+    ordering = ['-created_at']
+
+    def get_queryset(self) -> QuerySet:
+        """Get the list of user tasks."""
+        return DataExportTask.objects.filter(
+            user=self.request.user,
+            tenant_id__in=self.fx_permission_info['view_allowed_tenant_ids_any_access']
+        )
+
+    def get_object(self) -> DataExportTask:
+        """Override to ensure that the user can only retrieve their own tasks."""
+        task_id = self.kwargs.get('pk')  # Use 'pk' for the default lookup
+        task = get_object_or_404(DataExportTask, id=task_id, user=self.request.user)
+        return task
+
+    def retrieve(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """Retrieve a specific task."""
+        instance = self.get_object()
+        serializer = serializers.DataExportTaskDetailSerializer(instance)
+        return Response(serializer.data)
+
+
 class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
     """View to get the list of courses for a learner"""
     permission_classes = [FXHasTenantCourseAccess]
@@ -363,7 +398,7 @@ class AccessibleTenantsInfoView(APIView):
         return JsonResponse(get_tenants_info(tenant_ids))
 
 
-class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
+class LearnersDetailsForCourseView(ExportCSVMixin, ListAPIView, FXViewRoleInfoMixin):
     """View to get the list of learners for a course"""
     serializer_class = serializers.LearnerDetailsForCourseSerializer
     permission_classes = [FXHasTenantCourseAccess]
@@ -379,7 +414,7 @@ class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
         include_staff = self.request.query_params.get('include_staff', '0') == '1'
 
         return get_learners_by_course_queryset(
-            course_id=course_id,
+            course_id=course_id,   # type: ignore
             search_text=search_text,
             include_staff=include_staff,
         )
