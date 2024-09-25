@@ -27,6 +27,9 @@ class FXExceptionCodes(Enum):
 
     COURSE_CREATOR_NOT_FOUND = 5001
 
+    EXPORT_CSV_VIEW_RESPONSE_FAILURE = 6001
+    EXPORT_CSV_MISSING_REQUIRED_PARAMS = 6002
+
 
 class FXCodedException(Exception):
     """Exception with a code."""
