@@ -41,6 +41,7 @@ from futurex_openedx_extensions.helpers.constants import (
 )
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.export_data import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
@@ -332,7 +333,7 @@ class AccessibleTenantsInfoView(APIView):
         return JsonResponse(get_tenants_info(tenant_ids))
 
 
-class LearnersDetailsForCourseView(ListAPIView, FXViewRoleInfoMixin):
+class LearnersDetailsForCourseView(ExportCSVMixin, ListAPIView, FXViewRoleInfoMixin):
     """View to get the list of learners for a course"""
     serializer_class = serializers.LearnerDetailsForCourseSerializer
     permission_classes = [FXHasTenantCourseAccess]
