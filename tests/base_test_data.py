@@ -293,13 +293,44 @@ _base_data = {
 
 
 expected_statistics = {
-    '1': {'certificates_count': 14, 'courses_count': 12, 'hidden_courses_count': 0, 'learners_count': 16},
-    '2': {'certificates_count': 9, 'courses_count': 5, 'hidden_courses_count': 0, 'learners_count': 21},
-    '3': {'certificates_count': 0, 'courses_count': 1, 'hidden_courses_count': 0, 'learners_count': 6},
-    '7': {'certificates_count': 7, 'courses_count': 3, 'hidden_courses_count': 0, 'learners_count': 17},
-    '8': {'certificates_count': 2, 'courses_count': 2, 'hidden_courses_count': 0, 'learners_count': 9},
+    '1': {
+        'certificates_count': 14,
+        'courses_count': 12,
+        'enrollments_count': 26,
+        'hidden_courses_count': 0,
+        'learners_count': 16,
+    },
+    '2': {
+        'certificates_count': 9,
+        'courses_count': 5,
+        'enrollments_count': 21,
+        'hidden_courses_count': 0,
+        'learners_count': 21,
+    },
+    '3': {
+        'certificates_count': 0,
+        'courses_count': 1,
+        'enrollments_count': 4,
+        'hidden_courses_count': 0,
+        'learners_count': 6,
+    },
+    '7': {
+        'certificates_count': 7,
+        'courses_count': 3,
+        'enrollments_count': 14,
+        'hidden_courses_count': 0,
+        'learners_count': 17,
+    },
+    '8': {
+        'certificates_count': 2,
+        'courses_count': 2,
+        'enrollments_count': 7,
+        'hidden_courses_count': 0,
+        'learners_count': 9,
+    },
     'total_certificates_count': 32,
     'total_courses_count': 23,
+    'total_enrollments_count': 72,
     'total_hidden_courses_count': 0,
     'total_learners_count': 69,
 }

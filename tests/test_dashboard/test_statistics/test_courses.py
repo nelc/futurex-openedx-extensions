@@ -37,6 +37,24 @@ def test_get_courses_count(base_data, fx_permission_info):  # pylint: disable=un
 
 
 @pytest.mark.django_db
+def test_get_enrollments_count(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify get_enrollments_count function."""
+    result = courses.get_enrollments_count(fx_permission_info, include_staff=True)
+
+    assert list(result) == [
+        {'org_lower_case': 'org1', 'enrollments_count': 9},
+        {'org_lower_case': 'org2', 'enrollments_count': 23},
+    ]
+
+    result = courses.get_enrollments_count(fx_permission_info)
+
+    assert list(result) == [
+        {'org_lower_case': 'org1', 'enrollments_count': 4},
+        {'org_lower_case': 'org2', 'enrollments_count': 22},
+    ]
+
+
+@pytest.mark.django_db
 def test_get_courses_count_by_status(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_courses_count_by_status function."""
     result = courses.get_courses_count_by_status(fx_permission_info)

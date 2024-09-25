@@ -30,6 +30,7 @@ from futurex_openedx_extensions.dashboard.statistics.courses import (
     get_courses_count,
     get_courses_count_by_status,
     get_courses_ratings,
+    get_enrollments_count,
 )
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
@@ -72,13 +73,15 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
     """
     STAT_CERTIFICATES = 'certificates'
     STAT_COURSES = 'courses'
+    STAT_ENROLLMENTS = 'enrollments'
     STAT_HIDDEN_COURSES = 'hidden_courses'
     STAT_LEARNERS = 'learners'
 
-    valid_stats = [STAT_CERTIFICATES, STAT_COURSES, STAT_HIDDEN_COURSES, STAT_LEARNERS]
+    valid_stats = [STAT_CERTIFICATES, STAT_COURSES, STAT_ENROLLMENTS, STAT_HIDDEN_COURSES, STAT_LEARNERS]
     STAT_RESULT_KEYS = {
         STAT_CERTIFICATES: 'certificates_count',
         STAT_COURSES: 'courses_count',
+        STAT_ENROLLMENTS: 'enrollments_count',
         STAT_HIDDEN_COURSES: 'hidden_courses_count',
         STAT_LEARNERS: 'learners_count',
     }
@@ -101,6 +104,16 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         return sum(org_count['courses_count'] for org_count in collector_result)
 
     @staticmethod
+    def _get_enrollments_count_data(
+        one_tenant_permission_info: dict, visible_filter: bool | None, include_staff: bool,
+    ) -> int:
+        """Get the count of enrollments for the given tenant"""
+        collector_result = get_enrollments_count(
+            one_tenant_permission_info, visible_filter=visible_filter, include_staff=include_staff,
+        )
+        return sum(org_count['enrollments_count'] for org_count in collector_result)
+
+    @staticmethod
     def _get_learners_count_data(one_tenant_permission_info: dict, include_staff: bool) -> int:
         """Get the count of learners for the given tenant"""
         return get_learners_count(one_tenant_permission_info, include_staff=include_staff)
@@ -113,6 +126,11 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
 
         if stat == self.STAT_COURSES:
             return self._get_courses_count_data(one_tenant_permission_info, visible_filter=True)
+
+        if stat == self.STAT_ENROLLMENTS:
+            return self._get_enrollments_count_data(
+                one_tenant_permission_info, visible_filter=True, include_staff=include_staff,
+            )
 
         if stat == self.STAT_HIDDEN_COURSES:
             return self._get_courses_count_data(one_tenant_permission_info, visible_filter=False)
