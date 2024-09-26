@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
-from futurex_openedx_extensions.helpers.constants import COURSE_ID_REGX_EXACT
+from futurex_openedx_extensions.helpers.constants import COURSE_ID_REGX_EXACT, COURSE_ACCESS_ROLES_GLOBAL
 
 
 @dataclass
@@ -149,3 +149,35 @@ def get_orgs_of_courses(course_ids: List[str]) -> Dict[str, Any]:
         raise ValueError(f'Invalid course IDs provided: {invalid_course_ids}')
 
     return result
+
+
+def get_partial_access_course_ids(fx_permission_info: dict) -> List[str]:
+    """
+    Get the course IDs that the user has partial access to according to the permission information.
+
+    Note: remember that the user can have a course-specific role on one course, but that course is already
+    accessible by another tenant-wide role. Therefore, that course is not considered as a partial access course.
+
+    :param fx_permission_info: Dictionary containing permission information.
+    :type fx_permission_info: dict
+    :return: List of course IDs that the user has partial access to.
+    :rtype: List[str]
+    """
+    if fx_permission_info['is_system_staff_user']:
+        return []
+
+    course_ids_to_check = set()
+
+    role_keys = set(fx_permission_info['view_allowed_roles']) & set(fx_permission_info['user_roles'])
+    if role_keys & set(COURSE_ACCESS_ROLES_GLOBAL):
+        return []
+
+    for role_key in role_keys:
+        course_ids_to_check.update(fx_permission_info['user_roles'][role_key]['course_limited_access'])
+
+    only_limited_access = CourseOverview.objects.filter(
+        id__in=list(course_ids_to_check),
+        org__in=fx_permission_info['view_allowed_course_access_orgs'],
+    ).values_list('id', flat=True)
+
+    return [str(course_id) for course_id in only_limited_access]

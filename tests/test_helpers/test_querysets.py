@@ -2,9 +2,12 @@
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, UserProfile
 from django.contrib.auth import get_user_model
+from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
+from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import querysets
+from tests.fixture_helpers import get_tenants_orgs
 
 
 @pytest.mark.django_db
@@ -172,3 +175,47 @@ def test_get_learners_search_queryset_active_filter(
     assert querysets.get_learners_search_queryset(**kwargs).count() == true_count
     kwargs[filter_name] = False
     assert querysets.get_learners_search_queryset(**kwargs).count() == 70 - true_count
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('full_access, partial_access, expected_with_staff, expected_without_staff', [
+    ([7, 8], [], 26, 22),
+    ([7], [8], 21, 18),
+    ([8], [7], 16, 14),
+    ([], [7, 8], 10, 9),
+])
+def test_get_permitted_learners_queryset(
+    base_data, full_access, partial_access, expected_with_staff, expected_without_staff,
+):  # pylint: disable=unused-argument
+    """Verify get_permitted_learners_queryset function."""
+    course_ids = {
+        'org3': 'course-v1:ORG3+1+1',
+        'org8': 'course-v1:ORG8+1+1',
+    }
+    assert CourseOverview.objects.filter(id__in=course_ids.values()).count() == len(course_ids), 'bad test data'
+
+    queryset = get_user_model().objects.all()
+    whatever_role_for_testing = 'instructor'
+    role_to_ignore = 'staff'
+
+    fx_permission_info = {
+        'is_system_staff_user': False,
+        'user_roles': {
+            whatever_role_for_testing: {
+                'course_limited_access': [course_ids[org] for org in get_tenants_orgs(partial_access)],
+            },
+            role_to_ignore: {'course_limited_access': ['course-v1:should_not_be_reached']},
+        },
+        'view_allowed_roles': [whatever_role_for_testing],
+        'view_allowed_full_access_orgs': get_tenants_orgs(full_access),
+        'view_allowed_course_access_orgs': get_tenants_orgs(partial_access),
+        'view_allowed_any_access_orgs': get_tenants_orgs(full_access + partial_access),
+        'view_allowed_tenant_ids_full_access': full_access,
+        'view_allowed_tenant_ids_partial_access': partial_access,
+    }
+
+    result = querysets.get_permitted_learners_queryset(queryset, fx_permission_info)
+    assert result.count() == expected_without_staff
+
+    result = querysets.get_permitted_learners_queryset(queryset, fx_permission_info, include_staff=True)
+    assert result.count() == expected_with_staff

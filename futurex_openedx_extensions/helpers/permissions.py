@@ -114,6 +114,7 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
                 course_access_orgs.update(
                     permitted_orgs & set(user_roles[role]['orgs_of_courses'])
                 )
+        course_access_orgs -= full_access_orgs
 
         full_access_tenant_ids = set()
         for org in full_access_orgs:
