@@ -333,4 +333,5 @@ expected_statistics = {
     'total_enrollments_count': 72,
     'total_hidden_courses_count': 0,
     'total_learners_count': 69,
+    'limited_access': False,
 }

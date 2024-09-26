@@ -170,6 +170,8 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
                 result[tenant_id][self.STAT_RESULT_KEYS[stat]] = count
                 result[f'total_{self.STAT_RESULT_KEYS[stat]}'] += count
 
+        result['limited_access'] = self.fx_permission_info['view_allowed_course_access_orgs'] != []
+
         return JsonResponse(result)
 
 

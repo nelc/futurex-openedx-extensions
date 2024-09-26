@@ -92,6 +92,14 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertDictEqual(json.loads(response.content), expected_statistics)
 
+    def test_limited_access(self):
+        """Test get method with limited access"""
+        self.login_user(3)
+        response = self.client.get(self.url + '?stats=certificates')  # we need at least one stat
+        self.assertTrue(isinstance(response, JsonResponse))
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(json.loads(response.content)['limited_access'], True)
+
     def test_selected_tenants(self):
         """Test get method with selected tenants"""
         self.login_user(self.staff_user)
@@ -104,6 +112,7 @@ class TestTotalCountsView(BaseTestViewMixin):
             'total_certificates_count': 23,
             'total_courses_count': 17,
             'total_learners_count': 37,
+            'limited_access': False,
         }
         self.assertDictEqual(json.loads(response.content), expected_response)
 
