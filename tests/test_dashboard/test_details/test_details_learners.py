@@ -150,22 +150,23 @@ def test_get_learners_search_queryset_active_filter(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('tenant_ids, expected_count', [
-    ([7, 8], 26),
-    ([7], 20),
-    ([4], 0),
+@pytest.mark.parametrize('tenant_ids, expected_count_no_staff, expected_count_include_staff', [
+    ([7, 8], 22, 26),
+    ([7], 17, 20),
+    ([4], 0, 0),
 ])
 def test_get_learners_queryset(
-    base_data, fx_permission_info, tenant_ids, expected_count
+    base_data, fx_permission_info, tenant_ids, expected_count_no_staff, expected_count_include_staff,
 ):  # pylint: disable=unused-argument
     """Verify that get_learners_queryset returns the correct QuerySet."""
     fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs(tenant_ids)
     fx_permission_info['permitted_tenant_ids'] = tenant_ids
     result = get_learners_queryset(fx_permission_info)
-    assert result.count() == expected_count
-    if expected_count > 0:
+    assert result.count() == expected_count_no_staff
+    if expected_count_no_staff > 0:
         assert result.first().courses_count is not None, 'courses_count should be in the queryset'
         assert result.first().certificates_count is not None, 'certificates_count should be in the queryset'
+    assert get_learners_queryset(fx_permission_info, include_staff=True).count() == expected_count_include_staff
 
 
 @pytest.mark.django_db
