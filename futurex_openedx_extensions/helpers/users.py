@@ -93,3 +93,17 @@ def get_user_by_key(  # pylint: disable=too-many-branches
             result['key_type'] = cs.USER_KEY_TYPE_USERNAME if user_key == user.username else cs.USER_KEY_TYPE_EMAIL
 
     return result
+
+
+def is_system_staff_user(user: get_user_model, ignore_active: bool = False) -> bool:
+    """
+    Check if the given user is a system staff user.
+
+    :param user: User object.
+    :type user: get_user_model
+    :param ignore_active: If True, ignore the active status of the user.
+    :type ignore_active: bool
+    :return: True if the user is a system staff user, False otherwise.
+    :rtype: bool
+    """
+    return (user.is_active or ignore_active) and (user.is_staff or user.is_superuser)

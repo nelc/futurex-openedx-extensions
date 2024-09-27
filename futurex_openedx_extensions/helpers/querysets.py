@@ -108,8 +108,7 @@ def get_base_queryset_courses(
 
     course_is_visible_queryset = Q(catalog_visibility__in=['about', 'both']) & Q(visible_to_staff_only=False)
 
-    orgs = fx_permission_info['view_allowed_full_access_orgs'] + fx_permission_info['view_allowed_course_access_orgs']
-    q_set = CourseOverview.objects.filter(org__in=orgs)
+    q_set = CourseOverview.objects.filter(org__in=fx_permission_info['view_allowed_any_access_orgs'])
 
     if not fx_permission_info['is_system_staff_user']:
         q_set = q_set.filter(check_staff_exist_queryset(

@@ -33,6 +33,7 @@ def test_get_courses_queryset(
 ):  # pylint: disable=unused-argument
     """Verify that get_courses_queryset returns the correct QuerySet."""
     fx_permission_info['view_allowed_full_access_orgs'] = orgs
+    fx_permission_info['view_allowed_any_access_orgs'] = orgs
     assert get_courses_queryset(fx_permission_info, search_text).count() == expected_count
 
 

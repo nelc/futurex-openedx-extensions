@@ -154,16 +154,14 @@ def get_learners_queryset(
     :return: QuerySet of learners
     :rtype: QuerySet
     """
-    tenant_sites = get_tenants_sites(fx_permission_info['permitted_tenant_ids'])
-
-    orgs = list(set(
-        fx_permission_info['view_allowed_full_access_orgs'] + fx_permission_info['view_allowed_course_access_orgs']
-    ))
+    tenant_sites = get_tenants_sites(fx_permission_info['view_allowed_tenant_ids_any_access'])
 
     if include_staff:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))
     else:
-        is_staff_queryset = check_staff_exist_queryset(ref_user_id='user_id', ref_org=orgs, ref_course_id=None)
+        is_staff_queryset = check_staff_exist_queryset(
+            ref_user_id='user_id', ref_org=fx_permission_info['view_allowed_any_access_orgs'], ref_course_id=None,
+        )
 
     queryset = get_learners_search_queryset(search_text)
 

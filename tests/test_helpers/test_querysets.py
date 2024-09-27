@@ -68,6 +68,7 @@ def test_get_base_queryset_courses_limited_course_roles(
         'is_system_staff_user': False,
         'view_allowed_full_access_orgs': ['org2'],
         'view_allowed_course_access_orgs': [],
+        'view_allowed_any_access_orgs': ['org2'],
         'view_allowed_roles': ['staff'],
     })
     course_id = 'course-v1:ORG2+2+2'
@@ -97,6 +98,7 @@ def test_get_base_queryset_courses_global_roles(base_data, fx_permission_info): 
         'is_system_staff_user': False,
         'view_allowed_full_access_orgs': ['org2'],
         'view_allowed_course_access_orgs': [],
+        'view_allowed_any_access_orgs': ['org2'],
         'view_allowed_roles': ['staff', 'support'],
     })
     assert CourseAccessRole.objects.filter(user_id=4, org='org2', role__in=['staff', 'support']).count() == 0

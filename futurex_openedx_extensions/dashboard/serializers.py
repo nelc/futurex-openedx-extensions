@@ -387,9 +387,8 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
         self._roles_data: dict[Any, Any] = {}
 
         permission_info = kwargs['context']['request'].fx_permission_info
-        self.orgs_filter = permission_info['view_allowed_full_access_orgs']
-        self.orgs_filter.extend(permission_info['view_allowed_course_access_orgs'])
-        self.permitted_tenant_ids = permission_info['permitted_tenant_ids']
+        self.orgs_filter = permission_info['view_allowed_any_access_orgs']
+        self.permitted_tenant_ids = permission_info['view_allowed_tenant_ids_any_access']
         self.query_params = self.parse_query_params(kwargs['context']['request'].query_params)
 
         if instance:
