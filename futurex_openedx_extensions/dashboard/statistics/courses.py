@@ -3,14 +3,15 @@ from __future__ import annotations
 
 from typing import Dict
 
-from django.db.models import Case, CharField, Count, Q, Sum, Value, When
+from common.djangoapps.student.models import CourseEnrollment
+from django.db.models import BooleanField, Case, CharField, Count, Q, Sum, Value, When
 from django.db.models.functions import Coalesce, Lower
 from django.db.models.query import QuerySet
 from django.utils.timezone import now
 
 from futurex_openedx_extensions.dashboard.details.courses import annotate_courses_rating_queryset
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
-from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
+from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
 
 
 def get_courses_count(
@@ -35,6 +36,47 @@ def get_courses_count(
     return q_set.values(org_lower_case=Lower('org')).annotate(
         courses_count=Count('id')
     ).order_by(Lower('org'))
+
+
+def get_enrollments_count(
+    fx_permission_info: dict,
+    visible_filter: bool | None = True,
+    active_filter: bool | None = None,
+    include_staff: bool = False,
+) -> QuerySet:
+    """
+    Get the count of courses in the given tenants
+
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
+    :param visible_filter: Value to filter courses on catalog visibility. None means no filter.
+    :type visible_filter: bool | None
+    :param active_filter: Value to filter courses on active status. None means no filter.
+    :type active_filter: bool | None
+    :param include_staff: Value to include staff users in the count. False means exclude staff users.
+    :type include_staff: bool
+    :return: QuerySet of courses count per organization
+    :rtype: QuerySet
+    """
+    if include_staff:
+        is_staff_queryset = Q(Value(False, output_field=BooleanField()))
+    else:
+        is_staff_queryset = check_staff_exist_queryset('user_id', 'course__org', 'course_id')
+
+    q_set = CourseEnrollment.objects.filter(
+        course_id__in=get_base_queryset_courses(
+            fx_permission_info, visible_filter=visible_filter, active_filter=active_filter
+        ).values_list('id', flat=True),
+        is_active=True,
+    ).exclude(
+        Q(user__is_active=False) | Q(user__is_staff=True) | Q(user__is_superuser=True)
+    ).exclude(
+        is_staff_queryset
+    )
+
+    return q_set.values(org_lower_case=Lower('course__org')).annotate(
+        enrollments_count=Count('id')
+    ).order_by(Lower('course__org'))
 
 
 def get_courses_count_by_status(
