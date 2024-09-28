@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import List
 
 from common.djangoapps.student.models import CourseAccessRole
+from django.contrib.auth import get_user_model
 from django.db.models import BooleanField, Case, Exists, OuterRef, Q, Value, When
 from django.db.models.query import QuerySet
 from django.utils.timezone import now
@@ -139,3 +140,43 @@ def get_base_queryset_courses(
         q_set = q_set.filter(course_is_visible=visible_filter)
 
     return q_set
+
+
+def get_learners_search_queryset(
+    search_text: str | None = None,
+    superuser_filter: bool | None = False,
+    staff_filter: bool | None = False,
+    active_filter: bool | None = True
+) -> QuerySet:
+    """
+    Get the learners queryset for the given search text.
+
+    :param search_text: Search text to filter the learners by
+    :type search_text: str | None
+    :param superuser_filter: Value to filter superusers. None means no filter
+    :type superuser_filter: bool | None
+    :param staff_filter: Value to filter staff users. None means no filter
+    :type staff_filter: bool | None
+    :param active_filter: Value to filter active users. None means no filter
+    :type active_filter: bool | None
+    :return: QuerySet of learners
+    :rtype: QuerySet
+    """
+    queryset = get_user_model().objects.all()
+
+    if superuser_filter is not None:
+        queryset = queryset.filter(is_superuser=superuser_filter)
+    if staff_filter is not None:
+        queryset = queryset.filter(is_staff=staff_filter)
+    if active_filter is not None:
+        queryset = queryset.filter(is_active=active_filter)
+
+    search_text = (search_text or '').strip()
+    if search_text:
+        queryset = queryset.filter(
+            Q(username__icontains=search_text) |
+            Q(email__icontains=search_text) |
+            Q(profile__name__icontains=search_text)
+        )
+
+    return queryset

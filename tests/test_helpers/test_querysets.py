@@ -1,6 +1,6 @@
 """Tests for querysets helpers"""
 import pytest
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, UserProfile
 from django.contrib.auth import get_user_model
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
@@ -130,3 +130,45 @@ def test_check_staff_exist_queryset_invalid(argument_name, bad_value, expected_e
     with pytest.raises(ValueError) as exc_info:
         querysets.check_staff_exist_queryset(**arguments)
     assert str(exc_info.value) == expected_error_msg
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('search_text, expected_count', [
+    (None, 64),
+    ('user', 64),
+    ('user4', 11),
+    ('example', 64),
+])
+def test_get_learners_search_queryset(base_data, search_text, expected_count):  # pylint: disable=unused-argument
+    """Verify that get_learners_search_queryset returns the correct QuerySet."""
+    assert querysets.get_learners_search_queryset(search_text=search_text).count() == expected_count
+
+
+@pytest.mark.django_db
+def test_get_learners_search_queryset_name(base_data):  # pylint: disable=unused-argument
+    """Verify that get_learners_search_queryset returns the correct QuerySet when searching in profile name."""
+    assert querysets.get_learners_search_queryset(search_text='hn D').count() == 0
+    UserProfile.objects.create(user_id=10, name='John Doe')
+    assert querysets.get_learners_search_queryset(search_text='hn D').count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('filter_name, true_count', [
+    ('superuser_filter', 2),
+    ('staff_filter', 2),
+    ('active_filter', 67),
+])
+def test_get_learners_search_queryset_active_filter(
+    base_data, filter_name, true_count
+):  # pylint: disable=unused-argument
+    """Verify that get_learners_search_queryset returns the correct QuerySet when active_filters is used"""
+    kwargs = {
+        'superuser_filter': None,
+        'staff_filter': None,
+        'active_filter': None,
+    }
+    assert querysets.get_learners_search_queryset(**kwargs).count() == 70, 'unexpected test data'
+    kwargs[filter_name] = True
+    assert querysets.get_learners_search_queryset(**kwargs).count() == true_count
+    kwargs[filter_name] = False
+    assert querysets.get_learners_search_queryset(**kwargs).count() == 70 - true_count
