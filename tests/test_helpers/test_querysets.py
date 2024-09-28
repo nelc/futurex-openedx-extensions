@@ -2,10 +2,8 @@
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, UserProfile
 from django.contrib.auth import get_user_model
-from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
-from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import querysets
 from tests.fixture_helpers import get_tenants_orgs
 

@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
-from futurex_openedx_extensions.helpers.constants import COURSE_ID_REGX_EXACT, COURSE_ACCESS_ROLES_GLOBAL
+from futurex_openedx_extensions.helpers import constants as cs
 
 
 @dataclass
@@ -88,7 +88,7 @@ def get_course_id_from_uri(uri: str) -> str | None:
     """
     path_parts = urlparse(uri).path.split('/')
     for part in path_parts:
-        result = re.search(COURSE_ID_REGX_EXACT, part)
+        result = re.search(cs.COURSE_ID_REGX_EXACT, part)
         if result:
             return result.groupdict().get('course_id')
 
@@ -122,7 +122,7 @@ def verify_course_ids(course_ids: List[str]) -> None:
     for course_id in course_ids:
         if not isinstance(course_id, str):
             raise ValueError(f'course_id must be a string, but got {type(course_id).__name__}')
-        if not re.search(COURSE_ID_REGX_EXACT, course_id):
+        if not re.search(cs.COURSE_ID_REGX_EXACT, course_id):
             raise ValueError(f'Invalid course ID format: {course_id}')
 
 
@@ -166,12 +166,11 @@ def get_partial_access_course_ids(fx_permission_info: dict) -> List[str]:
     if fx_permission_info['is_system_staff_user']:
         return []
 
-    course_ids_to_check = set()
-
     role_keys = set(fx_permission_info['view_allowed_roles']) & set(fx_permission_info['user_roles'])
-    if role_keys & set(COURSE_ACCESS_ROLES_GLOBAL):
+    if role_keys & set(cs.COURSE_ACCESS_ROLES_GLOBAL):
         return []
 
+    course_ids_to_check = set()
     for role_key in role_keys:
         course_ids_to_check.update(fx_permission_info['user_roles'][role_key]['course_limited_access'])
 

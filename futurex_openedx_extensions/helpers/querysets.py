@@ -11,8 +11,8 @@ from django.utils.timezone import now
 from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
-from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids
 from futurex_openedx_extensions.helpers.converters import get_allowed_roles
+from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 
 
