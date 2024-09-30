@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from common.djangoapps.student.models import UserSignupSource
 from django.contrib.auth import get_user_model
 from django.db.models import BooleanField, Case, Count, Exists, OuterRef, Q, Subquery, Value, When
 from django.db.models.query import QuerySet
@@ -16,8 +15,8 @@ from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_base_queryset_courses,
     get_learners_search_queryset,
+    get_permitted_learners_queryset,
 )
-from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 
 
 def get_courses_count_for_learner_queryset(
@@ -118,29 +117,15 @@ def get_learners_queryset(
     :return: QuerySet of learners
     :rtype: QuerySet
     """
-    tenant_sites = get_tenants_sites(fx_permission_info['view_allowed_tenant_ids_any_access'])
-
-    if include_staff:
-        is_staff_queryset = Q(Value(False, output_field=BooleanField()))
-    else:
-        is_staff_queryset = check_staff_exist_queryset(
-            ref_user_id='user_id', ref_org=fx_permission_info['view_allowed_any_access_orgs'], ref_course_id=None,
-        )
-
     queryset = get_learners_search_queryset(search_text)
 
-    queryset = queryset.filter(
-        Exists(
-            UserSignupSource.objects.filter(
-                user_id=OuterRef('id'),
-                site__in=tenant_sites,
-            ).exclude(
-                Q(user__is_superuser=True) | Q(user__is_staff=True) | Q(user__is_active=False)
-            ).exclude(
-                is_staff_queryset
-            ).values('user_id')
-        )
-    ).annotate(
+    queryset = get_permitted_learners_queryset(
+        queryset=queryset,
+        fx_permission_info=fx_permission_info,
+        include_staff=include_staff,
+    )
+
+    queryset = queryset.annotate(
         courses_count=get_courses_count_for_learner_queryset(
             fx_permission_info,
             visible_courses_filter=visible_courses_filter,

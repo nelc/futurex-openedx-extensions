@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
 from django.db.models import BooleanField, Case, Exists, OuterRef, Q, Value, When
 from django.db.models.query import QuerySet
@@ -12,6 +12,8 @@ from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers.converters import get_allowed_roles
+from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids
+from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 
 
 def check_staff_exist_queryset(
@@ -178,5 +180,49 @@ def get_learners_search_queryset(
             Q(email__icontains=search_text) |
             Q(profile__name__icontains=search_text)
         )
+
+    return queryset
+
+
+def get_permitted_learners_queryset(
+    queryset: QuerySet,
+    fx_permission_info: dict,
+    include_staff: bool = False,
+) -> QuerySet:
+    """
+    Get the learners queryset after applying permissions from fx_permission_info.
+
+    :param queryset: QuerySet of learners
+    :type queryset: QuerySet
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
+    :return: QuerySet of learners
+    :rtype: QuerySet
+    """
+    tenant_sites = get_tenants_sites(fx_permission_info['view_allowed_tenant_ids_full_access'])
+
+    if not include_staff:
+        queryset = queryset.exclude(
+            check_staff_exist_queryset(
+                ref_user_id='id',
+                ref_org=fx_permission_info['view_allowed_any_access_orgs'],
+                ref_course_id=None
+            )
+        )
+
+    users_filter = Exists(
+        UserSignupSource.objects.filter(user_id=OuterRef('id'), site__in=tenant_sites)
+    )
+    if fx_permission_info['view_allowed_tenant_ids_partial_access']:
+        users_filter |= Exists(
+            CourseEnrollment.objects.filter(
+                user_id=OuterRef('id'),
+                course_id__in=get_partial_access_course_ids(fx_permission_info),
+            )
+        )
+
+    queryset = queryset.filter(users_filter)
 
     return queryset

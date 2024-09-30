@@ -1,13 +1,17 @@
 """Tests for the helper functions in the helpers module."""
+from unittest.mock import Mock, patch
+
 import pytest
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
+from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.extractors import (
     DictHashcode,
     DictHashcodeSet,
     get_course_id_from_uri,
     get_first_not_empty_item,
     get_orgs_of_courses,
+    get_partial_access_course_ids,
     verify_course_ids,
 )
 
@@ -185,3 +189,84 @@ def test_dict_hashcodeset_eq_different_type():
     dict_list = [{'key1': 'value1'}, {'key2': 'value2'}]
     hashcode_set = DictHashcodeSet(dict_list)
     assert hashcode_set != 'not_a_hashcode_set'
+
+
+def _get_user_roles():
+    """Helper function to return a dictionary of user roles for testing."""
+    return {
+        cs.COURSE_ACCESS_ROLES_GLOBAL[0]: {},
+        cs.COURSE_ACCESS_ROLES_COURSE_ONLY[0]: {
+            'course_limited_access': ['course-v1:Org1+1+1'],
+        },
+        cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE[0]: {
+            'course_limited_access': ['course-v1:ORG3+1+1'],
+        },
+    }
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.extractors.CourseOverview.objects.filter')
+def test_get_partial_access_course_ids_staff(
+    mock_filter, base_data, fx_permission_info,
+):  # pylint: disable=unused-argument
+    """Verify that get_partial_access_course_ids returns an empty list for a staff user."""
+    assert fx_permission_info['is_system_staff_user'], 'bad test data'
+
+    result = get_partial_access_course_ids(fx_permission_info)
+    assert isinstance(result, list)
+    assert not result
+    mock_filter.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.extractors.CourseOverview.objects.filter')
+def test_get_partial_access_course_ids_global_role(
+    mock_filter, base_data, fx_permission_info,
+):  # pylint: disable=unused-argument
+    """Verify that get_partial_access_course_ids returns an empty list for a user with a global role."""
+    fx_permission_info.update({
+        'is_system_staff_user': False,
+        'user_roles': _get_user_roles(),
+        'view_allowed_roles': cs.COURSE_ACCESS_ROLES_GLOBAL,
+    })
+
+    result = get_partial_access_course_ids(fx_permission_info)
+    assert isinstance(result, list)
+    assert not result
+    mock_filter.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.extractors.CourseOverview.objects.filter')
+def test_get_partial_access_course_ids_no_roles_access(
+    mock_filter, base_data, fx_permission_info,
+):  # pylint: disable=unused-argument
+    """Verify that get_partial_access_course_ids returns an empty list when the user has no roles access."""
+    fx_permission_info.update({
+        'is_system_staff_user': False,
+        'user_roles': _get_user_roles(),
+        'view_allowed_roles': cs.COURSE_ACCESS_ROLES_TENANT_ONLY[0],
+        'view_allowed_course_access_orgs': ['org3'],
+    })
+
+    mock_filter.return_value = Mock(values_list=Mock(return_value=[]))
+    result = get_partial_access_course_ids(fx_permission_info)
+    assert isinstance(result, list)
+    assert not result
+    mock_filter.assert_called_once()
+    mock_filter.assert_called_with(id__in=[], org__in=['org3'])
+
+
+@pytest.mark.django_db
+def test_get_partial_access_course_ids_found(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify that get_partial_access_course_ids returns the expected course IDs for a user."""
+    fx_permission_info.update({
+        'is_system_staff_user': False,
+        'user_roles': _get_user_roles(),
+        'view_allowed_roles': cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE + cs.COURSE_ACCESS_ROLES_COURSE_ONLY,
+        'view_allowed_course_access_orgs': ['org3'],
+    })
+
+    result = get_partial_access_course_ids(fx_permission_info)
+    assert isinstance(result, list)
+    assert result == ['course-v1:ORG3+1+1']

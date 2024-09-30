@@ -1,5 +1,5 @@
 """Tests for learner details collectors"""
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from common.djangoapps.student.models import CourseEnrollment
@@ -107,24 +107,29 @@ def test_get_learner_info_queryset_selecting_profile(base_data, fx_permission_in
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('tenant_ids, expected_count_no_staff, expected_count_include_staff', [
-    ([7, 8], 22, 26),
-    ([7], 17, 20),
-    ([4], 0, 0),
+@pytest.mark.parametrize('tenant_ids, expected_count_with_staff, expected_count_without_staff', [
+    ([7, 8], 26, 24),
+    ([7], 20, 18),
 ])
 def test_get_learners_queryset(
-    base_data, fx_permission_info, tenant_ids, expected_count_no_staff, expected_count_include_staff,
+    base_data, fx_permission_info, tenant_ids, expected_count_with_staff, expected_count_without_staff,
 ):  # pylint: disable=unused-argument
     """Verify that get_learners_queryset returns the correct QuerySet."""
+    fx_permission_info['is_system_staff_user'] = False
+    fx_permission_info['user'] = Mock(id=3)
     fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs(tenant_ids)
-    fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs(tenant_ids)
-    fx_permission_info['view_allowed_tenant_ids_any_access'] = tenant_ids
+    fx_permission_info['view_allowed_tenant_ids_full_access'] = tenant_ids
+    fx_permission_info['view_allowed_tenant_ids_partial_access'] = []
+    fx_permission_info['view_allowed_roles'] = ['staff']
+    fx_permission_info['user_roles'] = {'staff': {'course_limited_access': []}}
+
+    result = get_learners_queryset(fx_permission_info, include_staff=True)
+    assert result.count() == expected_count_with_staff
+    assert result.first().courses_count is not None, 'courses_count should be in the queryset'
+    assert result.first().certificates_count is not None, 'certificates_count should be in the queryset'
+
     result = get_learners_queryset(fx_permission_info)
-    assert result.count() == expected_count_no_staff
-    if expected_count_no_staff > 0:
-        assert result.first().courses_count is not None, 'courses_count should be in the queryset'
-        assert result.first().certificates_count is not None, 'certificates_count should be in the queryset'
-    assert get_learners_queryset(fx_permission_info, include_staff=True).count() == expected_count_include_staff
+    assert result.count() == expected_count_without_staff
 
 
 @pytest.mark.django_db

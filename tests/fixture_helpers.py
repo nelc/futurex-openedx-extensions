@@ -24,7 +24,7 @@ def get_all_orgs():
     return ['org1', 'org2', 'org3', 'org8', 'org4', 'org5']
 
 
-def get_tenants_orgs(tenant_id):
+def get_tenants_orgs(tenant_ids):
     """Get test valid organizations for a tenants."""
     orgs = {
         1: ['org1', 'org2'],
@@ -37,7 +37,7 @@ def get_tenants_orgs(tenant_id):
         8: ['org8'],
     }
     result = set()
-    for tenant in tenant_id:
+    for tenant in tenant_ids:
         result.update(orgs[tenant])
     return list(result)
 
