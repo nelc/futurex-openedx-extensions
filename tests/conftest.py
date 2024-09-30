@@ -28,9 +28,13 @@ def fx_permission_info():
     """Fixture for permission information."""
     return {
         'is_system_staff_user': True,
+        'user': get_user_model().objects.get(id=1),
         'view_allowed_full_access_orgs': ['org1', 'org2'],
         'view_allowed_course_access_orgs': [],
         'view_allowed_any_access_orgs': ['org1', 'org2'],
+        'view_allowed_tenant_ids_full_access': [1],
+        'view_allowed_tenant_ids_any_access': [1],
+        'view_allowed_tenant_ids_partial_access': [0],
     }
 
 

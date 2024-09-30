@@ -9,6 +9,7 @@ from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.paginator import EmptyPage
+from django.db.models import Q
 from django.http import JsonResponse
 from django.urls import resolve, reverse
 from django.utils.timezone import now, timedelta
@@ -232,8 +233,19 @@ class TestCourseCourseStatusesView(BaseTestViewMixin):
         })
 
 
+def _mock_get_by_key(username_or_email):
+    """Mock get_user_by_key"""
+    return get_user_model().objects.get(Q(username=username_or_email) | Q(email=username_or_email))
+
+
 class PermissionsTestOfLearnerInfoViewMixin:
     """Tests for CourseStatusesView"""
+    patching_config = {
+        'get_by_key': ('futurex_openedx_extensions.helpers.users.get_user_by_username_or_email', {
+            'side_effect': _mock_get_by_key,
+        }),
+    }
+
     def setUp(self):
         """Setup"""
         super().setUp()
@@ -262,7 +274,9 @@ class PermissionsTestOfLearnerInfoViewMixin:
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
-        self.assertEqual(response.data, {'reason': 'User not found user10x', 'details': {}})
+        self.assertEqual(response.data, {
+            'reason': 'User with username/email (user10x) does not exist!', 'details': {}
+        })
 
     def _get_test_users(self, org3_admin_id, org3_learner_id):
         """Helper to get test users for the test_not_staff_user test"""
@@ -320,7 +334,9 @@ class PermissionsTestOfLearnerInfoViewMixin:
 
 
 @pytest.mark.usefixtures('base_data')
-class TestLearnerInfoView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMixin):
+class TestLearnerInfoView(
+    PermissionsTestOfLearnerInfoViewMixin, MockPatcherMixin, BaseTestViewMixin,
+):  # pylint: disable=too-many-ancestors
     """Tests for CourseStatusesView"""
     VIEW_NAME = 'fx_dashboard:learner-info'
 
@@ -365,7 +381,9 @@ class TestLearnerInfoView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMix
     lambda self, obj: {'letter_grade': 'Pass', 'percent': 0.7, 'is_passing': True}
 )
 @pytest.mark.usefixtures('base_data')
-class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseTestViewMixin):
+class TestLearnerCoursesDetailsView(
+    PermissionsTestOfLearnerInfoViewMixin, MockPatcherMixin, BaseTestViewMixin,
+):  # pylint: disable=too-many-ancestors
     """Tests for LearnerCoursesView"""
     VIEW_NAME = 'fx_dashboard:learner-courses'
 
@@ -388,7 +406,7 @@ class TestLearnerCoursesDetailsView(PermissionsTestOfLearnerInfoViewMixin, BaseT
 
         assert mock_get_info.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
                == get_all_orgs()
-        assert mock_get_info.call_args_list[0][1]['user_id'] == 10
+        assert mock_get_info.call_args_list[0][1]['user_key'] == 'user10'
         assert mock_get_info.call_args_list[0][1]['visible_filter'] is None
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         data = json.loads(response.content)

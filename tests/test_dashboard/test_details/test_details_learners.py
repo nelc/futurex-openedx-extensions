@@ -13,6 +13,7 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_by_course_queryset,
     get_learners_queryset,
 )
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from tests.fixture_helpers import get_tenants_orgs
 
 
@@ -89,11 +90,12 @@ def test_get_courses_count_for_learner_queryset_inactive_enrollment(
 @pytest.mark.django_db
 def test_get_learner_info_queryset(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_learner_info_queryset returns the correct QuerySet."""
-    queryset = get_learner_info_queryset(fx_permission_info, 3)
+    user_id = 21
+    queryset = get_learner_info_queryset(fx_permission_info, user_id)
     assert queryset.count() == 1, 'bad test data, user id (3) should be in the queryset'
 
     info = queryset.first()
-    assert info.username == 'user3', 'invalid data fetched!'
+    assert info.id == user_id, 'invalid data fetched!'
     assert hasattr(info, 'courses_count'), 'courses_count should be in the queryset'
     assert hasattr(info, 'certificates_count'), 'certificates_count should be in the queryset'
 
@@ -102,8 +104,41 @@ def test_get_learner_info_queryset(base_data, fx_permission_info):  # pylint: di
 def test_get_learner_info_queryset_selecting_profile(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify that get_learner_info_queryset returns the correct QuerySet along with the related profile record."""
     with patch('django.db.models.query.QuerySet.select_related') as mocked_select_related:
-        get_learner_info_queryset(fx_permission_info, 3)
+        get_learner_info_queryset(fx_permission_info, 21)
     mocked_select_related.assert_called_once_with('profile')
+
+
+@pytest.mark.django_db
+def test_get_learner_info_queryset_invalid_user(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify that get_learner_info_queryset raises an exception for an invalid user."""
+    with pytest.raises(FXCodedException) as exc_info:
+        get_learner_info_queryset(fx_permission_info, 'invalid_user')
+    assert exc_info.value.code == FXExceptionCodes.USER_NOT_FOUND.value
+
+
+@pytest.mark.django_db
+def test_get_learner_info_queryset_not_permitted(base_data):  # pylint: disable=unused-argument
+    """Verify that get_learner_info_queryset raises an exception when the user is not permitted."""
+    user_id = 21
+    fx_permission_info = {
+        'is_system_staff_user': False,
+        'user': get_user_model().objects.get(id=3),
+        'view_allowed_full_access_orgs': [],
+        'view_allowed_course_access_orgs': ['org1', 'org2'],
+        'view_allowed_any_access_orgs': ['org1', 'org2'],
+        'view_allowed_tenant_ids_full_access': [],
+        'view_allowed_tenant_ids_any_access': [1],
+        'view_allowed_tenant_ids_partial_access': [1],
+        'view_allowed_roles': ['staff'],
+        'user_roles': {'staff': {'course_limited_access': ['course-v1:ORG1+5+5']}},
+    }
+    assert get_learner_info_queryset(fx_permission_info, user_id).count() == 1
+
+    fx_permission_info['user_roles']['staff']['course_limited_access'] = ['course-v1:ORG1+3+3']
+    with pytest.raises(FXCodedException) as exc_info:
+        get_learner_info_queryset(fx_permission_info, user_id)
+    assert exc_info.value.code == FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value
+    assert str(exc_info.value) == f'Caller (user3) is not permitted to query user (user{user_id}).'
 
 
 @pytest.mark.django_db

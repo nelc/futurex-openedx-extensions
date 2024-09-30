@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from completion.models import BlockCompletion
+from django.contrib.auth import get_user_model
 from django.db.models import (
     BooleanField,
     Case,
@@ -24,7 +25,11 @@ from django.db.models.query import QuerySet
 from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
 
-from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
+from futurex_openedx_extensions.helpers.querysets import (
+    check_staff_exist_queryset,
+    get_base_queryset_courses,
+    get_one_user_queryset,
+)
 
 
 def annotate_courses_rating_queryset(
@@ -143,33 +148,45 @@ def get_courses_queryset(
 
 
 def get_learner_courses_info_queryset(
-    fx_permission_info: dict, user_id: int, visible_filter: bool | None = True, active_filter: bool | None = None
+    fx_permission_info: dict,
+    user_key: get_user_model | int | str,
+    visible_filter: bool | None = True,
+    active_filter: bool | None = None,
+    include_staff: bool = False,
 ) -> QuerySet:
     """
     Get the learner's courses queryset for the given user ID. This method assumes a valid user ID.
 
     :param fx_permission_info: Dictionary containing permission information
     :type fx_permission_info: dict
-    :param user_id: The user ID to get the learner for
-    :type user_id: int
+    :param user_key: The user key to get the learner for
+    :type user_key: get_user_model | int | str
     :param visible_filter: Value to filter courses on catalog visibility. None means no filter
     :type visible_filter: bool | None
     :param active_filter: Value to filter courses on active status. None means no filter
     :type active_filter: bool | None
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
     :return: QuerySet of learners
     :rtype: QuerySet
     """
+    user = get_one_user_queryset(
+        fx_permission_info=fx_permission_info,
+        user_key=user_key,
+        include_staff=include_staff
+    ).first()
+
     queryset = get_base_queryset_courses(
         fx_permission_info, visible_filter=visible_filter, active_filter=active_filter,
     ).filter(
-        courseenrollment__user_id=user_id,
+        courseenrollment__user_id=user.id,
         courseenrollment__is_active=True,
     ).annotate(
-        related_user_id=Value(user_id, output_field=IntegerField()),
+        related_user_id=Value(user.id, output_field=IntegerField()),
     ).annotate(
         enrollment_date=Case(
             When(
-                courseenrollment__user_id=user_id,
+                courseenrollment__user_id=user.id,
                 then=F('courseenrollment__created'),
             ),
             default=None,
@@ -180,13 +197,13 @@ def get_learner_courses_info_queryset(
             When(
                 Exists(
                     BlockCompletion.objects.filter(
-                        user_id=user_id,
+                        user_id=user.id,
                         context_key=OuterRef('id'),
                     ),
                 ),
                 then=Subquery(
                     BlockCompletion.objects.filter(
-                        user_id=user_id,
+                        user_id=user.id,
                         context_key=OuterRef('id'),
                     ).values('context_key').annotate(
                         last_activity=Max('modified'),

@@ -4,9 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
-from common.djangoapps.student.models import UserSignupSource
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef
 from django.db.models.query import QuerySet
 from eox_tenant.models import Route, TenantConfig
@@ -280,29 +278,3 @@ def get_tenants_sites(tenant_ids: List[int]) -> List[str]:
         if site := get_tenant_site(tenant_id):
             tenant_sites.append(site)
     return tenant_sites
-
-
-def get_user_id_from_username_tenants(username: str, tenant_ids: List[int]) -> int:
-    """
-    Check if the given username is in any of the given tenants. Returns the user ID if found, and zero otherwise.
-
-    :param username: The username to check
-    :type username: str
-    :param tenant_ids: List of tenant IDs to check
-    :type tenant_ids: List[int]
-    :return: The user ID if found, and zero otherwise
-    :rtype: int
-    """
-    if not tenant_ids or not username:
-        return 0
-
-    user_id = get_user_model().objects.filter(username=username).filter(
-        Exists(
-            UserSignupSource.objects.filter(
-                user_id=OuterRef('id'),
-                site__in=get_tenants_sites(tenant_ids),
-            )
-        )
-    ).values_list('id', flat=True)
-
-    return user_id[0] if user_id else 0
