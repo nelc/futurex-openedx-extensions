@@ -360,7 +360,7 @@ def test_get_user_course_access_roles_being_cached(cache_testing):  # pylint: di
 def test_check_tenant_access(base_data, user_id, ids_to_check, expected):  # pylint: disable=unused-argument
     """Verify check_tenant_access function."""
     user = get_user_model().objects.get(id=user_id)
-    result = check_tenant_access(user, ids_to_check)
+    result = check_tenant_access(user, ids_to_check, roles_filter=None)
     assert result == expected
 
 

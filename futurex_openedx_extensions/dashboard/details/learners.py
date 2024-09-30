@@ -12,7 +12,11 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
-from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
+from futurex_openedx_extensions.helpers.querysets import (
+    check_staff_exist_queryset,
+    get_base_queryset_courses,
+    get_learners_search_queryset,
+)
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 
 
@@ -91,46 +95,6 @@ def get_certificates_count_for_learner_queryset(
     )
 
 
-def get_learners_search_queryset(
-    search_text: str | None = None,
-    superuser_filter: bool | None = False,
-    staff_filter: bool | None = False,
-    active_filter: bool | None = True
-) -> QuerySet:
-    """
-    Get the learners queryset for the given search text.
-
-    :param search_text: Search text to filter the learners by
-    :type search_text: str | None
-    :param superuser_filter: Value to filter superusers. None means no filter
-    :type superuser_filter: bool | None
-    :param staff_filter: Value to filter staff users. None means no filter
-    :type staff_filter: bool | None
-    :param active_filter: Value to filter active users. None means no filter
-    :type active_filter: bool | None
-    :return: QuerySet of learners
-    :rtype: QuerySet
-    """
-    queryset = get_user_model().objects.all()
-
-    if superuser_filter is not None:
-        queryset = queryset.filter(is_superuser=superuser_filter)
-    if staff_filter is not None:
-        queryset = queryset.filter(is_staff=staff_filter)
-    if active_filter is not None:
-        queryset = queryset.filter(is_active=active_filter)
-
-    search_text = (search_text or '').strip()
-    if search_text:
-        queryset = queryset.filter(
-            Q(username__icontains=search_text) |
-            Q(email__icontains=search_text) |
-            Q(profile__name__icontains=search_text)
-        )
-
-    return queryset
-
-
 def get_learners_queryset(
     fx_permission_info: dict,
     search_text: str | None = None,
@@ -154,16 +118,14 @@ def get_learners_queryset(
     :return: QuerySet of learners
     :rtype: QuerySet
     """
-    tenant_sites = get_tenants_sites(fx_permission_info['permitted_tenant_ids'])
-
-    orgs = list(set(
-        fx_permission_info['view_allowed_full_access_orgs'] + fx_permission_info['view_allowed_course_access_orgs']
-    ))
+    tenant_sites = get_tenants_sites(fx_permission_info['view_allowed_tenant_ids_any_access'])
 
     if include_staff:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))
     else:
-        is_staff_queryset = check_staff_exist_queryset(ref_user_id='user_id', ref_org=orgs, ref_course_id=None)
+        is_staff_queryset = check_staff_exist_queryset(
+            ref_user_id='user_id', ref_org=fx_permission_info['view_allowed_any_access_orgs'], ref_course_id=None,
+        )
 
     queryset = get_learners_search_queryset(search_text)
 

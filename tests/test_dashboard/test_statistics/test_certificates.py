@@ -25,6 +25,7 @@ def test_get_certificates_count(
 ):  # pylint: disable=unused-argument
     """Verify get_certificates_count function."""
     fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs(tenant_ids)
+    fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs(tenant_ids)
     result = certificates.get_certificates_count(fx_permission_info)
     assert result == expected_result, \
         f'Wrong certificates result for tenant(s) {tenant_ids}. expected: {expected_result}, got: {result}'

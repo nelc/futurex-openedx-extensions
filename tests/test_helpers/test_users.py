@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.exceptions import FXExceptionCodes
-from futurex_openedx_extensions.helpers.users import get_user_by_key
+from futurex_openedx_extensions.helpers.users import get_user_by_key, is_system_staff_user
 
 
 @pytest.mark.parametrize('user_key, expected_error_message', [
@@ -131,3 +131,20 @@ def test_get_user_by_key_user_by_instance(base_data):  # pylint: disable=unused-
     assert result['key_type'] == cs.USER_KEY_TYPE_ID
     assert result['error_code'] is None
     assert result['error_message'] is None
+
+
+@pytest.mark.parametrize('is_staff, is_superuser, expected_result', [
+    (False, False, False),
+    (True, False, True),
+    (False, True, True),
+    (True, True, True),
+])
+def test_is_system_staff_user(is_staff, is_superuser, expected_result):
+    """Verify that is_system_staff_user returns True for system staff users."""
+    user = Mock(is_staff=is_staff, is_superuser=is_superuser, is_active=True)
+
+    assert is_system_staff_user(user) is expected_result
+
+    user.is_active = False
+    assert is_system_staff_user(user) is False
+    assert is_system_staff_user(user, ignore_active=True) is expected_result

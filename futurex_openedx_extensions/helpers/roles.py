@@ -38,7 +38,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_course_org_filter_list,
     get_tenants_by_org,
 )
-from futurex_openedx_extensions.helpers.users import get_user_by_key
+from futurex_openedx_extensions.helpers.users import get_user_by_key, is_system_staff_user
 
 logger = logging.getLogger(__name__)
 
@@ -162,14 +162,14 @@ def get_user_course_access_roles(user_id: int) -> dict:
                 'orgs_full_access': [org1, org2, ...],
                 'tenant_ids_full_access': [1, 2, ...],
                 'course_limited_access': [course_id1, course_id2, ...],
-                'orgs_of_courses': [org1, org2, ...],
+                'orgs_of_courses': [org3, org4, ...],
                 'tenant_ids': [1, 2, 3, ...],
             },
             <role2>: {
                 'orgs_full_access': [org1, org2, ...],
                 'tenant_ids_full_access': [1, 2, ...],
                 'course_limited_access': [course_id1, course_id2, ...],
-                'orgs_of_courses': [org1, org2, ...],
+                'orgs_of_courses': [org3, org4, ...],
                 'tenant_ids': [1, 2, 3, ...],
             },
             ...
@@ -266,7 +266,7 @@ def get_accessible_tenant_ids(user: get_user_model, roles_filter: List[str] | No
     """
     if not user:
         return []
-    if user.is_superuser or user.is_staff:
+    if is_system_staff_user(user):
         return get_all_tenant_ids()
 
     user_roles = get_user_course_access_roles(user.id)['roles']
@@ -285,7 +285,11 @@ def get_accessible_tenant_ids(user: get_user_model, roles_filter: List[str] | No
     return list(tenant_ids)
 
 
-def check_tenant_access(user: get_user_model, tenant_ids_string: str) -> tuple[bool, dict]:
+def check_tenant_access(
+    user: get_user_model,
+    tenant_ids_string: str,
+    roles_filter: List[str] | None,
+) -> tuple[bool, dict]:
     """
     Check if the user has access to the provided tenant IDs
 
@@ -293,7 +297,10 @@ def check_tenant_access(user: get_user_model, tenant_ids_string: str) -> tuple[b
     :type user: get_user_model
     :param tenant_ids_string: Comma-separated string of tenant IDs
     :type tenant_ids_string: str
+    :param roles_filter: List of roles to filter by. None means no filter. Empty list means no access at all.
+    :type roles_filter: List[str] | None
     :return: Tuple of a boolean indicating if the user has access, and a dictionary of error details if any
+    :rtype: tuple[bool, dict]
     """
     try:
         tenant_ids = set(ids_string_to_list(tenant_ids_string))
@@ -310,8 +317,7 @@ def check_tenant_access(user: get_user_model, tenant_ids_string: str) -> tuple[b
             tenant_ids=list(wrong_tenant_ids)
         )
 
-    user_roles = list(get_user_course_access_roles(user.id)['roles'].keys())
-    accessible_tenant_ids = get_accessible_tenant_ids(user, user_roles)
+    accessible_tenant_ids = get_accessible_tenant_ids(user, roles_filter=roles_filter)
     inaccessible_tenants = tenant_ids - set(accessible_tenant_ids)
     if inaccessible_tenants:
         return False, error_details_to_dictionary(
@@ -670,7 +676,7 @@ def _verify_can_delete_course_access_roles_partial(
                 result.update(set(role_info[list_name]))
         return result
 
-    if caller.is_staff or caller.is_superuser:
+    if is_system_staff_user(caller):
         return
 
     tenant_ids_with_staff_role: set | list = set(tenant_ids).intersection(
@@ -839,7 +845,7 @@ def _verify_can_add_org_course_creator(caller: get_user_model, orgs: list[str]) 
     :param orgs: The orgs to filter on
     :type orgs: list
     """
-    if caller.is_staff or caller.is_superuser:
+    if is_system_staff_user(caller):
         return
 
     caller_roles = get_user_course_access_roles(caller.id)['roles']
@@ -922,7 +928,7 @@ def _verify_can_add_course_access_roles(
     :param course_access_roles: The course access roles to add
     :type course_access_roles: list
     """
-    if caller.is_staff or caller.is_superuser:
+    if is_system_staff_user(caller):
         return
 
     caller_roles = get_user_course_access_roles(caller.id)['roles']

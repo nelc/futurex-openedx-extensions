@@ -16,6 +16,7 @@ def test_get_courses_count(base_data, fx_permission_info):  # pylint: disable=un
     fx_permission_info['view_allowed_full_access_orgs'] = get_course_org_filter_list(
         list(all_tenants), ignore_invalid_tenant_ids=True,
     )['course_org_filter_list']
+    fx_permission_info['view_allowed_any_access_orgs'] = fx_permission_info['view_allowed_full_access_orgs']
     result = courses.get_courses_count(fx_permission_info)
     orgs_in_result = [org['org_lower_case'] for org in result]
 

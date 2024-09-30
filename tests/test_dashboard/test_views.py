@@ -142,7 +142,7 @@ class TestLearnersView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_learners_queryset') as mock_queryset:
             self.client.get(self.url + '?tenant_ids=1&search_text=user')
-            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['permitted_tenant_ids'] == [1]
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_tenant_ids_any_access'] == [1]
             assert mock_queryset.call_args_list[0][1]['search_text'] == 'user'
 
     def test_success(self):
@@ -179,7 +179,7 @@ class TestCoursesView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
             self.client.get(self.url + '?tenant_ids=1&search_text=course')
-            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['permitted_tenant_ids'] == [1]
+            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_tenant_ids_any_access'] == [1]
             assert mock_queryset.call_args_list[0][1]['search_text'] == 'course'
             assert mock_queryset.call_args_list[0][1]['visible_filter'] is None
 

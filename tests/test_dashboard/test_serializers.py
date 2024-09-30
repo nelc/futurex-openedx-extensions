@@ -44,7 +44,8 @@ def serializer_context():
             fx_permission_info={
                 'view_allowed_full_access_orgs': ['org1', 'org2'],
                 'view_allowed_course_access_orgs': ['org3'],
-                'permitted_tenant_ids': [1, 3],
+                'view_allowed_any_access_orgs': ['org1', 'org2', 'org3'],
+                'view_allowed_tenant_ids_any_access': [1, 3],
             },
             query_params={},
         )
@@ -374,7 +375,7 @@ def test_user_roles_serializer_init(
     assert mock_construct_roles_data.call_args[0][0] == [user3]
     assert serializer.orgs_filter == ['org1', 'org2', 'org3']
     assert serializer.permitted_tenant_ids == \
-           serializer_context['request'].fx_permission_info['permitted_tenant_ids']
+           serializer_context['request'].fx_permission_info['view_allowed_tenant_ids_any_access']
     assert serializer.data == {
         'user_id': user3.id,
         'email': user3.email,

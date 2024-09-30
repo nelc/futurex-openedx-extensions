@@ -22,7 +22,9 @@ def get_learners_count(
     :return: Dictionary of tenant ID and the count of learners
     :rtype: Dict[int, Dict[str, int]]
     """
-    tenant_sites = [get_tenant_site(tenant_id) for tenant_id in fx_permission_info['permitted_tenant_ids']]
+    tenant_sites = [
+        get_tenant_site(tenant_id) for tenant_id in fx_permission_info['view_allowed_tenant_ids_any_access']
+    ]
 
     if include_staff:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))

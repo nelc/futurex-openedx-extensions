@@ -158,7 +158,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
             )
         include_staff = request.query_params.get('include_staff', '0') == '1'
 
-        tenant_ids = self.fx_permission_info['permitted_tenant_ids']
+        tenant_ids = self.fx_permission_info['view_allowed_tenant_ids_any_access']
 
         result = dict({tenant_id: {} for tenant_id in tenant_ids})
         result.update({
@@ -268,7 +268,7 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
         """
         GET /api/fx/learners/v1/learner/<username>/
         """
-        tenant_ids = self.fx_permission_info['permitted_tenant_ids']
+        tenant_ids = self.fx_permission_info['view_allowed_tenant_ids_any_access']
         user_id = get_user_id_from_username_tenants(username, tenant_ids)
         include_staff = request.query_params.get('include_staff', '0') == '1'
 
@@ -297,7 +297,7 @@ class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
         """
         GET /api/fx/learners/v1/learner_courses/<username>/
         """
-        tenant_ids = self.fx_permission_info['permitted_tenant_ids']
+        tenant_ids = self.fx_permission_info['view_allowed_tenant_ids_any_access']
         user_id = get_user_id_from_username_tenants(username, tenant_ids)
 
         if not user_id:
@@ -551,7 +551,7 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
         try:
             delete_course_access_roles(
                 caller=self.fx_permission_info['user'],
-                tenant_ids=self.fx_permission_info['permitted_tenant_ids'],
+                tenant_ids=self.fx_permission_info['view_allowed_tenant_ids_any_access'],
                 user=user_info['user'],
             )
         except FXCodedException as exc:
@@ -660,8 +660,7 @@ class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
 
         page, page_size = self.pop_out_page_params(params, clickhouse_query.paginated)
 
-        orgs = request.fx_permission_info['view_allowed_full_access_orgs'].copy()
-        orgs.extend(request.fx_permission_info['view_allowed_course_access_orgs'])
+        orgs = request.fx_permission_info['view_allowed_any_access_orgs'].copy()
         params[CLICKHOUSE_FX_BUILTIN_ORG_IN_TENANTS] = orgs
         if CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS in clickhouse_query.query:
             params[CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS] = get_usernames_with_access_roles(orgs)

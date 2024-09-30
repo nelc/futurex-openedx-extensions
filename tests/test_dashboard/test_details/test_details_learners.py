@@ -2,7 +2,7 @@
 from unittest.mock import patch
 
 import pytest
-from common.djangoapps.student.models import CourseEnrollment, UserProfile
+from common.djangoapps.student.models import CourseEnrollment
 from django.contrib.auth import get_user_model
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
@@ -12,7 +12,6 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learner_info_queryset,
     get_learners_by_course_queryset,
     get_learners_queryset,
-    get_learners_search_queryset,
 )
 from tests.fixture_helpers import get_tenants_orgs
 
@@ -108,48 +107,6 @@ def test_get_learner_info_queryset_selecting_profile(base_data, fx_permission_in
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('search_text, expected_count', [
-    (None, 64),
-    ('user', 64),
-    ('user4', 11),
-    ('example', 64),
-])
-def test_get_learners_search_queryset(base_data, search_text, expected_count):  # pylint: disable=unused-argument
-    """Verify that get_learners_search_queryset returns the correct QuerySet."""
-    assert get_learners_search_queryset(search_text=search_text).count() == expected_count
-
-
-@pytest.mark.django_db
-def test_get_learners_search_queryset_name(base_data):  # pylint: disable=unused-argument
-    """Verify that get_learners_search_queryset returns the correct QuerySet when searching in profile name."""
-    assert get_learners_search_queryset(search_text='hn D').count() == 0
-    UserProfile.objects.create(user_id=10, name='John Doe')
-    assert get_learners_search_queryset(search_text='hn D').count() == 1
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize('filter_name, true_count', [
-    ('superuser_filter', 2),
-    ('staff_filter', 2),
-    ('active_filter', 67),
-])
-def test_get_learners_search_queryset_active_filter(
-    base_data, filter_name, true_count
-):  # pylint: disable=unused-argument
-    """Verify that get_learners_search_queryset returns the correct QuerySet when active_filters is used"""
-    kwargs = {
-        'superuser_filter': None,
-        'staff_filter': None,
-        'active_filter': None,
-    }
-    assert get_learners_search_queryset(**kwargs).count() == 70, 'unexpected test data'
-    kwargs[filter_name] = True
-    assert get_learners_search_queryset(**kwargs).count() == true_count
-    kwargs[filter_name] = False
-    assert get_learners_search_queryset(**kwargs).count() == 70 - true_count
-
-
-@pytest.mark.django_db
 @pytest.mark.parametrize('tenant_ids, expected_count_no_staff, expected_count_include_staff', [
     ([7, 8], 22, 26),
     ([7], 17, 20),
@@ -160,7 +117,8 @@ def test_get_learners_queryset(
 ):  # pylint: disable=unused-argument
     """Verify that get_learners_queryset returns the correct QuerySet."""
     fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs(tenant_ids)
-    fx_permission_info['permitted_tenant_ids'] = tenant_ids
+    fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs(tenant_ids)
+    fx_permission_info['view_allowed_tenant_ids_any_access'] = tenant_ids
     result = get_learners_queryset(fx_permission_info)
     assert result.count() == expected_count_no_staff
     if expected_count_no_staff > 0:

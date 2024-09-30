@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from common.djangoapps.student.models import CourseAccessRole
+from deepdiff import DeepDiff
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.test import APIRequestFactory
 
@@ -153,10 +154,13 @@ def test_fx_base_authenticated_permission_staff_always_allowed(
         'user': request.user,
         'user_roles': {},
         'is_system_staff_user': True,
-        'permitted_tenant_ids': [1, 2, 3, 7, 8],
         'view_allowed_roles': ['staff', 'admin'],
         'view_allowed_full_access_orgs': get_all_orgs(),
         'view_allowed_course_access_orgs': [],
+        'view_allowed_any_access_orgs': get_all_orgs(),
+        'view_allowed_tenant_ids_any_access': [1, 2, 3, 7, 8],
+        'view_allowed_tenant_ids_full_access': [1, 2, 3, 7, 8],
+        'view_allowed_tenant_ids_partial_access': [],
     }
 
 
@@ -243,6 +247,7 @@ def test_fx_has_tenant_course_access_correct_base_success(
     request = Mock(fx_permission_info={
         'view_allowed_full_access_orgs': set(allowed_full_access),
         'view_allowed_course_access_orgs': set(allowed_course_access),
+        'view_allowed_any_access_orgs': set(allowed_full_access) | set(allowed_course_access),
     })
     assert FXHasTenantCourseAccess().verify_access_roles(request, None) is True
 
@@ -252,6 +257,7 @@ def test_fx_has_tenant_course_access_correct_base_fail():
     request = Mock(fx_permission_info={
         'view_allowed_full_access_orgs': set(),
         'view_allowed_course_access_orgs': set(),
+        'view_allowed_any_access_orgs': set(),
     })
     with pytest.raises(PermissionDenied) as exc:
         FXHasTenantCourseAccess().verify_access_roles(request, None)
@@ -264,7 +270,6 @@ def test_get_tenant_limited_fx_permission_info():
         'user': 'user object, copy as it is',
         'user_roles': ['list', 'of', 'roles', ' - copy as it is'],
         'is_system_staff_user': 'boolean, copy as it is',
-        'permitted_tenant_ids': 'list of tenants, replace with the given tenant_id',
         'view_allowed_roles': 'list of roles, copy as it is',
         'view_allowed_full_access_orgs': [
             'intersection of this list and the list of orgs for the given tenant', 'org1', 'org3'
@@ -272,17 +277,26 @@ def test_get_tenant_limited_fx_permission_info():
         'view_allowed_course_access_orgs': [
             'intersection of this list and the list of orgs for the given tenant', 'org2', 'org3', 'org4'
         ],
+        'view_allowed_any_access_orgs': [
+            'all orgs in the given tenants', 'org1', 'org2', 'org3', 'org3'
+        ],
+        'view_allowed_tenant_ids_any_access': 'list of tenants, replace with the given tenant_id',
+        'view_allowed_tenant_ids_full_access': 'list of tenants with full access',
+        'view_allowed_tenant_ids_partial_access': 'list of tenants with partial access',
     }
 
     with patch('futurex_openedx_extensions.helpers.permissions.get_course_org_filter_list', return_value={
         'course_org_filter_list': ['org1', 'org2']
     }):
-        assert get_tenant_limited_fx_permission_info(fx_permission_info, 1) == {
+        assert not DeepDiff(get_tenant_limited_fx_permission_info(fx_permission_info, 1), {
             'user': fx_permission_info['user'],
             'user_roles': fx_permission_info['user_roles'],
             'is_system_staff_user': fx_permission_info['is_system_staff_user'],
-            'permitted_tenant_ids': [1],
             'view_allowed_roles': fx_permission_info['view_allowed_roles'],
             'view_allowed_full_access_orgs': ['org1'],
             'view_allowed_course_access_orgs': ['org2'],
-        }
+            'view_allowed_any_access_orgs': ['org1', 'org2'],
+            'view_allowed_tenant_ids_any_access': [1],
+            'view_allowed_tenant_ids_full_access': [1],
+            'view_allowed_tenant_ids_partial_access': [],
+        }, ignore_order=True)
