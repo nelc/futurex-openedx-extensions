@@ -12,8 +12,10 @@ from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers.converters import get_allowed_roles
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
+from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 
 def check_staff_exist_queryset(
@@ -224,5 +226,43 @@ def get_permitted_learners_queryset(
         )
 
     queryset = queryset.filter(users_filter)
+
+    return queryset
+
+
+def get_one_user_queryset(
+    fx_permission_info: dict, user_key: get_user_model | int | str, include_staff: bool = False,
+) -> QuerySet:
+    """
+    Get the queryset of one user by the given user key.
+
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
+    :param user_key: User key to get the user by
+    :type user_key: get_user_model | int | str
+    :param include_staff: flag to include staff users
+    :type include_staff: bool
+    :return: QuerySet of users (filtered on one user)
+    :rtype: QuerySet
+    """
+    user_key_info = get_user_by_key(user_key, fail_if_inactive=True)
+    user: get_user_model = user_key_info['user']
+    if user_key_info['error_code'] is not None:
+        raise FXCodedException(user_key_info['error_code'], str(user_key_info['error_message']))
+
+    queryset = get_permitted_learners_queryset(
+        queryset=get_user_model().objects.filter(id=user.id),
+        fx_permission_info=fx_permission_info,
+        include_staff=include_staff,
+    )
+
+    if not queryset.exists():
+        raise FXCodedException(
+            code=FXExceptionCodes.USER_QUERY_NOT_PERMITTED,
+            message=(
+                f'Caller ({fx_permission_info["user"].username}) is not permitted to query user '
+                f'({user.username}).'
+            )
+        )
 
     return queryset

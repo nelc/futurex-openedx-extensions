@@ -61,7 +61,7 @@ from futurex_openedx_extensions.helpers.roles import (
     get_usernames_with_access_roles,
     update_course_access_roles,
 )
-from futurex_openedx_extensions.helpers.tenants import get_tenants_info, get_user_id_from_username_tenants
+from futurex_openedx_extensions.helpers.tenants import get_tenants_info
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 
@@ -268,17 +268,23 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
         """
         GET /api/fx/learners/v1/learner/<username>/
         """
-        tenant_ids = self.fx_permission_info['view_allowed_tenant_ids_any_access']
-        user_id = get_user_id_from_username_tenants(username, tenant_ids)
         include_staff = request.query_params.get('include_staff', '0') == '1'
 
-        if not user_id:
-            return Response(
-                error_details_to_dictionary(reason=f'User not found {username}'),
-                status=http_status.HTTP_404_NOT_FOUND
-            )
+        try:
+            user = get_learner_info_queryset(
+                fx_permission_info=self.fx_permission_info,
+                user_key=username,
+                include_staff=include_staff,
+            ).first()
+        except FXCodedException as exc:
+            return_status = http_status.HTTP_404_NOT_FOUND if exc.code in (
+                FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value, FXExceptionCodes.USER_NOT_FOUND.value,
+            ) else http_status.HTTP_400_BAD_REQUEST
 
-        user = get_learner_info_queryset(self.fx_permission_info, user_id, include_staff=include_staff).first()
+            return Response(
+                error_details_to_dictionary(reason=str(exc)),
+                status=return_status,
+            )
 
         return JsonResponse(
             serializers.LearnerDetailsExtendedSerializer(user, context={'request': request}).data
@@ -297,20 +303,24 @@ class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
         """
         GET /api/fx/learners/v1/learner_courses/<username>/
         """
-        tenant_ids = self.fx_permission_info['view_allowed_tenant_ids_any_access']
-        user_id = get_user_id_from_username_tenants(username, tenant_ids)
+        include_staff = request.query_params.get('include_staff', '0') == '1'
 
-        if not user_id:
-            return Response(
-                error_details_to_dictionary(reason=f'User not found {username}'),
-                status=http_status.HTTP_404_NOT_FOUND
+        try:
+            courses = get_learner_courses_info_queryset(
+                fx_permission_info=self.fx_permission_info,
+                user_key=username,
+                visible_filter=None,
+                include_staff=include_staff,
             )
+        except FXCodedException as exc:
+            return_status = http_status.HTTP_404_NOT_FOUND if exc.code in (
+                FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value, FXExceptionCodes.USER_NOT_FOUND.value,
+            ) else http_status.HTTP_400_BAD_REQUEST
 
-        courses = get_learner_courses_info_queryset(
-            fx_permission_info=self.fx_permission_info,
-            user_id=user_id,
-            visible_filter=None,
-        )
+            return Response(
+                error_details_to_dictionary(reason=str(exc)),
+                status=return_status,
+            )
 
         return Response(serializers.LearnerCoursesDetailsSerializer(
             courses, context={'request': request}, many=True

@@ -2,15 +2,12 @@
 from unittest.mock import patch
 
 import pytest
-from common.djangoapps.student.models import UserSignupSource
-from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import override_settings
 from eox_tenant.models import TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
-from tests.base_test_data import _base_data
 
 
 @pytest.mark.django_db
@@ -23,12 +20,16 @@ def test_get_excluded_tenant_ids(base_data):  # pylint: disable=unused-argument
 @pytest.mark.django_db
 def test_get_excluded_tenant_ids_dashboard_disabled(base_data):  # pylint: disable=unused-argument
     """Verify get_excluded_tenant_ids function when the dashboard is disabled."""
-    TenantConfig.objects.filter(id=1).update(lms_configs={'IS_FX_DASHBOARD_ENABLED': False})
+    assert tenants.get_excluded_tenant_ids() == [4, 5, 6]
+    tenant1 = TenantConfig.objects.get(id=1)
+
+    tenant1.lms_configs['IS_FX_DASHBOARD_ENABLED'] = False
+    tenant1.save()
     assert tenants.get_excluded_tenant_ids() == [1, 4, 5, 6]
-    tenant2 = TenantConfig.objects.get(id=2)
-    tenant2.lms_configs.pop('IS_FX_DASHBOARD_ENABLED')
-    tenant2.save()
-    assert tenants.get_excluded_tenant_ids() == [1, 2, 4, 5, 6]
+
+    tenant1.lms_configs.pop('IS_FX_DASHBOARD_ENABLED')
+    tenant1.save()
+    assert tenants.get_excluded_tenant_ids() == [4, 5, 6]
 
 
 @pytest.mark.django_db
@@ -251,60 +252,6 @@ def test_get_tenants_sites_bad_tenants(base_data, tenant_ids):  # pylint: disabl
     """Verify get_tenants_sites function."""
     result = tenants.get_tenants_sites(tenant_ids)
     assert result is not None and len(result) == 0
-
-
-@pytest.mark.django_db
-def test_get_user_id_from_username_tenants_non_existent_username(base_data):  # pylint: disable=unused-argument
-    """Verify get_user_id_from_username_tenants function for non-existent username."""
-    username = 'non_existent_username'
-    tenant_ids = [1, 2, 3, 7, 8]
-    assert not get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
-    assert TenantConfig.objects.filter(id__in=tenant_ids).count() == len(tenant_ids), 'test data is not as expected'
-
-    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == 0
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize('tenant_ids', [
-    [],
-    None,
-    [99],
-])
-def test_get_user_id_from_username_tenants_bad_tenant(base_data, tenant_ids):  # pylint: disable=unused-argument
-    """Verify get_user_id_from_username_tenants function for non-existent tenant."""
-    username = 'user1'
-    assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
-
-    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == 0
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize('username, tenant_ids, expected_result', [
-    ('user55', [1], 0),
-    ('user55', [8], 55),
-    ('user55', [1, 8], 55),
-    ('user50', [7], 50),
-    ('user4', [1], 4),
-])
-def test_get_user_id_from_username_tenants(
-    base_data, username, tenant_ids, expected_result,
-):  # pylint: disable=unused-argument
-    """
-    Verify get_user_id_from_username_tenants function returns the expected result according
-    to course enrollment and signup source.
-    """
-    assert get_user_model().objects.filter(username=username).exists(), 'test data is not as expected'
-
-    signup_qs = UserSignupSource.objects.filter(
-        user__username=username,
-        site__in=[_base_data['routes'][tenant_id]['domain'] for tenant_id in tenant_ids],
-    )
-    assert signup_qs.exists() is (expected_result != 0), 'test data is not as expected'
-
-    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == expected_result
-
-    signup_qs.delete()
-    assert tenants.get_user_id_from_username_tenants(username, tenant_ids) == 0
 
 
 @pytest.mark.parametrize('lms_root_scheme, domain_name, expected_result', [

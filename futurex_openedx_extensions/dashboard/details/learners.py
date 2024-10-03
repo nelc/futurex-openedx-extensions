@@ -15,6 +15,7 @@ from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_base_queryset_courses,
     get_learners_search_queryset,
+    get_one_user_queryset,
     get_permitted_learners_queryset,
 )
 
@@ -206,7 +207,7 @@ def get_learners_by_course_queryset(
 
 def get_learner_info_queryset(
     fx_permission_info: dict,
-    user_id: int,
+    user_key: get_user_model | int | str,
     visible_courses_filter: bool | None = True,
     active_courses_filter: bool | None = None,
     include_staff: bool = False,
@@ -216,8 +217,8 @@ def get_learner_info_queryset(
 
     :param fx_permission_info: Dictionary containing permission information
     :type fx_permission_info: dict
-    :param user_id: The user ID to get the learner for
-    :type user_id: int
+    :param user_key: The user key to get the learner for
+    :type user_key: get_user_model | int | str
     :param visible_courses_filter: Value to filter courses on catalog visibility. None means no filter
     :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter
@@ -227,7 +228,13 @@ def get_learner_info_queryset(
     :return: QuerySet of learners
     :rtype: QuerySet
     """
-    queryset = get_user_model().objects.filter(id=user_id).annotate(
+    queryset = get_one_user_queryset(
+        fx_permission_info=fx_permission_info,
+        user_key=user_key,
+        include_staff=include_staff
+    )
+
+    queryset = queryset.annotate(
         courses_count=get_courses_count_for_learner_queryset(
             fx_permission_info,
             visible_courses_filter=visible_courses_filter,
