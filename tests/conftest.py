@@ -2,6 +2,7 @@
 from unittest.mock import patch
 
 import pytest
+from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -10,9 +11,22 @@ from django.utils import timezone
 from eox_tenant.models import Route, TenantConfig
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from organizations.models import Organization
 
 from tests.base_test_data import _base_data
 from tests.fixture_helpers import get_tenants_of_org, get_user1_fx_permission_info
+
+
+@pytest.fixture
+def empty_course_creator():
+    """Create a CourseCreator record for user 33 with no organizations."""
+    CourseCreator.objects.bulk_create([CourseCreator(
+        user_id=33, all_organizations=False, state=CourseCreator.GRANTED,
+    )])
+    for org_index in range(1, 5):
+        org_name = f'org{org_index}'
+        Organization.objects.create(short_name=org_name)
+    return CourseCreator.objects.get(user_id=33)
 
 
 @pytest.fixture

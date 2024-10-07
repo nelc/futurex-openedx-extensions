@@ -2,6 +2,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole, SocialLink, UserProfile
 from django.contrib.auth import get_user_model
 from django.db.models import Value
@@ -19,7 +20,7 @@ from futurex_openedx_extensions.dashboard.serializers import (
     LearnerDetailsSerializer,
     UserRolesSerializer,
 )
-from futurex_openedx_extensions.helpers.constants import COURSE_STATUS_SELF_PREFIX, COURSE_STATUSES
+from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.roles import RoleType
 
 
@@ -238,13 +239,13 @@ def test_course_details_base_serializer(base_data):  # pylint: disable=unused-ar
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('start_date, end_date, expected_status', [
-    (None, None, COURSE_STATUSES['active']),
-    (None, now() + timedelta(days=10), COURSE_STATUSES['active']),
-    (now() - timedelta(days=10), None, COURSE_STATUSES['active']),
-    (now() - timedelta(days=10), now() + timedelta(days=10), COURSE_STATUSES['active']),
-    (now() - timedelta(days=10), now() - timedelta(days=5), COURSE_STATUSES['archived']),
-    (now() + timedelta(days=10), now() + timedelta(days=20), COURSE_STATUSES['upcoming']),
-    (now() + timedelta(days=10), None, COURSE_STATUSES['upcoming']),
+    (None, None, cs.COURSE_STATUSES['active']),
+    (None, now() + timedelta(days=10), cs.COURSE_STATUSES['active']),
+    (now() - timedelta(days=10), None, cs.COURSE_STATUSES['active']),
+    (now() - timedelta(days=10), now() + timedelta(days=10), cs.COURSE_STATUSES['active']),
+    (now() - timedelta(days=10), now() - timedelta(days=5), cs.COURSE_STATUSES['archived']),
+    (now() + timedelta(days=10), now() + timedelta(days=20), cs.COURSE_STATUSES['upcoming']),
+    (now() + timedelta(days=10), None, cs.COURSE_STATUSES['upcoming']),
 ])
 def test_course_details_base_serializer_status(
     base_data, start_date, end_date, expected_status
@@ -262,7 +263,7 @@ def test_course_details_base_serializer_status(
     course.self_paced = True
     course.save()
     data = CourseDetailsBaseSerializer(course).data
-    assert data['status'] == f'{COURSE_STATUS_SELF_PREFIX}{expected_status}'
+    assert data['status'] == f'{cs.COURSE_STATUS_SELF_PREFIX}{expected_status}'
 
 
 @pytest.mark.django_db
@@ -444,9 +445,9 @@ def test_user_roles_serializer_get_org_tenants(
     ('staff', False),
 ])
 def test_user_roles_serializer_for_global_roles(
-    base_data, serializer_context, role, is_valid_global_role
+    base_data, serializer_context, role, is_valid_global_role,
 ):  # pylint: disable=unused-argument, redefined-outer-name
-    """Verify that the UserRolesSerializer correctly returns gloabl role list"""
+    """Verify that the UserRolesSerializer correctly returns global role list"""
     user3 = get_user_model().objects.get(id=3)
 
     # create global role for user
@@ -455,10 +456,31 @@ def test_user_roles_serializer_for_global_roles(
         role=role
     )
     serializer = UserRolesSerializer(user3, context=serializer_context)
-    if is_valid_global_role:
-        assert serializer.data.get('global_roles', []) == ['support']
-    else:
-        assert serializer.data.get('global_roles') == []
+    assert serializer.data.get('global_roles', []) == ([role] if is_valid_global_role else [])
+
+
+@pytest.mark.django_db
+def test_user_roles_serializer_for_global_roles_creator(
+    base_data, serializer_context, empty_course_creator,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """
+    Verify that the UserRolesSerializer does not report course-creator as a global role unless all related
+    data are correctly filled.
+    """
+    user = get_user_model().objects.get(id=empty_course_creator.user_id)
+    serializer = UserRolesSerializer(user, context=serializer_context)
+    assert serializer.data.get('global_roles', []) == []
+
+    CourseAccessRole.objects.create(
+        user_id=user.id,
+        role=cs.COURSE_CREATOR_ROLE_GLOBAL,
+    )
+    serializer = UserRolesSerializer(user, context=serializer_context)
+    assert serializer.data.get('global_roles', []) == []
+
+    CourseCreator.objects.filter(user_id=user.id).update(all_organizations=True)
+    serializer = UserRolesSerializer(user, context=serializer_context)
+    assert serializer.data.get('global_roles', []) == [cs.COURSE_CREATOR_ROLE_GLOBAL]
 
 
 @pytest.mark.django_db
