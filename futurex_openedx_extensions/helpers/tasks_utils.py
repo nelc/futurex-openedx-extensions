@@ -3,10 +3,13 @@ This module contains utils for tasks.
 """
 import csv
 import os
+import tempfile
 from typing import Any, List, Optional
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.urls import resolve
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
@@ -69,6 +72,20 @@ def _get_response_data(mocked_request: Any, kwargs: dict, view_instance: Any) ->
     return data
 
 
+def _upload_file_to_storage(local_file_path: str, storage_path: str) -> str:
+    """
+    Upload a file to the default storage (e.g., S3).
+
+    :param local_file_path: Path to the local file to upload
+    :param storage_path: Path in the storage where the file should be saved
+    :return: The path of the uploaded file
+    """
+    with open(local_file_path, 'rb') as file:
+        content_file = ContentFile(file.read())
+        default_storage.save(storage_path, content_file)
+    return storage_path
+
+
 def export_data_to_csv(url: str, view_data: dict, fx_permission_info: dict, filename: str) -> str:
     """
     Mock view with given view params and write JSON response to CSV
@@ -93,10 +110,16 @@ def export_data_to_csv(url: str, view_data: dict, fx_permission_info: dict, file
     if not filename.endswith('.csv'):
         filename += '.csv'
 
-    csv_file_path = os.path.join(settings.MEDIA_ROOT, filename)
-    with open(csv_file_path, mode='w', newline='', encoding='utf-8') as file:
+    # Create a temporary file
+    with tempfile.NamedTemporaryFile(mode='w', newline='', encoding='utf-8', delete=False) as tmp_file:
         if len(data):
-            writer = csv.DictWriter(file, fieldnames=data[0].keys())
+            writer = csv.DictWriter(tmp_file, fieldnames=data[0].keys())
             writer.writeheader()
             writer.writerows(data)
-    return filename
+
+    storage_path = os.path.join(settings.EXPORTED_FILES_DIR, filename)
+    _upload_file_to_storage(tmp_file.name, storage_path)
+
+    # Clean up the temporary file
+    os.remove(tmp_file.name)
+    return storage_path

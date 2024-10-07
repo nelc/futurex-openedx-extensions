@@ -1,11 +1,13 @@
 """Test export csv"""
 import csv
 import os
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.files.storage import default_storage
 from rest_framework.test import APIRequestFactory
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException
@@ -14,6 +16,7 @@ from futurex_openedx_extensions.helpers.tasks_utils import (
     _get_response_data,
     _get_user,
     _get_view_class_instance,
+    _upload_file_to_storage,
     export_data_to_csv,
 )
 
@@ -131,13 +134,12 @@ def test_export_data_to_csv_creates_csv_file(
     mocked_get_view_class_instance.return_value = MagicMock()
     mocked_get_mocked_request.return_value = MagicMock()
     mocked_get_response_data.return_value = test_data
-    generated_filename = export_data_to_csv(url, view_data, fx_permission_info, filename)
-    assert generated_filename == filename
-    csv_file_path = os.path.join(settings.MEDIA_ROOT, filename)
+    generated_file = export_data_to_csv(url, view_data, fx_permission_info, filename)
+    assert generated_file == f'{settings.EXPORTED_FILES_DIR}/{filename}'
     # Verify that the file was created
-    assert os.path.isfile(csv_file_path) is True
+    assert os.path.isfile(generated_file) is True
     # Verify the contents of the CSV file
-    with open(csv_file_path, mode='r', encoding='utf-8') as file:
+    with open(generated_file, mode='r', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         rows = list(reader)
         assert len(rows) == 2
@@ -145,7 +147,8 @@ def test_export_data_to_csv_creates_csv_file(
         assert rows[0]['column2'] == 'value2'
         assert rows[1]['column1'] == 'value3'
         assert rows[1]['column2'] == 'value4'
-    os.remove(csv_file_path)
+    os.remove(generated_file)
+    os.rmdir(settings.EXPORTED_FILES_DIR)
 
 
 @patch('futurex_openedx_extensions.helpers.tasks_utils._get_view_class_instance')
@@ -168,17 +171,17 @@ def test_export_data_to_csv_for_empty_data(
     mocked_get_view_class_instance.return_value = MagicMock()
     mocked_get_mocked_request.return_value = MagicMock()
     mocked_get_response_data.return_value = test_data
-    generated_filename = export_data_to_csv(url, view_data, fx_permission_info, filename)
-    assert generated_filename == filename
-    csv_file_path = os.path.join(settings.MEDIA_ROOT, filename)
+    generated_file = export_data_to_csv(url, view_data, fx_permission_info, filename)
+    assert generated_file == f'{settings.EXPORTED_FILES_DIR}/{filename}'
     # Verify that the file was created
-    assert os.path.isfile(csv_file_path) is True
+    assert os.path.isfile(generated_file) is True
     # Verify the contents of the CSV file
-    with open(csv_file_path, mode='r', encoding='utf-8') as file:
+    with open(generated_file, mode='r', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         rows = list(reader)
         assert len(rows) == 0
-    os.remove(csv_file_path)
+    os.remove(generated_file)
+    os.rmdir(settings.EXPORTED_FILES_DIR)
 
 
 @patch('futurex_openedx_extensions.helpers.tasks_utils._get_view_class_instance')
@@ -198,11 +201,30 @@ def test_export_data_to_csv_for_filename_without_csv_ext(
     fx_permission_info = {'role': 'admin', 'permissions': ['read', 'write'], 'user': user.id}
     test_data = []
     filename = 'test_file'
-    expected_filename = 'test_file.csv'
     mocked_get_view_class_instance.return_value = MagicMock()
     mocked_get_mocked_request.return_value = MagicMock()
     mocked_get_response_data.return_value = test_data
     generated_filename = export_data_to_csv(url, view_data, fx_permission_info, filename)
-    assert generated_filename == expected_filename
-    csv_file_path = os.path.join(settings.MEDIA_ROOT, expected_filename)
-    os.remove(csv_file_path)
+    assert generated_filename == f'{settings.EXPORTED_FILES_DIR}/{filename}.csv'
+    os.remove(generated_filename)
+    os.rmdir(settings.EXPORTED_FILES_DIR)
+
+
+
+def test_upload_file_to_storage():
+    """Test uploading a file to the default storage."""
+    dummy_content = b'Test content'
+    # create dummy temp file
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_file.write(dummy_content)
+        temp_file_path = temp_file.name
+    storage_path = 'test_dir/test_file.txt'
+    result = _upload_file_to_storage(temp_file_path, storage_path)
+    assert result == storage_path
+    # verify file created on default storage with right content
+    with default_storage.open(storage_path, 'rb') as storage_file:
+        uploaded_content = storage_file.read()
+        assert uploaded_content == dummy_content
+    os.remove(temp_file_path)
+    default_storage.delete(storage_path)
+    os.rmdir('test_dir')
