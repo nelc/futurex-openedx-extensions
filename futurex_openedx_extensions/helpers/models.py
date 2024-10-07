@@ -286,3 +286,22 @@ class ClickhouseQuery(models.Model):
         missing_ids = cls.get_missing_query_ids(compared_to=cls.get_default_query_ids())
 
         return len(missing_ids)
+
+
+class DataExportTask(models.Model):
+    """Model for storing FX Tasks queries"""
+    STATUS_PENDING = 'pending'
+    STATUS_COMPLETED = 'completed'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, STATUS_PENDING),
+        (STATUS_COMPLETED, STATUS_COMPLETED),
+    ]
+
+    filename = models.CharField(max_length=255)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+
+    class Meta:
+        """Metaclass for the model"""
+        verbose_name = 'Data Export Task'
+        verbose_name_plural = 'Data Export Tasks'
