@@ -27,8 +27,8 @@ def plugin_settings(settings: Any) -> None:
     )
 
     # Exported CSV files directive name
-    settings.EXPORTED_FILES_DIR = getattr(
+    settings.FX_DATA_EXPORT_DIR_NAME = getattr(
         settings,
-        'EXPORTED_FILES_DIR',
-        'exported_files'
+        'FX_DATA_EXPORT_DIR_NAME ',
+        'fx_dashboard/exported_files'
     )

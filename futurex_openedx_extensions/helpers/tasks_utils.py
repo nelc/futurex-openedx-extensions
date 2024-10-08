@@ -97,11 +97,11 @@ def export_data_to_csv(url: str, view_data: dict, fx_permission_info: dict, file
 
     :return: generated filename
     """
-    user_id = fx_permission_info.get('user')
+    user_id = fx_permission_info.get('user_id')
     user = _get_user(user_id)
-
-    # fx_permisssion info expect user instead of user id
+    # restore user in fx_permission_info
     fx_permission_info.update({'user': user})
+
     view_instance = _get_view_class_instance(view_data.get('path', ''))
     mocked_request = _get_mocked_request(url, user, fx_permission_info, view_data.get('query_params', {}))
     data = _get_response_data(mocked_request, view_data.get('kwargs', {}), view_instance)
@@ -117,7 +117,7 @@ def export_data_to_csv(url: str, view_data: dict, fx_permission_info: dict, file
             writer.writeheader()
             writer.writerows(data)
 
-    storage_path = os.path.join(settings.EXPORTED_FILES_DIR, filename)
+    storage_path = os.path.join(settings.FX_DATA_EXPORT_DIR_NAME, filename)
     _upload_file_to_storage(tmp_file.name, storage_path)
 
     # Clean up the temporary file

@@ -2,7 +2,7 @@
 from celery import shared_task
 from celery_utils.logged_task import LoggedTask
 
-from futurex_openedx_extensions.helpers.models import FxTask
+from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.tasks_utils import export_data_to_csv
 
 
@@ -15,6 +15,6 @@ def export_data_to_csv_task(
     """
     file = export_data_to_csv(url, view_data, fx_permission_info, filename)
     if file:
-        fx_task = FxTask.objects.get(id=fx_task_id)
+        fx_task = DataExportTask.objects.get(id=fx_task_id)
         fx_task.status = fx_task.STATUS_COMPLETED
         fx_task.save()

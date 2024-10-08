@@ -1,6 +1,7 @@
 """
 This module contains a mixin for exporting data to CSV format and related helpers.
 """
+import copy
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
@@ -11,7 +12,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from futurex_openedx_extensions.helpers.models import FxTask
+from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.tasks import export_data_to_csv_task
 
 User = get_user_model()
@@ -51,9 +52,12 @@ class ExportCSVMixin(ListAPIView):
 
     def get_serialized_fx_permission_info(self) -> dict:
         """get serialized fx_permission info for task"""
-        fx_permission_info = self.request.fx_permission_info
+        fx_permission_info = copy.deepcopy(self.request.fx_permission_info)
         user = fx_permission_info.get('user')
-        fx_permission_info.update({'user': user.id})
+        fx_permission_info.update({
+            'user': None,
+            'user_id': user.id
+        })
         return fx_permission_info
 
     def generate_csv_url_response(self) -> dict:
@@ -66,8 +70,9 @@ class ExportCSVMixin(ListAPIView):
             'kwargs': self.kwargs,
             'path': self.request.path,
         }
-        fx_task = FxTask.objects.create(filename=self.filename)
-        export_data_to_csv_task.delay(fx_task.id, view_url, view_data, fx_permission_info, self.filename)
+        exported_filename = self.filename
+        fx_task = DataExportTask.objects.create(filename=exported_filename)
+        export_data_to_csv_task.delay(fx_task.id, view_url, view_data, fx_permission_info, exported_filename)
         return {'success': f'Task innititated successfully with id: {fx_task.id}'}
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:

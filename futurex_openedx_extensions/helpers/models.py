@@ -288,7 +288,7 @@ class ClickhouseQuery(models.Model):
         return len(missing_ids)
 
 
-class FxTask(models.Model):
+class DataExportTask(models.Model):
     """Model for storing FX Tasks queries"""
     STATUS_PENDING = 'pending'
     STATUS_COMPLETED = 'completed'
@@ -303,5 +303,5 @@ class FxTask(models.Model):
 
     class Meta:
         """Metaclass for the model"""
-        verbose_name = 'FX Task'
-        verbose_name_plural = 'Fx Tasks'
+        verbose_name = 'Data Export Task'
+        verbose_name_plural = 'Data Export Tasks'

@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory
 
 from futurex_openedx_extensions.helpers.export_data import ExportCSVMixin
-from futurex_openedx_extensions.helpers.models import FxTask
+from futurex_openedx_extensions.helpers.models import DataExportTask
 
 
 class TestView(ExportCSVMixin):
@@ -102,7 +102,7 @@ def test_generate_csv_url_response(
         mocked_filename_property.return_value = filename
         mocked_get_query_params_func.return_value = fake_query_params
         response = export_csv_mixin.generate_csv_url_response()
-        fx_task = FxTask.objects.get(filename=filename)
+        fx_task = DataExportTask.objects.get(filename=filename)
         mocked_export_data_to_csv_task.assert_called_once_with(
             fx_task.id, fake_url, view_params, serialized_fx_permission_info, filename
         )
@@ -132,7 +132,7 @@ def test_list_with_csv_download(
         mocked_filename_property.return_value = filename
         mocked_get_query_params_func.return_value = {}
         response = export_csv_mixin.list(export_csv_mixin.request)
-        fx_task = FxTask.objects.get(filename=filename)
+        fx_task = DataExportTask.objects.get(filename=filename)
         expected_response = {'success': f'Task innititated successfully with id: {fx_task.id}'}
         assert response.status_code == 200
         assert response.data == expected_response

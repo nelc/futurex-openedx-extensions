@@ -135,7 +135,7 @@ def test_export_data_to_csv_creates_csv_file(
     mocked_get_mocked_request.return_value = MagicMock()
     mocked_get_response_data.return_value = test_data
     generated_file = export_data_to_csv(url, view_data, fx_permission_info, filename)
-    assert generated_file == f'{settings.EXPORTED_FILES_DIR}/{filename}'
+    assert generated_file == f'{settings.FX_DATA_EXPORT_DIR_NAME }/{filename}'
     # Verify that the file was created
     assert os.path.isfile(generated_file) is True
     # Verify the contents of the CSV file
@@ -148,7 +148,7 @@ def test_export_data_to_csv_creates_csv_file(
         assert rows[1]['column1'] == 'value3'
         assert rows[1]['column2'] == 'value4'
     os.remove(generated_file)
-    os.rmdir(settings.EXPORTED_FILES_DIR)
+    os.rmdir(settings.FX_DATA_EXPORT_DIR_NAME)
 
 
 @patch('futurex_openedx_extensions.helpers.tasks_utils._get_view_class_instance')
@@ -172,7 +172,7 @@ def test_export_data_to_csv_for_empty_data(
     mocked_get_mocked_request.return_value = MagicMock()
     mocked_get_response_data.return_value = test_data
     generated_file = export_data_to_csv(url, view_data, fx_permission_info, filename)
-    assert generated_file == f'{settings.EXPORTED_FILES_DIR}/{filename}'
+    assert generated_file == f'{settings.FX_DATA_EXPORT_DIR_NAME }/{filename}'
     # Verify that the file was created
     assert os.path.isfile(generated_file) is True
     # Verify the contents of the CSV file
@@ -181,7 +181,7 @@ def test_export_data_to_csv_for_empty_data(
         rows = list(reader)
         assert len(rows) == 0
     os.remove(generated_file)
-    os.rmdir(settings.EXPORTED_FILES_DIR)
+    os.rmdir(settings.FX_DATA_EXPORT_DIR_NAME)
 
 
 @patch('futurex_openedx_extensions.helpers.tasks_utils._get_view_class_instance')
@@ -205,10 +205,9 @@ def test_export_data_to_csv_for_filename_without_csv_ext(
     mocked_get_mocked_request.return_value = MagicMock()
     mocked_get_response_data.return_value = test_data
     generated_filename = export_data_to_csv(url, view_data, fx_permission_info, filename)
-    assert generated_filename == f'{settings.EXPORTED_FILES_DIR}/{filename}.csv'
+    assert generated_filename == f'{settings.FX_DATA_EXPORT_DIR_NAME }/{filename}.csv'
     os.remove(generated_filename)
-    os.rmdir(settings.EXPORTED_FILES_DIR)
-
+    os.rmdir(settings.FX_DATA_EXPORT_DIR_NAME)
 
 
 def test_upload_file_to_storage():

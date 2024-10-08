@@ -1,15 +1,17 @@
 """Mock celery shared task to run tests independent of celery"""
-from functools import wraps
 
 
 def shared_task(base):  # pylint: disable=unused-argument
-    """Empty decorator with a fake delay method to mock Celery Task delay."""
+    """Empty decorator to mock shared_task and celery delay"""
     def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
+        class DummyTask:
+            """Mock celery task delay method"""
+            @staticmethod
+            def __call__(*args, **kwargs):
+                return func(*args, **kwargs)
 
-        # Adding a delay method to the wrapper
-        wrapper.delay = lambda *args, **kwargs: wrapper(*args, **kwargs)  # pylint: disable=unnecessary-lambda
-        return wrapper
+            @staticmethod
+            def delay():
+                return None
+        return DummyTask()
     return decorator

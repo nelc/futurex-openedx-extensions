@@ -100,4 +100,4 @@ REST_FRAMEWORK = {
 LMS_ROOT_URL = 'https://lms.example.com'
 CMS_ROOT_URL = 'https://studio.example.com'
 
-EXPORTED_FILES_DIR = 'test_dir'
+FX_DATA_EXPORT_DIR_NAME  = 'test_dir'
