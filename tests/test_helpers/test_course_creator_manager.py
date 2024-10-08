@@ -25,18 +25,6 @@ def _add_clear_org_to_course_creator(course_creator, org_instance=None):
     m2m_changed.connect(receiver=orgs_signal_handler, sender=CourseCreator.organizations.through)
 
 
-@pytest.fixture
-def empty_course_creator():
-    """Create a CourseCreator record for user 33 with no organizations."""
-    CourseCreator.objects.bulk_create([CourseCreator(
-        user_id=33, all_organizations=False, state=CourseCreator.GRANTED,
-    )])
-    for org_index in range(1, 5):
-        org_name = f'org{org_index}'
-        Organization.objects.create(short_name=org_name)
-    return CourseCreator.objects.get(user_id=33)
-
-
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.course_creator_manager.CourseCreatorManager.reload')
 def test_course_creator_manager_init(mock_reload, base_data):  # pylint: disable=unused-argument
@@ -59,7 +47,7 @@ def test_course_creator_manager_reload_no_creator(base_data):  # pylint: disable
 @pytest.mark.django_db
 def test_course_creator_manager_reload_creator_exists(
     base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that the CourseCreatorManager reload method works when a creator exists."""
     user = get_user_model().objects.get(id=33)
     creator = CourseCreatorManager(user_id=33)
@@ -95,7 +83,7 @@ def test_course_creator_manager_reload_user_not_found(base_data):  # pylint: dis
 @pytest.mark.django_db
 def test_course_creator_manager_validate_creator(
     base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that the validate_creator method works correctly."""
     assert CourseCreatorManager(user_id=33).validate_creator() is None
 
@@ -121,7 +109,7 @@ def test_course_creator_manager_db_record(mock_reload, base_data):  # pylint: di
 @patch('futurex_openedx_extensions.helpers.course_creator_manager.CourseCreatorManager.validate_creator')
 def test_course_creator_manager_is_granted(
     mock_validate, base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that is_granted works correctly."""
     creator = CourseCreatorManager(user_id=33)
     record = creator.db_record
@@ -139,7 +127,7 @@ def test_course_creator_manager_is_granted(
 @patch('futurex_openedx_extensions.helpers.course_creator_manager.CourseCreatorManager.validate_creator')
 def test_course_creator_manager_is_orgs_empty(
     mock_validate, base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that is_orgs_empty works correctly."""
     creator = CourseCreatorManager(user_id=33)
     record = creator.db_record
@@ -159,7 +147,7 @@ def test_course_creator_manager_is_orgs_empty(
 @patch('futurex_openedx_extensions.helpers.course_creator_manager.CourseCreatorManager.validate_creator')
 def test_course_creator_manager_is_all_orgs(
     mock_validate, base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that is_all_orgs works correctly."""
     creator = CourseCreatorManager(user_id=33)
     record = creator.db_record
@@ -178,7 +166,7 @@ def test_course_creator_manager_is_all_orgs(
 @pytest.mark.django_db
 def test_course_creator_manager_get_orgs(
     base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that get_orgs works correctly."""
     creator = CourseCreatorManager(user_id=33)
     assert isinstance(creator.get_orgs(), list)
@@ -193,7 +181,7 @@ def test_course_creator_manager_get_orgs(
 @pytest.mark.django_db
 def test_course_creator_manager_delete_creator(
     base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that delete_creator works correctly."""
     creator = CourseCreatorManager(user_id=33)
     assert creator.db_record is not None
@@ -210,7 +198,7 @@ def test_course_creator_manager_delete_creator(
 @pytest.mark.django_db
 def test_course_creator_manager_add_orgs(
     base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that add_orgs adds the organizations to the course creator record."""
     creator = CourseCreatorManager(user_id=33)
     assert creator.is_all_orgs() is False
@@ -230,7 +218,7 @@ def test_course_creator_manager_add_orgs(
 @pytest.mark.django_db
 def test_course_creator_manager_add_orgs_creates_creator(
     base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that add_orgs creates a course creator record if it does not exist."""
     user_id = 4
     creator = CourseCreatorManager(user_id=user_id)
@@ -245,7 +233,7 @@ def test_course_creator_manager_add_orgs_creates_creator(
 @pytest.mark.django_db
 def test_course_creator_manager_add_orgs_global(
     base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that add_orgs does not add organizations if the user has global creator access."""
     user_id = 33
     CourseCreator.objects.filter(user_id=user_id).update(all_organizations=True)
@@ -262,7 +250,7 @@ def test_course_creator_manager_add_orgs_global(
 @patch('futurex_openedx_extensions.helpers.course_creator_manager.CourseCreatorManager.is_all_orgs')
 def test_course_creator_manager_add_fail(
     mock_is_all_orgs, base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that add_orgs might fail ofr any reason."""
     mock_is_all_orgs.side_effect = FXCodedException(code=0, message='Some error for testing!')
     creator = CourseCreatorManager(user_id=33)
@@ -274,7 +262,7 @@ def test_course_creator_manager_add_fail(
 @pytest.mark.django_db
 def test_course_creator_manager_add_no_org(
     base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that add_orgs raises an exception when an organization does not exist."""
     creator = CourseCreatorManager(user_id=33)
     with pytest.raises(FXCodedException) as exc_info:
@@ -285,7 +273,7 @@ def test_course_creator_manager_add_no_org(
 @pytest.mark.django_db
 def test_course_creator_manager_remove_orgs(
     base_data, empty_course_creator,
-):  # pylint: disable=unused-argument, redefined-outer-name
+):  # pylint: disable=unused-argument
     """Verify that remove_orgs removes the organizations from the course creator record."""
     for org_index in range(1, 5):
         _add_clear_org_to_course_creator(empty_course_creator, Organization.objects.get(short_name=f'ORG{org_index}'))
