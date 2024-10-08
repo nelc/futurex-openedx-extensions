@@ -33,6 +33,7 @@ urlpatterns = [
         views.LearnerCoursesView.as_view(),
         name='learner-courses'
     ),
+    re_path(r'^api/fx/roles/v1/my_roles/$', views.MyRolesView.as_view(), name='my-roles'),
     re_path(r'^api/fx/roles/v1/', include(router.urls)),
     re_path(r'^api/fx/statistics/v1/course_statuses/$', views.CourseStatusesView.as_view(), name='course-statuses'),
     re_path(r'^api/fx/statistics/v1/rating/$', views.GlobalRatingView.as_view(), name='statistics-rating'),
