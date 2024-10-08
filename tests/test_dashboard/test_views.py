@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import ddt
 import pytest
 from common.djangoapps.student.models import CourseAccessRole
+from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.paginator import EmptyPage
@@ -656,6 +657,49 @@ class TestGlobalRatingView(BaseTestViewMixin):
                 '5': 0,
             },
         })
+
+
+@ddt.ddt
+class TestMyRolesView(BaseTestViewMixin):
+    """Tests for MyRolesView"""
+    VIEW_NAME = 'fx_dashboard:my-roles'
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(3)
+        expected_result = {
+            'user_id': 3,
+            'email': 'user3@example.com',
+            'username': 'user3',
+            'full_name': '',
+            'alternative_full_name': '',
+            'is_system_staff': False,
+            'global_roles': [],
+            'tenants': {
+                '1': {
+                    'tenant_roles': ['staff'],
+                    'course_roles': {
+                        'course-v1:ORG1+3+3': ['instructor'],
+                        'course-v1:ORG1+4+4': ['instructor'],
+                    },
+                },
+            },
+        }
+        response = self.client.get(self.url)
+        data = json.loads(response.content)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertFalse(DeepDiff(data, expected_result))
 
 
 @ddt.ddt
