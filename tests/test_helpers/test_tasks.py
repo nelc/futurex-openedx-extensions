@@ -17,9 +17,8 @@ def test_export_data_to_csv_task(mocked_export_data_to_csv):
     url = 'http://example.com/view'
     view_data = {'query_params': {}, 'kwargs': {}, 'path': '/test/path'}
     user = get_user_model().objects.create_user(username='testuser', password='password')
-    fx_permission_info = {'user': user.id}
-    mocked_export_data_to_csv.return_value = filename
+    fx_permission_info = {'user_id': user.id, 'role': 'admin'}
     export_data_to_csv_task(fx_task.id, url, view_data, fx_permission_info, filename)
-    mocked_export_data_to_csv.assert_called_once_with(url, view_data, fx_permission_info, filename)
+    mocked_export_data_to_csv.assert_called_once_with(fx_task.id, url, view_data, fx_permission_info, filename)
     fx_task.refresh_from_db()
     assert fx_task.status == DataExportTask.STATUS_COMPLETED
