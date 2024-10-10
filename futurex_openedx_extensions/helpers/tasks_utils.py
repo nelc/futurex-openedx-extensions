@@ -4,7 +4,7 @@ This module contains utils for tasks.
 import csv
 import os
 import tempfile
-from typing import Any, Optional, Tuple, Generator
+from typing import Any, Generator, Optional, Tuple
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -92,8 +92,7 @@ def _paginated_response_generator(
         response = view_instance(mocked_request, **kwargs)
         data, total_records = _get_response_data(response)
         processed_records += len(data)
-        if total_records:
-            progress = processed_records / total_records
+        progress = round(processed_records / total_records, 2) if total_records else 0
         yield data, progress, processed_records
         url = response.data.get('next')
 
@@ -167,7 +166,7 @@ def export_data_to_csv(
     query_params = view_data.get('query_params', {})
     view_instance = _get_view_class_instance(view_data.get('path', ''))
     page_size = 100
-    if hasattr(view_instance.view_class, 'max_page_size'):
+    if hasattr(view_instance.view_class, 'max_page_size') and view_instance.view_class.max_page_size:
         page_size = view_instance.view_class.max_page_size
 
     query_params['page_size'] = page_size
