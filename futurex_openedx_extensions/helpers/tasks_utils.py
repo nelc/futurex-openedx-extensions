@@ -4,7 +4,8 @@ This module contains utils for tasks.
 import csv
 import os
 import tempfile
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple, Generator
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -15,6 +16,7 @@ from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.models import DataExportTask
 
 User = get_user_model()
 
@@ -40,19 +42,17 @@ def _get_view_class_instance(path: str) -> Any:
     )
 
 
-def _get_mocked_request(url: str, user: Any, fx_info: dict, query_params: dict) -> Request:
+def _get_mocked_request(url_with_query_str: str, fx_info: dict) -> Request:
     """Create mocked request"""
     factory = APIRequestFactory()
-    mocked_request = factory.get(url)
-    mocked_request.user = user
+    mocked_request = factory.get(url_with_query_str)
+    mocked_request.user = fx_info.get('user')
     mocked_request.fx_permission_info = fx_info
-    mocked_request.query_params = query_params
     return mocked_request
 
 
-def _get_response_data(mocked_request: Any, kwargs: dict, view_instance: Any) -> List[dict]:
-    """Get response with mocked request"""
-    response = view_instance(mocked_request, **kwargs)
+def _get_response_data(response: Any) -> Tuple:
+    """Get response data"""
     if response.status_code != 200:
         raise FXCodedException(
             code=FXExceptionCodes.EXPORT_CSV_VIEW_RESPONSE_FAILURE,
@@ -69,7 +69,31 @@ def _get_response_data(mocked_request: Any, kwargs: dict, view_instance: Any) ->
             code=FXExceptionCodes.EXPORT_CSV_VIEW_RESPONSE_FAILURE,
             message='CSV Export: The "results" key is missing or is not a list.',
         )
-    return data
+
+    count = response.data.get('count')
+    if count is None or not isinstance(count, int):
+        raise FXCodedException(
+            code=FXExceptionCodes.EXPORT_CSV_VIEW_RESPONSE_FAILURE,
+            message='CSV Export: The "count" key is missing or is not an int.',
+        )
+    return data, count
+
+
+def _paginated_response_generator(
+    url: str, fx_info: dict, kwargs: dict, view_instance: Any
+) -> Generator:
+    """Generator to yield paginated responses."""
+    processed_records = 0
+    progress = 0
+    while url:
+        mocked_request = _get_mocked_request(url, fx_info)
+        response = view_instance(mocked_request, **kwargs)
+        data, total_records = _get_response_data(response)
+        processed_records += len(data)
+        if total_records:
+            progress = processed_records / total_records
+        yield data, progress, processed_records
+        url = response.data.get('next')
 
 
 def _upload_file_to_storage(local_file_path: str, storage_path: str) -> str:
@@ -86,7 +110,16 @@ def _upload_file_to_storage(local_file_path: str, storage_path: str) -> str:
     return storage_path
 
 
-def export_data_to_csv(url: str, view_data: dict, fx_permission_info: dict, filename: str) -> str:
+def _update_progress(task_id: int, progress: float):
+    """Update progress in task DB Entry"""
+    fx_task = DataExportTask.objects.get(id=task_id)
+    fx_task.progress = progress
+    fx_task.save()
+
+
+def export_data_to_csv(
+    task_id: int, url: str, view_data: dict, fx_permission_info: dict, filename: str
+) -> str:
     """
     Mock view with given view params and write JSON response to CSV
 
@@ -102,24 +135,33 @@ def export_data_to_csv(url: str, view_data: dict, fx_permission_info: dict, file
     # restore user in fx_permission_info
     fx_permission_info.update({'user': user})
 
+    query_params = view_data.get('query_params', {})
     view_instance = _get_view_class_instance(view_data.get('path', ''))
-    mocked_request = _get_mocked_request(url, user, fx_permission_info, view_data.get('query_params', {}))
-    data = _get_response_data(mocked_request, view_data.get('kwargs', {}), view_instance)
+    page_size = 100
+    if hasattr(view_instance.view_class, 'max_page_size'):
+        page_size = view_instance.view_class.max_page_size
 
+    query_params['page_size'] = page_size
+    query_string = urlencode(query_params)
+    if query_string:
+        url_with_query_str = f'{url}?{query_string}'
     # Ensure the filename ends with .csv
     if not filename.endswith('.csv'):
         filename += '.csv'
-
     # Create a temporary file
     with tempfile.NamedTemporaryFile(mode='w', newline='', encoding='utf-8', delete=False) as tmp_file:
-        if len(data):
-            writer = csv.DictWriter(tmp_file, fieldnames=data[0].keys())
-            writer.writeheader()
-            writer.writerows(data)
-
+        for data, progress, processed_records in _paginated_response_generator(
+            url_with_query_str, fx_permission_info, view_data.get('kwargs', {}), view_instance
+        ):
+            if len(data):
+                if processed_records <= page_size:
+                    # Only for page 1
+                    writer = csv.DictWriter(tmp_file, fieldnames=data[0].keys())
+                    writer.writeheader()
+                writer.writerows(data)
+                _update_progress(task_id, progress)
     storage_path = os.path.join(settings.FX_DATA_EXPORT_DIR_NAME, filename)
     _upload_file_to_storage(tmp_file.name, storage_path)
-
     # Clean up the temporary file
     os.remove(tmp_file.name)
     return storage_path

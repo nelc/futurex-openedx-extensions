@@ -139,7 +139,7 @@ class CacheInvalidatorAdmin(admin.ModelAdmin):
 
 class DataExportTaskAdmin(admin.ModelAdmin):
     """Admin class of DataExportTask model"""
-    list_display = ('filename', 'status')
+    list_display = ('id', 'filename', 'status', 'progress')
     search_fields = ('filename',)
 
 
