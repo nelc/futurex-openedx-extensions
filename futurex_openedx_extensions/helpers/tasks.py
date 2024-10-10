@@ -13,7 +13,7 @@ def export_data_to_csv_task(
     """
     Celery task to mock view with given view params and write JSON response to CSV.
     """
-    file = export_data_to_csv(url, view_data, fx_permission_info, filename)
+    file = export_data_to_csv(fx_task_id, url, view_data, fx_permission_info, filename)
     if file:
         fx_task = DataExportTask.objects.get(id=fx_task_id)
         fx_task.status = fx_task.STATUS_COMPLETED
