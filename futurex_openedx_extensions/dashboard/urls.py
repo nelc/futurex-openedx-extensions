@@ -42,5 +42,15 @@ urlpatterns = [
         views.ClickhouseQueryView.as_view(),
         name='clickhouse-query'
     ),
+    re_path(
+        r'^api/fx/export/v1/tasks/(?P<task_id>\d+)/$',
+        views.DataExportTasksView.as_view(),
+        name='tasks-update'
+    ),
+    re_path(
+        r'^api/fx/export/v1/tasks/$',
+        views.DataExportTasksView.as_view(),
+        name='tasks-list'
+    ),
     re_path(r'^api/fx/version/v1/info/$', views.VersionInfoView.as_view(), name='version-info'),
 ]

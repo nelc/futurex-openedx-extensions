@@ -11,10 +11,11 @@ from django.core.paginator import EmptyPage
 from django.db import transaction
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.exceptions import ParseError
-from rest_framework.generics import ListAPIView
+from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -44,7 +45,7 @@ from futurex_openedx_extensions.helpers.converters import error_details_to_dicti
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_data import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -289,6 +290,43 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
 
         return JsonResponse(
             serializers.LearnerDetailsExtendedSerializer(user, context={'request': request}).data
+        )
+
+
+class DataExportTasksView(
+    ListAPIView, UpdateAPIView, FXViewRoleInfoMixin
+):  # pylint: disable=too-many-ancestors
+    """View to get the list of learners for a course"""
+    serializer_class = serializers.DataExportTaskSerializer
+    permission_classes = [FXHasTenantCourseAccess]
+    pagination_class = DefaultPagination
+    fx_view_name = 'exported_files_data'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_default_read_write_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_allowed_write_methods = ['PATCH']
+    fx_view_description = (
+        'api/fx/export/v1/tasks/: Get the list of user generated tasks, '
+        'api/fx/export/v1/tasks/<task_id>: PATCH task.'
+    )
+    ordering = ['-created_at']
+
+    def get_queryset(self) -> QuerySet:
+        """Get the list of user tasks"""
+        return DataExportTask.objects.filter(
+            user=self.request.user,
+            tenant_id__in=self.fx_permission_info['view_allowed_tenant_ids_any_access']
+        )
+
+    def get_object(self) -> DataExportTask:
+        """Override to ensure that the user can only update their own tasks."""
+        task_id = self.kwargs.get('task_id')
+        task = get_object_or_404(DataExportTask, id=task_id, user=self.request.user)
+        return task
+
+    def put(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        return Response(
+            {'detail': 'PUT method is not allowed.'},
+            status=http_status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
 

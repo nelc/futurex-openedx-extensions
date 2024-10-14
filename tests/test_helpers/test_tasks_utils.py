@@ -8,6 +8,7 @@ import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
+from eox_tenant.models import TenantConfig
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.models import DataExportTask
@@ -15,6 +16,7 @@ from futurex_openedx_extensions.helpers.tasks_utils import (
     _generate_csv_with_tracked_progress,
     _get_mocked_request,
     _get_response_data,
+    _get_storage_dir,
     _get_user,
     _get_view_class_instance,
     _paginated_response_generator,
@@ -31,8 +33,18 @@ def user(db):  # pylint: disable=unused-argument
 
 
 @pytest.fixture
-def fx_task(db):  # pylint: disable=unused-argument
-    return DataExportTask.objects.create(filename=_FILENAME)
+def tenant(db):  # pylint: disable=unused-argument
+    return TenantConfig.objects.create(external_key='test')
+
+
+@pytest.fixture
+def fx_task(db, user, tenant):  # pylint: disable=unused-argument,redefined-outer-name
+    return DataExportTask.objects.create(
+        filename=_FILENAME,
+        view_name='fake',
+        user=user,
+        tenant_id=tenant.id
+    )
 
 
 @pytest.mark.django_db
@@ -174,6 +186,13 @@ def test_paginated_response_generator_for_empty_response_data(mock_get_response_
     view_instance.assert_called_once()
 
 
+def test_get_storage_dir(tenant):  # pylint: disable=redefined-outer-name
+    """Return storgae dir"""
+    expected = os.path.join(settings.FX_DATA_EXPORT_DIR_NAME, str(tenant.id))
+    result = _get_storage_dir(str(tenant.id))
+    assert result == expected
+
+
 def test_upload_file_to_storage():
     """Test uploading a file to the default storage."""
     dummy_content = b'Test content'
@@ -181,8 +200,9 @@ def test_upload_file_to_storage():
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
         temp_file.write(dummy_content)
         temp_file_path = temp_file.name
-    storage_path = f'{settings.FX_DATA_EXPORT_DIR_NAME}/{_FILENAME}'
-    result = _upload_file_to_storage(temp_file_path, _FILENAME)
+    fake_tenant = 'fake'
+    storage_path = f'{settings.FX_DATA_EXPORT_DIR_NAME}/{fake_tenant}/{_FILENAME}'
+    result = _upload_file_to_storage(temp_file_path, _FILENAME, fake_tenant)
     assert result == storage_path
     # verify file created on default storage with right content
     with default_storage.open(storage_path, 'rb') as storage_file:
@@ -190,15 +210,20 @@ def test_upload_file_to_storage():
         assert uploaded_content == dummy_content
     os.remove(temp_file_path)
     default_storage.delete(storage_path)
+    os.rmdir(f'{settings.FX_DATA_EXPORT_DIR_NAME}/{fake_tenant}')
     os.rmdir(settings.FX_DATA_EXPORT_DIR_NAME)
 
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.tasks_utils._paginated_response_generator')
-def test_generate_csv_with_tracked_progress(mock_generator):
+def test_generate_csv_with_tracked_progress(
+    mock_generator, tenant
+):  # pylint: disable=redefined-outer-name
     """Test _generate_csv_with_tracked_progress."""
     task = MagicMock()
-    fake_storage_path = f'{settings.FX_DATA_EXPORT_DIR_NAME}/{_FILENAME}'
+    task.tenant_id = tenant.id
+    storage_dir = f'{settings.FX_DATA_EXPORT_DIR_NAME}/{str(tenant.id)}'
+    fake_storage_path = f'{storage_dir}/{_FILENAME}'
     fx_permission_info = {'user': user, 'role': 'admin'}
     view_data = {
         'page_size': 2,
@@ -225,16 +250,67 @@ def test_generate_csv_with_tracked_progress(mock_generator):
         assert rows[2] == {'id': '3'}
 
     default_storage.delete(fake_storage_path)
+    os.rmdir(storage_dir)
     os.rmdir(settings.FX_DATA_EXPORT_DIR_NAME)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.tasks_utils._upload_file_to_storage')
+@patch('futurex_openedx_extensions.helpers.tasks_utils._paginated_response_generator')
+@patch('futurex_openedx_extensions.helpers.tasks_utils.os.remove')
+def test_generate_csv_with_tracked_progress_for_exception(mock_os_remove, mock_generator, mock_file_upload):
+    """Test _generate_csv_with_tracked_progress for exception."""
+    task = MagicMock()
+    fx_permission_info = {'user': user, 'role': 'admin'}
+    view_data = {
+        'page_size': 2,
+        'url': 'http://example.com',
+        'kwargs': {}
+    }
+    mock_generator.side_effect = Exception('Some exception')
+    with pytest.raises(Exception) as _:
+        _generate_csv_with_tracked_progress(
+            task, fx_permission_info, view_data, _FILENAME, MagicMock()
+        )
+    mock_file_upload.assert_not_called()
+    mock_os_remove.assert_called_once()
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.tasks_utils._upload_file_to_storage')
+@patch('futurex_openedx_extensions.helpers.tasks_utils._paginated_response_generator')
+@patch('futurex_openedx_extensions.helpers.tasks_utils.os.remove')
+def test_generate_csv_with_tracked_progress_for_os_removal_exception(
+    mock_os_remove, mock_generator, mock_file_upload, tenant
+):  # pylint: disable=redefined-outer-name
+    """Test _generate_csv_with_tracked_progress for os exception"""
+    task = MagicMock()
+    task.tenant_id = tenant.id
+    fake_storage_path = f'{settings.FX_DATA_EXPORT_DIR_NAME}/{str(tenant.id)}/{_FILENAME}'
+    fx_permission_info = {'user': user, 'role': 'admin'}
+    view_data = {
+        'page_size': 2,
+        'url': 'http://example.com',
+        'kwargs': {}
+    }
+    mock_generator.return_value = iter([([{'id': 1}, {'id': 2}], 1.0, 2)])
+    mock_os_remove.side_effect = Exception('Some exception')
+    mock_file_upload.return_value = fake_storage_path
+    result = _generate_csv_with_tracked_progress(
+        task, fx_permission_info, view_data, _FILENAME, MagicMock()
+    )
+    # assert that os remove xception does not impact return value
+    assert result == fake_storage_path
 
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.tasks_utils._paginated_response_generator')
 def test_generate_csv_with_tracked_progress_for_empty_records(
-    mock_generator, fx_task
+    mock_generator, fx_task, tenant
 ):  # pylint: disable=redefined-outer-name
     """_generate_csv_with_tracked_progress for empty records"""
-    fake_storage_path = f'test_dir/{_FILENAME}'
+    storage_dir = f'{settings.FX_DATA_EXPORT_DIR_NAME}/{str(tenant.id)}'
+    fake_storage_path = f'{storage_dir}/{_FILENAME}'
     fx_permission_info = {'user': user, 'role': 'admin'}
     view_data = {
         'page_size': 2,
@@ -250,6 +326,7 @@ def test_generate_csv_with_tracked_progress_for_empty_records(
     with open(fake_storage_path, 'r', newline='', encoding='utf-8') as f:
         assert f.read() == ''
     default_storage.delete(fake_storage_path)
+    os.rmdir(storage_dir)
     os.rmdir(settings.FX_DATA_EXPORT_DIR_NAME)
 
 
@@ -322,7 +399,7 @@ def test_export_data_to_csv_for_filename_extension(
     }
     fx_permission_info = {'user_id': user.id, 'role': 'admin'}
     mock_generate_csv.return_value = 'randome/path/test.csv'
-    export_data_to_csv(fx_task.id, 'http://example.com/api', view_data, fx_permission_info, 'test.csv')
+    export_data_to_csv(fx_task.id, 'http://example.com/api', view_data, fx_permission_info, filename)
     mock_generate_csv.assert_called_once_with(
         fx_task, fx_permission_info, view_data, f'{filename}.csv', mock_view_instance
     )
