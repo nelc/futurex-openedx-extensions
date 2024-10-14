@@ -5,6 +5,7 @@ import logging
 import re
 from typing import Any, Dict, List, Tuple
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models
 from simple_history.models import HistoricalRecords
@@ -13,6 +14,7 @@ from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.converters import DateMethods
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
 
 
 class ViewAllowedRoles(models.Model):
@@ -299,8 +301,13 @@ class DataExportTask(models.Model):
     ]
 
     filename = models.CharField(max_length=255)
+    view_name = models.CharField(max_length=255)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
     progress = models.FloatField(default=0.0)
+    notes = models.CharField(max_length=255, default='')
+    tenant_id = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         """Metaclass for the model"""

@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
+from eox_tenant.models import TenantConfig
 from rest_framework import status as http_status
 from rest_framework.generics import ListAPIView
 from rest_framework.request import Request
@@ -71,14 +72,31 @@ class ExportCSVMixin(ListAPIView):
             'path': self.request.path,
         }
         exported_filename = self.filename
-        fx_task = DataExportTask.objects.create(filename=exported_filename)
+        tenant = TenantConfig.objects.get(
+            id=self.request.fx_permission_info['view_allowed_tenant_ids_any_access'][0]
+        )
+        fx_task = DataExportTask.objects.create(
+            filename=exported_filename,
+            view_name=self.__class__.fx_view_name,
+            user=self.request.user,
+            tenant_id=tenant.id
+        )
         export_data_to_csv_task.delay(fx_task.id, view_url, view_data, fx_permission_info, exported_filename)
         return {'success': f'Task innititated successfully with id: {fx_task.id}'}
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override the list method to generate CSV and return JSON response with CSV URL"""
         if self.request.query_params.get('download') == 'csv':
+            permitted_tenant_ids = self.request.fx_permission_info['view_allowed_tenant_ids_any_access']
+            if len(permitted_tenant_ids) > 1:
+                raise NotImplementedError(
+                    f'Download CSV functionality is not implemented for multiple tenants: {permitted_tenant_ids}'
+                )
+            if len(permitted_tenant_ids) == 0:
+                return Response(
+                    {'detail': 'Missing tenant access'},
+                    status=http_status.HTTP_403_FORBIDDEN
+                )
             response = self.generate_csv_url_response()
             return Response(response, status=http_status.HTTP_200_OK)
-
         return super().list(request, args, kwargs)

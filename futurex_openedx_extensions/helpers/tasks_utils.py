@@ -46,7 +46,7 @@ def _get_mocked_request(url_with_query_str: str, fx_info: dict) -> Request:
     """Create mocked request"""
     factory = APIRequestFactory()
     mocked_request = factory.get(url_with_query_str)
-    mocked_request.user = fx_info.get['user']
+    mocked_request.user = fx_info['user']
     mocked_request.fx_permission_info = fx_info
     return mocked_request
 
@@ -97,7 +97,12 @@ def _paginated_response_generator(
         url = response.data.get('next')
 
 
-def _upload_file_to_storage(local_file_path: str, filename: str) -> str:
+def _get_storage_dir(dir_name: str) -> str:
+    """Return storgae dir"""
+    return os.path.join(settings.FX_DATA_EXPORT_DIR_NAME, str(dir_name))
+
+
+def _upload_file_to_storage(local_file_path: str, filename: str, tenant_id: int) -> str:
     """
     Upload a file to the default storage (e.g., S3).
 
@@ -105,7 +110,7 @@ def _upload_file_to_storage(local_file_path: str, filename: str) -> str:
     :param filename: ilename for generated CSV
     :return: The path of the uploaded file
     """
-    storage_path = os.path.join(settings.FX_DATA_EXPORT_DIR_NAME, filename)
+    storage_path = os.path.join(_get_storage_dir(str(tenant_id)), filename)
     with open(local_file_path, 'rb') as file:
         content_file = ContentFile(file.read())
         default_storage.save(storage_path, content_file)
@@ -125,6 +130,7 @@ def _generate_csv_with_tracked_progress(
     :return: return default storage file path
     """
     page_size = view_data['page_size']
+    storage_path = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', newline='', encoding='utf-8', delete=False) as tmp_file:
             for data, progress, processed_records in _paginated_response_generator(
@@ -139,11 +145,11 @@ def _generate_csv_with_tracked_progress(
                     # update task progress
                     fx_task.progress = progress
                     fx_task.save()
-        storage_path = _upload_file_to_storage(tmp_file.name, filename)
+        storage_path = _upload_file_to_storage(tmp_file.name, filename, fx_task.tenant_id)
     finally:
         try:
             os.remove(tmp_file.name)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
     return storage_path
 
