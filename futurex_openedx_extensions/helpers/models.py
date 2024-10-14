@@ -300,6 +300,7 @@ class DataExportTask(models.Model):
 
     filename = models.CharField(max_length=255)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    progress = models.FloatField(default=0.0)
 
     class Meta:
         """Metaclass for the model"""

@@ -72,7 +72,7 @@ def test_get_serialized_fx_permission_info(export_csv_mixin, user):  # pylint: d
     """Test get_serialized_fx_permission_info for user"""
     assert isinstance(export_csv_mixin.request.fx_permission_info.get('user'), get_user_model()) is True
     serialized_fx_info = export_csv_mixin.get_serialized_fx_permission_info()
-    expected_serialized_fx_info = {'user': user.id}
+    expected_serialized_fx_info = {'user_id': user.id, 'user': None}
     assert serialized_fx_info == expected_serialized_fx_info
 
 
@@ -91,7 +91,7 @@ def test_generate_csv_url_response(
     filename = 'mocked_file.csv'
     fake_url = 'http://example.com/view'
     export_csv_mixin.request.query_params = {'download': 'csv'}
-    serialized_fx_permission_info = {'user': user.id}
+    serialized_fx_permission_info = {'user_id': user.id, 'user': None}
     fake_query_params = {}
     view_params = {'query_params': fake_query_params, 'kwargs': export_csv_mixin.kwargs, 'path': '/'}
     with patch(
