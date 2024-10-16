@@ -332,17 +332,13 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
 
     request = Mock(site=Mock(domain='https://test.com'))
     with patch(
-        'futurex_openedx_extensions.dashboard.serializers.get_course_blocks_completion_summary'
-    ) as mock_get_completion_summary:
+        'futurex_openedx_extensions.dashboard.serializers.get_course_blocks_completion_summary',
+        return_value=completion_summary,
+    ):
         with patch(
-            'futurex_openedx_extensions.dashboard.serializers.get_certificates_for_user_by_course_keys'
-        ) as mock_get_certificates:
-            mock_get_completion_summary.return_value = completion_summary
-            mock_get_certificates.return_value = {
-                str(course.id): {
-                    'download_url': 'https://test.com/courses/course-v1:dummy+key/certificate/',
-                }
-            }
+            'futurex_openedx_extensions.dashboard.serializers.LearnerCoursesDetailsSerializer.get_certificate_url',
+            return_value='https://test.com/courses/course-v1:dummy+key/certificate/'
+        ):
             data = LearnerCoursesDetailsSerializer(course, context={'request': request}).data
 
     assert data['id'] == str(course.id)
@@ -357,6 +353,39 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
         'is_passing': False,
     }
     assert data['certificate_url'] == 'https://test.com/courses/course-v1:dummy+key/certificate/'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('certificates_url, expected_url', [
+    (None, None),
+    (
+        'https://test.com/courses/course-v1:ORG1+2+2/certificate/',
+        'https://test.com/courses/course-v1:ORG1+2+2/certificate/'
+    ),
+    (
+        '/course-v1:ORG1+2+2/certificate/',
+        'https://test.com/course-v1:ORG1+2+2/certificate/'
+    ),
+    ('empty', None),
+])
+@patch('futurex_openedx_extensions.dashboard.serializers.get_certificates_for_user_by_course_keys')
+def test_learner_courses_details_serializer_get_certificate_url(
+    mock_get_certificates, certificates_url, expected_url, base_data,
+):  # pylint: disable=unused-argument
+    """Verify that the LearnerCoursesDetailsSerializer.get_certificate_url returns the correct data."""
+    request = Mock(site=Mock(domain='https://test.com'))
+    course = CourseOverview.objects.get(id='course-v1:ORG1+2+2')
+    course.enrollment_date = None
+    course.last_activity = None
+    course.related_user_id = 44
+    mock_get_certificates.return_value = {
+        course.id: {
+            'download_url': certificates_url,
+        },
+    } if certificates_url != 'empty' else {}
+
+    serializer = LearnerCoursesDetailsSerializer(course, context={'request': request})
+    assert serializer.data['certificate_url'] == expected_url
 
 
 @pytest.mark.django_db
