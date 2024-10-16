@@ -333,12 +333,15 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
             'grade',
         ]
 
-    def get_certificate_url(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
+    def get_certificate_url(self, obj: CourseOverview) -> Any:
         """Return the certificate URL."""
         user = get_user_model().objects.get(id=obj.related_user_id)
         certificate = get_certificates_for_user_by_course_keys(user, [obj.id])
-        if certificate and str(obj.id) in certificate:
-            return certificate[str(obj.id)].get('download_url')
+        if certificate:
+            url = certificate.get(obj.id, {}).get('download_url')
+            if url and url.startswith('/'):
+                url = relative_url_to_absolute_url(url, self.context.get('request'))
+            return url
 
         return None
 
