@@ -1,6 +1,7 @@
 """Serializers for the dashboard details API."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from django.contrib.auth import get_user_model
@@ -20,12 +21,28 @@ from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUSES,
 )
 from futurex_openedx_extensions.helpers.converters import relative_url_to_absolute_url
+from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.roles import (
     RoleType,
     get_course_access_roles_queryset,
     get_user_course_access_roles,
 )
 from futurex_openedx_extensions.helpers.tenants import get_tenants_by_org
+
+
+class DataExportTaskSerializer(serializers.ModelSerializer):
+    """Serializer for Data Export Task"""
+    class Meta:
+        model = DataExportTask
+        fields = '__all__'
+        read_only_fields = [
+            field.name for field in DataExportTask._meta.fields if field.name not in ['notes']
+        ]
+
+    def validate_notes(self: Any, value: str) -> str:   # pylint: disable=no-self-use
+        """Sanitize the notes field and remove html tags."""
+        value = re.sub(r'<[^>]*>', '', value)
+        return value
 
 
 class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
