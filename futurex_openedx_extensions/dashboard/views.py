@@ -37,6 +37,7 @@ from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
     CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS,
     CLICKHOUSE_FX_BUILTIN_ORG_IN_TENANTS,
+    COURSE_ACCESS_ROLES_SUPPORTED_READ,
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
 )
@@ -571,6 +572,22 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
             )
 
         return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+
+class MyRolesView(APIView, FXViewRoleInfoMixin):
+    """View to get the user roles of the caller"""
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'my_roles'
+    fx_default_read_only_roles = COURSE_ACCESS_ROLES_SUPPORTED_READ.copy()
+    fx_view_description = 'api/fx/roles/v1/my_roles/: user roles management APIs'
+
+    serializer_class = serializers.UserRolesSerializer
+
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
+        """Get the list of users"""
+        data = serializers.UserRolesSerializer(self.fx_permission_info['user'], context={'request': request}).data
+        data['is_system_staff'] = self.fx_permission_info['is_system_staff_user']
+        return JsonResponse(data)
 
 
 class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
