@@ -11,17 +11,23 @@ from futurex_openedx_extensions.helpers.roles import cache_name_user_course_acce
 
 
 @pytest.mark.django_db
-def test_refresh_course_access_role_cache_on_save(base_data, cache_testing):  # pylint: disable=unused-argument
+@patch('futurex_openedx_extensions.helpers.signals.add_missing_signup_source_record')
+def test_refresh_course_access_role_cache_on_save(
+    mock_signup, base_data, cache_testing,
+):  # pylint: disable=unused-argument
     """Verify that the cache is deleted when a CourseAccessRole is saved"""
     user_id = 1
     cache_name = cache_name_user_course_access_roles(user_id)
     cache.set(cache_name, 'test')
     dummy = CourseAccessRole.objects.create(user_id=user_id, role='test')
     assert cache.get(cache_name) is None
+    mock_signup.assert_not_called()
 
     cache.set(cache_name, 'test')
+    dummy.org = 'test'
     dummy.save()
     assert cache.get(cache_name) is None
+    mock_signup.assert_called_once_with(user_id, 'test')
 
 
 @pytest.mark.django_db

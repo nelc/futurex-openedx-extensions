@@ -128,23 +128,23 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
         for role, orgs in _base_data['course_access_roles_org_wide'].items():
             for org, users in orgs.items():
                 for user_id in users:
-                    CourseAccessRole.objects.create(
+                    CourseAccessRole.objects.bulk_create([CourseAccessRole(
                         user_id=user_id,
                         role=role,
                         org=org,
-                    )
+                    )])
         for org, courses in _base_data['course_access_roles_course_specific'].items():
             for course_id, roles in courses.items():
                 for role, users in roles.items():
                     for user_id in users:
                         assert CourseOverview.objects.filter(id=course_id).exists(), \
                             f'Bad course_id in access roles testing data for org: {org}, course: {course_id}'
-                        CourseAccessRole.objects.create(
+                        CourseAccessRole.objects.bulk_create([CourseAccessRole(
                             user_id=user_id,
                             role=role,
                             org=org,
                             course_id=course_id,
-                        )
+                        )])
 
     def _create_ignored_course_access_roles():
         """Create course access roles for records that will be ignored by our APIs."""
@@ -157,7 +157,7 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
                         'role': role,
                         'org': '',
                     }
-                    CourseAccessRole.objects.create(**params)
+                    CourseAccessRole.objects.bulk_create([CourseAccessRole(**params)])
 
     def _create_course_overviews():  # pylint: disable=too-many-branches
         """Create course overviews."""

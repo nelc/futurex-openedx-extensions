@@ -7,7 +7,7 @@ from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict, List, Tuple
 
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import DatabaseError, transaction
@@ -37,6 +37,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_all_tenant_ids,
     get_course_org_filter_list,
     get_tenants_by_org,
+    get_tenants_sites,
 )
 from futurex_openedx_extensions.helpers.users import get_user_by_key, is_system_staff_user
 
@@ -1071,10 +1072,13 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
             user=user,
         )
 
+    if not dry_run and new_roles:
         try:
             with transaction.atomic():
                 if role == cs.COURSE_CREATOR_ROLE_TENANT:
                     add_org_course_creator(caller, user, orgs)
+
+                    _add_missing_signup_source_records(user, orgs)
                 else:
                     bulk_roles = [CourseAccessRole(
                         user=user,
@@ -1084,6 +1088,11 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
                     ) for new_role in new_roles]
                     _verify_can_add_course_access_roles(caller, bulk_roles)
                     CourseAccessRole.objects.bulk_create(bulk_roles)
+
+                    _add_missing_signup_source_records(
+                        user,
+                        [new_role['org_lower_case'] for new_role in new_roles if new_role['org_lower_case']],
+                    )
 
         except DatabaseError as exc:
             raise FXCodedException(
@@ -1492,3 +1501,44 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
         'error_code': None,
         'error_message': None,
     }
+
+
+def _add_missing_signup_source_records(user: get_user_model, orgs: list[str]) -> None:
+    """
+    Add missing signup source records for the given user for the given orgs.
+
+    :param user: The user to add the records for
+    :type user: get_user_model
+    :param orgs: The orgs to add the records for
+    :type orgs: list
+    """
+    orgs = list(set(orgs))
+    tenants_of_orgs = set()
+    for org in orgs:
+        tenants_of_orgs.update(get_tenants_by_org(org))
+    sites_of_tenants = set(get_tenants_sites(list(tenants_of_orgs)))
+
+    existing_sites = set(UserSignupSource.objects.filter(user=user).values_list('site', flat=True))
+    to_add = []
+    for site in sites_of_tenants - existing_sites:
+        to_add.append(UserSignupSource(user=user, site=site))
+
+    if to_add:
+        UserSignupSource.objects.bulk_create(to_add)
+
+
+def add_missing_signup_source_record(user_id: int, org: str) -> bool:
+    """
+    Add missing signup source records for the given user for the given orgs.
+
+    :param user_id: The user ID
+    :type user_id: int
+    :param org: The org to add the records for
+    :type org: str
+    :return: False if one of the orgs is not valid, True otherwise
+    """
+    if not get_tenants_by_org(org):
+        return False
+
+    _add_missing_signup_source_records(user=get_user_model().objects.get(id=user_id), orgs=[org])
+    return True
