@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -1557,6 +1557,21 @@ def test_add_course_access_roles_add_creator_role(
 
     add_course_access_roles(None, [1], [user], cs.COURSE_CREATOR_ROLE_TENANT, True, [])
     mock_add_org_course_creator.assert_called_once_with(None, user, ['org1', 'org2'])
+
+
+@pytest.mark.django_db
+def test_add_course_access_roles_signup_source(roles_authorize_caller):  # pylint: disable=unused-argument
+    """Verify that add_course_access_roles adds the signup source to the user if it's missing."""
+    user = get_user_model().objects.get(username='user70')
+    signup_source = UserSignupSource.objects.filter(user=user)
+    assert signup_source.count() == 0
+
+    add_course_access_roles(None, [1], [user], 'staff', True, [])
+    assert signup_source.count() == 1
+    assert signup_source[0].site == 's1.sample.com'
+
+    add_course_access_roles(None, [1], [user], 'instructor', True, [])
+    assert signup_source.count() == 1
 
 
 @pytest.mark.django_db
