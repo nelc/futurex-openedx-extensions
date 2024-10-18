@@ -101,6 +101,24 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
     }
 
 
+def get_fx_dashboard_url(request: Any, user_accessible_tenant_ids: List[int]) -> str:
+    """
+    Get Fx Dashboard URL
+
+    :param request: Current django request.
+    :type request: Request
+    :param user_accessible_tenant_ids: Tenant ids accessible to User.
+    :type user_accessible_tenant_ids: List[int]
+    :return: Fx Dashboard URL
+    :rtype: str
+    """
+    tenant_info = get_all_tenants_info()
+    for tenant_id, site in tenant_info['sites'].items():
+        if site == request.site.name and tenant_id in user_accessible_tenant_ids:
+            return f'{request.scheme}://dashboard.{settings.LMS_BASE}/{request.LANGUAGE_CODE}/{tenant_id}'
+    return ''
+
+
 def get_all_tenant_ids() -> List[int]:
     """
     Get list of IDs of all tenants in the system
