@@ -777,7 +777,9 @@ def _delete_course_access_roles(tenant_ids: list[int], user: get_user_model) -> 
     cache_refresh_course_access_roles(user.id)
 
 
-def delete_course_access_roles(caller: get_user_model, tenant_ids: list[int], user: get_user_model) -> None:
+def delete_course_access_roles(
+    caller: get_user_model, tenant_ids: list[int], user: get_user_model, dry_run: bool = False,
+) -> None:
     """
     Delete the course access roles for the given tenant IDs and user
 
@@ -787,12 +789,15 @@ def delete_course_access_roles(caller: get_user_model, tenant_ids: list[int], us
     :type tenant_ids: list
     :param user: The user to filter on
     :type user: get_user_model
+    :param dry_run: True for dry-run, False otherwise
+    :type dry_run: bool
     """
     _verify_can_delete_course_access_roles(caller, tenant_ids, user)
 
-    _delete_course_access_roles(tenant_ids, user)
+    if not dry_run:
+        _delete_course_access_roles(tenant_ids, user)
 
-    cache_refresh_course_access_roles(user.id)
+        cache_refresh_course_access_roles(user.id)
 
 
 def _clean_course_access_roles(redundant_hashes: set[DictHashcode], user: get_user_model) -> None:

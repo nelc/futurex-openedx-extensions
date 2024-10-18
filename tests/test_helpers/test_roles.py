@@ -1165,6 +1165,10 @@ def test_delete_course_access_roles(roles_authorize_caller, base_data):  # pylin
         user=user70, org='', role=cs.COURSE_ACCESS_ROLES_UNSUPPORTED[0],
     )
 
+    assert q_user70.count() == 6
+    delete_course_access_roles(None, get_all_tenant_ids(), user70, dry_run=True)
+    assert q_user70.count() == 6
+
     delete_course_access_roles(None, get_all_tenant_ids(), user70)
     assert q_user70.count() == 4
     for record in q_user70:
