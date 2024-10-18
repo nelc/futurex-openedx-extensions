@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
-from django.test import override_settings
+from django.test import RequestFactory, override_settings
 from eox_tenant.models import TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
@@ -287,3 +287,27 @@ def test_fix_lms_base_port(lms_root_port, domain_name, expected_result):
 def test_fix_lms_base_empty_domain_name(domain_name):
     """Verify that fix_lms_base sets the correct port for the result."""
     assert tenants.fix_lms_base(domain_name) == ''
+
+
+@pytest.mark.django_db
+def test_get_fx_dashboard_url():
+    """Verify _get_fx_dashboard_url reurns correct address"""
+    factory = RequestFactory()
+    request = factory.get('/some-path')
+    request.site = type('Site', (), {})()
+    request.site.name = 'test_site'
+    request.LANGUAGE_CODE = 'en'
+    tenant_info = {
+        'sites': {
+            1: 'test_site',
+            2: 'another_site',
+        }
+    }
+    # Test when tenant ID is accessible
+    with patch('futurex_openedx_extensions.helpers.tenants.get_all_tenants_info', return_value=tenant_info):
+        url = tenants.get_fx_dashboard_url(request, user_accessible_tenant_ids=[1, 3])
+        expected_url = 'http://dashboard.example.com/en/1'
+        assert url == expected_url
+    # Test when tenant ID is not accessible
+    url = tenants.get_fx_dashboard_url(request, user_accessible_tenant_ids=[3])
+    assert url == ''
