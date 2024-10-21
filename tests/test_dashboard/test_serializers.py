@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole, SocialLink, UserProfile
+from custom_reg_form.models import ExtraInfo
 from django.contrib.auth import get_user_model
 from django.db.models import Value
 from django.utils.timezone import get_current_timezone, now, timedelta
@@ -34,7 +35,7 @@ def get_dummy_queryset(users_list=None):
         certificate_available=Value(True),
         course_score=Value(0.67),
         active_in_course=Value(True),
-    ).select_related('profile')
+    ).select_related('profile').select_related('extrainfo')
 
 
 @pytest.fixture
@@ -84,6 +85,20 @@ def test_learner_basic_details_serializer_with_profile(base_data):  # pylint: di
     assert data[0]['mobile_no'] == '1234567890'
     assert data[0]['year_of_birth'] == 1988
     assert data[0]['gender'] == 'm'
+
+
+@pytest.mark.django_db
+def test_learner_basic_details_serializer_with_extra_info(base_data):  # pylint: disable=unused-argument
+    """Verify that the LearnerBasicDetailsSerializer processes the extrainfo fields."""
+    ExtraInfo.objects.create(
+        user_id=10,
+        national_id='1234567890',
+    )
+    queryset = get_dummy_queryset()
+    data = LearnerBasicDetailsSerializer(queryset, many=True).data
+    assert len(data) == 1
+    assert data[0]['user_id'] == 10
+    assert data[0]['national_id'] == '1234567890'
 
 
 @pytest.mark.django_db
@@ -410,6 +425,7 @@ def test_user_roles_serializer_init(
         'user_id': user3.id,
         'email': user3.email,
         'username': user3.username,
+        'national_id': '11223344556677',
         'full_name': '',
         'alternative_full_name': '',
         'global_roles': [],

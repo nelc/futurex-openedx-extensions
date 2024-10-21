@@ -682,6 +682,7 @@ class TestMyRolesView(BaseTestViewMixin):
             'user_id': 3,
             'email': 'user3@example.com',
             'username': 'user3',
+            'national_id': '11223344556677',
             'full_name': '',
             'alternative_full_name': '',
             'is_system_staff': False,

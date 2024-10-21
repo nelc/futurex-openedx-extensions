@@ -191,6 +191,23 @@ _base_data = {
     'super_users': [1, 60],
     'staff_users': [2, 60],
     'inactive_users': [61, 62, 63],
+    'user_extra_info': {  # user id, national id
+        1: {
+            'national_id': '123456700001',
+        },
+        2: {
+            'national_id': '123456700002',
+        },
+        3: {
+            'national_id': '11223344556677',
+        },
+        4: {
+            'national_id': '123456700004',
+        },
+        5: {
+            'national_id': '123456700005',
+        },
+    },
     'course_access_roles_org_wide': {  # roles, user ids per org
         'staff': {
             'Org1': [3],
