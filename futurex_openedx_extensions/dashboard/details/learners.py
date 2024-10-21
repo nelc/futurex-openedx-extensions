@@ -139,7 +139,7 @@ def get_learners_queryset(
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
         )
-    ).select_related('profile').order_by('id')
+    ).select_related('profile', 'extrainfo').order_by('id')
 
     return queryset
 

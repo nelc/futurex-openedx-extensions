@@ -583,6 +583,7 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too
     if search_text:
         queryset = queryset.filter(
             Q(user__username__icontains=search_text) |
+            Q(user__extrainfo__national_id__icontains=search_text) |
             Q(user__email__icontains=search_text) |
             Q(user__profile__name__icontains=search_text),
         )

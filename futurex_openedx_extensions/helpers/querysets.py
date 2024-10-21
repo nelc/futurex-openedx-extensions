@@ -179,6 +179,7 @@ def get_learners_search_queryset(
     if search_text:
         queryset = queryset.filter(
             Q(username__icontains=search_text) |
+            Q(extrainfo__national_id__icontains=search_text) |
             Q(email__icontains=search_text) |
             Q(profile__name__icontains=search_text)
         )

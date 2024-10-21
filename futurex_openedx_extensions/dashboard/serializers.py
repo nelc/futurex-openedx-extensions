@@ -34,6 +34,7 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     alternative_full_name = serializers.SerializerMethodField()
     username = serializers.CharField()
+    national_id = serializers.SerializerMethodField()
     email = serializers.EmailField()
     mobile_no = serializers.SerializerMethodField()
     year_of_birth = serializers.SerializerMethodField()
@@ -49,6 +50,7 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
             'full_name',
             'alternative_full_name',
             'username',
+            'national_id',
             'email',
             'mobile_no',
             'year_of_birth',
@@ -102,9 +104,18 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
         """Get the profile field value."""
         return getattr(obj.profile, field_name) if hasattr(obj, 'profile') and obj.profile else None
 
+    @staticmethod
+    def _get_extra_field(obj: get_user_model, field_name: str) -> Any:
+        """Get the extra field value."""
+        return getattr(obj.extrainfo, field_name) if hasattr(obj, 'extrainfo') and obj.extrainfo else None
+
     def get_user_id(self, obj: get_user_model) -> Any:  # pylint: disable=no-self-use
         """Return user ID."""
         return obj.id
+
+    def get_national_id(self, obj: get_user_model) -> Any:
+        """Return national ID."""
+        return self._get_extra_field(obj, 'national_id')
 
     def get_full_name(self, obj: get_user_model) -> Any:
         """Return full name."""
@@ -530,6 +541,7 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
             'user_id',
             'email',
             'username',
+            'national_id',
             'full_name',
             'alternative_full_name',
             'global_roles',

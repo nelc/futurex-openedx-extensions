@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
+from custom_reg_form.models import ExtraInfo
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import override_settings
@@ -90,6 +91,11 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
             user.objects.filter(id=user_id).update(is_staff=True)
         for user_id in _base_data['inactive_users']:
             user.objects.filter(id=user_id).update(is_active=False)
+        for user_id, extra_info in _base_data['user_extra_info'].items():
+            ExtraInfo.objects.create(
+                user_id=user_id,
+                national_id=extra_info.get('national_id'),
+            )
 
     def _create_tenants():
         """Create tenants."""

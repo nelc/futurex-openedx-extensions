@@ -271,3 +271,18 @@ def m2m_changed_never_use_set_add_remove_or_clear(sender, **kwargs):
         'to avoid triggering signals. You cal also use add_clear_org_to_course_creator in tests which will '
         'temporarily disable the signal.'
     )
+
+
+class ExtraInfo(models.Model):
+    """Mock"""
+    user = models.OneToOneField(get_user_model(), on_delete=models.CASCADE, null=True)
+    arabic_name = models.CharField(max_length=255)
+    arabic_first_name = models.CharField(max_length=30, blank=True)
+    arabic_last_name = models.CharField(max_length=50, blank=True)
+    national_id = models.CharField(max_length=20, blank=True)
+    allow_newsletter_emails = models.BooleanField(default=False, blank=True)
+    is_phone_validated = models.BooleanField(default=False)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'custom_reg_form_extra_info'
