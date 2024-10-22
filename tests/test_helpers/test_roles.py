@@ -2354,3 +2354,25 @@ def test_clean_course_access_roles_partial(
     _clean_course_access_roles_partial(None, user, tenant_ids, roles_to_keep)
     mock_delete.assert_called_once_with(tenant_ids, user)
     assert mock_create.call_count == 2
+
+
+@pytest.mark.django_db
+def test_clean_course_access_roles_partial_course_creator(
+    roles_authorize_caller, base_data,
+):  # pylint: disable=unused-argument
+    """Verify that _clean_course_access_roles_partial correctly restore course creator roles."""
+    user = get_user_model().objects.get(username='user70')
+    assert CourseAccessRole.objects.filter(user=user).count() == 0
+    tenant_ids = [1, 2]
+    roles = []
+    for org in ['org1', 'org2']:
+        Organization.objects.create(short_name=org)
+        roles.append(CourseAccessRole(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT, org=org))
+    add_org_course_creator(None, user, ['org1', 'org2'])
+
+    _clean_course_access_roles_partial(None, user, tenant_ids, roles)
+    assert CourseCreator.objects.filter(user=user).exists()
+    assert CourseCreator.objects.get(user=user).organizations.count() == 2
+    assert CourseCreator.objects.get(user=user).all_organizations is False
+    assert CourseAccessRole.objects.filter(user=user).count() == 2
+    assert CourseAccessRole.objects.filter(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT).count() == 2
