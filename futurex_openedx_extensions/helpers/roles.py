@@ -1276,12 +1276,15 @@ def _clean_course_access_roles_partial(
     if not roles_to_restore:
         return
 
-    CourseAccessRole.objects.bulk_create(roles_to_restore)
     creator_orgs = []
+    non_creator_roles = []
     for role in roles_to_restore:
         if role.role == cs.COURSE_CREATOR_ROLE_TENANT:
             creator_orgs.append(role.org)
+        else:
+            non_creator_roles.append(role)
 
+    CourseAccessRole.objects.bulk_create(non_creator_roles)
     add_org_course_creator(caller, user, creator_orgs)
 
 
