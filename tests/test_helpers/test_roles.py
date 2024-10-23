@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -28,6 +28,7 @@ from futurex_openedx_extensions.helpers.roles import (
     _verify_can_add_org_course_creator,
     _verify_can_delete_course_access_roles,
     add_course_access_roles,
+    add_missing_signup_source_record,
     add_org_course_creator,
     cache_name_user_course_access_roles,
     cache_refresh_course_access_roles,
@@ -1560,6 +1561,21 @@ def test_add_course_access_roles_add_creator_role(
 
 
 @pytest.mark.django_db
+def test_add_course_access_roles_signup_source(roles_authorize_caller):  # pylint: disable=unused-argument
+    """Verify that add_course_access_roles adds the signup source to the user if it's missing."""
+    user = get_user_model().objects.get(username='user70')
+    signup_source = UserSignupSource.objects.filter(user=user)
+    assert signup_source.count() == 0
+
+    add_course_access_roles(None, [1], [user], 'staff', True, [])
+    assert signup_source.count() == 1
+    assert signup_source[0].site == 's1.sample.com'
+
+    add_course_access_roles(None, [1], [user], 'instructor', True, [])
+    assert signup_source.count() == 1
+
+
+@pytest.mark.django_db
 def test_clean_course_access_roles_no_record_to_delete():
     """Verify that clean_course_access_roles returns the expected result when there are no records to delete."""
     hash_code = DictHashcode({'role': 'role1', 'org_lower_case': 'org1', 'course_id': None})
@@ -2376,3 +2392,16 @@ def test_clean_course_access_roles_partial_course_creator(
     assert CourseCreator.objects.get(user=user).all_organizations is False
     assert CourseAccessRole.objects.filter(user=user).count() == 2
     assert CourseAccessRole.objects.filter(user=user, role=cs.COURSE_CREATOR_ROLE_TENANT).count() == 2
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles._add_missing_signup_source_records')
+def test_add_missing_signup_source_record(mock_signup, base_data):  # pylint: disable=unused-argument
+    """Verify that add_missing_signup_source_record creates the missing record."""
+    user_id = 66
+    user = get_user_model().objects.get(id=user_id)
+    assert add_missing_signup_source_record(user_id, 'invalid_org') is False
+    mock_signup.assert_not_called()
+
+    assert add_missing_signup_source_record(user_id, 'org1') is True
+    mock_signup.assert_called_once_with(user=user, orgs=['org1'])
