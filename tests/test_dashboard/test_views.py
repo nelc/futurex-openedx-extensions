@@ -24,7 +24,7 @@ from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
+from futurex_openedx_extensions.helpers.models import DataExportTask, ViewAllowedRoles
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -46,6 +46,10 @@ class BaseTestViewMixin(APITestCase):
         self.view_name = self.VIEW_NAME
         self.url_args = []
         self.staff_user = 2
+        self.registry = {}
+        for _, viewset, basename in urls.router.registry:
+            self.registry[basename] = viewset
+        self.viewset_base = None
 
     @property
     def url(self):
@@ -56,17 +60,15 @@ class BaseTestViewMixin(APITestCase):
         """Helper to login user"""
         self.client.force_login(get_user_model().objects.get(id=user_id))
 
-    def _get_request_view_class(self):
-        """Helper to get the view class and a request"""
-        view_func, _, _ = resolve(self.url)
-        view_class = view_func.view_class
+    def _get_request(self):
+        """Helper to get the request"""
         factory = APIRequestFactory()
         request = factory.get(self.url)
         request.query_params = {}
         request.user = get_user_model().objects.get(id=self.staff_user)
         request.fx_permission_info = get_user1_fx_permission_info()
         request.fx_permission_info['user'] = request.user
-        return request, view_class
+        return request
 
 
 @pytest.mark.usefixtures('base_data')
@@ -361,7 +363,8 @@ class TestLearnerInfoView(
     @patch('futurex_openedx_extensions.dashboard.views.serializers.LearnerDetailsExtendedSerializer')
     def test_request_in_context(self, mock_serializer):
         """Verify that the view calls the serializer with the correct context"""
-        request, view_class = self._get_request_view_class()
+        request = self._get_request()
+        view_class = self._get_view_class()
         mock_serializer.return_value = Mock(data={})
 
         with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_get_info:
@@ -417,7 +420,8 @@ class TestLearnerCoursesDetailsView(
     @patch('futurex_openedx_extensions.dashboard.views.serializers.LearnerCoursesDetailsSerializer')
     def test_request_in_context(self, mock_serializer):
         """Verify that the view uses the correct serializer"""
-        request, view_class = self._get_request_view_class()
+        request = self._get_request()
+        view_class = self._get_view_class()
 
         with patch('futurex_openedx_extensions.dashboard.views.get_learner_courses_info_queryset') as mock_get_info:
             mock_get_info.return_value = Mock()
@@ -454,6 +458,246 @@ class TestVersionInfoView(BaseTestViewMixin):
             response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(json.loads(response.content), {'version': '0.1.dummy'})
+
+
+class TestDataExportTasksView(BaseTestViewMixin):
+    """Tests for DataExportTasksView"""
+    view_actions = ['detail', 'list']
+
+    def set_action(self, action, task_id=1):
+        """Set the viewname and client method"""
+        self.viewset_base = 'data-export-tasks'
+        self.view_name = f'fx_dashboard:{self.viewset_base}-{action}'
+        self.url_args = []
+        if action == 'detail':
+            self.url_args = [task_id]
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        for action in self.view_actions:
+            self.set_action(action)
+            view_class = self.registry['data-export-tasks']
+            self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        for action in self.view_actions:
+            self.set_action(action)
+            response = self.client.get(self.url)
+            self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_non_staff_user(self):
+        """Verify that user without required role can not access view."""
+        for action in self.view_actions:
+            self.set_action(action)
+            learner_user = get_user_model().objects.get(id=45)
+            self.login_user(learner_user.id)
+            response = self.client.get(self.url, {})
+            self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_list_success(self):
+        """Verify view for list"""
+        self.set_action('list')
+        request = self._get_request()
+        self.login_user(request.user.id)
+        task = DataExportTask.objects.create(
+            user=request.user,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test.csv',
+            progress=1.0,
+            tenant_id=1
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], task.id)
+
+    def test_list_user_can_only_view_own_tasks(self):
+        """Verify view for list - that the user can only view his tasks"""
+        self.set_action('list')
+        user1 = get_user_model().objects.get(id=4)
+        user2 = get_user_model().objects.get(id=10)
+        self.login_user(user1.id)
+        user1_task1 = DataExportTask.objects.create(
+            user=user1,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test1.csv',
+            progress=1.0,
+            tenant_id=1
+        )
+        user1_task2 = DataExportTask.objects.create(
+            user=user1,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test2.csv',
+            progress=1.0,
+            tenant_id=1
+        )
+        # user1 shouldnt have access to the following task as it is created by user2
+        DataExportTask.objects.create(
+            user=user2,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test3.csv',
+            progress=1.0,
+            tenant_id=1
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+        self.assertEqual(response.data['results'][0]['id'], user1_task1.id)
+        self.assertEqual(response.data['results'][1]['id'], user1_task2.id)
+
+    def test_patch_success(self):
+        """Verify view for update"""
+        user = get_user_model().objects.get(id=4)
+        self.login_user(user.id)
+        task = DataExportTask.objects.create(
+            user=user,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test.csv',
+            progress=1.0,
+            notes='dummy',
+            tenant_id=1
+        )
+        self.set_action('detail', task.id)
+        new_notes = 'dummy new'
+        response = self.client.patch(
+            self.url,
+            data={'notes': new_notes},
+            format='json',
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertEqual(task.notes, new_notes)
+        self.assertEqual(response.data['id'], task.id)
+        self.assertEqual(response.data['notes'], new_notes)
+
+    def test_patch_user_can_only_edit_own_tasks(self):
+        """Verify that the user can only update his tasks"""
+        user1 = get_user_model().objects.get(id=4)
+        user2 = get_user_model().objects.get(id=10)
+        self.login_user(user1.id)
+        user1_task = DataExportTask.objects.create(
+            user=user1,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test1.csv',
+            progress=1.0,
+            tenant_id=1
+        )
+        self.assertEqual(user1_task.notes, '')
+        self.set_action('detail', user1_task.id)
+        response = self.client.patch(
+            self.url,
+            data={'notes': 'new notes'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        user1_task.refresh_from_db()
+        self.assertEqual(user1_task.notes, 'new notes')
+
+        # user1 shouldnt be able to update following as it is created by user2
+        user2_task = DataExportTask.objects.create(
+            user=user2,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test3.csv',
+            progress=1.0,
+            tenant_id=1
+        )
+        self.set_action('detail', user2_task.id)
+        response = self.client.patch(
+            self.url,
+            data={'notes': 'new notes update'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
+
+    def test_patch_for_non_writable_fields(self):
+        """Verify view for non writable fields."""
+        user = get_user_model().objects.get(id=4)
+        self.login_user(user.id)
+        task = DataExportTask.objects.create(
+            user=user,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test.csv',
+            progress=1.0,
+            notes='dummy',
+            tenant_id=1
+        )
+        self.set_action('detail', task.id)
+        response = self.client.patch(
+            self.url,
+            data={'filename': 'newname.csv'},
+            format='json',
+        )
+        # DRF does not raise validation error for performing update on read-only fields.
+        # It just ignore read-only field values and will process writable fields.
+        response = self.client.patch(
+            self.url,
+            data={'filename': 'newname.csv', 'user': 45},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['id'], task.id)
+        # verify filename and user didn't update.
+        self.assertEqual(response.data['filename'], 'test.csv')
+        self.assertEqual(response.data['user'], user.id)
+
+    def test_retrieve_success(self):
+        """Verify view for retrieve"""
+        user = get_user_model().objects.get(id=4)
+        self.login_user(user.id)
+        task = DataExportTask.objects.create(
+            user=user,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test.csv',
+            progress=1.0,
+            notes='dummy',
+            tenant_id=1
+        )
+        self.set_action('detail', task.id)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], task.id)
+
+    def test_not_allowed_methods(self):
+        """Verify view for not allowed methods."""
+        user = get_user_model().objects.get(id=4)
+        self.login_user(user.id)
+        task = DataExportTask.objects.create(
+            user=user,
+            status=DataExportTask.STATUS_COMPLETED,
+            view_name='exported_files_data',
+            filename='test.csv',
+            progress=1.0,
+            notes='dummy',
+            tenant_id=1
+        )
+        self.set_action('detail', task.id)
+        response = self.client.put(
+            self.url,
+            data={'notes': 'new'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 405)
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, 405)
+        self.set_action('list', task.id)
+        response = self.client.post(self.url, data={
+            'user': 1,
+            'view_name': 'fake',
+            'filename': 'fake.csv',
+            'notes': 'fake notes',
+            'tenant_id': 1
+        })
+        self.assertEqual(response.status_code, 405)
 
 
 @pytest.mark.usefixtures('base_data')

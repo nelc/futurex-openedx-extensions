@@ -25,3 +25,10 @@ def plugin_settings(settings: Any) -> None:
         'FX_CACHE_TIMEOUT_VIEW_ROLES',
         60 * 30,  # 30 minutes
     )
+
+    # Exported CSV files directive name
+    settings.FX_DASHBOARD_STORAGE_DIR = getattr(
+        settings,
+        'FX_DASHBOARD_STORAGE_DIR',
+        'fx_dashboard'
+    )
