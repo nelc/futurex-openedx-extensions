@@ -303,7 +303,7 @@ class DataExportManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # p
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_default_read_write_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_allowed_write_methods = ['PATCH']
-    fx_view_description = 'api/fx/export/v1/tasks/: Data Export Task Mangement APIs.'
+    fx_view_description = 'api/fx/export/v1/tasks/: Data Export Task Management APIs.'
     http_method_names = ['get', 'patch']
     ordering = ['-created_at']
 

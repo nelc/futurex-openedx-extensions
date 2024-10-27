@@ -633,13 +633,6 @@ class TestDataExportTasksView(BaseTestViewMixin):
         self.set_action('detail', task.id)
         response = self.client.patch(
             self.url,
-            data={'filename': 'newname.csv'},
-            format='json',
-        )
-        # DRF does not raise validation error for performing update on read-only fields.
-        # It just ignore read-only field values and will process writable fields.
-        response = self.client.patch(
-            self.url,
             data={'filename': 'newname.csv', 'user': 45},
             format='json',
         )
@@ -647,7 +640,7 @@ class TestDataExportTasksView(BaseTestViewMixin):
         self.assertEqual(response.data['id'], task.id)
         # verify filename and user didn't update.
         self.assertEqual(response.data['filename'], 'test.csv')
-        self.assertEqual(response.data['user'], user.id)
+        self.assertEqual(response.data['user_id'], user.id)
 
     def test_retrieve_success(self):
         """Verify view for retrieve"""

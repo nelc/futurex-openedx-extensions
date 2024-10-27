@@ -5,7 +5,8 @@ import pytest
 from django.core.exceptions import ValidationError
 
 from futurex_openedx_extensions.helpers.clickhouse_operations import ClickhouseBaseError
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask
 
 
 @pytest.fixture
@@ -346,3 +347,177 @@ def test_clickhouse_query_fix_param_types_extra_param_allowed(
     params = {'a': '1', 'extra_param': {'any-type': 'should not be changed!!!'}}
     sample_clickhouse_query.fix_param_types(params)
     assert params == {'a': 1, 'extra_param': {'any-type': 'should not be changed!!!'}}
+
+
+@pytest.mark.django_db
+def test_data_export_task_get_task(base_data):  # pylint: disable=unused-argument
+    """Verify that DataExportTask.get_task returns correct task."""
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test_view',
+        user_id=1,
+        tenant_id=1,
+    )
+    assert DataExportTask.get_task(task.id) == task
+    task.refresh_from_db()
+    assert task.status == DataExportTask.STATUS_IN_QUEUE
+
+    with pytest.raises(FXCodedException) as exc_info:
+        DataExportTask.get_task(task.id + 1)
+    assert exc_info.value.code == FXExceptionCodes.EXPORT_CSV_TASK_NOT_FOUND.value
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('task_id', [
+    None, 'not an int', 1.0,
+])
+def test_data_export_task_get_task_invalid_id(task_id):
+    """Verify that DataExportTask.get_task raises FXCodedException for invalid task id."""
+    with pytest.raises(FXCodedException) as exc_info:
+        DataExportTask.get_task(task_id)
+    assert exc_info.value.code == FXExceptionCodes.EXPORT_CSV_TASK_NOT_FOUND.value
+
+
+@pytest.mark.django_db
+def test_data_export_task_get_status(base_data):  # pylint: disable=unused-argument
+    """Verify that DataExportTask.get_status returns correct status."""
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test_view',
+        user_id=1,
+        tenant_id=1,
+    )
+    assert DataExportTask.get_status(task.id) == DataExportTask.STATUS_IN_QUEUE
+    task.status = DataExportTask.STATUS_PROCESSING
+    task.save()
+    assert DataExportTask.get_status(task.id) == DataExportTask.STATUS_PROCESSING
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('status, new_status, error_filled', [
+    (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_PROCESSING, False),
+    (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_COMPLETED, False),
+    (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_FAILED, True),
+])
+def test_data_export_task_set_status(
+    base_data, status, new_status, error_filled,
+):  # pylint: disable=unused-argument
+    """Verify that DataExportTask.set_status sets correct status."""
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test_view',
+        user_id=1,
+        tenant_id=1,
+        status=status,
+    )
+    DataExportTask.set_status(task.id, new_status, error_message='an error message')
+    task.refresh_from_db()
+    assert task.status == new_status
+    assert task.error_message == ('an error message' if error_filled else None)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('status, new_status', [
+    (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_IN_QUEUE),
+    (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_COMPLETED),
+    (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_FAILED),
+    (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_PROCESSING),
+    (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_IN_QUEUE),
+])
+def test_data_export_task_set_status_invalid_transition(
+    base_data, status, new_status,
+):  # pylint: disable=unused-argument
+    """Verify that DataExportTask.set_status raises FXCodedException for invalid status transition."""
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test_view',
+        user_id=1,
+        tenant_id=1,
+        status=status,
+    )
+    with pytest.raises(FXCodedException) as exc_info:
+        DataExportTask.set_status(task.id, new_status)
+    assert exc_info.value.code == FXExceptionCodes.EXPORT_CSV_TASK_CHANGE_STATUS_NOT_POSSIBLE.value
+    assert str(exc_info.value) == f'Cannot change task status from ({status}) to ({new_status})'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('status', [DataExportTask.STATUS_COMPLETED, DataExportTask.STATUS_FAILED])
+def test_data_export_task_set_status_invalid_transition_for_closed(
+    base_data, status,
+):  # pylint: disable=unused-argument
+    """Verify that DataExportTask.set_status raises FXCodedException for transition from closed statuses."""
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test_view',
+        user_id=1,
+        tenant_id=1,
+        status=status,
+    )
+    for new_status in DataExportTask.STATUS_CHOICES:
+        with pytest.raises(FXCodedException) as exc_info:
+            DataExportTask.set_status(task.id, new_status[0])
+        assert exc_info.value.code == FXExceptionCodes.EXPORT_CSV_TASK_CHANGE_STATUS_NOT_POSSIBLE.value
+        assert str(exc_info.value) == f'Cannot change task status from ({status}) to ({new_status[0]})'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('new_status', [None, ['not a string'], 1, 'invalid_status'])
+def test_data_export_task_set_status_invalid_status(base_data, new_status):  # pylint: disable=unused-argument
+    """Verify that DataExportTask.set_status raises FXCodedException for invalid status transition."""
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test_view',
+        user_id=1,
+        tenant_id=1,
+    )
+    with pytest.raises(FXCodedException) as exc_info:
+        DataExportTask.set_status(task.id, status=new_status)
+    assert exc_info.value.code == FXExceptionCodes.EXPORT_CSV_TASK_CHANGE_STATUS_NOT_POSSIBLE.value
+    assert str(exc_info.value) == f'Invalid status! ({new_status})'
+
+
+@pytest.mark.django_db
+def test_data_export_task_set_progress(base_data):  # pylint: disable=unused-argument
+    """Verify that DataExportTask.set_progress sets correct progress."""
+    valid_progress = 0.66
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test_view',
+        user_id=1,
+        tenant_id=1,
+    )
+
+    for status_choice in DataExportTask.STATUS_CHOICES:
+        task.status = status_choice[0]
+        task.save()
+
+        if status_choice[0] != DataExportTask.STATUS_PROCESSING:
+            with pytest.raises(FXCodedException) as exc_info:
+                DataExportTask.set_progress(task.id, valid_progress)
+            assert exc_info.value.code == FXExceptionCodes.EXPORT_CSV_TASK_CANNOT_CHANGE_PROGRESS.value
+            assert str(exc_info.value) == f'Cannot set progress for a task with status ({status_choice[0]}).'
+        else:
+            DataExportTask.set_progress(task.id, valid_progress)
+            task.refresh_from_db()
+            assert task.progress == valid_progress
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('invalid_progress', [
+    None, 'not an int', 1.00001, -0.00001,
+])
+def test_data_export_task_set_progress_invalid_value(base_data, invalid_progress):  # pylint: disable=unused-argument
+    """Verify that DataExportTask.set_progress raises FXCodedException for invalid progress value."""
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test_view',
+        user_id=1,
+        tenant_id=1,
+        status=DataExportTask.STATUS_PROCESSING,
+    )
+
+    with pytest.raises(FXCodedException) as exc_info:
+        DataExportTask.set_progress(task.id, invalid_progress)
+    assert exc_info.value.code == FXExceptionCodes.EXPORT_CSV_TASK_INVALID_PROGRESS_VALUE.value
+    assert str(exc_info.value) == f'Invalid progress value! ({invalid_progress}).'

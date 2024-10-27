@@ -1,19 +1,19 @@
 """Models for the dashboard app."""
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any, Dict, List, Tuple
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 from simple_history.models import HistoricalRecords
 
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.converters import DateMethods
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 
-logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
@@ -292,24 +292,129 @@ class ClickhouseQuery(models.Model):
 
 class DataExportTask(models.Model):
     """Model for storing FX Tasks queries"""
-    STATUS_PENDING = 'pending'
+    STATUS_IN_QUEUE = 'in_queue'
+    STATUS_PROCESSING = 'processing'
     STATUS_COMPLETED = 'completed'
+    STATUS_FAILED = 'failed'
 
     STATUS_CHOICES = [
-        (STATUS_PENDING, STATUS_PENDING),
+        (STATUS_IN_QUEUE, STATUS_IN_QUEUE),
+        (STATUS_PROCESSING, STATUS_PROCESSING),
         (STATUS_COMPLETED, STATUS_COMPLETED),
+        (STATUS_FAILED, STATUS_FAILED),
     ]
 
     filename = models.CharField(max_length=255)
     view_name = models.CharField(max_length=255)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_IN_QUEUE)
     progress = models.FloatField(default=0.0)
     notes = models.CharField(max_length=255, default='')
     tenant_id = models.IntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         """Metaclass for the model"""
         verbose_name = 'Data Export Task'
         verbose_name_plural = 'Data Export Tasks'
+
+    @classmethod
+    def set_status(cls, task_id: int, status: str, error_message: str = None) -> None:
+        """
+        Set the status of the task.
+
+        :param task_id: The ID of the task.
+        :type task_id: int
+        :param status: The status to set.
+        :type status: str
+        :param error_message: The error message to be set when changing status to failed.
+        :type error_message: str
+        """
+        if status not in [choice[0] for choice in cls.STATUS_CHOICES]:
+            raise FXCodedException(
+                code=FXExceptionCodes.EXPORT_CSV_TASK_CHANGE_STATUS_NOT_POSSIBLE,
+                message=f'Invalid status! ({status})'
+            )
+
+        fx_task = cls.get_task(task_id)
+        if (
+            (fx_task.status == status) or  # pylint: disable=too-many-boolean-expressions
+            (fx_task.status == cls.STATUS_IN_QUEUE and status != cls.STATUS_PROCESSING) or
+            (fx_task.status == cls.STATUS_PROCESSING and status not in [cls.STATUS_COMPLETED, cls.STATUS_FAILED]) or
+            (fx_task.status in [cls.STATUS_COMPLETED, cls.STATUS_FAILED])
+        ):
+            raise FXCodedException(
+                code=FXExceptionCodes.EXPORT_CSV_TASK_CHANGE_STATUS_NOT_POSSIBLE,
+                message=f'Cannot change task status from ({fx_task.status}) to ({status})'
+            )
+
+        fx_task.status = status
+        if status == cls.STATUS_FAILED and error_message:
+            fx_task.error_message = error_message[:255]
+        if status == cls.STATUS_PROCESSING:
+            fx_task.started_at = timezone.now()
+        if status == cls.STATUS_COMPLETED:
+            fx_task.completed_at = timezone.now()
+        fx_task.save()
+
+    @classmethod
+    def get_status(cls, task_id: int) -> str:
+        """
+        Get the status of the task.
+
+        :param task_id: The ID of the task.
+        :type task_id: int
+        :return: The status of the task.
+        :rtype: str
+        """
+        return cls.get_task(task_id).status
+
+    @classmethod
+    def get_task(cls, task_id: int) -> DataExportTask:
+        """
+        Get the task.
+
+        :param task_id: The ID of the task.
+        :type task_id: int
+        :return: The task.
+        :rtype: DataExportTask
+        """
+        try:
+            if not task_id or not isinstance(task_id, int):
+                raise FXCodedException(
+                    code=FXExceptionCodes.EXPORT_CSV_TASK_NOT_FOUND,
+                    message='Invalid task ID!'
+                )
+            return cls.objects.get(id=task_id)
+        except cls.DoesNotExist as exc:
+            raise FXCodedException(
+                code=FXExceptionCodes.EXPORT_CSV_TASK_NOT_FOUND,
+                message='Task not found!'
+            ) from exc
+
+    @classmethod
+    def set_progress(cls, task_id: int, progress: float) -> None:
+        """
+        Set the progress of the task.
+
+        :param task_id: The ID of the task.
+        :type task_id: int
+        :param progress: The progress to set.
+        :type progress: float
+        """
+        fx_task = cls.get_task(task_id)
+        if fx_task.status != cls.STATUS_PROCESSING:
+            raise FXCodedException(
+                code=FXExceptionCodes.EXPORT_CSV_TASK_CANNOT_CHANGE_PROGRESS,
+                message=f'Cannot set progress for a task with status ({fx_task.status}).'
+            )
+        if not isinstance(progress, float) or progress < 0.0 or progress > 1.0:
+            raise FXCodedException(
+                code=FXExceptionCodes.EXPORT_CSV_TASK_INVALID_PROGRESS_VALUE,
+                message=f'Invalid progress value! ({progress}).'
+            )
+        fx_task.progress = progress
+        fx_task.save()

@@ -218,12 +218,16 @@ def test_upload_file_to_storage():
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.export_csv._paginated_response_generator')
+@patch('futurex_openedx_extensions.helpers.models.DataExportTask.get_task')
 def test_generate_csv_with_tracked_progress(
-    mock_generator, tenant
+    mock_get_task, mock_generator, tenant
 ):  # pylint: disable=redefined-outer-name
     """Test _generate_csv_with_tracked_progress."""
     task = MagicMock()
     task.tenant_id = tenant.id
+    task.status = DataExportTask.STATUS_PROCESSING
+    mock_get_task.return_value = task
+
     storage_dir = f'{settings.FX_DASHBOARD_STORAGE_DIR}/{str(tenant.id)}/exported_files'
     fake_storage_path = f'{storage_dir}/{_FILENAME}'
     fx_permission_info = {'user': user, 'role': 'admin'}
@@ -283,24 +287,31 @@ def test_generate_csv_with_tracked_progress_for_exception(mock_os_remove, mock_g
 @patch('futurex_openedx_extensions.helpers.export_csv._upload_file_to_storage')
 @patch('futurex_openedx_extensions.helpers.export_csv._paginated_response_generator')
 @patch('futurex_openedx_extensions.helpers.export_csv.os.remove')
+@patch('futurex_openedx_extensions.helpers.models.DataExportTask.get_task')
 def test_generate_csv_with_tracked_progress_for_os_removal_exception(
-    mock_os_remove, mock_generator, mock_file_upload, tenant
+    mock_get_task, mock_os_remove, mock_generator, mock_file_upload, tenant
 ):  # pylint: disable=redefined-outer-name
     """Test _generate_csv_with_tracked_progress for os exception"""
     task = MagicMock()
+    task.id = 99
     task.tenant_id = tenant.id
+    mock_get_task.return_value = task
+
     fake_storage_path = f'{settings.FX_DASHBOARD_STORAGE_DIR}/{str(tenant.id)}/{_FILENAME}'
-    fx_permission_info = {'user': user, 'role': 'admin'}
     view_data = {
         'page_size': 2,
         'url': 'http://example.com',
         'kwargs': {}
     }
-    mock_generator.return_value = iter([([{'id': 1}, {'id': 2}], 1.0, 2)])
+    mock_generator.return_value = iter([])
     mock_os_remove.side_effect = Exception('Some exception')
     mock_file_upload.return_value = fake_storage_path
     result = _generate_csv_with_tracked_progress(
-        task, fx_permission_info, view_data, _FILENAME, MagicMock()
+        task_id=task.id,
+        fx_permission_info={'not': 'reached in this test'},
+        view_data=view_data,
+        filename=_FILENAME,
+        view_instance=MagicMock(),
     )
     # assert that os remove exception does not impact return value
     assert result == fake_storage_path
@@ -322,7 +333,7 @@ def test_generate_csv_with_tracked_progress_for_empty_records(
     }
     mock_generator.return_value = iter([([], 0, 0)])
     result = _generate_csv_with_tracked_progress(
-        fx_task, fx_permission_info, view_data, _FILENAME, MagicMock()
+        fx_task.id, fx_permission_info, view_data, _FILENAME, MagicMock(),
     )
     assert result == fake_storage_path
     assert fx_task.progress == 0
@@ -359,7 +370,7 @@ def test_export_data_to_csv(
     assert view_data['page_size'] == 50
     assert view_data['view_instance'] == mock_view_instance
     mock_generate_csv.assert_called_once_with(
-        fx_task, fx_permission_info, view_data, _FILENAME, mock_view_instance
+        fx_task.id, fx_permission_info, view_data, _FILENAME, mock_view_instance
     )
     mock_get_view.assert_called_once_with(view_data['path'])
 
@@ -405,7 +416,7 @@ def test_export_data_to_csv_for_filename_extension(
     mock_generate_csv.return_value = 'randome/path/test.csv'
     export_data_to_csv(fx_task.id, 'http://example.com/api', view_data, fx_permission_info, filename)
     mock_generate_csv.assert_called_once_with(
-        fx_task, fx_permission_info, view_data, f'{filename}.csv', mock_view_instance
+        fx_task.id, fx_permission_info, view_data, f'{filename}.csv', mock_view_instance
     )
 
 
@@ -425,7 +436,7 @@ def test_get_exported_file_url(
     task = DataExportTask.objects.create(
         tenant_id=1,
         filename='exported_file.csv',
-        status=DataExportTask.STATUS_COMPLETED if is_task_completed else DataExportTask.STATUS_PENDING,
+        status=DataExportTask.STATUS_COMPLETED if is_task_completed else DataExportTask.STATUS_IN_QUEUE,
         user=user
     )
     result = get_exported_file_url(task)
