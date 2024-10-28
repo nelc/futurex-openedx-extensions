@@ -5,9 +5,12 @@ import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole, SocialLink, UserProfile
 from custom_reg_form.models import ExtraInfo
+from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.db.models import Value
 from django.utils.timezone import get_current_timezone, now, timedelta
+from lms.djangoapps.grades.models import PersistentSubsectionGrade
+from opaque_keys.edx.keys import UsageKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
 
@@ -54,6 +57,33 @@ def serializer_context():
             query_params={},
         )
     }
+
+
+@pytest.fixture
+def grading_context():
+    """Create a grading context for testing."""
+    with patch('futurex_openedx_extensions.dashboard.serializers.grading_context_for_course') as mock_grading_context:
+        mock_grading_context.return_value = {
+            'all_graded_subsections_by_type': {
+                'Homework': [
+                    {'subsection_block': Mock(
+                        display_name='First Homework',
+                        location=UsageKey.from_string('block-v1:ORG2+1+1+type@homework+block@1'),
+                    )},
+                    {'subsection_block': Mock(
+                        display_name='Second Homework',
+                        location=UsageKey.from_string('block-v1:ORG2+1+1+type@homework+block@2'),
+                    )}
+                ],
+                'Exam': [
+                    {'subsection_block': Mock(
+                        display_name='The final exam',
+                        location=UsageKey.from_string('block-v1:ORG2+1+1+type@homework+block@3'),
+                    )},
+                ],
+            }
+        }
+        yield mock_grading_context
 
 
 @pytest.mark.django_db
@@ -223,14 +253,180 @@ def test_learner_details_serializer(base_data):  # pylint: disable=unused-argume
 
 
 @pytest.mark.django_db
-def test_learner_details_for_course_serializer(base_data):  # pylint: disable=unused-argument
+@patch('futurex_openedx_extensions.dashboard.serializers.LearnerDetailsForCourseSerializer.collect_grading_info')
+def test_learner_details_for_course_serializer(mock_collect, base_data,):  # pylint: disable=unused-argument
     """Verify that the LearnerDetailsForCourseSerializer returns the needed fields."""
     queryset = get_dummy_queryset()
-    data = LearnerDetailsForCourseSerializer(queryset, many=True).data
+    serializer = LearnerDetailsForCourseSerializer(queryset, context={'course_id': 'course-v1:ORG2+1+1'}, many=True)
+    mock_collect.assert_called_once()
+
+    data = serializer.data
     assert len(data) == 1
     assert data[0]['certificate_available'] is True
     assert data[0]['course_score'] == '0.67'
     assert data[0]['active_in_course'] is True
+
+
+def test_learner_details_for_course_serializer_optional_fields():
+    """Verify that the LearnerDetailsForCourseSerializer returns the correct optional fields."""
+    serializer = LearnerDetailsForCourseSerializer(context={'course_id': 'course-v1:ORG2+1+1'})
+    assert serializer.optional_field_names == ['progress', 'certificate_url', 'exam_scores']
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('omit_subsection_name, display_name_included', [
+    ('absent', True),
+    ('1', False),
+    ('not 1', True),
+])
+def test_learner_details_for_course_serializer_collect_grading_info(
+    grading_context, omit_subsection_name, display_name_included, base_data,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that the LearnerDetailsForCourseSerializer.collect_grading_info works fine."""
+    queryset = get_dummy_queryset()
+    context = {
+        'course_id': 'course-v1:ORG2+1+1',
+        'requested_optional_field_tags': ['exam_scores'],
+    }
+    if omit_subsection_name != 'absent':
+        context['omit_subsection_name'] = omit_subsection_name
+    serializer = LearnerDetailsForCourseSerializer(
+        queryset,
+        context=context,
+    )
+
+    expected_grading_info = {
+        '0': {
+            'header_name': 'Homework 1: First Homework' if display_name_included else 'Homework 1',
+            'location': 'block-v1:ORG2+1+1+type@homework+block@1',
+        },
+        '1': {
+            'header_name': 'Homework 2: Second Homework' if display_name_included else 'Homework 2',
+            'location': 'block-v1:ORG2+1+1+type@homework+block@2',
+        },
+        '2': {
+            'header_name': 'Exam: The final exam' if display_name_included else 'Exam',
+            'location': 'block-v1:ORG2+1+1+type@homework+block@3',
+        }
+    }
+
+    assert all(isinstance(value['location'], str) for _, value in serializer.grading_info.items())
+    assert all(isinstance(key, str) for key in serializer.subsection_locations)
+
+    assert not DeepDiff(serializer.grading_info, expected_grading_info, ignore_order=True)
+    assert not DeepDiff(serializer.subsection_locations, {
+        'block-v1:ORG2+1+1+type@homework+block@1': '0',
+        'block-v1:ORG2+1+1+type@homework+block@2': '1',
+        'block-v1:ORG2+1+1+type@homework+block@3': '2',
+    }, ignore_order=True)
+
+
+@pytest.mark.django_db
+def test_learner_details_for_course_serializer_collect_grading_info_not_used(
+    base_data,
+):  # pylint: disable=unused-argument
+    """
+    Verify that the LearnerDetailsForCourseSerializer.collect_grading_info does nothing when exam_scores field
+    is not requested.
+    """
+    queryset = get_dummy_queryset()
+    serializer = LearnerDetailsForCourseSerializer(queryset, context={'course_id': 'course-v1:ORG2+1+1'})
+
+    assert not serializer.grading_info
+    assert not serializer.subsection_locations
+    serializer.collect_grading_info()
+    assert not serializer.grading_info
+    assert not serializer.subsection_locations
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_certificate_url')
+def test_learner_details_for_course_serializer_certificate_url(
+    mock_get_certificate_url, base_data,
+):  # pylint: disable=unused-argument
+    """Verify that the LearnerDetailsForCourseSerializer returns the correct certificate_url."""
+    queryset = get_dummy_queryset()
+    mock_get_certificate_url.return_value = 'https://example.com/courses/course-v1:ORG2+1+1/certificate/'
+    serializer = LearnerDetailsForCourseSerializer(
+        queryset,
+        context={
+            'course_id': 'course-v1:ORG2+1+1',
+            'requested_optional_field_tags': ['certificate_url'],
+        },
+        many=True,
+    )
+    assert serializer.data[0]['certificate_url'] == mock_get_certificate_url.return_value
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_course_blocks_completion_summary')
+@pytest.mark.parametrize('progress_values, expected_result', [
+    ([0, 0, 0], 0.0),
+    ([0, 0, 0], 0.0),
+    ([2, 1, 2], 0.4),
+    ([3, 2, 2], 0.4286),
+])
+def test_learner_details_for_course_serializer_progress(
+    mock_get_completion, progress_values, expected_result, base_data,
+):  # pylint: disable=unused-argument
+    """Verify that the LearnerDetailsForCourseSerializer returns the correct certificate_url."""
+    queryset = get_dummy_queryset()
+    mock_get_completion.return_value = {
+        'complete_count': progress_values[0],
+        'incomplete_count': progress_values[1],
+        'locked_count': progress_values[2],
+    }
+    serializer = LearnerDetailsForCourseSerializer(
+        queryset,
+        context={
+            'course_id': 'course-v1:ORG2+1+1',
+            'requested_optional_field_tags': ['progress'],
+        },
+        many=True,
+    )
+    assert serializer.data[0]['progress'] == expected_result
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('many', [True, False])
+def test_learner_details_for_course_serializer_exam_scores(
+    many, grading_context, base_data,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that the LearnerDetailsForCourseSerializer returns the correct exam_scores."""
+    queryset = get_dummy_queryset()
+    PersistentSubsectionGrade.objects.create(
+        user_id=queryset[0].id,
+        course_id='course-v1:ORG2+1+1',
+        usage_key='block-v1:ORG2+1+1+type@homework+block@1',
+        earned_graded=0,
+        possible_graded=0,
+        earned_all=77.0,
+        possible_all=88.0,
+    )
+    PersistentSubsectionGrade.objects.create(
+        user_id=queryset[0].id,
+        course_id='course-v1:ORG2+1+1',
+        usage_key='block-v1:ORG2+1+1+type@homework+block@2',
+        earned_graded=0,
+        possible_graded=0,
+        earned_all=9.0,
+        possible_all=10.0,
+        first_attempted=now() - timedelta(days=1),
+    )
+
+    serializer = LearnerDetailsForCourseSerializer(
+        queryset if many else queryset.first(),
+        context={
+            'course_id': 'course-v1:ORG2+1+1',
+            'requested_optional_field_tags': ['exam_scores'],
+        },
+        many=many,
+    )
+
+    data = serializer.data[0] if many else serializer.data
+    assert data['earned - Homework 1: First Homework'] == 'no attempt'
+    assert data['earned - Homework 2: Second Homework'] == 9.0
+    assert data['earned - Exam: The final exam'] == 'no attempt'
 
 
 @pytest.mark.django_db
@@ -445,39 +641,6 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
         'is_passing': False,
     }
     assert data['certificate_url'] == 'https://test.com/courses/course-v1:dummy+key/certificate/'
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize('certificates_url, expected_url', [
-    (None, None),
-    (
-        'https://test.com/courses/course-v1:ORG1+2+2/certificate/',
-        'https://test.com/courses/course-v1:ORG1+2+2/certificate/'
-    ),
-    (
-        '/course-v1:ORG1+2+2/certificate/',
-        'https://test.com/course-v1:ORG1+2+2/certificate/'
-    ),
-    ('empty', None),
-])
-@patch('futurex_openedx_extensions.dashboard.serializers.get_certificates_for_user_by_course_keys')
-def test_learner_courses_details_serializer_get_certificate_url(
-    mock_get_certificates, certificates_url, expected_url, base_data,
-):  # pylint: disable=unused-argument
-    """Verify that the LearnerCoursesDetailsSerializer.get_certificate_url returns the correct data."""
-    request = Mock(site=Mock(domain='https://test.com'))
-    course = CourseOverview.objects.get(id='course-v1:ORG1+2+2')
-    course.enrollment_date = None
-    course.last_activity = None
-    course.related_user_id = 44
-    mock_get_certificates.return_value = {
-        course.id: {
-            'download_url': certificates_url,
-        },
-    } if certificates_url != 'empty' else {}
-
-    serializer = LearnerCoursesDetailsSerializer(course, context={'request': request})
-    assert serializer.data['certificate_url'] == expected_url
 
 
 @pytest.mark.django_db

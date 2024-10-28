@@ -2,16 +2,19 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Dict, Tuple
 
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
-from lms.djangoapps.certificates.api import get_certificates_for_user_by_course_keys
 from lms.djangoapps.courseware.courses import get_course_blocks_completion_summary
 from lms.djangoapps.grades.api import CourseGradeFactory
+from lms.djangoapps.grades.context import grading_context_for_course
+from lms.djangoapps.grades.models import PersistentSubsectionGrade
+from opaque_keys.edx.locator import CourseLocator
 from openedx.core.djangoapps.content.block_structure.api import get_block_structure_manager
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
+from openedx.core.lib.courses import get_course_by_id
 from rest_framework import serializers
 from rest_framework.fields import empty
 
@@ -19,6 +22,7 @@ from futurex_openedx_extensions.dashboard.custom_serializers import (
     ModelSerializerOptionalFields,
     SerializerOptionalMethodField,
 )
+from futurex_openedx_extensions.helpers.certificates import get_certificate_url
 from futurex_openedx_extensions.helpers.constants import (
     COURSE_ACCESS_ROLES_GLOBAL,
     COURSE_STATUS_SELF_PREFIX,
@@ -72,7 +76,7 @@ class DataExportTaskSerializer(ModelSerializerOptionalFields):
         return get_exported_file_url(obj)
 
 
-class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
+class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
     """Serializer for learner's basic details."""
     user_id = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
@@ -231,6 +235,9 @@ class LearnerDetailsForCourseSerializer(LearnerBasicDetailsSerializer):
     certificate_available = serializers.BooleanField()
     course_score = serializers.DecimalField(max_digits=5, decimal_places=2)
     active_in_course = serializers.BooleanField()
+    progress = SerializerOptionalMethodField(field_tags=['progress', 'csv_export'])
+    certificate_url = SerializerOptionalMethodField(field_tags=['certificate_url', 'csv_export'])
+    exam_scores = SerializerOptionalMethodField(field_tags=['exam_scores', 'csv_export'])
 
     class Meta:
         model = get_user_model()
@@ -238,10 +245,108 @@ class LearnerDetailsForCourseSerializer(LearnerBasicDetailsSerializer):
             'certificate_available',
             'course_score',
             'active_in_course',
+            'progress',
+            'certificate_url',
+            'exam_scores',
         ]
 
+    def __init__(self, *args: Any, **kwargs: Any):
+        """Initialize the serializer."""
+        super().__init__(*args, **kwargs)
 
-class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):
+        self._course_id = CourseLocator.from_string(self.context.get('course_id'))
+        self._is_exam_name_in_header = self.context.get('omit_subsection_name', '0') != '1'
+
+        self._grading_info: Dict[str, Any] = {}
+        self._subsection_locations: Dict[str, Any] = {}
+        self.collect_grading_info()
+
+    def collect_grading_info(self) -> None:
+        """Collect the grading info."""
+        self._grading_info = {}
+        self._subsection_locations = {}
+        if not self.is_optional_field_requested('exam_scores'):
+            return
+
+        grading_context = grading_context_for_course(get_course_by_id(self._course_id))
+        index = 0
+        for assignment_type_name, subsection_infos in grading_context['all_graded_subsections_by_type'].items():
+            for subsection_index, subsection_info in enumerate(subsection_infos, start=1):
+                header_enum = f' {subsection_index}' if len(subsection_infos) > 1 else ''
+                header_name = f'{assignment_type_name}{header_enum}'
+                if self.is_exam_name_in_header:
+                    header_name += f': {subsection_info["subsection_block"].display_name}'
+
+                self._grading_info[str(index)] = {
+                    'header_name': header_name,
+                    'location': str(subsection_info['subsection_block'].location),
+                }
+                self._subsection_locations[str(subsection_info['subsection_block'].location)] = str(index)
+                index += 1
+
+    @property
+    def course_id(self) -> CourseLocator:
+        """Get the course ID."""
+        return self._course_id
+
+    @property
+    def is_exam_name_in_header(self) -> bool:
+        """Check if the exam name is needed in the header."""
+        return self._is_exam_name_in_header
+
+    @property
+    def grading_info(self) -> Dict[str, Any]:
+        """Get the grading info."""
+        return self._grading_info
+
+    @property
+    def subsection_locations(self) -> Dict[str, Any]:
+        """Get the subsection locations."""
+        return self._subsection_locations
+
+    def get_certificate_url(self, obj: get_user_model) -> Any:
+        """Return the certificate URL."""
+        return get_certificate_url(self.context.get('request'), obj, self.course_id)
+
+    def get_exam_scores(self, obj: get_user_model) -> Dict[str, Tuple[float, float] | None]:
+        """Return exam scores."""
+        result: Dict[str, Tuple[float, float] | None] = {__index: None for __index in self.grading_info}
+        grades = PersistentSubsectionGrade.objects.filter(
+            user_id=obj.id,
+            course_id=self.course_id,
+            usage_key__in=self.subsection_locations.keys(),
+            first_attempted__isnull=False,
+        ).values('usage_key', 'earned_all', 'possible_all')
+
+        for grade in grades:
+            result[self.subsection_locations[str(grade['usage_key'])]] = (grade['earned_all'], grade['possible_all'])
+
+        return result
+
+    def get_progress(self, obj: get_user_model) -> Any:
+        """Return the certificate URL."""
+        progress_info = get_course_blocks_completion_summary(self.course_id, obj)
+        total = progress_info['complete_count'] + progress_info['incomplete_count'] + progress_info['locked_count']
+        return round(progress_info['complete_count'] / total, 4) if total else 0.0
+
+    def to_representation(self, instance: Any) -> Any:
+        """Return the representation of the instance."""
+        def _extract_exam_scores(representation_item: dict[str, Any]) -> None:
+            exam_scores = representation_item.pop('exam_scores', {})
+            for index, score in exam_scores.items():
+                earned_key = f'earned - {self.grading_info[index]["header_name"]}'
+                possible_key = f'possible - {self.grading_info[index]["header_name"]}'
+                representation_item[earned_key] = score[0] if score else 'no attempt'
+                representation_item[possible_key] = score[1] if score else 'no attempt'
+
+        representation = super().to_representation(instance)
+
+        _extract_exam_scores(representation)
+
+        return representation
+
+
+class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):  # pylint: disable=too-many-ancestors
     """Serializer for extended learner details."""
     city = serializers.SerializerMethodField()
     bio = serializers.SerializerMethodField()
@@ -410,14 +515,7 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
     def get_certificate_url(self, obj: CourseOverview) -> Any:
         """Return the certificate URL."""
         user = get_user_model().objects.get(id=obj.related_user_id)
-        certificate = get_certificates_for_user_by_course_keys(user, [obj.id])
-        if certificate:
-            url = certificate.get(obj.id, {}).get('download_url')
-            if url and url.startswith('/'):
-                url = relative_url_to_absolute_url(url, self.context.get('request'))
-            return url
-
-        return None
+        return get_certificate_url(self.context.get('request'), user, obj.id)
 
     def get_progress_url(self, obj: CourseOverview) -> Any:
         """Return the certificate URL."""

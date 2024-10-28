@@ -422,6 +422,13 @@ class LearnersDetailsForCourseView(ExportCSVMixin, ListAPIView, FXViewRoleInfoMi
             include_staff=include_staff,
         )
 
+    def get_serializer_context(self) -> Dict[str, Any]:
+        """Get the serializer context"""
+        context = super().get_serializer_context()
+        context['course_id'] = self.kwargs.get('course_id')
+        context['omit_subsection_name'] = self.request.query_params.get('omit_subsection_name', '0')
+        return context
+
 
 class GlobalRatingView(APIView, FXViewRoleInfoMixin):
     """View to get the global rating"""

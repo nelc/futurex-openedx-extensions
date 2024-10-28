@@ -6,12 +6,14 @@ from typing import Any
 
 from rest_framework import serializers
 
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+
 
 class ExcludedOptionalField:  # pylint: disable=too-few-public-methods
     """Class for excluded optional fields."""
 
 
-class OptionalFieldsSerializerMixin:  # pylint: disable=too-few-public-methods
+class OptionalFieldsSerializerMixin:
     """
     Mixin to support optional fields.
 
@@ -100,6 +102,22 @@ class OptionalFieldsSerializerMixin:  # pylint: disable=too-few-public-methods
         for field_name in self.optional_field_names:
             if isinstance(representation.get(field_name), ExcludedOptionalField):
                 representation.pop(field_name)
+
+    def is_optional_field_requested(self, field_name: str) -> bool:
+        """Check if the optional field is requested."""
+        requested_optional_field_tags = self.context.get(  # type: ignore
+            'requested_optional_field_tags', [],
+        ) if self.context else []  # type: ignore
+
+        try:
+            field = self.fields[field_name]  # type: ignore
+        except KeyError as exc:
+            raise FXCodedException(
+                code=FXExceptionCodes.SERIALIZER_FILED_NAME_DOES_NOT_EXIST,
+                message=f'Field "{field_name}" does not exist in {self.__class__.__name__} serializer.',
+            ) from exc
+
+        return bool(set(requested_optional_field_tags) & field.field_tags)
 
     def to_representation(self, instance: Any) -> Any:
         """Return the representation of the instance."""
