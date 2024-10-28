@@ -35,7 +35,19 @@ class DataExportTaskSerializer(serializers.ModelSerializer):
     """Serializer for Data Export Task"""
     class Meta:
         model = DataExportTask
-        fields = '__all__'
+        fields = [
+            'id',
+            'user_id',
+            'tenant_id',
+            'status',
+            'view_name',
+            'filename',
+            'notes',
+            'created_at',
+            'started_at',
+            'completed_at',
+            'error_message',
+        ]
         read_only_fields = [
             field.name for field in DataExportTask._meta.fields if field.name not in ['notes']
         ]
@@ -53,18 +65,7 @@ class DataExportTaskDetailSerializer(DataExportTaskSerializer):
 
     class Meta:
         model = DataExportTask
-        fields = [
-            'id',
-            'filename',
-            'view_name',
-            'user',
-            'status',
-            'progress',
-            'notes',
-            'tenant_id',
-            'download_url',
-            'created_at',
-        ]
+        fields = DataExportTaskSerializer.Meta.fields + ['download_url']
 
     def get_download_url(self, obj: DataExportTask) -> Any:  # pylint: disable=no-self-use
         """Return download url."""

@@ -7,7 +7,6 @@ from typing import Any
 from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
-from eox_tenant.models import TenantConfig
 from rest_framework import status as http_status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -70,17 +69,14 @@ class ExportCSVMixin():
             'path': self.request.path,
         }
         exported_filename = self.export_filename
-        tenant = TenantConfig.objects.get(
-            id=self.request.fx_permission_info['view_allowed_tenant_ids_any_access'][0]
-        )
         fx_task = DataExportTask.objects.create(
             filename=exported_filename,
             view_name=self.__class__.fx_view_name,
             user=self.request.user,
-            tenant_id=tenant.id
+            tenant_id=self.request.fx_permission_info['view_allowed_tenant_ids_any_access'][0],
         )
         export_data_to_csv_task.delay(fx_task.id, view_url, view_data, fx_permission_info, exported_filename)
-        return {'success': f'Task innititated successfully with id: {fx_task.id}'}
+        return {'success': f'Task initiated successfully with id: {fx_task.id}'}
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override the list method to generate CSV and return JSON response with CSV URL"""
