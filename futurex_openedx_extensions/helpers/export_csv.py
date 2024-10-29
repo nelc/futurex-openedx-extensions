@@ -6,7 +6,7 @@ import logging
 import os
 import tempfile
 from typing import Any, Generator, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -46,8 +46,14 @@ def _get_view_class_instance(path: str) -> Any:
 
 def _get_mocked_request(url_with_query_str: str, fx_info: dict) -> Request:
     """Create mocked request"""
+    if not url_with_query_str.startswith('http'):
+        raise FXCodedException(
+            code=FXExceptionCodes.EXPORT_CSV_VIEW_INVALID_URL,
+            message=f'CSV Export: invalid URL used when mocking the request: {url_with_query_str}',
+        )
+
     factory = APIRequestFactory()
-    mocked_request = factory.get(url_with_query_str)
+    mocked_request = factory.get(url_with_query_str, HTTP_HOST=urlparse(url_with_query_str).hostname)
     mocked_request.user = fx_info['user']
     mocked_request.fx_permission_info = fx_info
     return mocked_request

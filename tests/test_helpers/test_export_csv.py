@@ -8,6 +8,7 @@ import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
+from django.test import override_settings
 from eox_tenant.models import TenantConfig
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException
@@ -86,14 +87,25 @@ def test_export_data_to_csv_invalid_path(path):
     assert str(exc_info.value) == f'CSV Export: Missing required params "path" {path}'
 
 
+@override_settings(ALLOWED_HOSTS=['test-url.somthing'])
 def test_get_mocked_request(user):  # pylint: disable=redefined-outer-name
     """Test _get_mocked_request creates a mocked request properly."""
     fx_info = {'role': 'admin', 'user': user}
-    url = '/test-url/?test=123'
+    url = 'http://test-url.somthing/?test=123'
     request = _get_mocked_request(url, fx_info)
     assert request.method == 'GET'
     assert request.user == user
     assert request.fx_permission_info == fx_info
+
+
+def test_get_mocked_request_invalid_url(user):  # pylint: disable=redefined-outer-name
+    """Test _get_mocked_request creates a mocked request properly."""
+    fx_info = {'role': 'admin', 'user': user}
+    url = '/test-url/?test=123'
+    with pytest.raises(FXCodedException) as exc_info:
+        _get_mocked_request(url, fx_info)
+    assert str(exc_info.value) == f'CSV Export: invalid URL used when mocking the request: {url}'
+    assert exc_info.value.code == 6007
 
 
 def test_get_response_data_success():
@@ -127,6 +139,7 @@ def test_get_response_data_failure(
     assert str(exc_info.value) == exception_msg
 
 
+@override_settings(ALLOWED_HOSTS=['example.com'])
 @patch('futurex_openedx_extensions.helpers.export_csv._get_response_data')
 def test_paginated_response_generator(mock_get_response_data):
     """Test _paginated_response_generator"""
@@ -167,6 +180,7 @@ def test_paginated_response_generator(mock_get_response_data):
     assert view_instance.call_count == 2
 
 
+@override_settings(ALLOWED_HOSTS=['example.com'])
 @patch('futurex_openedx_extensions.helpers.export_csv._get_response_data')
 def test_paginated_response_generator_for_empty_response_data(mock_get_response_data):
     """Test _paginated_response_generator for empty response when there are no records"""

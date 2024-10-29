@@ -14,6 +14,7 @@ from futurex_openedx_extensions.helpers.models import DataExportTask
 class TestView(ExportCSVMixin):
     fx_view_name = 'test_export'
     kwargs = {}
+    request = None
 
 
 @pytest.fixture

@@ -414,7 +414,7 @@ class LearnersDetailsForCourseView(ExportCSVMixin, ListAPIView, FXViewRoleInfoMi
         include_staff = self.request.query_params.get('include_staff', '0') == '1'
 
         return get_learners_by_course_queryset(
-            course_id=course_id,   # type: ignore
+            course_id=course_id,
             search_text=search_text,
             include_staff=include_staff,
         )
