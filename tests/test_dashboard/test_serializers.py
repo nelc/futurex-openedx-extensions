@@ -162,6 +162,36 @@ def test_learner_basic_details_serializer_full_name_alt_name(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('arabic_first_name, arabic_last_name, arabic_name, expected_alt_name, use_case', [
+    ('', '', '', '', 'all are empty.'),
+    ('اسم', 'كامل', 'عربي', 'عربي', 'all are set, give priority to arabic name.'),
+    ('اسم', 'كامل', '', 'اسم كامل', 'arabic name is empty, arabic full name should be used.'),
+    ('', '', 'عربي', 'عربي', 'arabic full name is empty, arabic name should be used.'),
+    ('', 'قديم', 'عربي', 'عربي', 'arabic fist name is empty, arabic name should be used.'),
+    ('قديم', '', 'عربي', 'عربي', 'arabic last name is empty, arabic name should be used.'),
+    ('', 'قديم', '', 'قديم', 'arabic fist name and arabic name is empty.'),
+    ('قديم', '', '', 'قديم', 'arabic last name and arabic name is empty.'),
+])
+def test_learner_basic_details_serializer_arabic_name_as_alt_name(
+    base_data, arabic_first_name, arabic_last_name, arabic_name, expected_alt_name, use_case
+):  # pylint: disable=unused-argument, too-many-arguments
+    """Verify that the LearnerBasicDetailsSerializer processes names as expected."""
+    queryset = get_dummy_queryset()
+    user = queryset.first()
+    ExtraInfo.objects.create(
+        user_id=user.id,
+        arabic_first_name=arabic_first_name,
+        arabic_last_name=arabic_last_name,
+        arabic_name=arabic_name
+    )
+    serializer = LearnerBasicDetailsSerializer(queryset, many=True)
+    data = serializer.data
+    assert len(data) == 1
+    assert data[0]['user_id'] == 10
+    assert data[0]['alternative_full_name'] == expected_alt_name, f'checking ({use_case}) failed'
+
+
+@pytest.mark.django_db
 def test_learner_details_serializer(base_data):  # pylint: disable=unused-argument
     """Verify that the LearnerDetailsSerializer returns the needed fields"""
     queryset = get_dummy_queryset()
