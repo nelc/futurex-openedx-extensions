@@ -143,6 +143,25 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
 
         return alt_name if alternative else full_name
 
+    def _get_arabic_name(self, obj: Any) -> str:
+        """
+        Get arabic name of user
+
+        :param obj: The user object.
+        :type obj: Any
+        :return: The arabic name of user.
+        """
+        arabic_name = (self._get_extra_field(obj, 'arabic_name') or '').strip()
+        if arabic_name:
+            return arabic_name
+
+        arabic_first_name = self._get_extra_field(obj, 'arabic_first_name')
+        arabic_last_name = self._get_extra_field(obj, 'arabic_last_name')
+        arabic_full_name = arabic_first_name or arabic_last_name
+        if arabic_first_name and arabic_last_name and not arabic_first_name == arabic_last_name:
+            arabic_full_name = ' '.join(filter(None, (arabic_first_name, arabic_last_name)))
+        return (arabic_full_name or '').strip()
+
     @staticmethod
     def _get_profile_field(obj: get_user_model, field_name: str) -> Any:
         """Get the profile field value."""
@@ -167,7 +186,7 @@ class LearnerBasicDetailsSerializer(serializers.ModelSerializer):
 
     def get_alternative_full_name(self, obj: get_user_model) -> Any:
         """Return alternative full name."""
-        return self._get_name(obj, alternative=True)
+        return self._get_arabic_name(obj) or self._get_name(obj, alternative=True)
 
     def get_mobile_no(self, obj: get_user_model) -> Any:
         """Return mobile number."""
