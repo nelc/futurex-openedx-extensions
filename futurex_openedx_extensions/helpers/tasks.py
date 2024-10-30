@@ -34,6 +34,6 @@ def export_data_to_csv_task(
         raise
 
     except Exception as exc:
-        log.error('CSV Export Unhandled Error for task %s: %s', fx_task_id, str(exc))
+        log.error('CSV Export Unhandled Error for task %s: (%s) %s', fx_task_id, exc.__class__.__name__, str(exc))
         DataExportTask.set_status(task_id=fx_task_id, status=DataExportTask.STATUS_FAILED, error_message=str(exc))
         raise

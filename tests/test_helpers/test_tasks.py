@@ -81,7 +81,7 @@ def test_export_data_to_csv_task_error_unhandled(mock_get_task, mock_set_status,
     with pytest.raises(Exception) as exc_info:
         export_data_to_csv_task(task_id, 'whatever', 'whatever', 'whatever', 'whatever')
     assert str(exc_info.value) == str(mock_get_task.side_effect)
-    assert f'CSV Export Unhandled Error for task {task_id}: {str(mock_get_task.side_effect)}' in caplog.text
+    assert f'CSV Export Unhandled Error for task {task_id}: (Exception) {str(mock_get_task.side_effect)}' in caplog.text
 
     mock_set_status.assert_called_once_with(
         task_id=task_id, status=DataExportTask.STATUS_FAILED, error_message=str(mock_get_task.side_effect)
