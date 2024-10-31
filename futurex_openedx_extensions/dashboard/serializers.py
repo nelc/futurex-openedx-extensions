@@ -40,6 +40,7 @@ class DataExportTaskSerializer(serializers.ModelSerializer):
             'user_id',
             'tenant_id',
             'status',
+            'progress',
             'view_name',
             'filename',
             'notes',
