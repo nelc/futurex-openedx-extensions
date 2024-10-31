@@ -4,7 +4,6 @@ This module contains a mixin for exporting data to CSV format and related helper
 import copy
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
 from rest_framework import status as http_status
@@ -27,13 +26,9 @@ class ExportCSVMixin:
         current_time = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         return f'{self.fx_view_name}_{current_time}.csv'  # type: ignore[attr-defined]
 
-    def get_view_request_url(self, query_params: dict) -> str:
+    def get_view_request_url(self) -> str:
         """Create url from current request with given query params"""
-        query_string = urlencode(query_params)
-        full_url = f'{self.request.scheme}://{self.request.get_host()}{self.request.path}'  # type: ignore[attr-defined]
-        if query_string:
-            full_url += f'?{query_string}'
-        return full_url
+        return f'{self.request.scheme}://{self.request.get_host()}{self.request.path}'  # type: ignore[attr-defined]
 
     def get_filtered_query_params(self) -> dict:
         """Filter query params - to avoid infinite requests loop"""
@@ -56,7 +51,7 @@ class ExportCSVMixin:
     def generate_csv_url_response(self) -> dict:
         """Return response with csv file url"""
         filtered_query_params = self.get_filtered_query_params()
-        view_url = self.get_view_request_url(filtered_query_params)
+        view_url = self.get_view_request_url()
         fx_permission_info = self.get_serialized_fx_permission_info()
         view_data = {
             'query_params': filtered_query_params,

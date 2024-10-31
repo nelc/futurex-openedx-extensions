@@ -200,6 +200,12 @@ def export_data_to_csv(
 
     :return: generated filename
     """
+    if urlparse(url).query:
+        raise FXCodedException(
+            code=FXExceptionCodes.EXPORT_CSV_BAD_URL,
+            message=f'CSV Export: Unable to process URL with query params: {url}',
+        )
+
     log.info('CSV Export: processing task %s...', task_id)
     DataExportTask.set_status(task_id=task_id, status=DataExportTask.STATUS_PROCESSING)
 
@@ -211,8 +217,10 @@ def export_data_to_csv(
     query_params = view_data.get('query_params', {})
     view_instance = _get_view_class_instance(view_data.get('path', ''))
     page_size = 100
-    if hasattr(view_instance.view_class, 'max_page_size') and view_instance.view_class.max_page_size:
-        page_size = view_instance.view_class.max_page_size
+    view_pagination_class = view_instance.view_class.pagination_class
+
+    if view_pagination_class and hasattr(view_pagination_class, 'max_page_size'):
+        page_size = view_pagination_class.max_page_size or page_size
 
     query_params['page_size'] = page_size
     url_with_query_str = f'{url}?{urlencode(query_params)}' if query_params else url

@@ -342,7 +342,7 @@ class DataExportTask(models.Model):
         fx_task = cls.get_task(task_id)
         if (
             (fx_task.status == status) or  # pylint: disable=too-many-boolean-expressions
-            (fx_task.status == cls.STATUS_IN_QUEUE and status != cls.STATUS_PROCESSING) or
+            (fx_task.status == cls.STATUS_IN_QUEUE and status not in [cls.STATUS_PROCESSING, cls.STATUS_FAILED]) or
             (fx_task.status == cls.STATUS_PROCESSING and status not in [cls.STATUS_COMPLETED, cls.STATUS_FAILED]) or
             (fx_task.status in [cls.STATUS_COMPLETED, cls.STATUS_FAILED])
         ):
