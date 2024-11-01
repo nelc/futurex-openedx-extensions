@@ -366,7 +366,7 @@ def test_export_data_to_csv(
 ):  # pylint: disable=redefined-outer-name
     """Test _export_data_to_csv"""
     mock_view_instance = MagicMock()
-    mock_view_instance.view_class.max_page_size = 50
+    mock_view_instance.view_class.pagination_class.max_page_size = 50
     mock_get_view.return_value = mock_view_instance
     url = 'http://example.com/api/data'
     view_data = {
@@ -397,7 +397,31 @@ def test_export_data_to_csv_for_default_page_size(
     """Test _export_data_to_csv"""
     fake_storage_path = f'{settings.FX_DASHBOARD_STORAGE_DIR}/{_FILENAME}'
     mocked_view_instance = MagicMock()
-    mocked_view_instance.view_class.max_page_size = None
+    mocked_view_instance.view_class.pagination_class.max_page_size = None
+    mock_get_view.return_value = mocked_view_instance
+    url = 'http://example.com/api/data'
+    view_data = {
+        'path': 'some/path',
+        'query_params': {}
+    }
+    fx_permission_info = {'user_id': user.id, 'role': 'admin'}
+    mock_generate_csv.return_value = fake_storage_path
+    expected_url = f'{url}?page_size=100'
+    result = export_data_to_csv(fx_task.id, url, view_data, fx_permission_info, _FILENAME)
+    assert result == fake_storage_path
+    assert view_data['url'] == expected_url
+    assert view_data['page_size'] == 100
+
+
+@patch('futurex_openedx_extensions.helpers.export_csv._get_view_class_instance')
+@patch('futurex_openedx_extensions.helpers.export_csv._generate_csv_with_tracked_progress')
+def test_export_data_to_csv_for_missing_pagination_class(
+    mock_generate_csv, mock_get_view, fx_task, user
+):  # pylint: disable=redefined-outer-name
+    """Test _export_data_to_csv"""
+    fake_storage_path = f'{settings.FX_DASHBOARD_STORAGE_DIR}/{_FILENAME}'
+    mocked_view_instance = MagicMock()
+    mocked_view_instance.view_class.pagination_class = None
     mock_get_view.return_value = mocked_view_instance
     url = 'http://example.com/api/data'
     view_data = {
@@ -455,3 +479,11 @@ def test_get_exported_file_url(
     )
     result = get_exported_file_url(task)
     assert result == expected_return_value
+
+
+def test_export_data_to_csv_for_url(fx_task):  # pylint: disable=redefined-outer-name
+    """Test _export_data_to_csv for URL"""
+    url_with_query_str = 'http://example.com/api?key1=value1'
+    with pytest.raises(FXCodedException) as exc_info:
+        export_data_to_csv(fx_task.id, url_with_query_str, {}, {}, 'test.csv')
+    assert str(exc_info.value) == f'CSV Export: Unable to process URL with query params: {url_with_query_str}'

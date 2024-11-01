@@ -50,16 +50,8 @@ def test_export_filename(export_csv_mixin):  # pylint: disable=redefined-outer-n
 
 def test_get_view_request_url(export_csv_mixin):  # pylint: disable=redefined-outer-name
     """Test the get_view_request_url method."""
-    query_params = {'key1': 'value1', 'key2': 'value2'}
-    expected_url = 'http://testserver/?key1=value1&key2=value2'
-    assert export_csv_mixin.get_view_request_url(query_params) == expected_url
-
-
-def test_get_view_request_url_without_query_params(export_csv_mixin):  # pylint: disable=redefined-outer-name
-    """Test the get_view_request_url method."""
-    query_params = {}
     expected_url = 'http://testserver/'
-    assert export_csv_mixin.get_view_request_url(query_params) == expected_url
+    assert export_csv_mixin.get_view_request_url() == expected_url
 
 
 def test_get_filtered_query_params(export_csv_mixin):  # pylint: disable=redefined-outer-name

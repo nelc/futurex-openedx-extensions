@@ -398,6 +398,7 @@ def test_data_export_task_get_status(base_data):  # pylint: disable=unused-argum
     (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_PROCESSING, False),
     (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_COMPLETED, False),
     (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_FAILED, True),
+    (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_FAILED, True),
 ])
 def test_data_export_task_set_status(
     base_data, status, new_status, error_filled,
@@ -420,7 +421,6 @@ def test_data_export_task_set_status(
 @pytest.mark.parametrize('status, new_status', [
     (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_IN_QUEUE),
     (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_COMPLETED),
-    (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_FAILED),
     (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_PROCESSING),
     (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_IN_QUEUE),
 ])
