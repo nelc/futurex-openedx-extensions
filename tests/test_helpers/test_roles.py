@@ -30,6 +30,7 @@ from futurex_openedx_extensions.helpers.roles import (
     add_course_access_roles,
     add_missing_signup_source_record,
     add_org_course_creator,
+    are_all_library_ids,
     cache_name_user_course_access_roles,
     cache_refresh_course_access_roles,
     check_tenant_access,
@@ -63,6 +64,20 @@ class FXViewRoleInfoMetaClassTestView(metaclass=FXViewRoleInfoMetaClass):  # pyl
 def reset_fx_views_with_roles():
     """Reset the _fx_views_with_roles dictionary before each test."""
     FXViewRoleInfoMetaClass._fx_views_with_roles = {'_all_view_names': {}}  # pylint: disable=protected-access
+
+
+@pytest.mark.parametrize('course_ids, expected_return, usecase', [
+    (None, False, 'course_ids list is None'),
+    ([], False, 'course_ids list is empty'),
+    (['course-v1:ORG1+1+1', 'course-v1:ORG1+1+1'], False, 'course_ids contain courses'),
+    (['library-v1:ORG1+1', 'course-v1:ORG1+1+1'], False, 'course_ids contain libraries and courses'),
+    (['library-v1:ORG1+11', 'library-v1:ORG1+22'], True, 'course_ids contain valid library'),
+    (['library-v1:ORG1+11', 'invalid-library-id'], False, 'course_ids contain invalid library'),
+])
+def test_are_all_library_ids(course_ids, expected_return, usecase):
+    """test are_all_librarary_ids"""
+    return_value = are_all_library_ids(course_ids)
+    assert return_value is expected_return, f'Failed usecase: {usecase}'
 
 
 @pytest.mark.parametrize('update_course_access_role, error_msg, error_code', [
@@ -117,6 +132,11 @@ def reset_fx_views_with_roles():
         'missing course-creator record for {role} role!',
         FXExceptionCodes.ROLE_INVALID_ENTRY,
     ),
+    (
+        {'role': cs.COURSE_ACCESS_ROLES_LIBRARY_USER, 'course_id': 'yes'},
+        'role {role} is only valid with library_id',
+        FXExceptionCodes.ROLE_INVALID_ENTRY
+    ),
 ])
 @pytest.mark.django_db
 def test_validate_course_access_role_invalid(
@@ -132,7 +152,7 @@ def test_validate_course_access_role_invalid(
     }
     bad_course_access_role.update(update_course_access_role)
     if bad_course_access_role['course_id']:
-        bad_course_access_role['course_id'] = CourseKey.from_string('course-v1:ORG1+1+1')
+        bad_course_access_role['course_id'] = 'course-v1:ORG1+1+1'
 
     if error_msg and '{role}' in error_msg:
         error_msg = error_msg.format(role=update_course_access_role['role'])
@@ -1317,6 +1337,15 @@ def test_add_course_access_roles_tenant_wide_role(roles_authorize_caller):  # py
 
 
 @pytest.mark.django_db
+def test_add_course_access_roles_for_library_user(roles_authorize_caller):  # pylint: disable=unused-argument
+    """Verify that add_course_access_roles raises an error adding library_user role with course_id"""
+    role = cs.COURSE_ACCESS_ROLES_LIBRARY_USER
+    with pytest.raises(FXCodedException) as exc_info:
+        add_course_access_roles(None, [1, 8], ['user1'], role, False, ['course-v1:ORG3+1+1'])
+    assert str(exc_info.value) == f'Role: {role} is only valid for library ids.'
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize('user_keys, error_message', [
     (None, 'No users provided!'),
     ([], 'No users provided!'),
@@ -1407,6 +1436,30 @@ def test_add_course_access_roles_success_list_contains_user_key(
         'failed': [],
         'added': [],
         'updated': [user_key],
+        'not_updated': [],
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('role, library_ids, tenant_wide', [
+    ('library_user', ['library-v1:org1+11'], False),
+    ('library_user', [], True),
+    ('library_user', None, True),
+    ('staff', ['library-v1:org1+11'], False),
+    ('instructor', ['library-v1:org1+11'], False)
+])
+@patch('futurex_openedx_extensions.helpers.users.get_user_by_username_or_email')
+def test_add_course_access_roles_success_for_library_roles(
+    mock_get_user, role, library_ids, tenant_wide, base_data
+):  # pylint: disable=unused-argument
+    """Verify that add_course_access_roles for library roles"""
+    caller = get_user_model().objects.get(username='user1')
+    mock_get_user.return_value = get_user_model().objects.get(id=3)
+    result = add_course_access_roles(caller, [1], ['user3'], role, tenant_wide, library_ids)
+    assert result == {
+        'failed': [],
+        'added': [],
+        'updated': ['user3'],
         'not_updated': [],
     }
 

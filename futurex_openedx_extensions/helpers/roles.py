@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict, List, Tuple
@@ -44,6 +45,19 @@ from futurex_openedx_extensions.helpers.users import get_user_by_key, is_system_
 logger = logging.getLogger(__name__)
 
 
+def are_all_library_ids(course_ids: List[str] | None) -> bool:
+    """
+    Verify if all given ids are library ids
+    """
+    if not course_ids:
+        return False
+
+    for course_id in course_ids:
+        if not re.match(cs.LIBRARY_ID_REGX, course_id):
+            return False
+    return True
+
+
 def validate_course_access_role(course_access_role: dict) -> None:
     """
     Validate the course access role.
@@ -60,6 +74,11 @@ def validate_course_access_role(course_access_role: dict) -> None:
     org = course_access_role['org'].strip()
     course_id = course_access_role['course_id']
     role = course_access_role['role']
+    check_broken_rule(
+        role == cs.COURSE_ACCESS_ROLES_LIBRARY_USER and course_id and not are_all_library_ids([course_id]),
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+        f'role {role} is only valid with library_id',
+    )
 
     check_broken_rule(
         role not in cs.COURSE_ACCESS_ROLES_ALL,
@@ -1154,6 +1173,9 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
 
         if (tenant_wide and course_ids) or (not tenant_wide and not course_ids):
             raise ValueError('Conflict between tenant_wide and course_ids')
+
+        if role == cs.COURSE_ACCESS_ROLES_LIBRARY_USER and course_ids and not are_all_library_ids(course_ids):
+            raise ValueError(f'Role: {role} is only valid for library ids.')
 
         if not user_keys:
             raise ValueError('No users provided!')
