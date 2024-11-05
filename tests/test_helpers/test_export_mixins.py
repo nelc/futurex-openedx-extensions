@@ -104,8 +104,8 @@ def test_generate_csv_url_response(
         mocked_export_data_to_csv_task.assert_called_once_with(
             fx_task.id, fake_url, view_params, serialized_fx_permission_info, filename
         )
-        expected_response = {'success': f'Task initiated successfully with id: {fx_task.id}'}
-        assert response == expected_response
+        assert response['success'] == f'Task initiated successfully with id: {fx_task.id}'
+        assert response['export_task_id'] == fx_task.id
 
 
 @pytest.mark.django_db
@@ -131,7 +131,10 @@ def test_list_with_csv_download(
         mocked_get_query_params_func.return_value = {}
         response = export_csv_mixin.list(export_csv_mixin.request)
         fx_task = DataExportTask.objects.get(filename=filename)
-        expected_response = {'success': f'Task initiated successfully with id: {fx_task.id}'}
+        expected_response = {
+            'success': f'Task initiated successfully with id: {fx_task.id}',
+            'export_task_id': fx_task.id
+        }
         assert response.status_code == 200
         assert response.data == expected_response
 
