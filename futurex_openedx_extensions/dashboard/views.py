@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.exceptions import ParseError
@@ -305,13 +306,15 @@ class DataExportManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # p
     fx_allowed_write_methods = ['PATCH']
     fx_view_description = 'api/fx/export/v1/tasks/: Data Export Task Management APIs.'
     http_method_names = ['get', 'patch']
-    ordering = ['-created_at']
+    filter_backends = [DjangoFilterBackend, DefaultOrderingFilter]
+    filterset_fields = ['related_id', 'view_name']
+    ordering = ['-id']
 
     def get_queryset(self) -> QuerySet:
         """Get the list of user tasks."""
         return DataExportTask.objects.filter(
             user=self.request.user,
-            tenant_id__in=self.fx_permission_info['view_allowed_tenant_ids_any_access']
+            tenant__id__in=self.fx_permission_info['view_allowed_tenant_ids_any_access']
         )
 
     def get_object(self) -> DataExportTask:
@@ -319,12 +322,6 @@ class DataExportManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # p
         task_id = self.kwargs.get('pk')  # Use 'pk' for the default lookup
         task = get_object_or_404(DataExportTask, id=task_id, user=self.request.user)
         return task
-
-    def retrieve(self, request: Any, *args: Any, **kwargs: Any) -> Response:
-        """Retrieve a specific task."""
-        instance = self.get_object()
-        serializer = serializers.DataExportTaskDetailSerializer(instance)
-        return Response(serializer.data)
 
 
 class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
@@ -406,6 +403,12 @@ class LearnersDetailsForCourseView(ExportCSVMixin, ListAPIView, FXViewRoleInfoMi
     fx_view_name = 'learners_with_details_for_course'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learners/<course-id>: Get the list of learners for a course'
+
+    def get_related_id(self) -> None:
+        """
+        Related ID is course_id for this view.
+        """
+        return self.kwargs.get('course_id')
 
     def get_queryset(self, *args: Any, **kwargs: Any) -> QuerySet:
         """Get the list of learners for a course"""
