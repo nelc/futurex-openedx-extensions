@@ -68,7 +68,10 @@ class ExportCSVMixin:
             ][0],
         )
         export_data_to_csv_task.delay(fx_task.id, view_url, view_data, fx_permission_info, exported_filename)
-        return {'success': f'Task initiated successfully with id: {fx_task.id}'}
+        return {
+            'success': f'Task initiated successfully with id: {fx_task.id}',
+            'export_task_id': fx_task.id
+        }
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override the list method to generate CSV and return JSON response with CSV URL"""
