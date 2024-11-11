@@ -24,4 +24,5 @@ backports.zoneinfo;python_version<"3.9"
 
 # other requirements
 django-simple-history<3.7.0     # 3.7.0 dropped support for Django 3.2
+django-filter<24.0.0            # 24.0.0 requires Django 4
 python-dateutil
