@@ -214,9 +214,9 @@ def get_user_course_access_roles(user_id: int) -> dict:
             continue
 
         role = access_role['role']
-        org = access_role['org'].lower() if access_role['org'] else None
+        org = access_role['org']
         course_id = access_role['course_id']
-        course_org = access_role['course_org'].lower() if access_role['course_org'] else None
+        course_org = access_role['course_org']
 
         if role not in result:
             result[role] = {
