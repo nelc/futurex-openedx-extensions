@@ -36,6 +36,8 @@ class FXExceptionCodes(Enum):
     EXPORT_CSV_VIEW_INVALID_URL = 6007
     EXPORT_CSV_BAD_URL = 6008
 
+    SERIALIZER_FILED_NAME_DOES_NOT_EXIST = 7001
+
 
 class FXCodedException(Exception):
     """Exception with a code."""

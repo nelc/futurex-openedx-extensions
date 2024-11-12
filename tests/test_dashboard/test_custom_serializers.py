@@ -12,6 +12,7 @@ from futurex_openedx_extensions.dashboard.custom_serializers import (
     ModelSerializerOptionalFields,
     SerializerOptionalMethodField,
 )
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 
 FIELD_FORMAT_ERROR = (
     'a tag must be at least two characters that start with an alphabetical character and contain only '
@@ -44,6 +45,26 @@ def test_model_serializer_optional_fields_requested(query_params, method, expect
         expected_requested,
         ignore_order=True
     )
+
+
+def test_model_serializer_optional_fields_is_optional_field_requested():
+    """Verify that the ModelSerializerOptionalFields correctly checks if a field is requested."""
+    request = Mock(query_params={'optional_field_tags': 'tag1,tag2'}, method='GET')
+    serializer = ModelSerializerOptionalFields(context={'request': request})
+    serializer.fields = {
+        'field1': Mock(field_tags={'tag1', 'tag2'}),
+        'field2': Mock(field_tags={'tag1'}),
+        'field3': Mock(field_tags={'tag3'}),
+    }
+
+    assert serializer.is_optional_field_requested('field1')
+    assert serializer.is_optional_field_requested('field2')
+    assert not serializer.is_optional_field_requested('field3')
+
+    with pytest.raises(FXCodedException) as exc_info:
+        serializer.is_optional_field_requested('invalid_field_name')
+    assert str(exc_info.value) == \
+           f'Field "invalid_field_name" does not exist in {serializer.__class__.__name__} serializer.'
 
 
 @pytest.mark.parametrize('many', [False, True])

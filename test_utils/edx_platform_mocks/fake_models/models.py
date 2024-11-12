@@ -214,6 +214,26 @@ class PersistentCourseGrade(models.Model):
         db_table = 'persistentcoursegrade'
 
 
+class PersistentSubsectionGrade(models.Model):
+    """Mock"""
+    id = AutoField(primary_key=True)  # pylint: disable=invalid-name
+    user_id = models.IntegerField(blank=False)
+    course_id = CourseKeyField(blank=False, max_length=255)
+    usage_key = UsageKeyField(blank=False, max_length=255)
+    earned_all = models.FloatField(blank=False)
+    possible_all = models.FloatField(blank=False)
+    earned_graded = models.FloatField(blank=False)
+    possible_graded = models.FloatField(blank=False)
+    first_attempted = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        app_label = 'fake_models'
+        unique_together = [
+            ('course_id', 'user_id', 'usage_key'),
+        ]
+        db_table = 'persistentsubsectiongrade'
+
+
 class StudentModule(models.Model):
     """Mock"""
     id = AutoField(primary_key=True)  # pylint: disable=invalid-name
