@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from eox_tenant.models import TenantConfig
 from rest_framework import status as http_status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -48,6 +49,13 @@ class ExportCSVMixin:
         })
         return fx_permission_info
 
+    def get_related_id(self) -> None:  # pylint: disable=no-self-use
+        """
+        Related ID for exported file i.e course_id.
+        Related view can override it to return related id.
+        """
+        return None
+
     def generate_csv_url_response(self) -> dict:
         """Return response with csv file url"""
         filtered_query_params = self.get_filtered_query_params()
@@ -58,14 +66,16 @@ class ExportCSVMixin:
             'kwargs': self.kwargs,  # type: ignore[attr-defined]
             'path': self.request.path,  # type: ignore[attr-defined]
         }
+        tenant_id = self.request.fx_permission_info[  # type: ignore[attr-defined]
+            'view_allowed_tenant_ids_any_access'
+        ][0]
         exported_filename = self.export_filename
         fx_task = DataExportTask.objects.create(
             filename=exported_filename,
             view_name=self.__class__.fx_view_name,  # type: ignore[attr-defined]
             user=self.request.user,  # type: ignore[attr-defined]
-            tenant_id=self.request.fx_permission_info[  # type: ignore[attr-defined]
-                'view_allowed_tenant_ids_any_access'
-            ][0],
+            tenant=TenantConfig.objects.get(id=tenant_id),
+            related_id=self.get_related_id()  # type: ignore[func-returns-value]
         )
         export_data_to_csv_task.delay(fx_task.id, view_url, view_data, fx_permission_info, exported_filename)
         return {

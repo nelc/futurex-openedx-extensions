@@ -547,8 +547,8 @@ class TestDataExportTasksView(BaseTestViewMixin):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 2)
-        self.assertEqual(response.data['results'][0]['id'], user1_task1.id)
-        self.assertEqual(response.data['results'][1]['id'], user1_task2.id)
+        self.assertEqual(response.data['results'][0]['id'], user1_task2.id)
+        self.assertEqual(response.data['results'][1]['id'], user1_task1.id)
 
     def test_patch_success(self):
         """Verify view for update"""
@@ -764,6 +764,15 @@ class TestLearnersDetailsForCourseView(BaseTestViewMixin):
         view_func, _, _ = resolve(self.url)
         view_class = view_func.view_class
         self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
+
+    def test_get_related_id(self):
+        """Verify get_related_id returns course_id"""
+        view_func, _, kwargs = resolve(self.url)
+        view = view_func.view_class()
+        view.kwargs = kwargs
+        expected_related_id = 'course-v1:ORG1+5+5'
+        related_id = view.get_related_id()
+        assert expected_related_id == related_id
 
     def test_success(self):
         """Verify that the view returns the correct response"""

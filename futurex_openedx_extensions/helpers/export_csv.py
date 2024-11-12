@@ -173,7 +173,7 @@ def _generate_csv_with_tracked_progress(
 
         log.info('CSV Export: uploading generated file for task %s...', task_id)
         storage_path = _upload_file_to_storage(
-            tmp_file.name, filename, DataExportTask.get_task(task_id=task_id).tenant_id,
+            tmp_file.name, filename, DataExportTask.get_task(task_id=task_id).tenant.id,
         )
         log.info('CSV Export: file uploaded successfully for task %s...', task_id)
 
@@ -243,7 +243,7 @@ def export_data_to_csv(
 def get_exported_file_url(fx_task: DataExportTask) -> Optional[str]:
     """Get file URL"""
     if fx_task.status == fx_task.STATUS_COMPLETED:
-        storage_path = os.path.join(_get_storage_dir(str(fx_task.tenant_id)), fx_task.filename)
+        storage_path = os.path.join(_get_storage_dir(str(fx_task.tenant.id)), fx_task.filename)
         if default_storage.exists(storage_path):
             return default_storage.url(storage_path)
         log.warning('CSV Export: file not found for completed task %s: %s', fx_task.id, storage_path)

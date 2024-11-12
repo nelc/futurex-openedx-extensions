@@ -15,6 +15,10 @@ from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyP
 from rest_framework import serializers
 from rest_framework.fields import empty
 
+from futurex_openedx_extensions.dashboard.custom_serializers import (
+    ModelSerializerOptionalFields,
+    SerializerOptionalMethodField,
+)
 from futurex_openedx_extensions.helpers.constants import (
     COURSE_ACCESS_ROLES_GLOBAL,
     COURSE_STATUS_SELF_PREFIX,
@@ -31,8 +35,10 @@ from futurex_openedx_extensions.helpers.roles import (
 from futurex_openedx_extensions.helpers.tenants import get_tenants_by_org
 
 
-class DataExportTaskSerializer(serializers.ModelSerializer):
+class DataExportTaskSerializer(ModelSerializerOptionalFields):
     """Serializer for Data Export Task"""
+    download_url = SerializerOptionalMethodField(field_tags=['download_url'])
+
     class Meta:
         model = DataExportTask
         fields = [
@@ -42,11 +48,13 @@ class DataExportTaskSerializer(serializers.ModelSerializer):
             'status',
             'progress',
             'view_name',
+            'related_id',
             'filename',
             'notes',
             'created_at',
             'started_at',
             'completed_at',
+            'download_url',
             'error_message',
         ]
         read_only_fields = [
@@ -58,15 +66,6 @@ class DataExportTaskSerializer(serializers.ModelSerializer):
         value = re.sub(r'<', '&lt;', value)
         value = re.sub(r'>', '&gt;', value)
         return value
-
-
-class DataExportTaskDetailSerializer(DataExportTaskSerializer):
-    """Serializer for Data Export Task"""
-    download_url = serializers.SerializerMethodField()
-
-    class Meta:
-        model = DataExportTask
-        fields = DataExportTaskSerializer.Meta.fields + ['download_url']
 
     def get_download_url(self, obj: DataExportTask) -> Any:  # pylint: disable=no-self-use
         """Return download url."""

@@ -238,7 +238,7 @@ def test_generate_csv_with_tracked_progress(
 ):  # pylint: disable=redefined-outer-name
     """Test _generate_csv_with_tracked_progress."""
     task = MagicMock()
-    task.tenant_id = tenant.id
+    task.tenant = tenant
     task.status = DataExportTask.STATUS_PROCESSING
     mock_get_task.return_value = task
 

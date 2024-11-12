@@ -81,6 +81,27 @@ def test_data_export_task_serializer_for_notes_validation(base_data):  # pylint:
 
 
 @pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_exported_file_url')
+def test_data_export_task_serializer_for_download_url(
+    mocked_exported_file_url, base_data
+):  # pylint: disable=unused-argument
+    """Verify the DataExportSerializer for download_url."""
+    mocked_exported_file_url.return_value = 'fake_download_url'
+    user = get_user_model().objects.get(id=10)
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test',
+        user=user, tenant_id=1,
+        progress=1.1,
+        status=DataExportTask.STATUS_COMPLETED
+    )
+    serializer = DataExportTaskSerializer(
+        instance=task, context={'requested_optional_field_tags': ['download_url']}
+    )
+    assert serializer.data['download_url'] == 'fake_download_url'
+
+
+@pytest.mark.django_db
 def test_learner_basic_details_serializer_no_profile(base_data):  # pylint: disable=unused-argument
     """Verify that the LearnerBasicDetailsSerializer is correctly defined."""
     queryset = get_dummy_queryset()

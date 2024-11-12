@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from eox_tenant.models import TenantConfig
 from simple_history.models import HistoricalRecords
 
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
@@ -306,11 +307,12 @@ class DataExportTask(models.Model):
 
     filename = models.CharField(max_length=255)
     view_name = models.CharField(max_length=255)
+    related_id = models.CharField(max_length=255, null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_IN_QUEUE)
     progress = models.FloatField(default=0.0)
-    notes = models.CharField(max_length=255, default='')
-    tenant_id = models.IntegerField()
+    notes = models.CharField(max_length=255, default='', blank=True)
+    tenant = models.ForeignKey(TenantConfig, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -320,6 +322,10 @@ class DataExportTask(models.Model):
         """Metaclass for the model"""
         verbose_name = 'Data Export Task'
         verbose_name_plural = 'Data Export Tasks'
+        indexes = [
+            models.Index(fields=['tenant_id', 'user']),
+            models.Index(fields=['view_name', 'related_id']),
+        ]
 
     @classmethod
     def set_status(cls, task_id: int, status: str, error_message: str = None) -> None:
