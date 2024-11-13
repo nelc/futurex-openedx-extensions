@@ -11,6 +11,7 @@ from rest_framework import status as http_status
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from futurex_openedx_extensions.helpers.constants import CSV_TASK_LIMIT_PER_USER as TASK_LIMIT
 from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.tasks import export_data_to_csv_task
 
@@ -83,6 +84,16 @@ class ExportCSVMixin:
             'export_task_id': fx_task.id
         }
 
+    def get_existing_incompleted_task_count(self) -> int:
+        """Get incomplete tasks count"""
+        user_exported_tasks = DataExportTask.objects.filter(
+            user=self.request.user,  # type: ignore[attr-defined]
+            view_name=self.__class__.fx_view_name  # type: ignore[attr-defined]
+        ).exclude(
+            status__in=[DataExportTask.STATUS_COMPLETED, DataExportTask.STATUS_FAILED]
+        )
+        return user_exported_tasks.count()
+
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override the list method to generate CSV and return JSON response with CSV URL"""
         if self.request.query_params.get('download', '').lower() == 'csv':  # type: ignore[attr-defined]
@@ -99,6 +110,13 @@ class ExportCSVMixin:
                     {'detail': 'Missing tenant access'},
                     status=http_status.HTTP_403_FORBIDDEN
                 )
+
+            if self.get_existing_incompleted_task_count() >= TASK_LIMIT:
+                return Response(
+                    {'detail': 'CSV task limit reached. User can only run up to {TASK_LIMIT} tasks simultaneously.'},
+                    status=http_status.HTTP_429_TOO_MANY_REQUESTS
+                )
+
             response = self.generate_csv_url_response()
             return Response(response, status=http_status.HTTP_200_OK)
         return super().list(request, args, kwargs)  # type: ignore

@@ -109,6 +109,59 @@ def test_generate_csv_url_response(
 
 
 @pytest.mark.django_db
+def test_get_existing_incompleted_task_count(user, tenant, export_csv_mixin):  # pylint: disable=redefined-outer-name
+    """Test the incomplete task count logic."""
+    filename = 'text.csv'
+    related_id = 'test-id-1'
+    current_view = 'test_export'
+
+    # Create tasks with different statuses
+    # Add 2 valid tasks - should be counted
+    DataExportTask.objects.create(
+        filename=filename, view_name=current_view, user=user, tenant=tenant,
+        related_id=related_id, progress=0.0, status=DataExportTask.STATUS_PROCESSING
+    )
+    DataExportTask.objects.create(
+        filename=filename, view_name=current_view, user=user, tenant=tenant,
+        related_id=related_id, progress=0.6, status=DataExportTask.STATUS_IN_QUEUE
+    )
+    # Add completed task - should not be counted
+    DataExportTask.objects.create(
+        filename=filename, view_name=current_view, user=user, tenant=tenant,
+        related_id=related_id, progress=1.1, status=DataExportTask.STATUS_COMPLETED
+    )
+    assert export_csv_mixin.get_existing_incompleted_task_count() == 2
+
+    # Add task from a different view - should not be counted
+    DataExportTask.objects.create(
+        filename=filename, view_name='another view', user=user, tenant=tenant,
+        related_id=related_id, progress=0.6, status=DataExportTask.STATUS_IN_QUEUE
+    )
+    assert export_csv_mixin.get_existing_incompleted_task_count() == 2
+
+    # Add another valid task - should be counted
+    DataExportTask.objects.create(
+        filename=filename, view_name=current_view, user=user, tenant=tenant,
+        related_id=related_id, progress=0.6, status=DataExportTask.STATUS_IN_QUEUE
+    )
+    assert export_csv_mixin.get_existing_incompleted_task_count() == 3
+
+    # Add failed task - should not be counted
+    DataExportTask.objects.create(
+        filename=filename, view_name=current_view, user=user, tenant=tenant,
+        related_id=related_id, progress=0.5, error_message='some error', status=DataExportTask.STATUS_FAILED
+    )
+    # Add task from another user - should not be counted
+    another_user = get_user_model().objects.get(id=1)
+    DataExportTask.objects.create(
+        filename=filename, view_name=current_view, user=another_user, tenant=tenant,
+        related_id=related_id, progress=0.5, error_message='some error', status=DataExportTask.STATUS_FAILED
+    )
+    # count of incomplete tasks should remain same i.e 3
+    assert export_csv_mixin.get_existing_incompleted_task_count() == 3
+
+
+@pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.export_mixins.export_data_to_csv_task.delay')
 @patch('futurex_openedx_extensions.helpers.export_mixins.ExportCSVMixin.get_view_request_url')
 @patch('futurex_openedx_extensions.helpers.export_mixins.ExportCSVMixin.get_filtered_query_params')
@@ -155,3 +208,26 @@ def test_list_with_csv_download_for_no_tenant(export_csv_mixin):  # pylint: disa
     export_csv_mixin.request.query_params = {'download': 'csv'}
     response = export_csv_mixin.list(export_csv_mixin.request)
     assert response.status_code == http_status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_list_with_csv_download_for_tasks_limit(export_csv_mixin, user, tenant):  # pylint: disable=redefined-outer-name
+    """Test the list method for tasks limit per user."""
+    filename = 'text.csv'
+    related_id = 'test-id-1'
+    current_view = 'test_export'
+    export_csv_mixin.request.query_params = {'download': 'csv'}
+    DataExportTask.objects.create(
+        filename=filename, view_name=current_view, user=user, tenant=tenant,
+        related_id=related_id, progress=0.0, status=DataExportTask.STATUS_PROCESSING
+    )
+    DataExportTask.objects.create(
+        filename=filename, view_name=current_view, user=user, tenant=tenant,
+        related_id=related_id, progress=0.6, status=DataExportTask.STATUS_IN_QUEUE
+    )
+    DataExportTask.objects.create(
+        filename=filename, view_name=current_view, user=user, tenant=tenant,
+        related_id=related_id, progress=0.6, status=DataExportTask.STATUS_IN_QUEUE
+    )
+    response = export_csv_mixin.list(export_csv_mixin.request)
+    assert response.status_code == http_status.HTTP_429_TOO_MANY_REQUESTS
