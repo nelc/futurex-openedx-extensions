@@ -12,7 +12,7 @@ def mocked_request(db, base_data):  # pylint: disable=unused-argument
     factory = RequestFactory()
     request = factory.get('/some-path')
     request.site = type('Site', (), {})()
-    request.site.name = 's2.sample.com'
+    request.site.domain = 's2.sample.com'
     return request
 
 
@@ -50,3 +50,23 @@ def test_get_fx_dashboard_url_for_language(
     url = theme.get_fx_dashboard_url(mocked_request)
     expected_url = f'http://dashboard.example.com/{expected_lang}/2'
     assert url == expected_url
+
+
+def test_get_fx_dashboard_url_no_site(mocked_request):  # pylint: disable=redefined-outer-name
+    """Verify _get_fx_dashboard_url returns None if site is not set"""
+    mocked_request.LANGUAGE_CODE = 'en'
+    mocked_request.user = get_user_model().objects.get(id=4)
+    assert theme.get_fx_dashboard_url(mocked_request) is not None
+
+    delattr(mocked_request, 'site')  # pylint: disable=literal-used-as-attribute
+    assert theme.get_fx_dashboard_url(mocked_request) is None
+
+
+def test_get_fx_dashboard_url_no_domain(mocked_request):  # pylint: disable=redefined-outer-name
+    """Verify _get_fx_dashboard_url returns None if domain is not set"""
+    mocked_request.LANGUAGE_CODE = 'en'
+    mocked_request.user = get_user_model().objects.get(id=4)
+    assert theme.get_fx_dashboard_url(mocked_request) is not None
+
+    delattr(mocked_request.site, 'domain')  # pylint: disable=literal-used-as-attribute
+    assert theme.get_fx_dashboard_url(mocked_request) is None
