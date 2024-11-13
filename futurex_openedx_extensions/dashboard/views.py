@@ -46,7 +46,7 @@ from futurex_openedx_extensions.helpers.constants import (
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
-from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
+from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
@@ -306,9 +306,10 @@ class DataExportManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # p
     fx_allowed_write_methods = ['PATCH']
     fx_view_description = 'api/fx/export/v1/tasks/: Data Export Task Management APIs.'
     http_method_names = ['get', 'patch']
-    filter_backends = [DjangoFilterBackend, DefaultOrderingFilter]
+    filter_backends = [DjangoFilterBackend, DefaultOrderingFilter, DefaultSearchFilter]
     filterset_fields = ['related_id', 'view_name']
     ordering = ['-id']
+    search_fields = ['filename', 'notes']
 
     def get_queryset(self) -> QuerySet:
         """Get the list of user tasks."""
