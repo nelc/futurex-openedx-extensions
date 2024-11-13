@@ -146,7 +146,7 @@ def get_orgs_of_courses(course_ids: List[str]) -> Dict[str, Any]:
     }
 
     result['courses'].update({
-        str(lib_key): lib_key.org
+        str(lib_key): lib_key.org.lower()
         for lib_key in modulestore().get_library_keys()
         if str(lib_key) in course_ids
     })

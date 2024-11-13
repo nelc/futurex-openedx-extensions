@@ -16,6 +16,7 @@ from django.db.models import BooleanField, Exists, OuterRef, Q, QuerySet, Subque
 from django.db.models.functions import Lower
 from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from xmodule.modulestore.django import modulestore
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
@@ -51,11 +52,7 @@ def are_all_library_ids(course_ids: List[str] | None) -> bool:
     """
     if not course_ids:
         return False
-
-    for course_id in course_ids:
-        if not re.match(cs.LIBRARY_ID_REGX, course_id):
-            return False
-    return True
+    return all(re.match(cs.LIBRARY_ID_REGX, course_id) for course_id in course_ids)
 
 
 def validate_course_access_role(course_access_role: dict) -> None:
@@ -74,12 +71,6 @@ def validate_course_access_role(course_access_role: dict) -> None:
     org = course_access_role['org'].strip()
     course_id = course_access_role['course_id']
     role = course_access_role['role']
-    check_broken_rule(
-        role == cs.COURSE_ACCESS_ROLES_LIBRARY_USER and course_id and not are_all_library_ids([course_id]),
-        FXExceptionCodes.ROLE_INVALID_ENTRY,
-        f'role {role} is only valid with library_id',
-    )
-
     check_broken_rule(
         role not in cs.COURSE_ACCESS_ROLES_ALL,
         FXExceptionCodes.ROLE_INVALID_ENTRY,
@@ -116,6 +107,12 @@ def validate_course_access_role(course_access_role: dict) -> None:
         ),
         FXExceptionCodes.ROLE_INVALID_ENTRY,
         f'expected org value to be ({course_access_role["course_org"]}), but got ({org})!',
+    )
+
+    check_broken_rule(
+        role == cs.COURSE_ACCESS_ROLES_LIBRARY_USER and course_id and not are_all_library_ids([course_id]),
+        FXExceptionCodes.ROLE_INVALID_ENTRY,
+        f'role {role} is only valid with library_id',
     )
 
     check_broken_rule(
@@ -218,13 +215,21 @@ def get_user_course_access_roles(user_id: int) -> dict:
 
     result: Dict[str, Any] = {}
     useless_entry = False
+    library_keys = modulestore().get_library_keys()
     for access_role in access_roles:
         access_role['org'] = access_role['org_lower_case']
         access_role['course_org'] = access_role['course_org_lower_case']
+
         if access_role['course_id'] is None or access_role['course_id'] == CourseKeyField.Empty:
             access_role['course_id'] = ''
         else:
             access_role['course_id'] = str(access_role['course_id'])
+
+        if not access_role['course_org'] and access_role['course_id']:
+            # set course_org for libraries
+            if filtered_ids := [key for key in library_keys if str(key) == access_role['course_id']]:
+                access_role['course_org'] = filtered_ids[0].org
+                access_role['course_org_lower_case'] = filtered_ids[0].org.lower()
 
         try:
             validate_course_access_role(access_role)
@@ -548,7 +553,7 @@ class RoleType(Enum):
     COURSE_SPECIFIC = 'course_specific'
 
 
-def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too-many-branches
+def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals
     orgs_filter: list[str],
     remove_redundant: bool,
     users: list[get_user_model] | None = None,
@@ -615,6 +620,8 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too
         tenants_of_courses = []
         for org in CourseOverview.objects.filter(id__in=course_ids_filter).values_list('org', flat=True).distinct():
             tenants_of_courses.extend(get_tenants_by_org(org))
+        for lib_key in list(filter(lambda x: str(x) in course_ids_filter, modulestore().get_library_keys())):
+            tenants_of_courses.extend(get_tenants_by_org(lib_key.org))
         tenants_of_courses = list(set(tenants_of_courses))
         orgs_of_courses = set(get_course_org_filter_list(tenants_of_courses)['course_org_filter_list'])
 

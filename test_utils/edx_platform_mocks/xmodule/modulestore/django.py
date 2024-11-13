@@ -1,5 +1,5 @@
 """Mock modulestore"""
-from opaque_keys.edx.keys import CourseKey
+from opaque_keys.edx.locator import LibraryLocator
 
 
 class DummyModuleStore:  # pylint: disable=too-few-public-methods
@@ -9,7 +9,7 @@ class DummyModuleStore:  # pylint: disable=too-few-public-methods
 
     def get_library_keys(self):
         """mock modulestore library keys method"""
-        return [CourseKey.from_string(id) for id in self.ids]
+        return [LibraryLocator.from_string(id) for id in self.ids]
 
 
 def modulestore():
