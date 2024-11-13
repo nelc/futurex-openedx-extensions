@@ -18,7 +18,11 @@ def get_fx_dashboard_url(request: Any) -> Optional[str]:
     :return: Fx Dashboard URL
     :rtype: str
     """
-    if getattr(request, 'site', None) is None or not getattr(request.site, 'domain', None):
+    if (
+        getattr(request, 'site', None) is None or
+        not getattr(request.site, 'domain', None) or
+        not getattr(settings, 'NELC_DASHBOARD_BASE', None)
+    ):
         return None
 
     if (
@@ -30,5 +34,5 @@ def get_fx_dashboard_url(request: Any) -> Optional[str]:
         tenant_info = get_all_tenants_info()
         for tenant_id, site in tenant_info['sites'].items():
             if site == request.site.domain and tenant_id in user_accessible_tenant_ids:
-                return f'{request.scheme}://dashboard.{settings.LMS_BASE}/{lang}/{tenant_id}'
+                return f'{request.scheme}://{settings.NELC_DASHBOARD_BASE}/{lang}/{tenant_id}'
     return None

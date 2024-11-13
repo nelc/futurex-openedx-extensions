@@ -99,6 +99,6 @@ REST_FRAMEWORK = {
 
 LMS_ROOT_URL = 'https://lms.example.com'
 CMS_ROOT_URL = 'https://studio.example.com'
-LMS_BASE = 'example.com'
+NELC_DASHBOARD_BASE = 'dashboard.example.com'
 
 FX_DASHBOARD_STORAGE_DIR  = 'test_dir'

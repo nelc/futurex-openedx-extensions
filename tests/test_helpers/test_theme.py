@@ -1,5 +1,6 @@
 """Tests for theme helpers."""
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory
 
@@ -69,4 +70,14 @@ def test_get_fx_dashboard_url_no_domain(mocked_request):  # pylint: disable=rede
     assert theme.get_fx_dashboard_url(mocked_request) is not None
 
     delattr(mocked_request.site, 'domain')  # pylint: disable=literal-used-as-attribute
+    assert theme.get_fx_dashboard_url(mocked_request) is None
+
+
+def test_get_fx_dashboard_url_no_dashboard_base(mocked_request):  # pylint: disable=redefined-outer-name
+    """Verify _get_fx_dashboard_url returns None if NELC_DASHBOARD_BASE is not set"""
+    mocked_request.LANGUAGE_CODE = 'en'
+    mocked_request.user = get_user_model().objects.get(id=4)
+    assert theme.get_fx_dashboard_url(mocked_request) is not None
+
+    delattr(settings, 'NELC_DASHBOARD_BASE')  # pylint: disable=literal-used-as-attribute
     assert theme.get_fx_dashboard_url(mocked_request) is None
