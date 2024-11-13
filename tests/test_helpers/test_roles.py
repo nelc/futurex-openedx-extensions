@@ -133,7 +133,7 @@ def test_are_all_library_ids(course_ids, expected_return, usecase):
         FXExceptionCodes.ROLE_INVALID_ENTRY,
     ),
     (
-        {'role': cs.COURSE_ACCESS_ROLES_LIBRARY_USER, 'course_id': 'yes'},
+        {'role': cs.COURSE_ACCESS_ROLES_LIBRARY_USER, 'course_id': 'yes', 'org': 'org1', 'course_org': 'org1'},
         'role {role} is only valid with library_id',
         FXExceptionCodes.ROLE_INVALID_ENTRY
     ),
@@ -337,12 +337,80 @@ def test_get_user_course_access_roles(base_data):  # pylint: disable=unused-argu
 
     CourseAccessRole.objects.create(
         user_id=user_id,
+        role='library_user',
+        org='org1',
+        course_id='library-v1:org1+11',
+    )
+    expected_result['roles']['library_user'] = {
+        'orgs_full_access': [],
+        'tenant_ids_full_access': [],
+        'course_limited_access': ['library-v1:org1+11'],
+        'orgs_of_courses': ['org1'],
+        'tenant_ids': [1],
+    }
+    assert_expected_result(6, expected_result)
+
+    CourseAccessRole.objects.create(
+        user_id=user_id,
+        role='staff',
+        org='org1',
+        course_id='library-v1:org1+11',
+    )
+    expected_result['roles']['staff']['course_limited_access'].extend(['library-v1:org1+11'])
+    assert_expected_result(7, expected_result)
+
+    CourseAccessRole.objects.create(
+        user_id=user_id,
         role='support',
         org='org2',
         course_id='',
     )
     expected_result['useless_entries_exist'] = True
-    assert_expected_result(6, expected_result)
+    assert_expected_result(8, expected_result)
+
+
+@pytest.mark.django_db
+def test_get_user_course_access_roles_for_invalid_library_id(base_data):  # pylint: disable=unused-argument
+    """Verify get_user_course_access_roles result when invalid library role exist in db."""
+    user_id = 4
+    _remove_course_access_roles_causing_error_logs()
+    CourseAccessRole.objects.filter(
+        user_id=user_id, role='instructor', org='org3',
+    ).exclude(course_id=CourseKeyField.Empty).delete()
+    expected_result = {
+        'roles': {
+            'instructor': {
+                'orgs_full_access': ['org1', 'org2', 'org3'],
+                'tenant_ids_full_access': [1, 2, 7],
+                'course_limited_access': [],
+                'orgs_of_courses': [],
+                'tenant_ids': [1, 2, 7],
+            },
+            'staff': {
+                'orgs_full_access': [],
+                'tenant_ids_full_access': [],
+                'course_limited_access': ['course-v1:ORG1+4+4', 'course-v1:ORG3+1+1'],
+                'orgs_of_courses': ['org1', 'org3'],
+                'tenant_ids': [1, 2, 7],
+            },
+        },
+        'useless_entries_exist': False,
+    }
+    # assert useless_entries is False
+    diff = DeepDiff(get_user_course_access_roles(user_id), expected_result, ignore_order=True)
+    assert not diff, f'Failed: {diff}'
+
+    # create invalid library role
+    CourseAccessRole.objects.create(
+        user_id=user_id,
+        role='library_user',
+        org='not_exist',
+        course_id='library-v1:not_exist+not_exist',
+    )
+    expected_result['useless_entries_exist'] = True
+    # assert that invalid library role didn't return and useless entries is True now.
+    diff = DeepDiff(get_user_course_access_roles(user_id), expected_result, ignore_order=True)
+    assert not diff, f'Failed: {diff}'
 
 
 @pytest.mark.django_db
