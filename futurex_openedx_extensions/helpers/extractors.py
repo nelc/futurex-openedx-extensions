@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from xmodule.modulestore.django import modulestore
 
 from futurex_openedx_extensions.helpers import constants as cs
 
@@ -122,7 +123,7 @@ def verify_course_ids(course_ids: List[str]) -> None:
     for course_id in course_ids:
         if not isinstance(course_id, str):
             raise ValueError(f'course_id must be a string, but got {type(course_id).__name__}')
-        if not re.search(cs.COURSE_ID_REGX_EXACT, course_id):
+        if not re.search(cs.COURSE_ID_REGX_EXACT, course_id) and not re.search(cs.LIBRARY_ID_REGX_EXACT, course_id):
             raise ValueError(f'Invalid course ID format: {course_id}')
 
 
@@ -143,6 +144,12 @@ def get_orgs_of_courses(course_ids: List[str]) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         'courses': {str(course.id): course.org.lower() for course in courses},
     }
+
+    result['courses'].update({
+        str(lib_key): lib_key.org
+        for lib_key in modulestore().get_library_keys()
+        if str(lib_key) in course_ids
+    })
 
     invalid_course_ids = [course_id for course_id in course_ids if course_id not in result['courses']]
     if invalid_course_ids:

@@ -29,10 +29,14 @@ CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS = '__ca_users_of_tenants__'
 
 CLICKHOUSE_QUERY_SLUG_PATTERN = r'[a-z0-9_\-.]+'
 
-COURSE_ID_PART = r'[a-zA-Z0-9_-]+'
+ID_PART = r'[a-zA-Z0-9_-]+'
 COURSE_ID_REGX = \
-    fr'(?P<course_id>course-v1:(?P<org>{COURSE_ID_PART})\+(?P<course>{COURSE_ID_PART})\+(?P<run>{COURSE_ID_PART}))'
+    fr'(?P<course_id>course-v1:(?P<org>{ID_PART})\+(?P<course>{ID_PART})\+(?P<run>{ID_PART}))'
 COURSE_ID_REGX_EXACT = rf'^{COURSE_ID_REGX}$'
+
+LIBRARY_ID_REGX = \
+    fr'(?P<course_id>library-v1:(?P<org>{ID_PART})\+(?P<code>{ID_PART}))'
+LIBRARY_ID_REGX_EXACT = rf'^{LIBRARY_ID_REGX}$'
 
 COURSE_STATUSES = {
     'active': 'active',
@@ -57,10 +61,12 @@ COURSE_ACCESS_ROLES_TENANT_ONLY = [
 ]
 
 COURSE_ACCESS_ROLES_STAFF_EDITOR = 'staff'
+COURSE_ACCESS_ROLES_LIBRARY_USER = 'library_user'
 
 COURSE_ACCESS_ROLES_TENANT_OR_COURSE = [
     'data_researcher',
     'instructor',
+    COURSE_ACCESS_ROLES_LIBRARY_USER,
     COURSE_ACCESS_ROLES_STAFF_EDITOR,
 ]
 COURSE_ACCESS_ROLES_GLOBAL = [
@@ -78,7 +84,6 @@ COURSE_ACCESS_ROLES_SUPPORTED_READ = COURSE_ACCESS_ROLES_SUPPORTED_EDIT + COURSE
 COURSE_ACCESS_ROLES_ACCEPT_COURSE_ID = COURSE_ACCESS_ROLES_COURSE_ONLY + COURSE_ACCESS_ROLES_TENANT_OR_COURSE
 
 COURSE_ACCESS_ROLES_UNSUPPORTED = [
-    'library_user',  # not supported yet, it requires a library ID instead of a course ID
     'sales_admin',  # won't be supported, looks like a deprecated role, there is no useful code for it
 ]
 

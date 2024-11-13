@@ -49,9 +49,13 @@ def test_get_course_id_from_uri(uri, expected_course_id):
     assert get_course_id_from_uri(uri) == expected_course_id
 
 
-def test_verify_course_ids_success():
-    """Verify that verify_course_ids does not raise an error for valid course IDs."""
-    course_ids = ['course-v1:edX+DemoX+Demo_Course', 'course-v1:edX+DemoX+Demo_Course2']
+@pytest.mark.parametrize('course_ids', [
+    (['course-v1:edX+DemoX+Demo_Course', 'course-v1:edX+DemoX+Demo_Course2']),
+    (['library-v1:DemoX+11', 'library-v1:DemoX+22']),
+    (['course-v1:edX+DemoX+Demo_Course', 'library-v1:DemoX+22']),
+])
+def test_verify_course_ids_success(course_ids):
+    """Verify that verify_course_ids does not raise an error for valid course and library IDs."""
     verify_course_ids(course_ids)
 
 
@@ -59,6 +63,8 @@ def test_verify_course_ids_success():
     (None, 'course_ids must be a list of course IDs, but got None'),
     (['course-v1:edX+DemoX+Demo_Course', 3], 'course_id must be a string, but got int'),
     (['course-v1:edX+DemoX+Demo_Course+extra'], 'Invalid course ID format: course-v1:edX+DemoX+Demo_Course+extra'),
+    (['library-v1:edX+DemoX+extra'], 'Invalid course ID format: library-v1:edX+DemoX+extra'),
+    (['library-v1:invalid'], 'Invalid course ID format: library-v1:invalid'),
 ])
 def test_verify_course_ids_fail(course_ids, error_message):
     """Verify that verify_course_ids raises an error for invalid course IDs."""
@@ -83,11 +89,48 @@ def test_get_orgs_of_courses(base_data):  # pylint: disable=unused-argument
 
 
 @pytest.mark.django_db
-def test_get_orgs_of_courses_invalid_course(base_data):  # pylint: disable=unused-argument
+@pytest.mark.parametrize('course_ids, expected_orgs', [
+    (['course-v1:Org1+1+1', 'course-v1:ORG1+2+2'], {
+        'course-v1:Org1+1+1': 'org1',
+        'course-v1:ORG1+2+2': 'org1',
+    }),
+    (['library-v1:org1+11', 'course-v1:ORG1+5+5'], {
+        'library-v1:org1+11': 'org1',
+        'course-v1:ORG1+5+5': 'org1',
+    }),
+    (['library-v1:org1+11', 'library-v1:org1+22'], {
+        'library-v1:org1+11': 'org1',
+        'library-v1:org1+22': 'org1',
+    }),
+])
+def test_get_orgs_of_courses_for_library_ids(course_ids, expected_orgs, base_data):  # pylint: disable=unused-argument
+    """Verify that get_orgs_of_courses returns the expected organization for library ids."""
+    result = get_orgs_of_courses(course_ids)
+    assert result == {'courses': expected_orgs}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('course_ids, expected_error_message', [
+    (
+        ['course-v1:ORG1+2+99'],
+        'Invalid course IDs provided: [\'course-v1:ORG1+2+99\']'
+    ),
+    (
+        ['library-v1:not_exist+11'],
+        'Invalid course IDs provided: [\'library-v1:not_exist+11\']'
+    ),
+    (
+        ['course-v1:ORG1+2+99', 'library-v1:not_exist+1'],
+        'Invalid course IDs provided: [\'course-v1:ORG1+2+99\', \'library-v1:not_exist+1\']'
+    )
+])
+def test_get_orgs_of_courses_invalid_course(
+    course_ids, expected_error_message, base_data
+):  # pylint: disable=unused-argument
     """Verify that get_orgs_of_courses raises an error for an invalid course ID."""
     with pytest.raises(ValueError) as exc_info:
-        get_orgs_of_courses(['course-v1:ORG1+2+99'])
-    assert str(exc_info.value) == 'Invalid course IDs provided: [\'course-v1:ORG1+2+99\']'
+        get_orgs_of_courses(course_ids)
+    assert str(exc_info.value) == expected_error_message
 
 
 def test_dict_hashcode_init():
