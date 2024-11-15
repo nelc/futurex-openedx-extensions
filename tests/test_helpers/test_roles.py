@@ -803,14 +803,15 @@ def test_role_types():
     """Verify that the role types are as expected."""
     assert RoleType.ORG_WIDE == RoleType('org_wide')
     assert RoleType.COURSE_SPECIFIC == RoleType('course_specific')
-    assert len(RoleType) == 2, 'Unexpected number of role types, if this class is updated, then the logic of ' \
+    assert RoleType.GLOBAL == RoleType('global')
+    assert len(RoleType) == 3, 'Unexpected number of role types, if this class is updated, then the logic of ' \
                                'get_course_access_roles_queryset should be updated as well'
 
 
 @pytest.mark.parametrize('bad_role_type, expected_error_message', [
-    ('bad_name', 'Invalid exclude_role_type: bad_name'),
-    ('', 'Invalid exclude_role_type: EmptyString'),
-    (['not string and not RoleType'], 'Invalid exclude_role_type: [\'not string and not RoleType\']'),
+    ('bad_name', 'Invalid excluded_role_types: bad_name'),
+    ('', 'Invalid excluded_role_types: EmptyString'),
+    (['not string and not RoleType'], 'Invalid excluded_role_types: [\'not string and not RoleType\']'),
 ])
 def test_get_roles_for_users_queryset_bad_exclude(bad_role_type, expected_error_message):
     """Verify that get_roles_for_users_queryset raises an error if the exclude parameter is invalid."""
@@ -818,7 +819,7 @@ def test_get_roles_for_users_queryset_bad_exclude(bad_role_type, expected_error_
         get_course_access_roles_queryset(
             orgs_filter=['org1', 'org2'],
             remove_redundant=False,
-            exclude_role_type=bad_role_type,
+            excluded_role_types=[bad_role_type],
         )
     assert str(exc_info.value) == expected_error_message
 
@@ -925,7 +926,7 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('course_ids, remove_redundant, exclude_role_type, expected_result', [
+@pytest.mark.parametrize('course_ids, remove_redundant, excluded_role_types, expected_result', [
     ([], False, None, get_test_data_dict()),
     ([], True, None, {
         'user3': {
@@ -970,7 +971,7 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
         },
         'user48': {'org4': {'None': ['instructor']}},
     }),
-    ([], False, RoleType.ORG_WIDE, {
+    ([], False, [RoleType.ORG_WIDE], {
         'user3': {
             'org1': {
                 'course-v1:ORG1+3+3': ['staff', 'instructor'],
@@ -1000,7 +1001,7 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
             }
         },
     }),
-    ([], True, RoleType.ORG_WIDE, {
+    ([], True, [RoleType.ORG_WIDE], {
         'user3': {
             'org1': {
                 'course-v1:ORG1+3+3': ['instructor'],
@@ -1028,8 +1029,8 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
             }
         },
     }),
-    ([], False, RoleType.COURSE_SPECIFIC, get_test_data_dict_without_course_roles()),
-    ([], True, RoleType.COURSE_SPECIFIC, get_test_data_dict_without_course_roles()),
+    ([], False, [RoleType.COURSE_SPECIFIC], get_test_data_dict_without_course_roles()),
+    ([], True, [RoleType.COURSE_SPECIFIC], get_test_data_dict_without_course_roles()),
     (['course-v1:ORG3+2+2'], False, None, {
         'user9': {
             'org3': {
@@ -1079,7 +1080,7 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
             }
         },
     }),
-    (['course-v1:ORG3+2+2'], False, RoleType.ORG_WIDE, {
+    (['course-v1:ORG3+2+2'], False, [RoleType.ORG_WIDE], {
         'user9': {
             'org3': {
                 'course-v1:ORG3+2+2': ['data_researcher'],
@@ -1091,37 +1092,38 @@ def test_get_roles_for_users_queryset_roles_filter(base_data):  # pylint: disabl
             }
         },
     }),
-    (['course-v1:ORG3+2+2'], True, RoleType.ORG_WIDE, {
+    (['course-v1:ORG3+2+2'], True, [RoleType.ORG_WIDE], {
         'user11': {
             'org3': {
                 'course-v1:ORG3+2+2': ['instructor'],
             }
         },
     }),
-    (['course-v1:ORG3+2+2'], False, RoleType.COURSE_SPECIFIC, get_test_data_dict_without_course_roles_org3()),
-    (['course-v1:ORG3+2+2'], True, RoleType.COURSE_SPECIFIC, get_test_data_dict_without_course_roles_org3()),
+    (['course-v1:ORG3+2+2'], False, [RoleType.COURSE_SPECIFIC], get_test_data_dict_without_course_roles_org3()),
+    (['course-v1:ORG3+2+2'], True, [RoleType.COURSE_SPECIFIC], get_test_data_dict_without_course_roles_org3()),
 ])
 def test_get_roles_for_users_queryset(
-    base_data, course_ids, remove_redundant, exclude_role_type, expected_result,
+    base_data, course_ids, remove_redundant, excluded_role_types, expected_result,
 ):  # pylint: disable=unused-argument
     """Verify that get_roles_for_users_queryset returns the expected queryset."""
     result = get_course_access_roles_queryset(
         orgs_filter=get_all_orgs(),
         course_ids_filter=course_ids,
         remove_redundant=remove_redundant,
-        exclude_role_type=exclude_role_type,
+        excluded_role_types=excluded_role_types,
     )
     assert roles_records_to_dict(result) == expected_result
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('remove_redundant, exclude_role_type, expected_result', [
+@pytest.mark.parametrize('remove_redundant, excluded_role_types, expected_result', [
     (False, None, {'user62': {'': {'None': ['course_creator_group']}}}),
-    (False, RoleType.COURSE_SPECIFIC, {'user62': {'': {'None': ['course_creator_group']}}}),
-    (False, RoleType.ORG_WIDE, {}),
+    (False, [RoleType.COURSE_SPECIFIC], {'user62': {'': {'None': ['course_creator_group']}}}),
+    (False, [RoleType.ORG_WIDE], {'user62': {'': {'None': ['course_creator_group']}}}),
+    (False, [RoleType.GLOBAL], {}),
 ])
 def test_get_roles_for_users_queryset_global(
-    base_data, remove_redundant, exclude_role_type, expected_result,
+    base_data, remove_redundant, excluded_role_types, expected_result,
 ):  # pylint: disable=unused-argument
     """Verify that get_roles_for_users_queryset removes global roles when excluding org roles."""
     user62 = get_user_model().objects.get(username='user62')
@@ -1134,10 +1136,10 @@ def test_get_roles_for_users_queryset_global(
     result = get_course_access_roles_queryset(
         orgs_filter=test_orgs,
         remove_redundant=remove_redundant,
-        exclude_role_type=exclude_role_type,
+        excluded_role_types=excluded_role_types,
         users=[user62],
     )
-    assert roles_records_to_dict(result) == expected_result
+    assert not DeepDiff(roles_records_to_dict(result), expected_result, ignore_order=True)
 
 
 @pytest.mark.django_db

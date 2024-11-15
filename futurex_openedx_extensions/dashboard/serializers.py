@@ -682,20 +682,18 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
         else:
             result['active_filter'] = None
 
-        exclude_tenant_roles = False
-        exclude_course_roles = False
-        if query_params.get('exclude_tenant_roles') is not None:
-            exclude_tenant_roles = query_params['exclude_tenant_roles'] == '1'
+        excluded_role_types = query_params.get('excluded_role_types', '').split(',') \
+            if query_params.get('excluded_role_types') else []
 
-        if not exclude_tenant_roles and query_params.get('exclude_course_roles') is not None:
-            exclude_course_roles = query_params['exclude_course_roles'] == '1'
+        result['excluded_role_types'] = []
+        if 'global' in excluded_role_types:
+            result['excluded_role_types'].append(RoleType.GLOBAL)
 
-        if exclude_tenant_roles:
-            result['exclude_role_type'] = RoleType.ORG_WIDE
-        elif exclude_course_roles:
-            result['exclude_role_type'] = RoleType.COURSE_SPECIFIC
-        else:
-            result['exclude_role_type'] = None
+        if 'tenant' in excluded_role_types:
+            result['excluded_role_types'].append(RoleType.ORG_WIDE)
+
+        if 'course' in excluded_role_types:
+            result['excluded_role_types'].append(RoleType.COURSE_SPECIFIC)
 
         return result
 
@@ -748,7 +746,7 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
             roles_filter=self.query_params['roles_filter'],
             active_filter=self.query_params['active_filter'],
             course_ids_filter=self.query_params['course_ids_filter'],
-            exclude_role_type=self.query_params['exclude_role_type'],
+            excluded_role_types=self.query_params['excluded_role_types'],
         )
 
         for record in records or []:

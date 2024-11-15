@@ -844,34 +844,37 @@ def test_user_roles_serializer_parse_query_params_defaults(
         'course_ids_filter': [],
         'roles_filter': [],
         'active_filter': None,
-        'exclude_role_type': None,
+        'excluded_role_types': [],
     }
 
 
-@pytest.mark.parametrize('exclude_tenant_roles, exclude_course_roles, exclude_role_type', [
-    (None, None, None),
-    ('0', None, None),
-    ('1', None, RoleType.ORG_WIDE),
-    (None, '0', None),
-    ('0', '0', None),
-    ('1', '0', RoleType.ORG_WIDE),
-    (None, '1', RoleType.COURSE_SPECIFIC),
-    ('0', '1', RoleType.COURSE_SPECIFIC),
-    ('1', '1', RoleType.ORG_WIDE),
+@pytest.mark.parametrize('excluded_role_types, result_excluded_role_types', [
+    (None, []),
+    ('', []),
+    ('global', [RoleType.GLOBAL]),
+    ('invalid,entry', []),
+    ('tenant', [RoleType.ORG_WIDE]),
+    ('course', [RoleType.COURSE_SPECIFIC]),
+    ('global,course', [RoleType.COURSE_SPECIFIC, RoleType.GLOBAL]),
+    ('tenant,course', [RoleType.ORG_WIDE, RoleType.COURSE_SPECIFIC]),
+    ('global,tenant,course', [RoleType.ORG_WIDE, RoleType.COURSE_SPECIFIC, RoleType.GLOBAL]),
 ])
-def test_user_roles_serializer_parse_query_params_values(exclude_tenant_roles, exclude_course_roles, exclude_role_type):
+def test_user_roles_serializer_parse_query_params_values(excluded_role_types, result_excluded_role_types):
     """Verify that the parse_query_params method correctly parses the query parameters."""
-    assert UserRolesSerializer.parse_query_params({
-        'search_text': 'user99',
-        'only_course_ids': 'course-v1:ORG99+88+88,another-course',
-        'only_roles': 'staff,instructor',
-        'active_users_filter': '1',
-        'exclude_tenant_roles': exclude_tenant_roles,
-        'exclude_course_roles': exclude_course_roles,
-    }) == {
-        'search_text': 'user99',
-        'course_ids_filter': ['course-v1:ORG99+88+88', 'another-course'],
-        'roles_filter': ['staff', 'instructor'],
-        'active_filter': True,
-        'exclude_role_type': exclude_role_type,
-    }
+    assert not DeepDiff(
+        UserRolesSerializer.parse_query_params({
+            'search_text': 'user99',
+            'only_course_ids': 'course-v1:ORG99+88+88,another-course',
+            'only_roles': 'staff,instructor',
+            'active_users_filter': '1',
+            'excluded_role_types': excluded_role_types,
+        }),
+        {
+            'search_text': 'user99',
+            'course_ids_filter': ['course-v1:ORG99+88+88', 'another-course'],
+            'roles_filter': ['staff', 'instructor'],
+            'active_filter': True,
+            'excluded_role_types': result_excluded_role_types,
+        },
+        ignore_order=True,
+    )
