@@ -195,11 +195,15 @@ def get_base_queryset_courses(
         ),
     )
 
+    update_removable_annotations(q_set, removable=['course_is_active', 'course_is_visible'])
+
     if active_filter is not None:
         q_set = q_set.filter(course_is_active=active_filter)
+        update_removable_annotations(q_set, not_removable=['course_is_active'])
 
     if visible_filter is not None:
         q_set = q_set.filter(course_is_visible=visible_filter)
+        update_removable_annotations(q_set, not_removable=['course_is_visible'])
 
     return q_set
 

@@ -1,6 +1,7 @@
 """Courses details collectors"""
 from __future__ import annotations
 
+from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
 from django.contrib.auth import get_user_model
 from django.db.models import (
@@ -29,6 +30,7 @@ from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_base_queryset_courses,
     get_one_user_queryset,
+    update_removable_annotations,
 )
 
 
@@ -61,6 +63,8 @@ def annotate_courses_rating_queryset(
             ).values('course_id').annotate(total=Sum('rating_content')).values('total'),
         ), 0),
     )
+
+    update_removable_annotations(queryset, removable=['rating_count', 'rating_total'])
 
     return queryset
 
@@ -104,30 +108,36 @@ def get_courses_queryset(
     if include_staff:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))
     else:
-        is_staff_queryset = check_staff_exist_queryset('courseenrollment__user_id', 'org', 'id')
+        is_staff_queryset = check_staff_exist_queryset(
+            ref_user_id='user_id', ref_org='course__org', ref_course_id='course_id',
+        )
 
     queryset = queryset.annotate(
-        enrolled_count=Count(
-            'courseenrollment',
-            filter=(
-                Q(courseenrollment__is_active=True) &
-                Q(courseenrollment__user__is_active=True) &
-                Q(courseenrollment__user__is_staff=False) &
-                Q(courseenrollment__user__is_superuser=False) &
-                ~is_staff_queryset
-            ),
-        )
+        enrolled_count=Coalesce(Subquery(
+            CourseEnrollment.objects.filter(
+                course_id=OuterRef('id'),
+                is_active=True,
+                user__is_active=True,
+                user__is_staff=False,
+                user__is_superuser=False,
+            ).filter(
+                ~is_staff_queryset,
+            ).values('course_id').annotate(count=Count('id')).values('count'),
+            output_field=IntegerField(),
+        ), 0)
     ).annotate(
-        active_count=Count(
-            'courseenrollment',
-            filter=(
-                Q(courseenrollment__is_active=True) &
-                Q(courseenrollment__user__is_active=True) &
-                Q(courseenrollment__user__is_staff=False) &
-                Q(courseenrollment__user__is_superuser=False) &
-                ~is_staff_queryset
-            ),
-        )
+        active_count=Coalesce(Subquery(
+            CourseEnrollment.objects.filter(
+                course_id=OuterRef('id'),
+                is_active=True,
+                user__is_active=True,
+                user__is_staff=False,
+                user__is_superuser=False,
+            ).filter(
+                ~is_staff_queryset,
+            ).values('course_id').annotate(count=Count('id')).values('count'),
+            output_field=IntegerField(),
+        ), 0)
     ).annotate(
         certificates_count=Coalesce(Subquery(
             GeneratedCertificate.objects.filter(
@@ -143,6 +153,10 @@ def get_courses_queryset(
             output_field=FloatField(),
         )
     )
+
+    update_removable_annotations(queryset, removable=[
+        'enrolled_count', 'active_count', 'certificates_count', 'completion_rate',
+    ])
 
     return queryset
 
@@ -215,5 +229,7 @@ def get_learner_courses_info_queryset(
             output_field=DateTimeField(),
         )
     )
+
+    update_removable_annotations(queryset, removable=['related_user_id', 'enrollment_date', 'last_activity'])
 
     return queryset

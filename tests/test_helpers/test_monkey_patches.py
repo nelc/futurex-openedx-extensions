@@ -3,12 +3,13 @@ from unittest.mock import MagicMock, patch
 
 from django.db.models.query import QuerySet
 
-from futurex_openedx_extensions.helpers.monkey_patches import customized_queryset_chain
+from futurex_openedx_extensions.helpers.monkey_patches import customized_queryset_chain, original_queryset_chain
 
 
 def test_queryset_chain():
     """Verify that the original_queryset_chain is correctly defined."""
     assert QuerySet._chain == customized_queryset_chain  # pylint: disable=protected-access, comparison-with-callable
+    assert original_queryset_chain is not customized_queryset_chain
 
 
 @patch('futurex_openedx_extensions.helpers.monkey_patches.original_queryset_chain')
