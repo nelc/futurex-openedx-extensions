@@ -38,6 +38,8 @@ class FXExceptionCodes(Enum):
 
     SERIALIZER_FILED_NAME_DOES_NOT_EXIST = 7001
 
+    QUERY_SET_BAD_OPERATION = 8001
+
 
 class FXCodedException(Exception):
     """Exception with a code."""

@@ -1,10 +1,14 @@
 """Tests for querysets helpers"""
+from unittest.mock import Mock, patch
+
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, UserProfile
 from django.contrib.auth import get_user_model
+from django.db.models import Count
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers import querysets
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from tests.fixture_helpers import get_tenants_orgs
 
 
@@ -217,3 +221,80 @@ def test_get_permitted_learners_queryset(
 
     result = querysets.get_permitted_learners_queryset(queryset, fx_permission_info, include_staff=True)
     assert result.count() == expected_with_staff
+
+
+@pytest.mark.parametrize('original, removable, not_removable, expected_result', [
+    (None, None, None, None),
+    (None, {'f1', 'f2'}, None, {'f1', 'f2'}),
+    (None, None, {'f1', 'f2'}, None),
+    ({'f1', 'f2'}, None, None, {'f1', 'f2'}),
+    ({'f1', 'f2'}, {'f1'}, None, {'f1', 'f2'}),
+    ({'f1', 'f2'}, None, {'f1'}, {'f2'}),
+    ({'f1', 'f2'}, None, {'f1', 'f3'}, {'f2'}),
+    ({'f1', 'f2'}, {'f1'}, {'f1', 'f2'}, None),
+])
+def test_update_removable_annotations(original, removable, not_removable, expected_result):
+    """Verify update_removable_annotations function."""
+    queryset = Mock()
+    if original is None:
+        del queryset.removable_annotations
+    else:
+        queryset.removable_annotations = original
+
+    with patch('futurex_openedx_extensions.helpers.querysets.verify_queryset_removable_annotations') as mock_verify:
+        querysets.update_removable_annotations(queryset, removable, not_removable)
+
+    if expected_result is None:
+        assert not hasattr(queryset, 'removable_annotations')
+        mock_verify.assert_not_called()
+    else:
+        assert queryset.removable_annotations == expected_result
+        mock_verify.assert_called_once_with(queryset)
+
+
+def test_verify_queryset_removable_annotations():
+    """Verify verify_queryset_removable_annotations will raise an error for annotations with type Count"""
+    queryset = Mock(removable_annotations={'f1'}, query=Mock())
+    queryset.query.annotations = {
+        'f1': 'not Count',
+        'f2': Mock(spec=Count),
+    }
+    querysets.verify_queryset_removable_annotations(queryset)
+
+    queryset.removable_annotations.add('f2')
+    with pytest.raises(FXCodedException) as exc_info:
+        querysets.verify_queryset_removable_annotations(queryset)
+    assert exc_info.value.code == FXExceptionCodes.QUERY_SET_BAD_OPERATION.value
+    assert str(exc_info.value) == (
+        'Cannot set annotation `f2` of type `Count` as removable. You must unset it from the '
+        'removable annotations list, or replace the `Count` annotation with `Subquery`.'
+    )
+
+
+def test_verify_queryset_removable_annotations_no_removable():
+    """Verify verify_queryset_removable_annotations will not raise an error if there are no removable annotations"""
+    queryset = Mock(query=Mock())
+    del queryset.removable_annotations
+    queryset.query.annotations['f1']: Mock(spec=Count)
+    querysets.verify_queryset_removable_annotations(queryset)
+
+
+def test_verify_queryset_removable_annotations_removable_does_not_exist():
+    """Verify verify_queryset_removable_annotations will not raise an error if a removable annotation does not exist"""
+    queryset = Mock(removable_annotations={'f3'}, query=Mock())
+    queryset.query.annotations = {
+        'f1': 'not Count',
+        'f2': Mock(spec=Count),
+    }
+    querysets.verify_queryset_removable_annotations(queryset)
+
+
+def test_clear_removable_annotations():
+    """Verify clear_removable_annotations function."""
+    queryset = Mock(removable_annotations={'f1', 'f2'})
+    querysets.clear_removable_annotations(queryset)
+
+    assert not hasattr(queryset, 'removable_annotations')
+
+    querysets.clear_removable_annotations(queryset)
+    assert not hasattr(queryset, 'removable_annotations')
