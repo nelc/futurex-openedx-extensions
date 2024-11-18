@@ -14,6 +14,7 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from organizations.models import Organization
 
+from futurex_openedx_extensions.helpers import constants as cs
 from tests.base_test_data import _base_data
 from tests.fixture_helpers import get_tenants_of_org, get_user1_fx_permission_info
 
@@ -51,6 +52,18 @@ def fx_permission_info():
         'view_allowed_tenant_ids_any_access': [1],
         'view_allowed_tenant_ids_partial_access': [0],
     }
+
+
+@pytest.fixture
+def support_user():
+    """Fixture for support user."""
+    user_id = 55
+    assert CourseAccessRole.objects.filter(user_id=user_id).count() == 0, 'Bad test data'
+    user = get_user_model().objects.get(id=user_id)
+    assert not user.is_staff, 'staff users not allowed in this test'
+    assert not user.is_superuser, 'staff users not allowed in this test'
+    CourseAccessRole.objects.create(user_id=user_id, role=cs.COURSE_SUPPORT_ROLE_GLOBAL)
+    return user
 
 
 @pytest.fixture
