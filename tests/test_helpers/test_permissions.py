@@ -149,7 +149,7 @@ def test_fx_base_authenticated_permission_staff_always_allowed(
     """Verify that FXBaseAuthenticatedPermission returns True when user is staff."""
     request = APIRequestFactory().generic('GET', '/dummy/')
     set_user(request, user_id)
-    assert permission.has_permission(request, dummy_view) is True
+    permission.has_permission(request, dummy_view)
     assert request.fx_permission_info == {
         'user': request.user,
         'user_roles': {},
@@ -162,6 +162,50 @@ def test_fx_base_authenticated_permission_staff_always_allowed(
         'view_allowed_tenant_ids_full_access': [1, 2, 3, 7, 8],
         'view_allowed_tenant_ids_partial_access': [],
     }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('view_allowed_roles, allowed_tenant_ids', [
+    (['staff', 'no-support-in-the-list'], []),
+    (['support'], [1, 2, 3, 7, 8]),
+])
+def test_fx_base_authenticated_permission_global_role_allow_all_tenants(
+    base_data, dummy_view, permission, support_user, view_allowed_roles, allowed_tenant_ids,
+):  # pylint: disable=unused-argument, redefined-outer-name, too-many-arguments
+    """Verify that FXBaseAuthenticatedPermission fills fx_permission_info correctly for global users."""
+    request = APIRequestFactory().generic('GET', '/dummy/')
+    set_user(request, support_user.id)
+    dummy_view.result_of_method['dummyView'] = view_allowed_roles
+    permission.has_permission(request, dummy_view)
+    if allowed_tenant_ids:
+        orgs = get_all_orgs()
+    else:
+        orgs = []
+
+    assert not DeepDiff(
+        request.fx_permission_info,
+        {
+            'user': request.user,
+            'user_roles': {
+                'support': {
+                    'orgs_full_access': [],
+                    'tenant_ids_full_access': [],
+                    'course_limited_access': [],
+                    'orgs_of_courses': [],
+                    'tenant_ids': []
+                }
+            },
+            'is_system_staff_user': False,
+            'view_allowed_roles': view_allowed_roles,
+            'view_allowed_full_access_orgs': orgs,
+            'view_allowed_course_access_orgs': [],
+            'view_allowed_any_access_orgs': orgs,
+            'view_allowed_tenant_ids_any_access': allowed_tenant_ids,
+            'view_allowed_tenant_ids_full_access': allowed_tenant_ids,
+            'view_allowed_tenant_ids_partial_access': [],
+        },
+        ignore_order=True
+    )
 
 
 def test_fx_base_authenticated_permission_selected_tenants(
@@ -178,7 +222,7 @@ def test_fx_base_authenticated_permission_selected_tenants(
 
     request = APIRequestFactory().generic('GET', '/dummy/?tenant_ids=1,2')
     set_user(request, user_id)
-    assert permission.has_permission(request, dummy_view) is True
+    permission.has_permission(request, dummy_view)
 
     request = APIRequestFactory().generic('GET', '/dummy/?tenant_ids=1,2,3')
     set_user(request, user_id)

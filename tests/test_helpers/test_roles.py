@@ -2042,6 +2042,19 @@ def test_get_accessible_tenant_ids_staff(base_data, user_id, expected):  # pylin
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('roles_filter, expected_result, assertion_msg', [
+    (None, [1, 2, 3, 7, 8], 'when roles_filter is None, global role users must have access to all tenants'),
+    (cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE, [], 'access should be denied when the global role is\'t in roles_filter'),
+])
+def test_get_accessible_tenant_ids_global_role(
+    base_data, support_user, roles_filter, expected_result, assertion_msg,
+):  # pylint: disable=unused-argument
+    """Verify get_accessible_tenant_ids function for global roles users."""
+    result = get_accessible_tenant_ids(support_user, roles_filter=roles_filter)
+    assert result == expected_result, assertion_msg
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize('user_id, expected', [
     (3, [1]),
     (4, [1, 2, 7]),

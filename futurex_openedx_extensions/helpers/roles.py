@@ -289,19 +289,23 @@ def get_accessible_tenant_ids(user: get_user_model, roles_filter: List[str] | No
     :return: List of accessible tenant IDs
     :rtype: List[int]
     """
+    all_tenant_ids = get_all_tenant_ids()
     if not user:
         return []
+
     if is_system_staff_user(user):
-        return get_all_tenant_ids()
+        return all_tenant_ids
 
     user_roles = get_user_course_access_roles(user.id)['roles']
-
     if roles_filter is None:
         roles_filter = list(user_roles.keys())
     elif not isinstance(roles_filter, list):
         raise TypeError('roles_filter must be a list')
     elif not roles_filter:
         return []
+
+    if set(cs.COURSE_ACCESS_ROLES_GLOBAL) & set(user_roles) & set(roles_filter):
+        return all_tenant_ids
 
     tenant_ids = set()
     for role_name in roles_filter:

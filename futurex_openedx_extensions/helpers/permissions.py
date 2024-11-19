@@ -7,6 +7,7 @@ from typing import Any, List
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.permissions import BasePermission, IsAuthenticated
 
+from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.roles import (
     check_tenant_access,
     get_accessible_tenant_ids,
@@ -55,6 +56,36 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
         """Verify access roles."""
         raise NotImplementedError(f'(verify_access_roles) is not implemented ({self.__class__.__name__})')
 
+    @staticmethod
+    def _set_view_allowed_info(
+        request: Any, tenant_ids: List[int], user_roles: dict, view_allowed_roles: List[str],
+    ) -> None:
+        """Helper method to set view allowed info."""
+        permitted_orgs: set = set(get_course_org_filter_list(tenant_ids)['course_org_filter_list'])
+        full_access_orgs: set = set()
+        course_access_orgs: set = set()
+        for role in view_allowed_roles:
+            if role in user_roles:
+                full_access_orgs.update(
+                    permitted_orgs & set(user_roles[role]['orgs_full_access'])
+                )
+                course_access_orgs.update(
+                    permitted_orgs & set(user_roles[role]['orgs_of_courses'])
+                )
+        course_access_orgs -= full_access_orgs
+
+        full_access_tenant_ids = set()
+        for org in full_access_orgs:
+            full_access_tenant_ids.update(get_org_to_tenant_map()[org])
+
+        request.fx_permission_info.update({
+            'view_allowed_full_access_orgs': list(full_access_orgs),
+            'view_allowed_course_access_orgs': list(course_access_orgs),
+            'view_allowed_any_access_orgs': list(full_access_orgs | course_access_orgs),
+            'view_allowed_tenant_ids_full_access': list(full_access_tenant_ids),
+            'view_allowed_tenant_ids_partial_access': list(set(tenant_ids) - full_access_tenant_ids),
+        })
+
     def has_permission(self, request: Any, view: Any) -> bool:
         """Check if the user is authenticated."""
         if not hasattr(view, 'get_allowed_roles_all_views'):
@@ -82,18 +113,25 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
         else:
             tenant_ids = get_accessible_tenant_ids(user=request.user, roles_filter=view_allowed_roles)
 
+        system_staff_user_flag = is_system_staff_user(request.user)
         user_roles: dict = get_user_course_access_roles(request.user.id)['roles']
         request.fx_permission_info = {
             'user': request.user,
             'user_roles': user_roles,
-            'is_system_staff_user': is_system_staff_user(request.user),
+            'is_system_staff_user': system_staff_user_flag,
             'view_allowed_roles': view_allowed_roles,
             'view_allowed_tenant_ids_any_access': tenant_ids,
         }
 
-        if is_system_staff_user(request.user):
+        if system_staff_user_flag:
             request.fx_permission_info.update({
                 'user_roles': {},
+            })
+
+        if system_staff_user_flag or (
+            set(user_roles.keys()) & set(cs.COURSE_ACCESS_ROLES_GLOBAL) & set(view_allowed_roles)
+        ):
+            request.fx_permission_info.update({
                 'view_allowed_full_access_orgs': get_course_org_filter_list(tenant_ids)['course_org_filter_list'],
                 'view_allowed_course_access_orgs': [],
                 'view_allowed_tenant_ids_full_access': tenant_ids,
@@ -103,29 +141,7 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
                 request.fx_permission_info['view_allowed_full_access_orgs']
             return True
 
-        permitted_orgs: set = set(get_course_org_filter_list(tenant_ids)['course_org_filter_list'])
-        full_access_orgs: set = set()
-        course_access_orgs: set = set()
-        for role in view_allowed_roles:
-            if role in user_roles:
-                full_access_orgs.update(
-                    permitted_orgs & set(user_roles[role]['orgs_full_access'])
-                )
-                course_access_orgs.update(
-                    permitted_orgs & set(user_roles[role]['orgs_of_courses'])
-                )
-        course_access_orgs -= full_access_orgs
-
-        full_access_tenant_ids = set()
-        for org in full_access_orgs:
-            full_access_tenant_ids.update(get_org_to_tenant_map()[org])
-        request.fx_permission_info.update({
-            'view_allowed_full_access_orgs': list(full_access_orgs),
-            'view_allowed_course_access_orgs': list(course_access_orgs),
-            'view_allowed_any_access_orgs': list(full_access_orgs | course_access_orgs),
-            'view_allowed_tenant_ids_full_access': list(full_access_tenant_ids),
-            'view_allowed_tenant_ids_partial_access': list(set(tenant_ids) - full_access_tenant_ids),
-        })
+        self._set_view_allowed_info(request, tenant_ids, user_roles, view_allowed_roles)
 
         return self.verify_access_roles(request, view)
 
