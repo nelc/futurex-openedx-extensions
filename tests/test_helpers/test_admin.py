@@ -1,11 +1,14 @@
 """Tests for the admin helpers."""
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
+from django import forms
 from django.contrib.admin.sites import AdminSite
 from django.core.cache import cache
 from django.http import Http404, HttpResponseRedirect
 from django.utils.timezone import now
+from django_mysql.models import QuerySet
+from openedx.core.lib.api.authentication import BearerAuthentication
 from rest_framework.test import APIRequestFactory
 
 from futurex_openedx_extensions.helpers.admin import (
@@ -13,9 +16,13 @@ from futurex_openedx_extensions.helpers.admin import (
     CacheInvalidatorAdmin,
     ClickhouseQueryAdmin,
     ViewAllowedRolesHistoryAdmin,
+    ViewAllowedRolesModelForm,
+    ViewUserMappingHistoryAdmin,
+    ViewUserMappingModelForm,
+    YesNoFilter,
 )
 from futurex_openedx_extensions.helpers.constants import CACHE_NAMES
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ViewAllowedRoles
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ViewAllowedRoles, ViewUserMapping
 from tests.fixture_helpers import set_user
 
 
@@ -52,6 +59,24 @@ def mock_clickhousequery_methods():
     ):
         with patch('futurex_openedx_extensions.helpers.admin.ClickhouseQuery.load_missing_queries'):
             yield
+
+
+@pytest.fixture
+def mock_get_fx_view_with_roles():
+    """Fixture to mock the get_fx_view_with_roles method."""
+    with patch(
+        'futurex_openedx_extensions.helpers.admin.get_fx_view_with_roles',
+        return_value={
+            '_all_view_names': {
+                'view_name9': Mock(authentication_classes=[BearerAuthentication]),
+                'view_name2': Mock(authentication_classes=[BearerAuthentication]),
+                'view_no_auth_classes': Mock(),
+                'view_no_bearer_class': Mock(authentication_classes=[]),
+            },
+        },
+    ) as mocked_result:
+        del mocked_result.return_value['_all_view_names']['view_no_auth_classes'].authentication_classes
+        yield
 
 
 def test_view_allowed_roles_admin_main_settings(view_allowed_roles_admin):  # pylint: disable=redefined-outer-name
@@ -179,3 +204,88 @@ def test_clickhouse_query_admin_load_missing_queries(
     ClickhouseQuery.load_missing_queries.assert_called_once()
     assert isinstance(response, HttpResponseRedirect)
     assert response.url == '/admin/fx_helpers/clickhousequery'
+
+
+@patch('futurex_openedx_extensions.helpers.admin.CourseAccessRoleForm')
+def test_view_allowed_roles_model_form(
+    mock_course_access_form, mock_get_fx_view_with_roles,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify the ViewAllowedRolesModelForm model form."""
+    mock_course_access_form.COURSE_ACCESS_ROLES = [('role99', 'role99'), ('role44', 'role44')]
+
+    form = ViewAllowedRolesModelForm()
+
+    assert isinstance(form.fields['view_name'], forms.TypedChoiceField)
+    assert form.fields['view_name'].choices == [
+        ('view_name2', 'view_name2'),
+        ('view_name9', 'view_name9'),
+        ('view_no_auth_classes', 'view_no_auth_classes'),
+        ('view_no_bearer_class', 'view_no_bearer_class'),
+    ]
+    assert isinstance(form.fields['allowed_role'], forms.TypedChoiceField)
+    assert form.fields['allowed_role'].choices == mock_course_access_form.COURSE_ACCESS_ROLES
+
+
+@pytest.mark.django_db
+def test_yes_no_filter_lookups():
+    """Verify the lookups method of the YesNoFilter."""
+    filter_instance = YesNoFilter(request=None, params={}, model=None, model_admin=None)
+    expected_lookups = [('yes', 'Yes'), ('no', 'No')]
+    assert filter_instance.lookups(None, None) == expected_lookups
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('no_yet_set_must_be_replaced, filter_called, expected_flag', [
+    ('yes', True, True),
+    ('no', True, False),
+    ('Yes', False, None),
+    ('NO', False, None),
+    ('something', False, None),
+    (None, False, None),
+])
+def test_yes_no_filter_queryset(no_yet_set_must_be_replaced, filter_called, expected_flag):
+    """Verify the queryset method of the YesNoFilter."""
+    filter_instance = YesNoFilter(
+        request=None,
+        params={'no_yet_set_must_be_replaced': no_yet_set_must_be_replaced},
+        model=None,
+        model_admin=None,
+    )
+    mock_queryset = Mock(spec=QuerySet)
+    mock_queryset.filter.return_value = 'filtered_queryset'
+    result = filter_instance.queryset(None, mock_queryset)
+    if filter_called:
+        mock_queryset.filter.assert_called_once_with(no_yet_set_must_be_replaced=expected_flag)
+        assert result == 'filtered_queryset'
+    else:
+        mock_queryset.filter.assert_not_called()
+        assert result == mock_queryset
+
+
+def test_view_user_mapping_model_form_initialization(
+    mock_get_fx_view_with_roles,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify the initialization of the ViewUserMappingModelForm."""
+    form = ViewUserMappingModelForm()
+
+    assert isinstance(form.fields['view_name'], forms.TypedChoiceField)
+    assert form.fields['view_name'].choices == [('view_name2', 'view_name2'), ('view_name9', 'view_name9')]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('attribute_name', [
+    'is_user_active', 'is_user_system_staff', 'has_access_role', 'usable',
+])
+def test_view_user_mapping_model_form_extra_attributes(attribute_name):
+    """Verify the extra attributes of the ViewUserMappingModelForm."""
+    obj = Mock(**{
+        'spec': ViewUserMapping,
+        f'get_{attribute_name}': Mock(return_value='testing-attribute'),
+    })
+
+    admin = ViewUserMappingHistoryAdmin(model=ViewUserMapping, admin_site=Mock())
+    attribute_to_test = getattr(admin, attribute_name)
+    assert attribute_to_test(obj) == 'testing-attribute'
+    assert attribute_to_test.short_description == attribute_name.replace('_', ' ').title()
+    assert attribute_to_test.boolean is True
+    assert attribute_to_test.admin_order_field == attribute_name

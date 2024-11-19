@@ -98,7 +98,9 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
         if not super().has_permission(request, view) or not request.user.is_active:
             raise NotAuthenticated()
 
-        view_allowed_roles: List[str] = view.get_allowed_roles_all_views()[view.fx_view_name]
+        view_allowed_roles: List[str] = view.get_view_user_roles_mapping(
+            view_name=view.fx_view_name, user=request.user,
+        )
         tenant_ids_string: str | None = request.GET.get('tenant_ids')
 
         if tenant_ids_string:

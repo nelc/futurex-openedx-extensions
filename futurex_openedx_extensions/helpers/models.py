@@ -4,15 +4,19 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Tuple
 
+from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import BooleanField, Case, Exists, F, OuterRef, Q, Value, When
 from django.utils import timezone
 from eox_tenant.models import TenantConfig
+from opaque_keys.edx.django.models import CourseKeyField
 from simple_history.models import HistoricalRecords
 
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
-from futurex_openedx_extensions.helpers.converters import DateMethods
+from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.converters import DateMethods, get_allowed_roles
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 
 User = get_user_model()
@@ -32,6 +36,123 @@ class ViewAllowedRoles(models.Model):
         verbose_name = 'View Allowed Role'
         verbose_name_plural = 'View Allowed Roles'
         unique_together = ('view_name', 'allowed_role')
+
+
+class ViewUserMappingManager(models.Manager):  # pylint: disable=too-few-public-methods
+    """Manager for the ViewUserMapping model"""
+    def get_queryset(self) -> models.QuerySet:
+        """Get the queryset for the model"""
+        queryset = super().get_queryset()
+        allowed_roles = get_allowed_roles(cs.COURSE_ACCESS_ROLES_USER_VIEW_MAPPING)
+
+        queryset = queryset.annotate(
+            is_user_active=F('user__is_active'),
+        ).annotate(
+            is_user_system_staff=F('user__is_superuser').bitor(F('user__is_staff')),
+        ).annotate(
+            has_access_role=Exists(
+                CourseAccessRole.objects.filter(
+                    user_id=OuterRef('user_id'),
+                ).filter(
+                    (
+                        Q(role__in=allowed_roles['global']) &
+                        Q(org='') &
+                        Q(course_id=CourseKeyField.Empty)
+                    ) |
+                    (
+                        Q(role__in=allowed_roles['tenant_only']) &
+                        ~Q(org='') &
+                        Q(course_id=CourseKeyField.Empty)
+                    ) |
+                    (
+                        Q(role__in=allowed_roles['course_only']) &
+                        ~Q(org='') &
+                        ~Q(course_id=CourseKeyField.Empty)
+                    ) |
+                    (
+                        Q(role__in=allowed_roles['tenant_or_course']) &
+                        ~Q(org='')
+                    )
+                ),
+            ),
+        ).annotate(
+            usable=Case(
+                When(
+                    Q(is_user_active=True) & (
+                        Q(is_user_system_staff=True) | (
+                            (Q(has_access_role=True)) &
+                            Q(enabled=True) &
+                            (Q(expires_at__isnull=True) | Q(expires_at__gte=timezone.now()))
+                        )
+                    ),
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+        )
+
+        return queryset
+
+
+class ViewUserMapping(models.Model):
+    """Allowed roles for every supported view"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    view_name = models.CharField(max_length=255)
+    enabled = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    history = HistoricalRecords()
+
+    objects = ViewUserMappingManager()
+
+    def get_annotated_attribute(self, attribute: str) -> Any:
+        """
+        Get the annotated attribute.
+
+        :param attribute: The attribute to get.
+        :type attribute: str
+        :return: The annotated attribute.
+        :rtype: Any
+        """
+        return getattr(self, attribute, getattr(ViewUserMapping.objects.filter(pk=self.pk).first(), attribute))
+
+    def get_is_user_active(self) -> bool:
+        """Return the value of the annotated field is_user_active."""
+        return self.get_annotated_attribute('is_user_active')
+
+    def get_is_user_system_staff(self) -> bool:
+        """Return the value of the annotated field is_user_system_staff."""
+        return self.get_annotated_attribute('is_user_system_staff')
+
+    def get_has_access_role(self) -> bool:
+        """Return the value of the annotated field has_access_role."""
+        return self.get_annotated_attribute('has_access_role')
+
+    def get_usable(self) -> bool:
+        """Return the value of the annotated field usable."""
+        return self.get_annotated_attribute('usable')
+
+    @classmethod
+    def is_usable_access(cls, user: get_user_model, view_name: str) -> bool:
+        """
+        Check if the user has usable access to the view.
+
+        :param user: The user to check.
+        :type user: User
+        :param view_name: The name of the view.
+        :type view_name: str
+        :return: True if the user has usable access to the view.
+        :rtype: bool
+        """
+        record = cls.objects.filter(user=user, view_name=view_name).first()
+        return record is not None and record.get_usable()
+
+    class Meta:
+        """Metaclass for the model"""
+        verbose_name = 'View-User Mapping'
+        verbose_name_plural = 'Views-Users Mapping'
+        unique_together = ('user', 'view_name')
 
 
 class ClickhouseQuery(models.Model):

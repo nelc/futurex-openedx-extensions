@@ -33,7 +33,7 @@ from futurex_openedx_extensions.helpers.extractors import (
     get_orgs_of_courses,
     verify_course_ids,
 )
-from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
+from futurex_openedx_extensions.helpers.models import ViewAllowedRoles, ViewUserMapping
 from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset
 from futurex_openedx_extensions.helpers.tenants import (
     get_all_tenant_ids,
@@ -523,6 +523,29 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
                 ])
 
         return result
+
+    def get_view_user_roles_mapping(self, view_name: str, user: get_user_model) -> List[str]:
+        """
+        Get the allowed roles on the view for the user.
+
+        :param view_name: The view name
+        :type view_name: str
+        :param user: The user
+        :type user: get_user_model
+        :return: The allowed roles on the view for the user
+        :rtype: list
+        """
+        view_allowed_roles = list(
+            set(self.get_allowed_roles_all_views().get(view_name, [])) -
+            set(cs.COURSE_ACCESS_ROLES_USER_VIEW_MAPPING)
+        )
+
+        if is_system_staff_user(user) or ViewUserMapping.is_usable_access(user, view_name):
+            view_allowed_roles.extend(cs.COURSE_ACCESS_ROLES_USER_VIEW_MAPPING)
+        else:
+            view_allowed_roles = list(set(view_allowed_roles) - set(cs.COURSE_ACCESS_ROLES_USER_VIEW_MAPPING))
+
+        return view_allowed_roles
 
 
 def get_usernames_with_access_roles(orgs: list[str], active_filter: None | bool = None) -> list[str]:

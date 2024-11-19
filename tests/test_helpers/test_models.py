@@ -1,12 +1,15 @@
 """Tests for models module."""
+from itertools import product
 from unittest.mock import Mock, patch
 
 import pytest
+from common.djangoapps.student.models import CourseAccessRole
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from futurex_openedx_extensions.helpers.clickhouse_operations import ClickhouseBaseError
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask, ViewUserMapping
 
 
 @pytest.fixture
@@ -37,6 +40,16 @@ def get_client_mock(settings):
             __exit__=lambda *_: None,
         )
         yield mocked
+
+
+@pytest.fixture
+def view_user_mapping():
+    """Return a ViewUserMapping instance."""
+    return ViewUserMapping(
+        user_id=1,
+        view_name='test_view',
+        enabled=True,
+    )
 
 
 @pytest.mark.parametrize('sample_data, configured_type, expected_result', [
@@ -521,3 +534,80 @@ def test_data_export_task_set_progress_invalid_value(base_data, invalid_progress
         DataExportTask.set_progress(task.id, invalid_progress)
     assert exc_info.value.code == FXExceptionCodes.EXPORT_CSV_TASK_INVALID_PROGRESS_VALUE.value
     assert str(exc_info.value) == f'Invalid progress value! ({invalid_progress}).'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('role_definition, is_staff, is_active, enabled, expires_at', product(
+    [  # expected_permitted , role, org, course_id
+        (True, 'global', '', ''),
+        (True, 'tenant_only', 'org1', ''),
+        (True, 'course_only', 'org1', 'course-v1:org+1+1'),
+        (True, 'tenant_or_course', 'org1', ''),
+        (True, 'tenant_or_course', 'org1', 'course-v1:org+1+1'),
+        (False, 'global', 'org', ''),
+        (False, 'global', 'org', 'course-v1:org+1+1'),
+        (False, 'global', '', 'course-v1:org+1+1'),
+        (False, 'tenant_only', '', ''),
+        (False, 'tenant_only', 'org1', 'course-v1:org+1+1'),
+        (False, 'tenant_only', '', 'course-v1:org+1+1'),
+        (False, 'course_only', '', 'course-v1:org+1+1'),
+        (False, 'course_only', 'org1', ''),
+        (False, 'course_only', '', ''),
+        (False, 'tenant_or_course', '', ''),
+        (False, 'tenant_or_course', '', 'course-v1:org+1+1'),
+    ],
+    [True, False],
+    [True, False],
+    [True, False],
+    [None, timezone.now() + timezone.timedelta(minutes=1), timezone.now() + timezone.timedelta(minutes=-1)],
+))
+def test_view_user_mapping_manager_get_queryset(
+    role_definition, is_staff, is_active, enabled, expires_at, base_data, view_user_mapping,
+):  # pylint: disable=unused-argument, too-many-arguments, redefined-outer-name
+    """
+    Verify that ViewAllowedRolesManager.get_queryset returns correct value. This is a critical test that ensures
+    that get_queryset method is returning the correct queryset based on the role definition and user properties. The
+    returned annotations will determine if an API mapping is usable or not. This why we test all possible combinations
+    of the role definition and user properties with no exceptions.
+    """
+    user_id = 1
+    expected_permitted = role_definition[0]
+    role = role_definition[1]
+    org = role_definition[2]
+    course_id = role_definition[3]
+    CourseAccessRole.objects.create(
+        user_id=user_id,
+        role=role,
+        org=org,
+        course_id=course_id,
+    )
+    view_user_mapping.user.is_staff = is_staff
+    view_user_mapping.user.is_superuser = is_staff
+    view_user_mapping.user.is_active = is_active
+    view_user_mapping.user.save()
+    view_user_mapping.enabled = enabled
+    view_user_mapping.expires_at = expires_at
+    view_user_mapping.save()
+
+    expected_usable = is_active and (
+        is_staff or (
+            expected_permitted and enabled and (
+                expires_at is None or expires_at > timezone.now()
+            )
+        )
+    )
+
+    with patch('futurex_openedx_extensions.helpers.models.get_allowed_roles') as mocked_roles:
+        mocked_roles.return_value = {
+            'global': ['global'],
+            'tenant_only': ['tenant_only'],
+            'course_only': ['course_only'],
+            'tenant_or_course': ['tenant_or_course'],
+        }
+        assert view_user_mapping.get_is_user_active() == is_active
+        assert view_user_mapping.get_is_user_system_staff() == is_staff
+        assert view_user_mapping.get_has_access_role() == expected_permitted
+        assert view_user_mapping.get_usable() == expected_usable
+        assert ViewUserMapping.is_usable_access(
+            view_user_mapping.user, view_user_mapping.view_name,
+        ) == expected_usable

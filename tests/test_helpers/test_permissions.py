@@ -22,7 +22,7 @@ from tests.fixture_helpers import get_all_orgs, set_user
 @pytest.fixture
 def dummy_view():
     """Dummy view fixture"""
-    class DummyView:  # pylint: disable=too-few-public-methods
+    class DummyView:
         """Dummy view class"""
         fx_view_name = 'dummyView'
 
@@ -32,8 +32,12 @@ def dummy_view():
             }
 
         def get_allowed_roles_all_views(self):
-            """Get allowed roles for all views"""
-            return self.result_of_method
+            """Adding method to bypass the type check"""
+
+        def get_view_user_roles_mapping(self, user, view_name):  # pylint: disable=unused-argument
+            """Get view user roles mapping"""
+            return self.result_of_method[view_name]
+
     return DummyView()
 
 
