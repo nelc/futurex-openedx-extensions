@@ -1,6 +1,7 @@
 """edx-platform models mocks for testing purposes."""
 import re
 
+from django import forms
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models.fields import AutoField
@@ -306,3 +307,13 @@ class ExtraInfo(models.Model):
     class Meta:
         app_label = 'fake_models'
         db_table = 'custom_reg_form_extra_info'
+
+
+class CourseAccessRoleForm(forms.ModelForm):
+    """Mock"""
+    class Meta:
+        model = CourseAccessRole
+        fields = '__all__'
+
+    COURSE_ACCESS_ROLES = []
+    role = forms.ChoiceField(choices=COURSE_ACCESS_ROLES)

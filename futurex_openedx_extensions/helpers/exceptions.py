@@ -40,6 +40,8 @@ class FXExceptionCodes(Enum):
 
     QUERY_SET_BAD_OPERATION = 8001
 
+    CUSTOM_ROLE_DUPLICATE_DECLARATION = 9001
+
 
 class FXCodedException(Exception):
     """Exception with a code."""

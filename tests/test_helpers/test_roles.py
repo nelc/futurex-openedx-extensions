@@ -784,6 +784,38 @@ def test_fx_view_role_mixin_fx_permission_info_available():
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('is_staff, is_usable, expected_allowed', [
+    (False, False, False),
+    (True, False, True),
+    (False, True, True),
+    (True, True, True),
+])
+@patch('futurex_openedx_extensions.helpers.roles.ViewUserMapping.is_usable_access')
+@patch('futurex_openedx_extensions.helpers.roles.is_system_staff_user')
+def test_fx_view_role_mixin_get_view_user_roles_mapping_allowed(
+    mock_is_staff, mock_is_usable, is_staff, is_usable, expected_allowed, base_data,
+):  # pylint: disable=unused-argument, too-many-arguments
+    """Verify that get_view_user_roles_mapping returns the expected result for system staff users."""
+    mock_is_staff.return_value = is_staff
+    mock_is_usable.return_value = is_usable
+
+    mixin = FXViewRoleInfoMixin()
+    mixin.get_allowed_roles_all_views = Mock(
+        return_value={'view1': ['staff', cs.COURSE_ACCESS_ROLES_USER_VIEW_MAPPING[0]]}
+    )
+    user = get_user_model().objects.create(username='test_user')
+
+    assert not DeepDiff(
+        mixin.get_view_user_roles_mapping('view1', user),
+        ['staff'] + cs.COURSE_ACCESS_ROLES_USER_VIEW_MAPPING if expected_allowed else ['staff'],
+    )
+    assert not DeepDiff(
+        mixin.get_view_user_roles_mapping('view2', user),
+        cs.COURSE_ACCESS_ROLES_USER_VIEW_MAPPING if expected_allowed else [],
+    )
+
+
+@pytest.mark.django_db
 def test_get_usernames_with_access_roles(base_data):  # pylint: disable=unused-argument
     """Verify that get_usernames_with_access_roles returns the expected value."""
     user3 = get_user_model().objects.get(username='user3')
