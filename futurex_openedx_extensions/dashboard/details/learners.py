@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from common.djangoapps.student.models import CourseEnrollment
 from django.contrib.auth import get_user_model
-from django.db.models import BooleanField, Case, Count, Exists, OuterRef, Q, Subquery, Value, When
+from django.db.models import BooleanField, Case, Count, Exists, IntegerField, OuterRef, Q, Subquery, Value, When
+from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.utils import timezone
 from lms.djangoapps.certificates.models import GeneratedCertificate
@@ -17,6 +19,7 @@ from futurex_openedx_extensions.helpers.querysets import (
     get_learners_search_queryset,
     get_one_user_queryset,
     get_permitted_learners_queryset,
+    update_removable_annotations,
 )
 
 
@@ -25,7 +28,7 @@ def get_courses_count_for_learner_queryset(
     visible_courses_filter: bool | None = True,
     active_courses_filter: bool | None = None,
     include_staff: bool = False,
-) -> Count:
+) -> Coalesce:
     """
     Annotate the given queryset with the courses count for the learner.
 
@@ -37,36 +40,37 @@ def get_courses_count_for_learner_queryset(
     :type active_courses_filter: bool | None
     :param include_staff: flag to include staff users
     :type include_staff: bool
-    :return: Count of learners
-    :rtype: Count
+    :return: Count of enrolled courses
+    :rtype: Coalesce
     """
     if not include_staff:
         is_staff_queryset = check_staff_exist_queryset(
-            ref_user_id='id', ref_org='courseenrollment__course__org', ref_course_id='courseenrollment__course_id',
+            ref_user_id='user_id', ref_org='course__org', ref_course_id='course_id',
         )
     else:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))
 
-    return Count(
-        'courseenrollment',
-        filter=(
-            Q(courseenrollment__course_id__in=get_base_queryset_courses(
+    return Coalesce(Subquery(
+        CourseEnrollment.objects.filter(
+            user_id=OuterRef('id'),
+            course_id__in=get_base_queryset_courses(
                 fx_permission_info,
                 visible_filter=visible_courses_filter,
                 active_filter=active_courses_filter,
-            )) &
-            Q(courseenrollment__is_active=True) &
-            ~is_staff_queryset
-        ),
-        distinct=True
-    )
+            ),
+            is_active=True,
+        ).filter(
+            ~is_staff_queryset,
+        ).values('user_id').annotate(count=Count('id')).values('count'),
+        output_field=IntegerField(),
+    ), 0)
 
 
 def get_certificates_count_for_learner_queryset(
     fx_permission_info: dict,
     visible_courses_filter: bool | None = True,
     active_courses_filter: bool | None = None,
-) -> Count:
+) -> Coalesce:
     """
     Annotate the given queryset with the certificate counts.
 
@@ -76,23 +80,23 @@ def get_certificates_count_for_learner_queryset(
     :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
     :type active_courses_filter: bool | None
-    :return: QuerySet of learners
-    :rtype: QuerySet
+    :return: Count of certificates
+    :rtype: Coalesce
     """
-    return Count(
-        'generatedcertificate',
-        filter=(
-            Q(generatedcertificate__course_id__in=Subquery(
+    return Coalesce(Subquery(
+        GeneratedCertificate.objects.filter(
+            user_id=OuterRef('id'),
+            course_id__in=Subquery(
                 get_base_queryset_courses(
                     fx_permission_info,
                     visible_filter=visible_courses_filter,
                     active_filter=active_courses_filter
                 ).values_list('id', flat=True)
-            )) &
-            Q(generatedcertificate__status='downloadable')
-        ),
-        distinct=True
-    )
+            ),
+            status='downloadable',
+        ).values('user_id').annotate(count=Count('id')).values('count'),
+        output_field=IntegerField(),
+    ), 0)
 
 
 def get_learners_queryset(
@@ -140,6 +144,8 @@ def get_learners_queryset(
             active_courses_filter=active_courses_filter,
         )
     ).select_related('profile', 'extrainfo').order_by('id')
+
+    update_removable_annotations(queryset, removable=['courses_count', 'certificates_count'])
 
     return queryset
 
@@ -202,6 +208,8 @@ def get_learners_by_course_queryset(
         )
     ).select_related('profile').order_by('id')
 
+    update_removable_annotations(queryset, removable=['certificate_available', 'course_score', 'active_in_course'])
+
     return queryset
 
 
@@ -248,5 +256,7 @@ def get_learner_info_queryset(
             active_courses_filter=active_courses_filter,
         )
     ).select_related('profile')
+
+    update_removable_annotations(queryset, removable=['courses_count', 'certificates_count'])
 
     return queryset

@@ -29,4 +29,6 @@ class HelpersConfig(AppConfig):
 
     def ready(self) -> None:
         """Connect handlers to send notifications about discussions."""
+        from futurex_openedx_extensions.helpers import \
+            monkey_patches  # pylint: disable=unused-import, import-outside-toplevel
         from futurex_openedx_extensions.helpers import signals  # pylint: disable=unused-import, import-outside-toplevel

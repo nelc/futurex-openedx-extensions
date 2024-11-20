@@ -5,7 +5,7 @@ from typing import List
 
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
-from django.db.models import BooleanField, Case, Exists, OuterRef, Q, Value, When
+from django.db.models import BooleanField, Case, Count, Exists, OuterRef, Q, Value, When
 from django.db.models.query import QuerySet
 from django.utils.timezone import now
 from opaque_keys.edx.django.models import CourseKeyField
@@ -16,6 +16,64 @@ from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXEx
 from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 from futurex_openedx_extensions.helpers.users import get_user_by_key
+
+
+def verify_queryset_removable_annotations(queryset: QuerySet) -> None:
+    """
+    Verify that the queryset has the removable annotations set.
+
+    :param queryset: QuerySet to verify
+    :type queryset: QuerySet
+    """
+    if not hasattr(queryset, 'removable_annotations'):
+        return
+
+    for key in queryset.removable_annotations:
+        if isinstance(queryset.query.annotations.get(key, None), Count):
+            raise FXCodedException(
+                code=FXExceptionCodes.QUERY_SET_BAD_OPERATION,
+                message=(
+                    f'Cannot set annotation `{key}` of type `Count` as removable. You must unset it from the '
+                    f'removable annotations list, or replace the `Count` annotation with `Subquery`.'
+                ),
+            )
+
+
+def update_removable_annotations(
+    queryset: QuerySet,
+    removable: set | List[str] | None = None,
+    not_removable: set | List[str] | None = None,
+) -> None:
+    """
+    Update the removable annotations on the given queryset.
+
+    :param queryset: QuerySet to update
+    :type queryset: QuerySet
+    :param removable: Set of annotations to add to the removable annotations
+    :type removable: set(str) | List[str] | None
+    :param not_removable: Set of annotations to remove from the removable annotations
+    :type not_removable: set(str) | List[str] | None
+    """
+    removable_annotations = queryset.removable_annotations if hasattr(queryset, 'removable_annotations') else set()
+    removable_annotations = (removable_annotations | set(removable or [])) - set(not_removable or [])
+
+    if not removable_annotations and hasattr(queryset, 'removable_annotations'):
+        del queryset.removable_annotations
+
+    elif removable_annotations:
+        queryset.removable_annotations = removable_annotations
+        verify_queryset_removable_annotations(queryset)
+
+
+def clear_removable_annotations(queryset: QuerySet) -> None:
+    """
+    Clear the removable annotations on the given queryset.
+
+    :param queryset: QuerySet to clear the removable annotations from
+    :type queryset: QuerySet
+    """
+    if hasattr(queryset, 'removable_annotations'):
+        del queryset.removable_annotations
 
 
 def check_staff_exist_queryset(
@@ -137,11 +195,15 @@ def get_base_queryset_courses(
         ),
     )
 
+    update_removable_annotations(q_set, removable=['course_is_active', 'course_is_visible'])
+
     if active_filter is not None:
         q_set = q_set.filter(course_is_active=active_filter)
+        update_removable_annotations(q_set, not_removable=['course_is_active'])
 
     if visible_filter is not None:
         q_set = q_set.filter(course_is_visible=visible_filter)
+        update_removable_annotations(q_set, not_removable=['course_is_visible'])
 
     return q_set
 
