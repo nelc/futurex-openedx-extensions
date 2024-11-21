@@ -233,7 +233,7 @@ class LearnerDetailsSerializer(LearnerBasicDetailsSerializer):
 class LearnerDetailsForCourseSerializer(LearnerBasicDetailsSerializer):
     """Serializer for learner details for a course."""
     certificate_available = serializers.BooleanField()
-    course_score = serializers.DecimalField(max_digits=5, decimal_places=2)
+    course_score = serializers.FloatField()
     active_in_course = serializers.BooleanField()
     progress = SerializerOptionalMethodField(field_tags=['progress', 'csv_export'])
     certificate_url = SerializerOptionalMethodField(field_tags=['certificate_url', 'csv_export'])

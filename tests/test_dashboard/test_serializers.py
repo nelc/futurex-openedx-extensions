@@ -263,7 +263,7 @@ def test_learner_details_for_course_serializer(mock_collect, base_data,):  # pyl
     data = serializer.data
     assert len(data) == 1
     assert data[0]['certificate_available'] is True
-    assert data[0]['course_score'] == '0.67'
+    assert data[0]['course_score'] == 0.67
     assert data[0]['active_in_course'] is True
 
 
