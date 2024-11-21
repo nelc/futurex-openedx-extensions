@@ -1,4 +1,7 @@
 """Constants for the FutureX Open edX Extensions app."""
+from openedx.core.lib.api.authentication import BearerAuthentication
+from rest_framework.authentication import SessionAuthentication
+
 CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST = 'fx_course_org_filter_list'
 CACHE_NAME_ALL_TENANTS_INFO = 'fx_tenants_info'
 CACHE_NAME_ALL_VIEW_ROLES = 'fx_view_roles'
@@ -112,3 +115,5 @@ USER_KEY_TYPE_EMAIL = 'email'
 USER_KEY_TYPE_NOT_ID = 'username/email'
 
 CSV_TASK_LIMIT_PER_USER = 3
+
+FX_VIEW_DEFAULT_AUTH_CLASSES = [SessionAuthentication, BearerAuthentication]

@@ -43,6 +43,7 @@ from futurex_openedx_extensions.helpers.constants import (
     COURSE_ACCESS_ROLES_SUPPORTED_READ,
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
+    FX_VIEW_DEFAULT_AUTH_CLASSES,
 )
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -69,6 +70,8 @@ from futurex_openedx_extensions.helpers.roles import (
 from futurex_openedx_extensions.helpers.tenants import get_tenants_info
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
+default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
+
 
 class TotalCountsView(APIView, FXViewRoleInfoMixin):
     """
@@ -91,6 +94,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         STAT_LEARNERS: 'learners_count',
     }
 
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'total_counts_statistics'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
@@ -182,8 +186,9 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
 
 class LearnersView(ListAPIView, FXViewRoleInfoMixin):
     """View to get the list of learners"""
-    serializer_class = serializers.LearnerDetailsSerializer
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
+    serializer_class = serializers.LearnerDetailsSerializer
     pagination_class = DefaultPagination
     fx_view_name = 'learners_list'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
@@ -203,8 +208,9 @@ class LearnersView(ListAPIView, FXViewRoleInfoMixin):
 
 class CoursesView(ListAPIView, FXViewRoleInfoMixin):
     """View to get the list of courses"""
-    serializer_class = serializers.CourseDetailsSerializer
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
+    serializer_class = serializers.CourseDetailsSerializer
     pagination_class = DefaultPagination
     filter_backends = [DefaultOrderingFilter]
     ordering_fields = [
@@ -231,6 +237,7 @@ class CoursesView(ListAPIView, FXViewRoleInfoMixin):
 
 class CourseStatusesView(APIView, FXViewRoleInfoMixin):
     """View to get the course statuses"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'course_statuses'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
@@ -264,6 +271,7 @@ class CourseStatusesView(APIView, FXViewRoleInfoMixin):
 
 class LearnerInfoView(APIView, FXViewRoleInfoMixin):
     """View to get the information of a learner"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'learner_detailed_info'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
@@ -298,8 +306,9 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
 
 class DataExportManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # pylint: disable=too-many-ancestors
     """View to list and retrieve data export tasks."""
-    serializer_class = serializers.DataExportTaskSerializer
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
+    serializer_class = serializers.DataExportTaskSerializer
     pagination_class = DefaultPagination
     fx_view_name = 'exported_files_data'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
@@ -328,6 +337,7 @@ class DataExportManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # p
 
 class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
     """View to get the list of courses for a learner"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
     fx_view_name = 'learner_courses'
@@ -399,6 +409,7 @@ class AccessibleTenantsInfoView(APIView):
 
 class LearnersDetailsForCourseView(ExportCSVMixin, ListAPIView, FXViewRoleInfoMixin):
     """View to get the list of learners for a course"""
+    authentication_classes = default_auth_classes
     serializer_class = serializers.LearnerDetailsForCourseSerializer
     permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
@@ -467,6 +478,7 @@ class LearnersEnrollmentView(ListAPIView, FXViewRoleInfoMixin):
 
 class GlobalRatingView(APIView, FXViewRoleInfoMixin):
     """View to get the global rating"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'global_rating'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
@@ -494,6 +506,7 @@ class GlobalRatingView(APIView, FXViewRoleInfoMixin):
 
 class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # pylint: disable=too-many-ancestors
     """View to get the user roles"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'user_roles'
     fx_default_read_only_roles = ['org_course_creator_group']
@@ -656,6 +669,7 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
 
 class MyRolesView(APIView, FXViewRoleInfoMixin):
     """View to get the user roles of the caller"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'my_roles'
     fx_default_read_only_roles = COURSE_ACCESS_ROLES_SUPPORTED_READ.copy()
@@ -672,6 +686,7 @@ class MyRolesView(APIView, FXViewRoleInfoMixin):
 
 class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
     """View to get the Clickhouse query"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'clickhouse_query_fetcher'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
