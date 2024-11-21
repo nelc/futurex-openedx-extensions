@@ -4,6 +4,8 @@ from __future__ import annotations
 from typing import Any
 
 import yaml  # type: ignore
+from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import UserAdmin
 from django.contrib import admin
 from django.core.cache import cache
 from django.http import Http404, HttpResponseRedirect
@@ -139,6 +141,7 @@ class CacheInvalidatorAdmin(admin.ModelAdmin):
 
 class DataExportTaskAdmin(admin.ModelAdmin):
     """Admin class of DataExportTask model"""
+    raw_id_fields = ('user', 'tenant')
     list_display = ('id', 'view_name', 'status', 'progress', 'user', 'notes',)
     search_fields = ('filename', 'user__email', 'user__username', 'notes')
 
