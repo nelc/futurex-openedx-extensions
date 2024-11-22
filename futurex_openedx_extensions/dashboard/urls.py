@@ -25,6 +25,9 @@ urlpatterns = [
         fr'^api/fx/learners/v1/learners/{COURSE_ID_REGX}/$',
         views.LearnersDetailsForCourseView.as_view(), name='learners-course'),
     re_path(
+        r'^api/fx/learners/v1/enrollments/$',
+        views.LearnersEnrollmentView.as_view(), name='learners-enrollements'),
+    re_path(
         r'^api/fx/learners/v1/learner/' + settings.USERNAME_PATTERN + '/$',
         views.LearnerInfoView.as_view(),
         name='learner-info'
