@@ -8,6 +8,7 @@ import tempfile
 from typing import Any, Generator, Optional, Tuple
 from urllib.parse import urlencode, urlparse
 
+import boto3
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
@@ -15,6 +16,7 @@ from django.core.files.storage import default_storage
 from django.urls import resolve
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
+from storages.backends.s3boto3 import S3Boto3Storage
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import DataExportTask
@@ -240,11 +242,36 @@ def export_data_to_csv(
     )
 
 
+def generate_file_url(storage_path: str) -> str:
+    """
+    Generate a signed URL if default storage is S3, otherwise return the normal URL.
+
+    :param storage_path: The path to the file in storage.
+    :type storage_path: str
+
+    :return: Signed or normal URL.
+    """
+    if not isinstance(default_storage, S3Boto3Storage):
+        return default_storage.url(storage_path)
+
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+    )
+    return s3_client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': settings.AWS_STORAGE_BUCKET_NAME, 'Key': storage_path},
+        HttpMethod='GET',
+        ExpiresIn=3600
+    )
+
+
 def get_exported_file_url(fx_task: DataExportTask) -> Optional[str]:
     """Get file URL"""
     if fx_task.status == fx_task.STATUS_COMPLETED:
         storage_path = os.path.join(_get_storage_dir(str(fx_task.tenant.id)), fx_task.filename)
         if default_storage.exists(storage_path):
-            return default_storage.url(storage_path)
+            return generate_file_url(storage_path)
         log.warning('CSV Export: file not found for completed task %s: %s', fx_task.id, storage_path)
     return None
