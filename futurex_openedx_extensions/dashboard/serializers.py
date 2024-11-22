@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Tuple
 
+from common.djangoapps.student.models import CourseEnrollment
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
 from lms.djangoapps.courseware.courses import get_course_blocks_completion_summary
@@ -81,15 +82,15 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
     user_id = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
     alternative_full_name = serializers.SerializerMethodField()
-    username = serializers.CharField()
+    username = serializers.SerializerMethodField()
     national_id = serializers.SerializerMethodField()
-    email = serializers.EmailField()
+    email = serializers.SerializerMethodField()
     mobile_no = serializers.SerializerMethodField()
     year_of_birth = serializers.SerializerMethodField()
     gender = serializers.SerializerMethodField()
     gender_display = serializers.SerializerMethodField()
-    date_joined = serializers.DateTimeField()
-    last_login = serializers.DateTimeField()
+    date_joined = serializers.SerializerMethodField()
+    last_login = serializers.SerializerMethodField()
 
     class Meta:
         model = get_user_model()
@@ -117,6 +118,16 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
         """
         return all(ord(char) < 128 for char in text)
 
+    def _get_user(self, obj: Any = None) -> get_user_model | None:  # pylint: disable=no-self-use
+        """
+        Retrieve the associated user for the given object.
+
+        This method can be overridden in child classes to provide a different
+        implementation for accessing the user, depending on how the user is
+        related to the object (e.g., `obj.user`, `obj.profile.user`, etc.).
+        """
+        return obj
+
     def _get_name(self, obj: Any, alternative: bool = False) -> str:
         """
         Calculate the full name and alternative full name. We have two issues in the data:
@@ -129,8 +140,8 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
         :type alternative: bool
         :return: The full name or alternative full name.
         """
-        first_name = obj.first_name.strip()
-        last_name = obj.last_name.strip()
+        first_name = self._get_user(obj).first_name.strip()  # type: ignore
+        last_name = self._get_user(obj).last_name.strip()  # type: ignore
 
         full_name = first_name or last_name
         if first_name and last_name and not (first_name == last_name and ' ' in first_name):
@@ -166,19 +177,35 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
             arabic_full_name = ' '.join(filter(None, (arabic_first_name, arabic_last_name)))
         return (arabic_full_name or '').strip()
 
-    @staticmethod
-    def _get_profile_field(obj: get_user_model, field_name: str) -> Any:
+    def _get_profile_field(self: Any, obj: get_user_model, field_name: str) -> Any:
         """Get the profile field value."""
-        return getattr(obj.profile, field_name) if hasattr(obj, 'profile') and obj.profile else None
+        user = self._get_user(obj)
+        return getattr(user.profile, field_name) if hasattr(user, 'profile') and user.profile else None
 
-    @staticmethod
-    def _get_extra_field(obj: get_user_model, field_name: str) -> Any:
+    def _get_extra_field(self: Any, obj: get_user_model, field_name: str) -> Any:
         """Get the extra field value."""
-        return getattr(obj.extrainfo, field_name) if hasattr(obj, 'extrainfo') and obj.extrainfo else None
+        user = self._get_user(obj)
+        return getattr(user.extrainfo, field_name) if hasattr(user, 'extrainfo') and user.extrainfo else None
 
     def get_user_id(self, obj: get_user_model) -> Any:  # pylint: disable=no-self-use
         """Return user ID."""
         return obj.id
+
+    def get_email(self, obj: get_user_model) -> str:
+        """Return user ID."""
+        return self._get_user(obj).email  # type: ignore
+
+    def get_username(self, obj: get_user_model) -> str:
+        """Return user ID."""
+        return self._get_user(obj).username  # type: ignore
+
+    def get_date_joined(self, obj: Any) -> str | None:
+        date_joined = self._get_user(obj).date_joined  # type: ignore
+        return date_joined.isoformat() if date_joined else None
+
+    def get_last_login(self, obj: Any) -> str | None:
+        last_login = self._get_user(obj).last_login  # type: ignore
+        return last_login.isoformat() if last_login else None
 
     def get_national_id(self, obj: get_user_model) -> Any:
         """Return national ID."""
@@ -209,6 +236,125 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
         return self._get_profile_field(obj, 'year_of_birth')
 
 
+class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
+    """
+    Course Score and Certificate Details Serializer
+    """
+    exam_scores = SerializerOptionalMethodField(field_tags=['exam_scores', 'csv_export'])
+    certificate_available = serializers.BooleanField()
+    course_score = serializers.FloatField()
+    active_in_course = serializers.BooleanField()
+    progress = SerializerOptionalMethodField(field_tags=['progress', 'csv_export'])
+    certificate_url = SerializerOptionalMethodField(field_tags=['certificate_url', 'csv_export'])
+
+    class Meta:
+        fields = [
+            'certificate_available',
+            'course_score',
+            'active_in_course',
+            'progress',
+            'certificate_url',
+            'exam_scores'
+        ]
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        """Initialize the serializer."""
+        super().__init__(*args, **kwargs)
+        self._is_exam_name_in_header = self.context.get('omit_subsection_name', '0') != '1'
+        self._grading_info: Dict[str, Any] = {}
+        self._subsection_locations: Dict[str, Any] = {}
+
+    def collect_grading_info(self, course_ids: list) -> None:
+        """Collect the grading info."""
+        self._grading_info = {}
+        self._subsection_locations = {}
+        index = 0
+        if not self.is_optional_field_requested('exam_scores'):
+            return
+        for course_id in course_ids:
+            grading_context = grading_context_for_course(get_course_by_id(course_id))
+            for assignment_type_name, subsection_infos in grading_context['all_graded_subsections_by_type'].items():
+                for subsection_index, subsection_info in enumerate(subsection_infos, start=1):
+                    header_enum = f' {subsection_index}' if len(subsection_infos) > 1 else ''
+                    header_name = f'{assignment_type_name}{header_enum}'
+                    if self.is_exam_name_in_header:
+                        header_name += f': {subsection_info["subsection_block"].display_name}'
+                    self._grading_info[str(index)] = {
+                        'header_name': header_name,
+                        'location': str(subsection_info['subsection_block'].location),
+                    }
+                    self._subsection_locations[str(subsection_info['subsection_block'].location)] = str(index)
+                    index += 1
+
+    @property
+    def is_exam_name_in_header(self) -> bool:
+        """Check if the exam name is needed in the header."""
+        return self._is_exam_name_in_header
+
+    @property
+    def grading_info(self) -> Dict[str, Any]:
+        """Get the grading info."""
+        return self._grading_info
+
+    @property
+    def subsection_locations(self) -> Dict[str, Any]:
+        """Get the subsection locations."""
+        return self._subsection_locations
+
+    def _get_course_id(self, obj: Any = None) -> Any:
+        """Get the course ID. Its helper method required for CourseScoreAndCertificateSerializer"""
+        raise NotImplementedError('Child class must implement _get_user method.')
+
+    def _get_user(self, obj: Any = None) -> Any:
+        """Get the User. Its helper method required for CourseScoreAndCertificateSerializer"""
+        raise NotImplementedError('Child class must implement _get_course_id method.')
+
+    def get_certificate_url(self, obj: Any) -> Any:
+        """Return the certificate URL."""
+        return get_certificate_url(
+            self.context.get('request'), self._get_user(obj), self._get_course_id(obj)
+        )
+
+    def get_progress(self, obj: Any) -> Any:
+        """Return the certificate URL."""
+        progress_info = get_course_blocks_completion_summary(
+            self._get_course_id(obj), self._get_user(obj)
+        )
+        total = progress_info['complete_count'] + progress_info['incomplete_count'] + progress_info['locked_count']
+        return round(progress_info['complete_count'] / total, 4) if total else 0.0
+
+    def get_exam_scores(self, obj: Any) -> Dict[str, Tuple[float, float] | None]:
+        """Return exam scores."""
+        result: Dict[str, Tuple[float, float] | None] = {__index: None for __index in self.grading_info}
+        grades = PersistentSubsectionGrade.objects.filter(
+            user_id=self._get_user(obj).id,
+            course_id=self._get_course_id(obj),
+            usage_key__in=self.subsection_locations.keys(),
+            first_attempted__isnull=False,
+        ).values('usage_key', 'earned_all', 'possible_all')
+
+        for grade in grades:
+            result[self.subsection_locations[str(grade['usage_key'])]] = (grade['earned_all'], grade['possible_all'])
+
+        return result
+
+    def to_representation(self, instance: Any) -> Any:
+        """Return the representation of the instance."""
+        def _extract_exam_scores(representation_item: dict[str, Any]) -> None:
+            exam_scores = representation_item.pop('exam_scores', {})
+            for index, score in exam_scores.items():
+                earned_key = f'earned - {self.grading_info[index]["header_name"]}'
+                possible_key = f'possible - {self.grading_info[index]["header_name"]}'
+                representation_item[earned_key] = score[0] if score else 'no attempt'
+                representation_item[possible_key] = score[1] if score else 'no attempt'
+
+        representation = super().to_representation(instance)
+
+        _extract_exam_scores(representation)
+
+        return representation
+
+
 class LearnerDetailsSerializer(LearnerBasicDetailsSerializer):
     """Serializer for learner details."""
     enrolled_courses_count = serializers.SerializerMethodField()
@@ -230,120 +376,64 @@ class LearnerDetailsSerializer(LearnerBasicDetailsSerializer):
         return obj.courses_count
 
 
-class LearnerDetailsForCourseSerializer(LearnerBasicDetailsSerializer):
+class LearnerDetailsForCourseSerializer(
+    LearnerBasicDetailsSerializer, CourseScoreAndCertificateSerializer
+):  # pylint: disable=too-many-ancestors
     """Serializer for learner details for a course."""
-    certificate_available = serializers.BooleanField()
-    course_score = serializers.FloatField()
-    active_in_course = serializers.BooleanField()
-    progress = SerializerOptionalMethodField(field_tags=['progress', 'csv_export'])
-    certificate_url = SerializerOptionalMethodField(field_tags=['certificate_url', 'csv_export'])
-    exam_scores = SerializerOptionalMethodField(field_tags=['exam_scores', 'csv_export'])
 
     class Meta:
         model = get_user_model()
-        fields = LearnerBasicDetailsSerializer.Meta.fields + [
-            'certificate_available',
-            'course_score',
-            'active_in_course',
-            'progress',
-            'certificate_url',
-            'exam_scores',
-        ]
+        fields = LearnerBasicDetailsSerializer.Meta.fields + CourseScoreAndCertificateSerializer.Meta.fields
 
     def __init__(self, *args: Any, **kwargs: Any):
         """Initialize the serializer."""
         super().__init__(*args, **kwargs)
-
         self._course_id = CourseLocator.from_string(self.context.get('course_id'))
-        self._is_exam_name_in_header = self.context.get('omit_subsection_name', '0') != '1'
+        self.collect_grading_info([self._course_id])
 
-        self._grading_info: Dict[str, Any] = {}
-        self._subsection_locations: Dict[str, Any] = {}
-        self.collect_grading_info()
-
-    def collect_grading_info(self) -> None:
-        """Collect the grading info."""
-        self._grading_info = {}
-        self._subsection_locations = {}
-        if not self.is_optional_field_requested('exam_scores'):
-            return
-
-        grading_context = grading_context_for_course(get_course_by_id(self._course_id))
-        index = 0
-        for assignment_type_name, subsection_infos in grading_context['all_graded_subsections_by_type'].items():
-            for subsection_index, subsection_info in enumerate(subsection_infos, start=1):
-                header_enum = f' {subsection_index}' if len(subsection_infos) > 1 else ''
-                header_name = f'{assignment_type_name}{header_enum}'
-                if self.is_exam_name_in_header:
-                    header_name += f': {subsection_info["subsection_block"].display_name}'
-
-                self._grading_info[str(index)] = {
-                    'header_name': header_name,
-                    'location': str(subsection_info['subsection_block'].location),
-                }
-                self._subsection_locations[str(subsection_info['subsection_block'].location)] = str(index)
-                index += 1
-
-    @property
-    def course_id(self) -> CourseLocator:
-        """Get the course ID."""
+    def _get_course_id(self, obj: Any = None) -> CourseLocator:
+        """Get the course ID. Its helper method required for CourseScoreAndCertificateSerializer"""
         return self._course_id
 
-    @property
-    def is_exam_name_in_header(self) -> bool:
-        """Check if the exam name is needed in the header."""
-        return self._is_exam_name_in_header
+    def _get_user(self, obj: Any = None) -> get_user_model:
+        """Get the User. Its helper method required for CourseScoreAndCertificateSerializer"""
+        return obj
 
-    @property
-    def grading_info(self) -> Dict[str, Any]:
-        """Get the grading info."""
-        return self._grading_info
 
-    @property
-    def subsection_locations(self) -> Dict[str, Any]:
-        """Get the subsection locations."""
-        return self._subsection_locations
+class LearnerEnrollmentSerializer(
+    LearnerBasicDetailsSerializer, CourseScoreAndCertificateSerializer
+):  # pylint: disable=too-many-ancestors
+    """Serializer for learner enrollments"""
+    course_id = serializers.SerializerMethodField()
 
-    def get_certificate_url(self, obj: get_user_model) -> Any:
-        """Return the certificate URL."""
-        return get_certificate_url(self.context.get('request'), obj, self.course_id)
+    class Meta:
+        model = CourseEnrollment
+        fields = (
+            LearnerBasicDetailsSerializer.Meta.fields +
+            CourseScoreAndCertificateSerializer.Meta.fields +
+            ['course_id']
+        )
 
-    def get_exam_scores(self, obj: get_user_model) -> Dict[str, Tuple[float, float] | None]:
-        """Return exam scores."""
-        result: Dict[str, Tuple[float, float] | None] = {__index: None for __index in self.grading_info}
-        grades = PersistentSubsectionGrade.objects.filter(
-            user_id=obj.id,
-            course_id=self.course_id,
-            usage_key__in=self.subsection_locations.keys(),
-            first_attempted__isnull=False,
-        ).values('usage_key', 'earned_all', 'possible_all')
+    def __init__(self, *args: Any, **kwargs: Any):
+        """Initialize the serializer."""
+        super().__init__(*args, **kwargs)
+        course_ids = self.context.get('course_ids')
+        self.collect_grading_info(course_ids)
 
-        for grade in grades:
-            result[self.subsection_locations[str(grade['usage_key'])]] = (grade['earned_all'], grade['possible_all'])
+    def _get_course_id(self, obj: Any = None) -> CourseLocator | None:
+        """Get the course ID. Its helper method required for CourseScoreAndCertificateSerializer"""
+        return obj.course_id if obj else None
 
-        return result
+    def _get_user(self, obj: Any = None) -> get_user_model | None:
+        """
+        Get the User. Its helper method required for CourseScoreAndCertificateSerializer. It also
+        plays important role for LearnerBasicDetailsSerializer
+        """
+        return obj.user if obj else None
 
-    def get_progress(self, obj: get_user_model) -> Any:
-        """Return the certificate URL."""
-        progress_info = get_course_blocks_completion_summary(self.course_id, obj)
-        total = progress_info['complete_count'] + progress_info['incomplete_count'] + progress_info['locked_count']
-        return round(progress_info['complete_count'] / total, 4) if total else 0.0
-
-    def to_representation(self, instance: Any) -> Any:
-        """Return the representation of the instance."""
-        def _extract_exam_scores(representation_item: dict[str, Any]) -> None:
-            exam_scores = representation_item.pop('exam_scores', {})
-            for index, score in exam_scores.items():
-                earned_key = f'earned - {self.grading_info[index]["header_name"]}'
-                possible_key = f'possible - {self.grading_info[index]["header_name"]}'
-                representation_item[earned_key] = score[0] if score else 'no attempt'
-                representation_item[possible_key] = score[1] if score else 'no attempt'
-
-        representation = super().to_representation(instance)
-
-        _extract_exam_scores(representation)
-
-        return representation
+    def get_course_id(self, obj: Any) -> str:
+        """Get course id"""
+        return str(self._get_course_id(obj))
 
 
 class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):  # pylint: disable=too-many-ancestors

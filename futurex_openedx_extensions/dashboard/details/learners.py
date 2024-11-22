@@ -260,3 +260,64 @@ def get_learner_info_queryset(
     update_removable_annotations(queryset, removable=['courses_count', 'certificates_count'])
 
     return queryset
+
+
+def get_learners_enrollments_queryset(
+    user_ids: list = None, course_ids: list = None, include_staff: bool = False
+) -> QuerySet:
+    """
+    Get the enrollment details. If no course_ids or user_ids are provided,
+    all relevant data will be processed.
+
+    :param course_ids: List of course IDs to filter by (optional).
+    :param user_ids: List of user IDs to filter by (optional).
+    :param search_text: Text to filter users by (optional).
+    :param include_staff: Flag to include staff users (default: False).
+    :return: List of dictionaries containing user and course details.
+    """
+
+    course_filter = Q(is_active=True)
+    if course_ids:
+        course_filter &= Q(course_id__in=course_ids)
+    if user_ids:
+        course_filter &= Q(user_id__in=user_ids)
+
+    queryset = CourseEnrollment.objects.filter(course_filter)
+
+    if not include_staff:
+        queryset = queryset.filter(
+            ~check_staff_exist_queryset(ref_user_id='user_id', ref_org='course__org', ref_course_id='course_id'),
+        )
+
+    queryset = queryset.annotate(
+        certificate_available=Exists(
+            GeneratedCertificate.objects.filter(
+                user_id=OuterRef('user_id'),
+                course_id=OuterRef('course_id'),
+                status='downloadable'
+            )
+        )
+    ).annotate(
+        course_score=Subquery(
+            PersistentCourseGrade.objects.filter(
+                user_id=OuterRef('user_id'),
+                course_id=OuterRef('course_id')
+            ).values('percent_grade')[:1]
+        )
+    ).annotate(
+        active_in_course=Case(
+            When(
+                Exists(
+                    StudentModule.objects.filter(
+                        student_id=OuterRef('user_id'),
+                        course_id=OuterRef('course_id'),
+                        modified__gte=timezone.now() - timedelta(days=30)
+                    )
+                ),
+                then=Value(True),
+            ),
+            default=Value(False),
+            output_field=BooleanField(),
+        )
+    ).select_related('user', 'user__profile')
+    return queryset

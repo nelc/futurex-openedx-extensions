@@ -11,6 +11,7 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_courses_count_for_learner_queryset,
     get_learner_info_queryset,
     get_learners_by_course_queryset,
+    get_learners_enrollments_queryset,
     get_learners_queryset,
 )
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -193,3 +194,37 @@ def test_get_learners_by_course_queryset_include_staff(base_data):  # pylint: di
 
     queryset = get_learners_by_course_queryset('course-v1:ORG1+5+5', include_staff=True)
     assert queryset.count() == 5, 'unexpected test data'
+
+
+@pytest.mark.django_db
+def test_get_learners_enrollments_queryset_annotations(base_data):  # pylint: disable=unused-argument
+    """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
+    PersistentCourseGrade.objects.create(user_id=15, course_id='course-v1:ORG1+5+5', percent_grade=0.67)
+    queryset = get_learners_enrollments_queryset(course_ids=['course-v1:ORG1+5+5'], user_ids=[15])
+    assert queryset.count() == 1, 'unexpected test data'
+    assert queryset[0].certificate_available is not None, 'certificate_available should be in the queryset'
+    assert queryset[0].course_score == 0.67, \
+        'course_score should be in the queryset with value 0.67'
+    assert queryset[0].active_in_course is False, \
+        'active_in_course should be in the queryset with value True'
+
+    enrollment = queryset[0]
+    enrollment.is_active = False
+    enrollment.save()
+    assert get_learners_enrollments_queryset(course_ids=['course-v1:ORG1+5+5'], user_ids=[15]).count() == 0, \
+        'only active enrollments should be filtered'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('course_ids, user_ids, include_staff, expected_count, usecase', [
+    (['course-v1:ORG1+5+5'], None, False, 5, 'only course_ids'),
+    (['course-v1:ORG1+5+5'], None, True, 7, 'only course_ids and include_staff'),
+    (None, [15], False, 3, 'only user_ids'),
+    (['course-v1:ORG1+5+5'], [15], False, 1, 'user_ids and course_ids'),
+])
+def test_get_learners_enrollments_queryset(
+    course_ids, user_ids, include_staff, expected_count, usecase
+):
+    """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
+    queryset = get_learners_enrollments_queryset(user_ids=user_ids, course_ids=course_ids, include_staff=include_staff)
+    assert queryset.count() == expected_count, f'unexpected test data with {usecase}'

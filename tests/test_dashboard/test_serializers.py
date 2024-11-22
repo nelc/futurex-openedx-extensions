@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
-from common.djangoapps.student.models import CourseAccessRole, SocialLink, UserProfile
+from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, SocialLink, UserProfile
 from custom_reg_form.models import ExtraInfo
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
@@ -17,12 +17,14 @@ from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyP
 from futurex_openedx_extensions.dashboard.serializers import (
     CourseDetailsBaseSerializer,
     CourseDetailsSerializer,
+    CourseScoreAndCertificateSerializer,
     DataExportTaskSerializer,
     LearnerBasicDetailsSerializer,
     LearnerCoursesDetailsSerializer,
     LearnerDetailsExtendedSerializer,
     LearnerDetailsForCourseSerializer,
     LearnerDetailsSerializer,
+    LearnerEnrollmentSerializer,
     UserRolesSerializer,
 )
 from futurex_openedx_extensions.helpers import constants as cs
@@ -253,13 +255,45 @@ def test_learner_details_serializer(base_data):  # pylint: disable=unused-argume
 
 
 @pytest.mark.django_db
-@patch('futurex_openedx_extensions.dashboard.serializers.LearnerDetailsForCourseSerializer.collect_grading_info')
-def test_learner_details_for_course_serializer(mock_collect, base_data,):  # pylint: disable=unused-argument
-    """Verify that the LearnerDetailsForCourseSerializer returns the needed fields."""
-    queryset = get_dummy_queryset()
-    serializer = LearnerDetailsForCourseSerializer(queryset, context={'course_id': 'course-v1:ORG2+1+1'}, many=True)
-    mock_collect.assert_called_once()
+def test_course_score_and_certificate_serializer_for_required_child_methods():
+    """Verify that the CourseScoreAndCertificateSerializer for required child methods"""
+    class TestSerializer(CourseScoreAndCertificateSerializer):
+        """Serializer for learner details for a course."""
+        class Meta:
+            model = get_user_model()
+            fields = CourseScoreAndCertificateSerializer.Meta.fields
 
+    context = {'requested_optional_field_tags': ['certificate_url']}
+    qs = get_dummy_queryset()
+    with pytest.raises(NotImplementedError) as exc_info:
+        serializer = TestSerializer(qs, many=True, context=context)
+        assert len(serializer.data) == qs.count()
+
+    assert str(exc_info.value) == 'Child class must implement _get_course_id method.'
+    TestSerializer._get_user = Mock(return_value=qs[0])  # pylint: disable=protected-access
+    with pytest.raises(NotImplementedError) as exc_info:
+        serializer = TestSerializer(qs, many=True, context=context)
+        assert len(serializer.data) == qs.count()
+
+    assert str(exc_info.value) == 'Child class must implement _get_user method.'
+    TestSerializer._get_course_id = Mock()  # pylint: disable=protected-access
+    serializer = TestSerializer(qs, many=True, context=context)
+    assert len(serializer.data) == qs.count()
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseScoreAndCertificateSerializer.collect_grading_info')
+def test_learner_enrollments_serializer(mock_collect, base_data,):  # pylint: disable=unused-argument
+    """Verify that the LearnerDetailsForCourseSerializer returns the needed fields."""
+    queryset = CourseEnrollment.objects.filter(user_id=10, course_id='course-v1:ORG3+1+1').annotate(
+        certificate_available=Value(True),
+        course_score=Value(0.67),
+        active_in_course=Value(True),
+    )
+    serializer = LearnerEnrollmentSerializer(queryset, context={
+        'course_ids': ['course-v1:ORG3+1+1']
+    }, many=True)
+    mock_collect.assert_called_once()
     data = serializer.data
     assert len(data) == 1
     assert data[0]['certificate_available'] is True
@@ -312,7 +346,6 @@ def test_learner_details_for_course_serializer_collect_grading_info(
 
     assert all(isinstance(value['location'], str) for _, value in serializer.grading_info.items())
     assert all(isinstance(key, str) for key in serializer.subsection_locations)
-
     assert not DeepDiff(serializer.grading_info, expected_grading_info, ignore_order=True)
     assert not DeepDiff(serializer.subsection_locations, {
         'block-v1:ORG2+1+1+type@homework+block@1': '0',
@@ -334,7 +367,7 @@ def test_learner_details_for_course_serializer_collect_grading_info_not_used(
 
     assert not serializer.grading_info
     assert not serializer.subsection_locations
-    serializer.collect_grading_info()
+    serializer.collect_grading_info(['course-v1:ORG2+1+1'])
     assert not serializer.grading_info
     assert not serializer.subsection_locations
 

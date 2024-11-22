@@ -25,6 +25,7 @@ from futurex_openedx_extensions.dashboard.details.courses import get_courses_que
 from futurex_openedx_extensions.dashboard.details.learners import (
     get_learner_info_queryset,
     get_learners_by_course_queryset,
+    get_learners_enrollments_queryset,
     get_learners_queryset,
 )
 from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
@@ -427,6 +428,39 @@ class LearnersDetailsForCourseView(ExportCSVMixin, ListAPIView, FXViewRoleInfoMi
         """Get the serializer context"""
         context = super().get_serializer_context()
         context['course_id'] = self.kwargs.get('course_id')
+        context['omit_subsection_name'] = self.request.query_params.get('omit_subsection_name', '0')
+        return context
+
+
+class LearnersEnrollmentView(ListAPIView, FXViewRoleInfoMixin):
+    """View to get the list of learners for a course"""
+    serializer_class = serializers.LearnerEnrollmentSerializer
+    permission_classes = [FXHasTenantCourseAccess]
+    pagination_class = DefaultPagination
+    fx_view_name = 'learners_enrollment_details'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = 'api/fx/learners/v1/enrollments: Get the list of enrollemts'
+
+    def get_queryset(self, *args: Any, **kwargs: Any) -> QuerySet:
+        """Get the list of learners for a course"""
+        course_ids = self.request.query_params.get('course_ids', '')
+        user_ids = self.request.query_params.get('user_ids', '')
+        course_ids_list = [
+            course.strip() for course in course_ids.split(',')
+        ] if course_ids else None
+        user_ids_list = [
+            int(user.strip()) for user in user_ids.split(',') if user.strip().isdigit()
+        ] if user_ids else None
+        return get_learners_enrollments_queryset(
+            user_ids=user_ids_list,
+            course_ids=course_ids_list,
+            include_staff=self.request.query_params.get('include_staff', '0') == '1'
+        )
+
+    def get_serializer_context(self) -> Dict[str, Any]:
+        """Get the serializer context"""
+        context = super().get_serializer_context()
+        context['course_ids'] = [course_enrollment.course_id for course_enrollment in self.get_queryset()]
         context['omit_subsection_name'] = self.request.query_params.get('omit_subsection_name', '0')
         return context
 

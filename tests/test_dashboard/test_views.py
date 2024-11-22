@@ -783,6 +783,31 @@ class TestLearnersDetailsForCourseView(BaseTestViewMixin):
         self.assertGreater(len(response.data['results']), 0)
 
 
+@pytest.mark.usefixtures('base_data')
+class TestLearnersEnrollmentView(BaseTestViewMixin):
+    """Tests for LearnersEnrollmentView"""
+    VIEW_NAME = 'fx_dashboard:learners-enrollements'
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        view_func, _, _ = resolve(self.url)
+        view_class = view_func.view_class
+        self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        response = self.client.get(self.url, {'course_ids': 'course-v1:ORG1+5+5', 'user_ids': 15})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+
 class MockClickhouseQuery:
     """Mock ClickhouseQuery"""
     def __init__(
