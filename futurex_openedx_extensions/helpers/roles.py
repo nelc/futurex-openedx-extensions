@@ -555,6 +555,7 @@ class RoleType(Enum):
     """Role types."""
     ORG_WIDE = 'org_wide'
     COURSE_SPECIFIC = 'course_specific'
+    GLOBAL = 'global'
 
 
 def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals
@@ -565,7 +566,7 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too
     roles_filter: list[str] | None = None,
     active_filter: bool | None = None,
     course_ids_filter: list[str] | None = None,
-    exclude_role_type: RoleType | None = None,
+    excluded_role_types: list[RoleType | str] | None = None,
 ) -> QuerySet:
     """
     Get the course access roles queryset.
@@ -585,18 +586,21 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too
     :type active_filter: bool
     :param course_ids_filter: The course IDs to filter on. None for no filter
     :type course_ids_filter: list
-    :param exclude_role_type: The role type to exclude. None for no filter
-    :type exclude_role_type: RoleType
+    :param excluded_role_types: The role types to exclude. None of empty list for no exclusion
+    :type excluded_role_types: list of RoleType
     :return: The roles for the users queryset
     :rtype: QuerySet
     """
-    if exclude_role_type is not None and not isinstance(exclude_role_type, RoleType):
-        try:
-            exclude_role_type = RoleType(exclude_role_type)
-        except ValueError as exc:
-            if exclude_role_type == '':
-                exclude_role_type = 'EmptyString'
-            raise TypeError(f'Invalid exclude_role_type: {exclude_role_type}') from exc
+    excluded_role_types = excluded_role_types or []
+    if excluded_role_types:
+        for item_index, role_type in enumerate(excluded_role_types, start=0):
+            if not isinstance(role_type, RoleType):
+                try:
+                    excluded_role_types[item_index] = RoleType(role_type)
+                except ValueError as exc:
+                    if role_type == '':
+                        role_type = 'EmptyString'
+                    raise TypeError(f'Invalid excluded_role_types: {role_type}') from exc
 
     if course_ids_filter:
         verify_course_ids(course_ids_filter)
@@ -665,11 +669,14 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too
             )
         )
 
-    if exclude_role_type == RoleType.ORG_WIDE:
-        queryset = queryset.exclude(course_id=CourseKeyField.Empty)
+    if RoleType.ORG_WIDE in excluded_role_types:
+        queryset = queryset.exclude(~Q(org='') & Q(course_id=CourseKeyField.Empty))
 
-    elif exclude_role_type == RoleType.COURSE_SPECIFIC:
-        queryset = queryset.filter(course_id=CourseKeyField.Empty)
+    if RoleType.COURSE_SPECIFIC in excluded_role_types:
+        queryset = queryset.exclude(~Q(org='') & ~Q(course_id=CourseKeyField.Empty))
+
+    if RoleType.GLOBAL in excluded_role_types:
+        queryset = queryset.exclude(org='', course_id=CourseKeyField.Empty)
 
     return queryset
 
