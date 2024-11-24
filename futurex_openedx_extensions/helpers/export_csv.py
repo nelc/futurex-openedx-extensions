@@ -5,6 +5,7 @@ import csv
 import logging
 import os
 import tempfile
+from time import sleep
 from typing import Any, Generator, Optional, Tuple
 from urllib.parse import urlencode, urlparse
 
@@ -151,6 +152,7 @@ def _generate_csv_with_tracked_progress(
             for data, progress, processed_records in _paginated_response_generator(
                 fx_permission_info, view_data, view_instance
             ):
+                sleep(0.5)
                 batch_count += 1
                 log.info(
                     'CSV Export: processing batch %s (%s records) of task %s... %s%%',
@@ -218,11 +220,11 @@ def export_data_to_csv(
 
     query_params = view_data.get('query_params', {})
     view_instance = _get_view_class_instance(view_data.get('path', ''))
-    page_size = 100
+    page_size = 5
     view_pagination_class = view_instance.view_class.pagination_class
 
-    if view_pagination_class and hasattr(view_pagination_class, 'max_page_size'):
-        page_size = view_pagination_class.max_page_size or page_size
+    # if view_pagination_class and hasattr(view_pagination_class, 'max_page_size'):
+    #     page_size = view_pagination_class.max_page_size or page_size
 
     query_params['page_size'] = page_size
     url_with_query_str = f'{url}?{urlencode(query_params)}' if query_params else url
