@@ -32,3 +32,10 @@ def plugin_settings(settings: Any) -> None:
         'FX_DASHBOARD_STORAGE_DIR',
         'fx_dashboard'
     )
+
+    # Expiration time (in seconds) for the URL of the exported CSV files
+    settings.FX_DASHBOARD_STORAGE_URL_EXPIRATION = getattr(
+        settings,
+        'FX_DASHBOARD_STORAGE_URL_EXPIRATION',
+        60 * 30,  # 30 minutes
+    )

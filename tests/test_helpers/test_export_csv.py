@@ -545,5 +545,5 @@ def test_generate_file_url_for_s3_storage(
         'get_object',
         Params={'Bucket': 'fake-bucket', 'Key': dummy_file_path},
         HttpMethod='GET',
-        ExpiresIn=3600
+        ExpiresIn=settings.FX_DASHBOARD_STORAGE_URL_EXPIRATION,
     )

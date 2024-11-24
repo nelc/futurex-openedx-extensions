@@ -263,7 +263,7 @@ def generate_file_url(storage_path: str) -> str:
         'get_object',
         Params={'Bucket': settings.AWS_STORAGE_BUCKET_NAME, 'Key': storage_path},
         HttpMethod='GET',
-        ExpiresIn=3600
+        ExpiresIn=settings.FX_DASHBOARD_STORAGE_URL_EXPIRATION,
     )
 
 

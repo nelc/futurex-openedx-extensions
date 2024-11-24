@@ -87,18 +87,23 @@ CACHES = {
 FX_CACHE_TIMEOUT_COURSE_ACCESS_ROLES = 60 * 31  # 31 minutes
 FX_CACHE_TIMEOUT_TENANTS_INFO = 60 * 60 * 3  # 3 hours
 FX_CACHE_TIMEOUT_VIEW_ROLES = 60 * 31  # 31 minutes
+FX_DASHBOARD_STORAGE_URL_EXPIRATION = 60 * 31  # 31 minutes
 
+# Clickhouse settings
 FX_CLICKHOUSE_USER = 'dummy_test_user'
 FX_CLICKHOUSE_PASSWORD = 'dummy_test_password'
 
+# REST framework settings
 REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'fx_anonymous_data_retrieve': '60/minute',
     },
 }
 
+# LMS and CMS settings
 LMS_ROOT_URL = 'https://lms.example.com'
 CMS_ROOT_URL = 'https://studio.example.com'
 NELC_DASHBOARD_BASE = 'dashboard.example.com'
 
+# FutureX Open edX Extensions settings
 FX_DASHBOARD_STORAGE_DIR  = 'test_dir'

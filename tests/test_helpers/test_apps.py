@@ -12,6 +12,7 @@ helpers_default_settings = [
     ('FX_CACHE_TIMEOUT_COURSE_ACCESS_ROLES', 60 * 30),  # 30 minutes
     ('FX_CACHE_TIMEOUT_TENANTS_INFO', 60 * 60 * 2),  # 2 hours
     ('FX_CACHE_TIMEOUT_VIEW_ROLES', 60 * 30),  # 30 minutes
+    ('FX_DASHBOARD_STORAGE_URL_EXPIRATION', 60 * 30),  # 30 minutes
 ]
 
 
