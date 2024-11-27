@@ -33,7 +33,11 @@ def export_csv_mixin(user, tenant):  # pylint: disable=redefined-outer-name
     view_instance = TestView()
     request = APIRequestFactory().get('/')
     request.user = user
-    request.fx_permission_info = {'user': user, 'view_allowed_tenant_ids_any_access': [tenant.id]}
+    request.fx_permission_info = {
+        'user': user,
+        'view_allowed_tenant_ids_any_access': [tenant.id],
+        'download_allowed': True,
+    }
     view_instance.request = request
     return view_instance
 
@@ -61,13 +65,15 @@ def test_get_filtered_query_params(export_csv_mixin):  # pylint: disable=redefin
     assert export_csv_mixin.get_filtered_query_params() == expected_params
 
 
-def test_get_serialized_fx_permission_info(export_csv_mixin, user, tenant):  # pylint: disable=redefined-outer-name
+def test_get_serialized_fx_permission_info(export_csv_mixin, user):  # pylint: disable=redefined-outer-name
     """Test get_serialized_fx_permission_info for user"""
     assert isinstance(export_csv_mixin.request.fx_permission_info.get('user'), get_user_model()) is True
     serialized_fx_info = export_csv_mixin.get_serialized_fx_permission_info()
-    expected_serialized_fx_info = {
-        'user_id': user.id, 'user': None, 'view_allowed_tenant_ids_any_access': [tenant.id]
-    }
+    expected_serialized_fx_info = export_csv_mixin.request.fx_permission_info
+    expected_serialized_fx_info.update({
+        'user': None,
+        'user_id': user.id,
+    })
     assert serialized_fx_info == expected_serialized_fx_info
 
 
@@ -81,14 +87,14 @@ def test_generate_csv_url_response(
     mocked_export_data_to_csv_task,
     export_csv_mixin,
     user,
-    tenant
+    tenant,
 ):  # pylint: disable=redefined-outer-name, too-many-arguments
     """Test the generate_csv_url_response method."""
     filename = 'mocked_file.csv'
     fake_url = 'http://example.com/view'
     export_csv_mixin.request.query_params = {'download': 'csv'}
     serialized_fx_permission_info = {
-        'user_id': user.id, 'user': None, 'view_allowed_tenant_ids_any_access': [tenant.id]
+        'user_id': user.id, 'user': None, 'view_allowed_tenant_ids_any_access': [tenant.id], 'download_allowed': True
     }
     fake_query_params = {}
     view_params = {'query_params': fake_query_params, 'kwargs': export_csv_mixin.kwargs, 'path': '/'}
@@ -193,21 +199,30 @@ def test_list_with_csv_download(
 
 
 @pytest.mark.django_db
-def test_list_with_csv_download_for_multiple_tenants(export_csv_mixin):  # pylint: disable=redefined-outer-name
-    """Test the list method for multiple tenants in fx permision info"""
-    export_csv_mixin.request.fx_permission_info['view_allowed_tenant_ids_any_access'] = [1, 2]
+@pytest.mark.parametrize(
+    'view_allowed_tenant_ids, download_allowed, expected_status, usecase',
+    [
+        ([1], False, http_status.HTTP_403_FORBIDDEN, 'Download access denied'),
+        ([1, 2], True, http_status.HTTP_400_BAD_REQUEST, 'Multiple tenants in fx permission info'),
+        ([], True, http_status.HTTP_403_FORBIDDEN, 'No tenant in fx permission info'),
+        ([1], True, http_status.HTTP_200_OK, 'Task innitiated successfully'),
+    ]
+)
+@patch('futurex_openedx_extensions.helpers.export_mixins.ExportCSVMixin.generate_csv_url_response')
+def test_list_with_csv_download_for_different_http_statuses(
+    mocked_generate_response,
+    export_csv_mixin,
+    view_allowed_tenant_ids,
+    download_allowed,
+    expected_status,
+    usecase
+):  # pylint: disable=unused-argument, too-many-arguments, redefined-outer-name
+    """Test the list method for multiple scenarios and return statuses."""
+    export_csv_mixin.request.fx_permission_info['view_allowed_tenant_ids_any_access'] = view_allowed_tenant_ids
+    export_csv_mixin.request.fx_permission_info['download_allowed'] = download_allowed
     export_csv_mixin.request.query_params = {'download': 'csv'}
     response = export_csv_mixin.list(export_csv_mixin.request)
-    assert response.status_code == http_status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.django_db
-def test_list_with_csv_download_for_no_tenant(export_csv_mixin):  # pylint: disable=redefined-outer-name
-    """Test the list method for no tenant in fx info permissions."""
-    export_csv_mixin.request.fx_permission_info['view_allowed_tenant_ids_any_access'] = []
-    export_csv_mixin.request.query_params = {'download': 'csv'}
-    response = export_csv_mixin.list(export_csv_mixin.request)
-    assert response.status_code == http_status.HTTP_403_FORBIDDEN
+    assert response.status_code == expected_status, f'Failed for usecase: {usecase}'
 
 
 @pytest.mark.django_db

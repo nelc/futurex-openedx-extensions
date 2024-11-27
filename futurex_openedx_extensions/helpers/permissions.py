@@ -117,17 +117,26 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
 
         system_staff_user_flag = is_system_staff_user(request.user)
         user_roles: dict = get_user_course_access_roles(request.user.id)['roles']
+
+        download_allowed = bool(
+            set(user_roles.keys()) & set(view.get_view_user_roles_mapping(
+                view_name='exported_files_data', user=request.user
+            ))
+        )
+
         request.fx_permission_info = {
             'user': request.user,
             'user_roles': user_roles,
             'is_system_staff_user': system_staff_user_flag,
             'view_allowed_roles': view_allowed_roles,
             'view_allowed_tenant_ids_any_access': tenant_ids,
+            'download_allowed': download_allowed,
         }
 
         if system_staff_user_flag:
             request.fx_permission_info.update({
                 'user_roles': {},
+                'download_allowed': True,
             })
 
         if system_staff_user_flag or (
