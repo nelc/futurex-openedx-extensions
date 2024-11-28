@@ -100,6 +100,13 @@ class ExportCSVMixin:
             permitted_tenant_ids = self.request.fx_permission_info[  # type: ignore[attr-defined]
                 'view_allowed_tenant_ids_any_access'
             ]
+
+            if not self.request.fx_permission_info['download_allowed']:  # type: ignore[attr-defined]
+                return Response(
+                    {'detail': 'You are not permitted to use the "download" parameter'},
+                    status=http_status.HTTP_403_FORBIDDEN
+                )
+
             if len(permitted_tenant_ids) > 1:
                 return Response(
                     {'detail': 'Download CSV functionality is not implemented for multiple tenants!'},

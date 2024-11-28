@@ -29,6 +29,7 @@ def dummy_view():
         def __init__(self):
             self.result_of_method = {
                 'dummyView': ['staff', 'admin'],
+                'exported_files_data': ['instructor']
             }
 
         def get_allowed_roles_all_views(self):
@@ -165,7 +166,37 @@ def test_fx_base_authenticated_permission_staff_always_allowed(
         'view_allowed_tenant_ids_any_access': [1, 2, 3, 7, 8],
         'view_allowed_tenant_ids_full_access': [1, 2, 3, 7, 8],
         'view_allowed_tenant_ids_partial_access': [],
+        'download_allowed': True,
     }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('view_allowed_roles, exported_files_data_roles, user_roles, download_allowed, usecase', [
+    (['staff'], ['instructor'], ['staff'], False, 'user does not have download access'),
+    (['staff'], ['instructor'], ['staff', 'instructor'], True, 'user have download access'),
+])
+def test_fx_base_authenticated_permission_for_download_allowed(
+    base_data, dummy_view, permission, support_user, view_allowed_roles,
+    exported_files_data_roles, user_roles, download_allowed, usecase
+):  # pylint: disable=unused-argument, redefined-outer-name, too-many-arguments
+    """Verify that FXBaseAuthenticatedPermission fills fx_permission_info correctly for global users."""
+    request = APIRequestFactory().generic('GET', '/dummy/')
+    set_user(request, support_user.id)
+    roles_default_data = {
+        'orgs_full_access': [],
+        'tenant_ids_full_access': [],
+        'course_limited_access': [],
+        'orgs_of_courses': [],
+        'tenant_ids': []
+    }
+    dummy_view.result_of_method['dummyView'] = view_allowed_roles
+    dummy_view.result_of_method['exported_files_data'] = exported_files_data_roles
+    with patch('futurex_openedx_extensions.helpers.permissions.get_user_course_access_roles') as mocked_user_roles:
+        mocked_user_roles.return_value = {
+            'roles': {role: roles_default_data for role in user_roles}
+        }
+        permission.has_permission(request, dummy_view)
+        assert request.fx_permission_info['download_allowed'] == download_allowed, usecase
 
 
 @pytest.mark.django_db
@@ -207,6 +238,7 @@ def test_fx_base_authenticated_permission_global_role_allow_all_tenants(
             'view_allowed_tenant_ids_any_access': allowed_tenant_ids,
             'view_allowed_tenant_ids_full_access': allowed_tenant_ids,
             'view_allowed_tenant_ids_partial_access': [],
+            'download_allowed': False  # user has support role while data export view allowed role is instructor.
         },
         ignore_order=True
     )
