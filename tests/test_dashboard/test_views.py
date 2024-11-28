@@ -804,8 +804,14 @@ class TestLearnersEnrollmentView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        response = self.client.get(self.url, {'course_ids': 'course-v1:ORG1+5+5', 'user_ids': 15})
+
+        user_id = 15
+        course_id = 'course-v1:ORG1+5+5'
+        response = self.client.get(self.url, data={'course_ids': course_id, 'user_ids': user_id})
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['user_id'], user_id)
+        self.assertEqual(response.data['results'][0]['course_id'], course_id)
 
 
 class MockClickhouseQuery:

@@ -5,6 +5,7 @@ import pytest
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.extractors import (
     DictHashcode,
     DictHashcodeSet,
@@ -68,7 +69,7 @@ def test_verify_course_ids_success(course_ids):
 ])
 def test_verify_course_ids_fail(course_ids, error_message):
     """Verify that verify_course_ids raises an error for invalid course IDs."""
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(FXCodedException) as exc:
         verify_course_ids(course_ids)
 
     assert str(exc.value) == error_message
