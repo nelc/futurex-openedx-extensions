@@ -4,7 +4,6 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Tuple
 
-from common.djangoapps.student.models import CourseEnrollment
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
 from lms.djangoapps.courseware.courses import get_course_blocks_completion_summary
@@ -38,6 +37,7 @@ from futurex_openedx_extensions.helpers.roles import (
     get_user_course_access_roles,
 )
 from futurex_openedx_extensions.helpers.tenants import get_tenants_by_org
+from futurex_openedx_extensions.upgrade.models_switch import CourseEnrollment
 
 
 class DataExportTaskSerializer(ModelSerializerOptionalFields):

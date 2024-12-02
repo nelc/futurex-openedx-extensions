@@ -1,8 +1,0 @@
-[run]
-branch = True
-data_file = .coverage
-source=futurex_openedx_extensions
-omit =
-    test_settings.py
-    */migrations/*
-    */static/*
