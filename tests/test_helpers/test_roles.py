@@ -4,7 +4,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
-from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -48,6 +47,7 @@ from futurex_openedx_extensions.helpers.roles import (
     validate_course_access_role,
 )
 from futurex_openedx_extensions.helpers.tenants import get_all_tenant_ids
+from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole, UserSignupSource
 from tests.fixture_helpers import (
     get_all_orgs,
     get_test_data_dict,
@@ -2047,7 +2047,8 @@ def test_update_course_access_course_roles_grouping(
 def test_get_accessible_tenant_ids_none(base_data):  # pylint: disable=unused-argument
     """Verify that get_accessible_tenant_ids returns an empty list when user is None."""
     result = get_accessible_tenant_ids(None)
-    assert result == []
+    assert isinstance(result, list)
+    assert not result
 
 
 @pytest.mark.django_db

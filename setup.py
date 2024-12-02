@@ -147,7 +147,7 @@ setup(
     package_data={
         'futurex_openedx_extensions': ['helpers/assets/*.yml'],
     },
-    install_requires=load_requirements('requirements/base.in'),
+    install_requires=[],
     python_requires='>=3.8',
     zip_safe=False,
     keywords='Python edx',
@@ -165,6 +165,7 @@ setup(
         'lms.djangoapp': [
             'fx_dashboard = futurex_openedx_extensions.dashboard.apps:DashboardConfig',
             'fx_helpers = futurex_openedx_extensions.helpers.apps:HelpersConfig',
+            'fx_upgrade = futurex_openedx_extensions.upgrade.apps:UpgradeConfig',
         ],
     },
 )
