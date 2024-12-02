@@ -201,7 +201,7 @@ def test_clickhouse_query_admin_load_missing_queries(
 
     response = clickhouse_query_admin.load_missing_queries(request)
 
-    ClickhouseQuery.load_missing_queries.assert_called_once()
+    ClickhouseQuery.load_missing_queries.assert_called_once()  # pylint: disable=no-member
     assert isinstance(response, HttpResponseRedirect)
     assert response.url == '/admin/fx_helpers/clickhousequery'
 

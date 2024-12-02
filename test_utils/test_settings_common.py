@@ -7,8 +7,6 @@ Django applications, so these settings will not be used.
 
 from os.path import abspath, dirname, join
 
-from test_utils.eox_settings import *
-
 
 def root(*args):
     """
@@ -101,4 +99,4 @@ LMS_ROOT_URL = 'https://lms.example.com'
 CMS_ROOT_URL = 'https://studio.example.com'
 NELC_DASHBOARD_BASE = 'dashboard.example.com'
 
-FX_DASHBOARD_STORAGE_DIR  = 'test_dir'
+FX_DASHBOARD_STORAGE_DIR = 'test_dir'
