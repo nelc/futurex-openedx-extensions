@@ -1,13 +1,11 @@
 # Requirements for code quality checks
 
--c constraints.txt
+-r test.in                      # Core and testing dependencies for this package
 
--r test.txt               # Core and testing dependencies for this package
-
-edx-lint<5.4.0            # edX pylint rules and plugins - version 5.4.0 has a compatibility issue with Python 3.8
-isort                     # to standardize order of imports
-pycodestyle               # PEP 8 compliance validation
-pydocstyle                # PEP 257 compliance validation
-mypy                      # static type checker
-flake8                    # to enforce PEP 8 compliance
-flake8-quotes             # to enforce single quotes
+edx-lint                        # edX pylint rules and plugins
+isort                           # to standardize order of imports
+pycodestyle                     # PEP 8 compliance validation
+pydocstyle                      # PEP 257 compliance validation
+mypy                            # static type checker
+flake8                          # to enforce PEP 8 compliance, but mainly to run the flake8-quotes plugin
+flake8-quotes                   # to enforce single quotes

@@ -2,7 +2,6 @@
 from unittest.mock import Mock, patch
 
 import pytest
-from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now, timedelta
@@ -16,6 +15,7 @@ from futurex_openedx_extensions.dashboard.details.courses import (
     get_learner_courses_info_queryset,
 )
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.upgrade.models_switch import CourseEnrollment
 
 
 @pytest.mark.django_db

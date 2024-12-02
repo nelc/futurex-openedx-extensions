@@ -1,5 +1,5 @@
 # Requirements for running tests in CI
 
--c constraints.txt
+-r pip.in                   # Core dependencies for installing other packages
 
-tox                       # Virtualenv management for tests
+tox                         # Virtualenv management for tests

@@ -5,7 +5,6 @@ from unittest.mock import Mock, patch
 
 import ddt
 import pytest
-from common.djangoapps.student.models import CourseAccessRole
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -32,6 +31,7 @@ from futurex_openedx_extensions.helpers.permissions import (
     IsAnonymousOrSystemStaff,
     IsSystemStaff,
 )
+from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole
 from tests.base_test_data import expected_statistics
 from tests.fixture_helpers import get_all_orgs, get_test_data_dict, get_user1_fx_permission_info
 from tests.test_dashboard.test_mixins import MockPatcherMixin

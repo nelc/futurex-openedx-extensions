@@ -183,7 +183,7 @@ def _generate_csv_with_tracked_progress(
         try:
             os.remove(tmp_file.name)
             log.info('CSV Export: temporary file removed for task %s...', task_id)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             log.info('CSV Export: failed to remove temporary file for task %s: %s', task_id, str(exc))
     return storage_path
 

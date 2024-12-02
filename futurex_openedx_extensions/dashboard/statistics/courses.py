@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Dict
 
-from common.djangoapps.student.models import CourseEnrollment
 from django.db.models import BooleanField, Case, CharField, Count, Q, Sum, Value, When
 from django.db.models.functions import Coalesce, Lower
 from django.db.models.query import QuerySet
@@ -12,6 +11,7 @@ from django.utils.timezone import now
 from futurex_openedx_extensions.dashboard.details.courses import annotate_courses_rating_queryset
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
+from futurex_openedx_extensions.upgrade.models_switch import CourseEnrollment
 
 
 def get_courses_count(

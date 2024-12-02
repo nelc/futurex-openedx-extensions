@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from common.djangoapps.student.models import get_user_by_username_or_email
 from django.contrib.auth import get_user_model
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.upgrade.models_switch import get_user_by_username_or_email
 
 
 def is_user_instance(user: Any) -> bool:

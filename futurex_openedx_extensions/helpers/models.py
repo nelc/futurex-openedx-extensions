@@ -4,11 +4,10 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Tuple
 
-from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import BooleanField, Case, Exists, F, OuterRef, Q, Value, When
+from django.db.models import BooleanField, Case, Exists, OuterRef, Q, Value, When
 from django.utils import timezone
 from eox_tenant.models import TenantConfig
 from opaque_keys.edx.django.models import CourseKeyField
@@ -18,6 +17,7 @@ from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.converters import DateMethods, get_allowed_roles
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole
 
 User = get_user_model()
 
@@ -46,9 +46,23 @@ class ViewUserMappingManager(models.Manager):  # pylint: disable=too-few-public-
         allowed_roles = get_allowed_roles(cs.COURSE_ACCESS_ROLES_USER_VIEW_MAPPING)
 
         queryset = queryset.annotate(
-            is_user_active=F('user__is_active'),
+            is_user_active=Case(
+                When(
+                    user__is_active=True,
+                    then=Value(True)
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
         ).annotate(
-            is_user_system_staff=F('user__is_superuser').bitor(F('user__is_staff')),
+            is_user_system_staff=Case(
+                When(
+                    Q(user__is_superuser=True) | Q(user__is_staff=True),
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
         ).annotate(
             has_access_role=Exists(
                 CourseAccessRole.objects.filter(

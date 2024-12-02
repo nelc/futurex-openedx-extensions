@@ -8,7 +8,6 @@ from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict, List, Tuple
 
-from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import DatabaseError, transaction
@@ -44,6 +43,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_tenants_sites,
 )
 from futurex_openedx_extensions.helpers.users import get_user_by_key, is_system_staff_user
+from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole, UserSignupSource
 
 logger = logging.getLogger(__name__)
 
@@ -1279,7 +1279,7 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
             status = _add_course_access_roles_one_user(
                 caller, user_info['user'], role, orgs, course_ids, orgs_of_courses['courses'], dry_run
             )
-        except Exception as exc:  # pylint: disable=broad-except
+        except Exception as exc:
             result['failed'].append({
                 'user_id': user_info['user'].id,
                 'username': user_info['user'].username,
@@ -1557,7 +1557,7 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
             'reason_message': str(exc),
         })
 
-    except Exception as exc:  # pylint: disable=broad-except
+    except Exception as exc:
         result['failed'].append({
             'reason_code': FXExceptionCodes.UNKNOWN_ERROR.value,
             'reason_message': f'{type(exc).__name__}: {str(exc)}',

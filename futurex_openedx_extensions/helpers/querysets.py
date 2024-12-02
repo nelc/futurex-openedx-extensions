@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import List
 
-from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from django.contrib.auth import get_user_model
 from django.db.models import BooleanField, Case, Count, Exists, OuterRef, Q, Value, When
 from django.db.models.query import QuerySet
@@ -16,6 +15,7 @@ from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXEx
 from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 from futurex_openedx_extensions.helpers.users import get_user_by_key
+from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole, CourseEnrollment, UserSignupSource
 
 
 def verify_queryset_removable_annotations(queryset: QuerySet) -> None:

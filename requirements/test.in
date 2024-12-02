@@ -1,28 +1,23 @@
 # Requirements for test runs.
--c constraints.txt
 
--r base.txt                     # Core dependencies for this package
+-r base.in                      # Core dependencies for this package
 
+# unit-test packages and dependencies
+code-annotations                # provides commands used by the pii_check make target.
+ddt                             # data-driven-tests for unittest
+deepdiff                        # for deep comparison of objects
+numpy                           # required by deepdiff
 pytest-cov                      # pytest extension for code coverage statistics
 pytest-django                   # pytest extension for better Django support
-code-annotations                # provides commands used by the pii_check make target.
-ddt
-deepdiff
-numpy                           # Required by deepdiff
 
-# eox-tenant requirements
-six
-djangorestframework<3.15.2      # 3.15.2 dropped support for Django 3.2
-django-crum
-django-mysql
-jsonfield
+# Nelc specific requirements
+eox-tenant
+
+# edx-platform related requirements. Pinned to the versions used in Palm.
 edx-opaque-keys[django]
-openedx_filters
-
-# Python 3.8 compatibility
-backports.zoneinfo;python_version<"3.9"
-
-# other requirements
-django-simple-history<3.7.0     # 3.7.0 dropped support for Django 3.2
-django-filter<24.0.0            # 24.0.0 requires Django 4
+djangorestframework
+django-filter
+django-mysql
+django-simple-history
+jsonfield
 python-dateutil
