@@ -197,10 +197,16 @@ def test_get_learners_by_course_queryset_include_staff(base_data):  # pylint: di
 
 
 @pytest.mark.django_db
-def test_get_learners_enrollments_queryset_annotations(base_data):  # pylint: disable=unused-argument
+def test_get_learners_enrollments_queryset_annotations(
+    base_data, fx_permission_info
+):  # pylint: disable=unused-argument
     """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
     PersistentCourseGrade.objects.create(user_id=15, course_id='course-v1:ORG1+5+5', percent_grade=0.67)
-    queryset = get_learners_enrollments_queryset(course_ids=['course-v1:ORG1+5+5'], user_ids=[15])
+    queryset = get_learners_enrollments_queryset(
+        fx_permission_info=fx_permission_info,
+        course_ids=['course-v1:ORG1+5+5'],
+        user_ids=[15]
+    )
     assert queryset.count() == 1, 'unexpected test data'
     assert queryset[0].certificate_available is not None, 'certificate_available should be in the queryset'
     assert queryset[0].course_score == 0.67, \
@@ -211,20 +217,108 @@ def test_get_learners_enrollments_queryset_annotations(base_data):  # pylint: di
     enrollment = queryset[0]
     enrollment.is_active = False
     enrollment.save()
-    assert get_learners_enrollments_queryset(course_ids=['course-v1:ORG1+5+5'], user_ids=[15]).count() == 0, \
-        'only active enrollments should be filtered'
+    assert get_learners_enrollments_queryset(
+        fx_permission_info=fx_permission_info,
+        course_ids=['course-v1:ORG1+5+5'],
+        user_ids=[15],
+    ).count() == 0, 'only active enrollments should be filtered'
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('course_ids, user_ids, include_staff, expected_count, usecase', [
-    (['course-v1:ORG1+5+5'], None, False, 5, 'only course_ids'),
-    (['course-v1:ORG1+5+5'], None, True, 7, 'only course_ids and include_staff'),
-    (None, [15], False, 3, 'only user_ids'),
-    (['course-v1:ORG1+5+5'], [15], False, 1, 'user_ids and course_ids'),
-])
-def test_get_learners_enrollments_queryset(
-    course_ids, user_ids, include_staff, expected_count, usecase
-):
-    """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
-    queryset = get_learners_enrollments_queryset(user_ids=user_ids, course_ids=course_ids, include_staff=include_staff)
-    assert queryset.count() == expected_count, f'unexpected test data with {usecase}'
+@pytest.mark.parametrize(
+    'filter_user_ids, filter_course_ids, expected_error, expected_count, usecase', [
+        (None, None, '', 6, 'No filter'),
+        ([21], None, '', 3, 'only user_ids filter'),
+        ([], ['course-v1:ORG1+5+5'], '', 2, 'only course_ids filter'),
+        ([15, 29], ['course-v1:ORG1+5+5'], '', 1, 'both course_ids and user_ids filter'),
+        ([15, 29, 'not-int', 0.2], [], 'Invalid user ids: [\'not-int\', 0.2]', 0, 'invalid user ids.'),
+        ([15, 29], ['course-v1:ORG1+5+5', 'invalid'], 'Invalid course ID format: invalid', 0, ''),
+    ]
+)
+@patch('futurex_openedx_extensions.dashboard.details.learners.get_permitted_learners_queryset')
+@patch('futurex_openedx_extensions.dashboard.details.learners.get_partial_access_course_ids')
+def test_get_learners_enrollments_queryset_for_course_ids_and_user_ids_filter(
+    mocked_partial_course_ids, mocked_permitted_learners,
+    filter_user_ids, filter_course_ids,
+    expected_error, expected_count, usecase, fx_permission_info,
+):  # pylint: disable=too-many-arguments, unused-argument
+    """Test get_learners_by_course_queryset result for course_ids and user_ids filtration."""
+    fake_accessible_user_ids = [15, 21, 29]
+    fake_accessible_course_ids = [
+        'course-v1:ORG1+5+5', 'course-v1:ORG2+4+4', 'course-v1:ORG2+5+5', 'course-v1:ORG2+6+6', 'course-v1:ORG2+7+7'
+    ]
+    mocked_permitted_learners.return_value = get_user_model().objects.filter(id__in=fake_accessible_user_ids)
+
+    if expected_error:
+        with pytest.raises(FXCodedException) as exc_info:
+            queryset = get_learners_enrollments_queryset(
+                fx_permission_info=fx_permission_info,
+                course_ids=filter_course_ids,
+                user_ids=filter_user_ids
+            )
+        assert str(exc_info.value) == expected_error
+    else:
+        queryset = get_learners_enrollments_queryset(
+            fx_permission_info=fx_permission_info,
+            course_ids=filter_course_ids,
+            user_ids=filter_user_ids
+        )
+        expected_user_ids = filter_user_ids or fake_accessible_user_ids
+        expected_course_ids = filter_course_ids or fake_accessible_course_ids
+        assert queryset.count() == expected_count, f'unexpected enrollment queryset count for case: {usecase}'
+        assert not (
+            set(queryset.values_list('user_id', flat=True)) - set(expected_user_ids)
+        ), f'unexpected enrollment user ids for case: {usecase}'
+        assert not (
+            {str(enrollment.course.id) for enrollment in queryset} - set(expected_course_ids)
+        ), f'unexpected enrollment course ids for case: {usecase}'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'permitted_user_ids, limited_access_course_ids, full_access_orgs, expected_count, expected_course_ids, usecase',
+    [
+        (
+            [], [], ['org1', 'org2'], 0, [], 'no user is accessible'
+        ),
+        (
+            [15, 21, 29], [], ['org1', 'org2'], 6,
+            [
+                'course-v1:ORG1+5+5', 'course-v1:ORG2+4+4', 'course-v1:ORG2+5+5',
+                'course-v1:ORG2+6+6', 'course-v1:ORG2+7+7'
+            ],
+            'full access orgs',
+        ),
+        (
+            [15, 21, 29], ['course-v1:ORG1+5+5'], [], 2,
+            ['course-v1:ORG1+5+5'],
+            'course limited access',
+        ),
+        (
+            [15, 21, 29], ['course-v1:ORG2+4+4'], ['org1'], 3,
+            ['course-v1:ORG1+5+5', 'course-v1:ORG2+4+4'],
+            'full access orgs with course limited access',
+        ),
+    ],
+)
+@patch('futurex_openedx_extensions.dashboard.details.learners.get_permitted_learners_queryset')
+@patch('futurex_openedx_extensions.dashboard.details.learners.get_partial_access_course_ids')
+def test_get_learners_enrollments_queryset_for_accessible_courses_and_users(
+    mocked_partial_course_ids, mocked_permitted_learners,
+    permitted_user_ids, limited_access_course_ids, full_access_orgs,
+    expected_count, expected_course_ids, usecase, fx_permission_info,
+):  # pylint: disable=too-many-arguments
+    """Test get_learners_by_course_queryset result for accessible users and courses."""
+    mocked_partial_course_ids.return_value = limited_access_course_ids
+    mocked_permitted_learners.return_value = get_user_model().objects.filter(id__in=permitted_user_ids)
+    fx_permission_info['view_allowed_full_access_orgs'] = full_access_orgs
+    queryset = get_learners_enrollments_queryset(
+        fx_permission_info=fx_permission_info,
+    )
+    assert queryset.count() == expected_count, f'unexpected enrollment queryset count for case: {usecase}'
+    assert not (
+        set(queryset.values_list('user_id', flat=True)) - set(permitted_user_ids)
+    ), f'unexpected enrollment user ids for case: {usecase}'
+    assert not (
+        {str(enrollment.course.id) for enrollment in queryset} - set(expected_course_ids)
+    ), f'unexpected enrollment course ids for case: {usecase}'

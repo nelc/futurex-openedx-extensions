@@ -187,9 +187,9 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
         user = self._get_user(obj)
         return getattr(user.extrainfo, field_name) if hasattr(user, 'extrainfo') and user.extrainfo else None
 
-    def get_user_id(self, obj: get_user_model) -> Any:  # pylint: disable=no-self-use
+    def get_user_id(self, obj: get_user_model) -> int:
         """Return user ID."""
-        return obj.id
+        return self._get_user(obj).id  # type: ignore
 
     def get_email(self, obj: get_user_model) -> str:
         """Return user ID."""

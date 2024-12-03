@@ -12,7 +12,10 @@ from django.utils import timezone
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.grades.models import PersistentCourseGrade
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids, verify_course_ids
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_base_queryset_courses,
@@ -263,7 +266,11 @@ def get_learner_info_queryset(
 
 
 def get_learners_enrollments_queryset(
-    user_ids: list = None, course_ids: list = None, include_staff: bool = False
+    fx_permission_info: dict,
+    user_ids: list = None,
+    course_ids: list = None,
+    search_text: str | None = None,
+    include_staff: bool = False,
 ) -> QuerySet:
     """
     Get the enrollment details. If no course_ids or user_ids are provided,
@@ -275,21 +282,33 @@ def get_learners_enrollments_queryset(
     :param include_staff: Flag to include staff users (default: False).
     :return: List of dictionaries containing user and course details.
     """
-
-    course_filter = Q(is_active=True)
-    if course_ids:
-        course_filter &= Q(course_id__in=course_ids)
+    accessible_users = get_permitted_learners_queryset(
+        queryset=get_learners_search_queryset(search_text),
+        fx_permission_info=fx_permission_info,
+        include_staff=include_staff,
+    )
     if user_ids:
-        course_filter &= Q(user_id__in=user_ids)
+        invalid_user_ids = [user_id for user_id in user_ids if not isinstance(user_id, int)]
+        if invalid_user_ids:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'Invalid user ids: {invalid_user_ids}',
+            )
+        accessible_users = accessible_users.filter(id__in=user_ids)
 
-    queryset = CourseEnrollment.objects.filter(course_filter)
+    accessible_courses = CourseOverview.objects.filter(
+        Q(id__in=get_partial_access_course_ids(fx_permission_info)) |
+        Q(org__in=fx_permission_info['view_allowed_full_access_orgs'])
+    )
+    if course_ids:
+        verify_course_ids(course_ids)
+        accessible_courses = accessible_courses.filter(id__in=course_ids)
 
-    if not include_staff:
-        queryset = queryset.filter(
-            ~check_staff_exist_queryset(ref_user_id='user_id', ref_org='course__org', ref_course_id='course_id'),
-        )
-
-    queryset = queryset.annotate(
+    queryset = CourseEnrollment.objects.filter(
+        is_active=True,
+        course__in=Subquery(accessible_courses.values('id')),
+        user__in=Subquery(accessible_users.values('id'))
+    ).annotate(
         certificate_available=Exists(
             GeneratedCertificate.objects.filter(
                 user_id=OuterRef('user_id'),
@@ -320,4 +339,7 @@ def get_learners_enrollments_queryset(
             output_field=BooleanField(),
         )
     ).select_related('user', 'user__profile')
+
+    update_removable_annotations(queryset, removable=['certificate_available', 'course_score', 'active_in_course'])
+
     return queryset

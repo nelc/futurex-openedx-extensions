@@ -858,7 +858,7 @@ def test_get_roles_for_users_queryset_bad_exclude(bad_role_type, expected_error_
 
 def test_get_roles_for_users_queryset_bad_course_id():
     """Verify that get_roles_for_users_queryset raises an error if the course_id parameter is invalid."""
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(FXCodedException) as exc_info:
         get_course_access_roles_queryset(
             orgs_filter=['org1', 'org2'],
             remove_redundant=False,

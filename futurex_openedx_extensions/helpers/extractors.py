@@ -10,6 +10,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from xmodule.modulestore.django import modulestore
 
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 
 
 @dataclass
@@ -118,13 +119,22 @@ def verify_course_ids(course_ids: List[str]) -> None:
     :type course_ids: List[str]
     """
     if course_ids is None:
-        raise ValueError('course_ids must be a list of course IDs, but got None')
+        raise FXCodedException(
+            code=FXExceptionCodes.INVALID_INPUT,
+            message='course_ids must be a list of course IDs, but got None',
+        )
 
     for course_id in course_ids:
         if not isinstance(course_id, str):
-            raise ValueError(f'course_id must be a string, but got {type(course_id).__name__}')
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'course_id must be a string, but got {type(course_id).__name__}',
+            )
         if not re.search(cs.COURSE_ID_REGX_EXACT, course_id) and not re.search(cs.LIBRARY_ID_REGX_EXACT, course_id):
-            raise ValueError(f'Invalid course ID format: {course_id}')
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'Invalid course ID format: {course_id}',
+            )
 
 
 def get_orgs_of_courses(course_ids: List[str]) -> Dict[str, Any]:

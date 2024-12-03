@@ -463,9 +463,11 @@ class LearnersEnrollmentView(ListAPIView, FXViewRoleInfoMixin):
             int(user.strip()) for user in user_ids.split(',') if user.strip().isdigit()
         ] if user_ids else None
         return get_learners_enrollments_queryset(
+            fx_permission_info=self.request.fx_permission_info,
             user_ids=user_ids_list,
             course_ids=course_ids_list,
-            include_staff=self.request.query_params.get('include_staff', '0') == '1'
+            search_text=self.request.query_params.get('search_text'),
+            include_staff=self.request.query_params.get('include_staff', '0') == '1',
         )
 
     def get_serializer_context(self) -> Dict[str, Any]:
@@ -539,7 +541,7 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
                     excluded_role_types=dummy_serializers.query_params['excluded_role_types'],
                 ).values('user_id').distinct().order_by()
             ).select_related('profile').order_by('id')
-        except ValueError as exc:
+        except (ValueError, FXCodedException) as exc:
             raise ParseError(f'Invalid parameter: {exc}') from exc
 
         return q_set
