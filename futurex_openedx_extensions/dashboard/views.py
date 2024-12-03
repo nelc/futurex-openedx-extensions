@@ -456,16 +456,22 @@ class LearnersEnrollmentView(ListAPIView, FXViewRoleInfoMixin):
         """Get the list of learners for a course"""
         course_ids = self.request.query_params.get('course_ids', '')
         user_ids = self.request.query_params.get('user_ids', '')
+        usernames = self.request.query_params.get('usernames', '')
         course_ids_list = [
             course.strip() for course in course_ids.split(',')
         ] if course_ids else None
         user_ids_list = [
             int(user.strip()) for user in user_ids.split(',') if user.strip().isdigit()
         ] if user_ids else None
+        usernames_list = [
+            username.strip() for username in usernames.split(',')
+        ] if usernames else None
+
         return get_learners_enrollments_queryset(
             fx_permission_info=self.request.fx_permission_info,
             user_ids=user_ids_list,
             course_ids=course_ids_list,
+            usernames=usernames_list,
             search_text=self.request.query_params.get('search_text'),
             include_staff=self.request.query_params.get('include_staff', '0') == '1',
         )

@@ -265,10 +265,11 @@ def get_learner_info_queryset(
     return queryset
 
 
-def get_learners_enrollments_queryset(
+def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     fx_permission_info: dict,
     user_ids: list = None,
     course_ids: list = None,
+    usernames: list = None,
     search_text: str | None = None,
     include_staff: bool = False,
 ) -> QuerySet:
@@ -287,6 +288,7 @@ def get_learners_enrollments_queryset(
         fx_permission_info=fx_permission_info,
         include_staff=include_staff,
     )
+    user_filter = Q()
     if user_ids:
         invalid_user_ids = [user_id for user_id in user_ids if not isinstance(user_id, int)]
         if invalid_user_ids:
@@ -294,7 +296,16 @@ def get_learners_enrollments_queryset(
                 code=FXExceptionCodes.INVALID_INPUT,
                 message=f'Invalid user ids: {invalid_user_ids}',
             )
-        accessible_users = accessible_users.filter(id__in=user_ids)
+        user_filter |= Q(id__in=user_ids)
+    if usernames:
+        invalid_usernames = [username for username in usernames if not isinstance(username, str)]
+        if invalid_usernames:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'Invalid usernames: {invalid_usernames}',
+            )
+        user_filter |= Q(username__in=usernames)
+    accessible_users = accessible_users.filter(user_filter)
 
     accessible_courses = CourseOverview.objects.filter(
         Q(id__in=get_partial_access_course_ids(fx_permission_info)) |
