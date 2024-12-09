@@ -16,6 +16,8 @@ from django.db.models import BooleanField, Exists, OuterRef, Q, QuerySet, Subque
 from django.db.models.functions import Lower
 from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from rest_framework import status as http_status
+from rest_framework.response import Response
 from xmodule.modulestore.django import modulestore
 
 from futurex_openedx_extensions.helpers import constants as cs
@@ -473,6 +475,16 @@ def is_view_support_write(view_name: str) -> bool:
 
 class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
     """View mixin to provide role information to the view."""
+
+    def handle_exception(self, exc: Exception) -> Any:
+        """Override to handle fx exception"""
+        if isinstance(exc, FXCodedException):
+            return Response(
+                error_details_to_dictionary(reason=str(exc)),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+        return super().handle_exception(exc)  # type: ignore
+
     @property
     def fx_permission_info(self) -> dict:
         """Get fx_permission_info from the request."""

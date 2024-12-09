@@ -13,6 +13,7 @@ from opaque_keys.edx.django.models import CourseKeyField
 from opaque_keys.edx.keys import CourseKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from organizations.models import Organization
+from rest_framework import status
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -2573,3 +2574,27 @@ def test_add_missing_signup_source_record(mock_signup, base_data):  # pylint: di
 
     assert add_missing_signup_source_record(user_id, 'org1') is True
     mock_signup.assert_called_once_with(user=user, orgs=['org1'])
+
+
+@pytest.mark.parametrize(
+    'exception, expected_result', [
+        (FXCodedException(message='This is an FX coded exception', code=11), {
+            'reason': 'This is an FX coded exception',
+            'details': {}
+        }),
+        (Exception('Generic Exception'), None),
+        (ValueError('A value error occurred'), None),
+    ]
+)
+def test_fx_exception_handler(exception, expected_result):
+    """
+    Test fx_exception_handler with different types of exceptions.
+    """
+    mixin = FXViewRoleInfoMixin()
+    if expected_result is None:
+        with pytest.raises(Exception or ValueError):
+            mixin.handle_exception(exception)
+    else:
+        response = mixin.handle_exception(exception)
+        assert response.data == expected_result
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
