@@ -26,7 +26,7 @@ from futurex_openedx_extensions.helpers.converters import (
     ids_string_to_list,
 )
 from futurex_openedx_extensions.helpers.course_creator_manager import CourseCreatorManager
-from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes, fx_exception_handler
 from futurex_openedx_extensions.helpers.extractors import (
     DictHashcode,
     DictHashcodeSet,
@@ -473,6 +473,11 @@ def is_view_support_write(view_name: str) -> bool:
 
 class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
     """View mixin to provide role information to the view."""
+
+    def handle_exception(self, exc: Exception) -> Any:
+        """Override to handle exceptions"""
+        return fx_exception_handler(exc) or super().handle_exception(exc)  # type: ignore
+
     @property
     def fx_permission_info(self) -> dict:
         """Get fx_permission_info from the request."""

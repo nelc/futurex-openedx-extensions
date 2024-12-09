@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from enum import Enum
 
+from rest_framework import status
+from rest_framework.response import Response
+
+from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
+
 
 class FXExceptionCodes(Enum):
     """Role types."""
@@ -58,3 +63,13 @@ class FXCodedException(Exception):
                 self.code = FXExceptionCodes.UNKNOWN_ERROR.value
         else:
             self.code = FXExceptionCodes.UNKNOWN_ERROR.value
+
+
+def fx_exception_handler(exc: Exception) -> Response | None:
+    """Handle exception and return response with error details"""
+    if isinstance(exc, FXCodedException):
+        return Response(
+            error_details_to_dictionary(reason=str(exc)),
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    return None
