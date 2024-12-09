@@ -1,0 +1,13 @@
+-c https://raw.githubusercontent.com/nelc/edx-platform/refs/heads/open-release/palm.nelp/requirements/constraints.txt
+
+# Nelc specific requirements
+eox-tenant==v10.0.0
+clickhouse-connect>0.5,<0.6     # as used in tutor-contrib-aspects v0.51.1
+
+# edx-platform related requirements. Pinned to the versions used in Palm.
+edx-opaque-keys==2.3.0
+edx-lint<5.4.0
+django-filter==23.1
+django-mysql==4.9.0
+jsonfield==3.1.0
+python-dateutil==2.8.2
