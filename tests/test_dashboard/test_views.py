@@ -46,10 +46,6 @@ class BaseTestViewMixin(APITestCase):
         self.view_name = self.VIEW_NAME
         self.url_args = []
         self.staff_user = 2
-        self.registry = {}
-        for _, viewset, basename in urls.router.registry:
-            self.registry[basename] = viewset
-        self.viewset_base = None
 
     @property
     def url(self):
@@ -466,17 +462,20 @@ class TestDataExportTasksView(BaseTestViewMixin):
 
     def set_action(self, action, task_id=1):
         """Set the viewname and client method"""
-        self.viewset_base = 'data-export-tasks'
-        self.view_name = f'fx_dashboard:{self.viewset_base}-{action}'
+        self.view_name = f'fx_dashboard:data-export-tasks-{action}'
         self.url_args = []
         if action == 'detail':
             self.url_args = [task_id]
 
     def test_permission_classes(self):
         """Verify that the view has the correct permission classes"""
+        registry = {}
+        for _, viewset, basename in urls.export_router.registry:
+            registry[basename] = viewset
+
         for action in self.view_actions:
             self.set_action(action)
-            view_class = self.registry['data-export-tasks']
+            view_class = registry['data-export-tasks']
             self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
 
     def test_unauthorized(self):
@@ -1018,7 +1017,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.set_action(action)
 
         registry = {}
-        for _, viewset, basename in urls.router.registry:
+        for _, viewset, basename in urls.roles_router.registry:
             registry[basename] = viewset
         view_class = registry['user-roles']
         self.assertEqual(view_class.permission_classes, [FXHasTenantAllCoursesAccess])

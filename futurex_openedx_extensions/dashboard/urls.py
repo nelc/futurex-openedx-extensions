@@ -13,9 +13,10 @@ app_name = 'fx_dashboard'
 
 QUERY_ALLOWED_SCOPES = '|'.join(ClickhouseQuery.allowed_scopes())
 
-router = DefaultRouter()
-router.register(r'user_roles', views.UserRolesManagementView, basename='user-roles')
-router.register(r'tasks', views.DataExportManagementView, basename='data-export-tasks')
+roles_router = DefaultRouter()
+roles_router.register(r'user_roles', views.UserRolesManagementView, basename='user-roles')
+export_router = DefaultRouter()
+export_router.register(r'tasks', views.DataExportManagementView, basename='data-export-tasks')
 
 urlpatterns = [
     re_path(r'^api/fx/accessible/v1/info/$', views.AccessibleTenantsInfoView.as_view(), name='accessible-info'),
@@ -38,8 +39,8 @@ urlpatterns = [
         name='learner-courses'
     ),
     re_path(r'^api/fx/roles/v1/my_roles/$', views.MyRolesView.as_view(), name='my-roles'),
-    re_path(r'^api/fx/roles/v1/', include(router.urls)),
-    re_path(r'^api/fx/export/v1/', include(router.urls)),
+    re_path(r'^api/fx/roles/v1/', include(roles_router.urls)),
+    re_path(r'^api/fx/export/v1/', include(export_router.urls)),
     re_path(r'^api/fx/statistics/v1/course_statuses/$', views.CourseStatusesView.as_view(), name='course-statuses'),
     re_path(r'^api/fx/statistics/v1/rating/$', views.GlobalRatingView.as_view(), name='statistics-rating'),
     re_path(r'^api/fx/statistics/v1/total_counts/$', views.TotalCountsView.as_view(), name='total-counts'),
