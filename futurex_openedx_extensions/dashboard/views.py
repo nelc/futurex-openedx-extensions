@@ -73,7 +73,7 @@ from futurex_openedx_extensions.helpers.users import get_user_by_key
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
 
 
-class TotalCountsView(APIView, FXViewRoleInfoMixin):
+class TotalCountsView(FXViewRoleInfoMixin, APIView):
     """
     View to get the total count statistics
 
@@ -184,7 +184,7 @@ class TotalCountsView(APIView, FXViewRoleInfoMixin):
         return JsonResponse(result)
 
 
-class LearnersView(ListAPIView, FXViewRoleInfoMixin):
+class LearnersView(FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -206,7 +206,7 @@ class LearnersView(ListAPIView, FXViewRoleInfoMixin):
         )
 
 
-class CoursesView(ListAPIView, FXViewRoleInfoMixin):
+class CoursesView(FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of courses"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -235,7 +235,7 @@ class CoursesView(ListAPIView, FXViewRoleInfoMixin):
         )
 
 
-class CourseStatusesView(APIView, FXViewRoleInfoMixin):
+class CourseStatusesView(FXViewRoleInfoMixin, APIView):
     """View to get the course statuses"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -269,7 +269,7 @@ class CourseStatusesView(APIView, FXViewRoleInfoMixin):
         return JsonResponse(self.to_json(result))
 
 
-class LearnerInfoView(APIView, FXViewRoleInfoMixin):
+class LearnerInfoView(FXViewRoleInfoMixin, APIView):
     """View to get the information of a learner"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -304,7 +304,7 @@ class LearnerInfoView(APIView, FXViewRoleInfoMixin):
         )
 
 
-class DataExportManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # pylint: disable=too-many-ancestors
+class DataExportManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
     """View to list and retrieve data export tasks."""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -335,7 +335,7 @@ class DataExportManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # p
         return task
 
 
-class LearnerCoursesView(APIView, FXViewRoleInfoMixin):
+class LearnerCoursesView(FXViewRoleInfoMixin, APIView):
     """View to get the list of courses for a learner"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -407,7 +407,7 @@ class AccessibleTenantsInfoView(APIView):
         return JsonResponse(get_tenants_info(tenant_ids))
 
 
-class LearnersDetailsForCourseView(ExportCSVMixin, ListAPIView, FXViewRoleInfoMixin):
+class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners for a course"""
     authentication_classes = default_auth_classes
     serializer_class = serializers.LearnerDetailsForCourseSerializer
@@ -443,7 +443,7 @@ class LearnersDetailsForCourseView(ExportCSVMixin, ListAPIView, FXViewRoleInfoMi
         return context
 
 
-class LearnersEnrollmentView(ListAPIView, FXViewRoleInfoMixin):
+class LearnersEnrollmentView(FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners for a course"""
     serializer_class = serializers.LearnerEnrollmentSerializer
     permission_classes = [FXHasTenantCourseAccess]
@@ -484,7 +484,7 @@ class LearnersEnrollmentView(ListAPIView, FXViewRoleInfoMixin):
         return context
 
 
-class GlobalRatingView(APIView, FXViewRoleInfoMixin):
+class GlobalRatingView(FXViewRoleInfoMixin, APIView):
     """View to get the global rating"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -512,7 +512,7 @@ class GlobalRatingView(APIView, FXViewRoleInfoMixin):
         return JsonResponse(result)
 
 
-class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # pylint: disable=too-many-ancestors
+class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
     """View to get the user roles"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
@@ -675,7 +675,7 @@ class UserRolesManagementView(viewsets.ModelViewSet, FXViewRoleInfoMixin):  # py
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
-class MyRolesView(APIView, FXViewRoleInfoMixin):
+class MyRolesView(FXViewRoleInfoMixin, APIView):
     """View to get the user roles of the caller"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -692,7 +692,7 @@ class MyRolesView(APIView, FXViewRoleInfoMixin):
         return JsonResponse(data)
 
 
-class ClickhouseQueryView(APIView, FXViewRoleInfoMixin):
+class ClickhouseQueryView(FXViewRoleInfoMixin, APIView):
     """View to get the Clickhouse query"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
