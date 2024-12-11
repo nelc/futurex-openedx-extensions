@@ -6,6 +6,7 @@
 eox-tenant<v12.0.0
 
 # edx-platform related requirements. Pinned to the versions used in Redwood.
+edx-api-doc-tools==1.8.0
 edx-opaque-keys==2.9.0
 edx-lint==5.3.6
 django-filter==24.2

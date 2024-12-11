@@ -14,6 +14,7 @@ pytest-django                   # pytest extension for better Django support
 eox-tenant
 
 # edx-platform related requirements. Pinned to the versions used in Palm.
+edx-api-doc-tools
 edx-opaque-keys[django]
 djangorestframework
 django-filter

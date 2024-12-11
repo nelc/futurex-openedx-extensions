@@ -79,18 +79,20 @@ class DataExportTaskSerializer(ModelSerializerOptionalFields):
 
 class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
     """Serializer for learner's basic details."""
-    user_id = serializers.SerializerMethodField()
-    full_name = serializers.SerializerMethodField()
-    alternative_full_name = serializers.SerializerMethodField()
-    username = serializers.SerializerMethodField()
-    national_id = serializers.SerializerMethodField()
-    email = serializers.SerializerMethodField()
-    mobile_no = serializers.SerializerMethodField()
-    year_of_birth = serializers.SerializerMethodField()
-    gender = serializers.SerializerMethodField()
-    gender_display = serializers.SerializerMethodField()
-    date_joined = serializers.SerializerMethodField()
-    last_login = serializers.SerializerMethodField()
+    user_id = serializers.SerializerMethodField(help_text='User ID in edx-platform')
+    full_name = serializers.SerializerMethodField(help_text='Full name of the user')
+    alternative_full_name = serializers.SerializerMethodField(help_text='Arabic name (if available)')
+    username = serializers.SerializerMethodField(help_text='Username of the user in edx-platform')
+    national_id = serializers.SerializerMethodField(help_text='National ID of the user (if available)')
+    email = serializers.SerializerMethodField(help_text='Email of the user in edx-platform')
+    mobile_no = serializers.SerializerMethodField(help_text='Mobile number of the user (if available)')
+    year_of_birth = serializers.SerializerMethodField(help_text='Year of birth of the user (if available)')
+    gender = serializers.SerializerMethodField(help_text='Gender code of the user (if available)')
+    gender_display = serializers.SerializerMethodField(help_text='Gender of the user (if available)')
+    date_joined = serializers.SerializerMethodField(
+        help_text='Date when the user was registered in the platform regardless of which tenant',
+    )
+    last_login = serializers.SerializerMethodField(help_text='Date when the user last logged in')
 
     class Meta:
         model = get_user_model()
@@ -357,8 +359,8 @@ class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
 
 class LearnerDetailsSerializer(LearnerBasicDetailsSerializer):
     """Serializer for learner details."""
-    enrolled_courses_count = serializers.SerializerMethodField()
-    certificates_count = serializers.SerializerMethodField()
+    enrolled_courses_count = serializers.SerializerMethodField(help_text='Number of courses the user is enrolled in')
+    certificates_count = serializers.SerializerMethodField(help_text='Number of certificates the user has earned')
 
     class Meta:
         model = get_user_model()
