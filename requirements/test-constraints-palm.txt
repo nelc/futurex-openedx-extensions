@@ -6,6 +6,7 @@
 eox-tenant==v10.0.0
 
 # edx-platform related requirements. Pinned to the versions used in Palm.
+edx-api-doc-tools==1.6.0
 edx-opaque-keys==2.3.0
 edx-lint<5.4.0
 django-filter==23.1
