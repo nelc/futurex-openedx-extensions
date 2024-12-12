@@ -1,0 +1,13 @@
+[run]
+branch = True
+data_file = .coverage
+source=futurex_openedx_extensions
+omit =
+    test_settings_palm.py
+    test_settings_redwood.py
+    */migrations/*
+    */static/*
+    # Ignore the models_switch.py file since it cannot be tested in all environments, so coverage will never be 100%
+    futurex_openedx_extensions/upgrade/models_switch.py
+    # Version specific code for anything not palm
+    futurex_openedx_extensions/upgrade/releases/redwood/*

@@ -1,7 +1,6 @@
 """Courses details collectors"""
 from __future__ import annotations
 
-from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
 from django.contrib.auth import get_user_model
 from django.db.models import (
@@ -32,6 +31,7 @@ from futurex_openedx_extensions.helpers.querysets import (
     get_one_user_queryset,
     update_removable_annotations,
 )
+from futurex_openedx_extensions.upgrade.models_switch import CourseEnrollment
 
 
 def annotate_courses_rating_queryset(

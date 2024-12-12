@@ -54,9 +54,10 @@ def fix_lms_base(domain_name: str) -> str:
         return ''
 
     lms_root_parts = urlparse(settings.LMS_ROOT_URL)
+
+    if not (domain_name.startswith('http://') or domain_name.startswith('https://')):
+        domain_name = f'{lms_root_parts.scheme}://{domain_name}'
     domain_name_parts = urlparse(domain_name)
-    if not domain_name_parts.scheme:
-        domain_name_parts = urlparse(f'{lms_root_parts.scheme}://{domain_name}')
 
     port = f':{domain_name_parts.port}' if domain_name_parts.port else ''
 

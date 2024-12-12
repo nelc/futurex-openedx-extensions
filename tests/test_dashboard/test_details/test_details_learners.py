@@ -2,7 +2,6 @@
 from unittest.mock import Mock, patch
 
 import pytest
-from common.djangoapps.student.models import CourseEnrollment
 from django.contrib.auth import get_user_model
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
@@ -15,6 +14,7 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_queryset,
 )
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.upgrade.models_switch import CourseEnrollment
 from tests.fixture_helpers import get_tenants_orgs
 
 

@@ -24,7 +24,7 @@ def get_version(*file_paths):
     raise RuntimeError('Unable to find version string.')
 
 
-def load_requirements(*requirements_paths):
+def load_requirements(*requirements_paths, dynamic_constraint_files=None):
     """
     Load all requirements from the specified requirements files.
 
@@ -55,7 +55,7 @@ def load_requirements(*requirements_paths):
             )
 
     requirements = {}
-    constraint_files = set()
+    constraint_files = set(dynamic_constraint_files or [])
 
     # groups 'pkg<=x.y.z,...' into ('pkg', '<=x.y.z,...')
     re_package_name_base_chars = r'a-zA-Z0-9\-_.'  # chars allowed in base package name
@@ -139,15 +139,19 @@ setup(
             'futurex_openedx_extensions', 'futurex_openedx_extensions.*',
             'futurex_openedx_extensions.dashboard', 'futurex_openedx_extensions.dashboard.*',
             'futurex_openedx_extensions.helpers', 'futurex_openedx_extensions.helpers.*',
+            'futurex_openedx_extensions.upgrade', 'futurex_openedx_extensions.upgrade.*',
         ],
         exclude=['*tests'],
     ),
-
     include_package_data=True,
     package_data={
         'futurex_openedx_extensions': ['helpers/assets/*.yml'],
     },
-    install_requires=load_requirements('requirements/base.in'),
+    install_requires=[],
+    extras_require={
+        'palm': load_requirements('requirements/base.in', dynamic_constraint_files=['requirements/constraints-palm.txt']),
+        'redwood': load_requirements('requirements/base.in', dynamic_constraint_files=['requirements/constraints-redwood.txt']),
+    },
     python_requires='>=3.8',
     zip_safe=False,
     keywords='Python edx',
@@ -165,6 +169,7 @@ setup(
         'lms.djangoapp': [
             'fx_dashboard = futurex_openedx_extensions.dashboard.apps:DashboardConfig',
             'fx_helpers = futurex_openedx_extensions.helpers.apps:HelpersConfig',
+            'fx_upgrade = futurex_openedx_extensions.upgrade.apps:UpgradeConfig',
         ],
     },
 )

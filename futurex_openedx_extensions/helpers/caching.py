@@ -41,7 +41,7 @@ def cache_dict(timeout: int | str, key_generator_or_name: str | Callable) -> Cal
                     *args, **kwargs
                 ) if callable(key_generator_or_name) else key_generator_or_name
 
-            except Exception as exc:  # pylint: disable=broad-except
+            except Exception as exc:
                 log.exception('cache_dict: error generating cache key: %s', exc)
 
             result = cache.get(cache_key) if cache_key else None

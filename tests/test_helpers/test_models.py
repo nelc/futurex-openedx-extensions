@@ -3,13 +3,13 @@ from itertools import product
 from unittest.mock import Mock, patch
 
 import pytest
-from common.djangoapps.student.models import CourseAccessRole
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from futurex_openedx_extensions.helpers.clickhouse_operations import ClickhouseBaseError
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask, ViewUserMapping
+from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole
 
 
 @pytest.fixture
