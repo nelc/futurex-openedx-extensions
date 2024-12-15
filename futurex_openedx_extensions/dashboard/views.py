@@ -184,7 +184,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         return JsonResponse(result)
 
 
-class LearnersView(FXViewRoleInfoMixin, ListAPIView):
+class LearnersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -206,7 +206,7 @@ class LearnersView(FXViewRoleInfoMixin, ListAPIView):
         )
 
 
-class CoursesView(FXViewRoleInfoMixin, ListAPIView):
+class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of courses"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
@@ -443,7 +443,7 @@ class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIV
         return context
 
 
-class LearnersEnrollmentView(FXViewRoleInfoMixin, ListAPIView):
+class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners for a course"""
     serializer_class = serializers.LearnerEnrollmentSerializer
     permission_classes = [FXHasTenantCourseAccess]
