@@ -1,8 +1,9 @@
 """Test settings for edx-platform-palm"""
+from openedx.core import release
+
 from test_utils.test_settings_common import *
 
-# edx-platform version
-FX_EDX_PLATFORM_VERSION = 'redwood'
+release.RELEASE_LINE = 'redwood'
 
 # eox-tenant settings
 EOX_TENANT_USERS_BACKEND = 'eox_tenant.edxapp_wrapper.backends.users_p_v1'
