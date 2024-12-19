@@ -12,6 +12,7 @@ from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
+from edx_api_doc_tools import exclude_schema_for
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.exceptions import ParseError
@@ -27,6 +28,7 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_enrollments_queryset,
     get_learners_queryset,
 )
+from futurex_openedx_extensions.dashboard.docs_utils import docs
 from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
 from futurex_openedx_extensions.dashboard.statistics.courses import (
     get_courses_count,
@@ -73,6 +75,7 @@ from futurex_openedx_extensions.upgrade.models_switch import get_user_by_usernam
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
 
 
+@docs('TotalCountsView.get')
 class TotalCountsView(FXViewRoleInfoMixin, APIView):
     """
     View to get the total count statistics
@@ -147,17 +150,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         return self._get_learners_count_data(one_tenant_permission_info, include_staff)
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
-        """
-        GET /api/fx/statistics/v1/total_counts/?stats=<countTypesList>&tenant_ids=<tenantIds>
-
-        <countTypesList> (required): a comma-separated list of the types of count statistics to include in the
-            response. Available count statistics are:
-        certificates: total number of issued certificates in the selected tenants
-        courses: total number of courses in the selected tenants
-        learners: total number of learners in the selected tenants
-        <tenantIds> (optional): a comma-separated list of the tenant IDs to get the information for. If not provided,
-            the API will assume the list of all accessible tenants by the user
-        """
+        """Returns the total count statistics for the selected tenants."""
         stats = request.query_params.get('stats', '').split(',')
         invalid_stats = list(set(stats) - set(self.valid_stats))
         if invalid_stats:
@@ -184,6 +177,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         return JsonResponse(result)
 
 
+@docs('LearnersView.get')
 class LearnersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners"""
     authentication_classes = default_auth_classes
@@ -206,6 +200,7 @@ class LearnersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
         )
 
 
+@docs('CoursesView.get')
 class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of courses"""
     authentication_classes = default_auth_classes
@@ -235,6 +230,7 @@ class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
         )
 
 
+@docs('CourseStatusesView.get')
 class CourseStatusesView(FXViewRoleInfoMixin, APIView):
     """View to get the course statuses"""
     authentication_classes = default_auth_classes
@@ -269,6 +265,7 @@ class CourseStatusesView(FXViewRoleInfoMixin, APIView):
         return JsonResponse(self.to_json(result))
 
 
+@docs('LearnerInfoView.get')
 class LearnerInfoView(FXViewRoleInfoMixin, APIView):
     """View to get the information of a learner"""
     authentication_classes = default_auth_classes
@@ -304,6 +301,9 @@ class LearnerInfoView(FXViewRoleInfoMixin, APIView):
         )
 
 
+@docs('DataExportManagementView.list')
+@docs('DataExportManagementView.partial_update')
+@docs('DataExportManagementView.retrieve')
 class DataExportManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
     """View to list and retrieve data export tasks."""
     authentication_classes = default_auth_classes
@@ -335,6 +335,7 @@ class DataExportManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # p
         return task
 
 
+@docs('LearnerCoursesView.get')
 class LearnerCoursesView(FXViewRoleInfoMixin, APIView):
     """View to get the list of courses for a learner"""
     authentication_classes = default_auth_classes
@@ -372,6 +373,7 @@ class LearnerCoursesView(FXViewRoleInfoMixin, APIView):
         ).data)
 
 
+@docs('VersionInfoView.get')
 class VersionInfoView(APIView):
     """View to get the version information"""
     permission_classes = [IsSystemStaff]
@@ -386,6 +388,7 @@ class VersionInfoView(APIView):
         })
 
 
+@exclude_schema_for('get')
 class AccessibleTenantsInfoView(APIView):
     """View to get the list of accessible tenants"""
     permission_classes = [IsAnonymousOrSystemStaff]
@@ -407,6 +410,7 @@ class AccessibleTenantsInfoView(APIView):
         return JsonResponse(get_tenants_info(tenant_ids))
 
 
+@docs('LearnersDetailsForCourseView.get')
 class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners for a course"""
     authentication_classes = default_auth_classes
@@ -443,6 +447,7 @@ class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIV
         return context
 
 
+@exclude_schema_for('get')
 class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners for a course"""
     serializer_class = serializers.LearnerEnrollmentSerializer
@@ -450,7 +455,7 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     pagination_class = DefaultPagination
     fx_view_name = 'learners_enrollment_details'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
-    fx_view_description = 'api/fx/learners/v1/enrollments: Get the list of enrollemts'
+    fx_view_description = 'api/fx/learners/v1/enrollments: Get the list of enrollments'
 
     def get_queryset(self, *args: Any, **kwargs: Any) -> QuerySet:
         """Get the list of learners for a course"""
@@ -484,6 +489,7 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
         return context
 
 
+@docs('GlobalRatingView.get')
 class GlobalRatingView(FXViewRoleInfoMixin, APIView):
     """View to get the global rating"""
     authentication_classes = default_auth_classes
@@ -512,6 +518,12 @@ class GlobalRatingView(FXViewRoleInfoMixin, APIView):
         return JsonResponse(result)
 
 
+@docs('UserRolesManagementView.create')
+@docs('UserRolesManagementView.destroy')
+@docs('UserRolesManagementView.list')
+@docs('UserRolesManagementView.retrieve')
+@docs('UserRolesManagementView.update')
+@exclude_schema_for('partial_update')
 class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
     """View to get the user roles"""
     authentication_classes = default_auth_classes
@@ -675,6 +687,7 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
+@docs('MyRolesView.get')
 class MyRolesView(FXViewRoleInfoMixin, APIView):
     """View to get the user roles of the caller"""
     authentication_classes = default_auth_classes
@@ -692,6 +705,7 @@ class MyRolesView(FXViewRoleInfoMixin, APIView):
         return JsonResponse(data)
 
 
+@exclude_schema_for('get')
 class ClickhouseQueryView(FXViewRoleInfoMixin, APIView):
     """View to get the Clickhouse query"""
     authentication_classes = default_auth_classes
