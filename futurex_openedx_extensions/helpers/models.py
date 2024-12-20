@@ -446,7 +446,7 @@ class DataExportTask(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_IN_QUEUE)
     progress = models.FloatField(default=0.0)
-    notes = models.CharField(max_length=255, default='', blank=True)
+    notes = models.CharField(max_length=255, default='', blank=True, help_text='Optional note for the task')
     tenant = models.ForeignKey(TenantConfig, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
