@@ -32,7 +32,7 @@ class CourseOverview(models.Model):
     self_paced = models.BooleanField(default=False)
     course_image_url = models.TextField()
     visible_to_staff_only = models.BooleanField(default=False)
-    effort = models.CharField(max_length=255)
+    effort = models.TextField(null=True)
 
     class Meta:
         app_label = 'fake_models'

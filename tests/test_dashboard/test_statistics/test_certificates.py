@@ -75,9 +75,13 @@ def test_get_learning_hours_count_for_default_course_effort(
     ('20:5', 20.1 * 2, 'Valid, minutes as a single digit without leading zero'),
     ('5:5', 5.1 * 2, 'Valid, both hours and minutes are single digits'),
     ('30', 30 * 2, 'Valid, only hours provided (no minutes)'),
+    ('0:30', 0.5 * 2, 'Valid, only min with 0 hours'),
     ('5:120', 10 * 2, 'Invalid, minutes exceed 60, use default value'),
     ('invalid', 10 * 2, 'Invalid, non-numeric value for hours, use default value'),
     ('20:invalid', 10 * 2, 'Invalid, non-numeric value for minutes, use default value'),
+    ('0:-55', 10 * 2, 'Invalid, neg min, use default value'),
+    ('-55', 10 * 2, 'Invalid, neg hour, use default value'),
+    ('0:10', 10 * 2, 'Invalid, course effort value is too small less then 0.5, use default value'),
 ])
 def test_get_learning_hours_count_for_different_course_effor_format(
     base_data, fx_permission_info, effort, expected_result, usecase

@@ -37,5 +37,5 @@ def plugin_settings(settings: Any) -> None:
     settings.FX_DEFAULT_COURSE_EFFORT = getattr(
         settings,
         'FX_DEFAULT_COURSE_EFFORT',
-        '50'
+        '12',
     )

@@ -1,6 +1,7 @@
 """functions for getting statistics about certificates"""
 from __future__ import annotations
 
+import logging
 from typing import Dict
 
 from django.conf import settings
@@ -10,6 +11,8 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
+
+log = logging.getLogger(__name__)
 
 
 def get_certificates_count(
@@ -61,19 +64,33 @@ def get_learning_hours_count(
     :rtype: Dict[str, int]
     """
 
-    def parse_course_effort(effort: str) -> float:
+    def parse_course_effort(effort: str, course_id: str) -> float:
         """Parses course effort in HH:MM format and returns total hours as a float."""
         try:
+            if not effort:
+                raise ValueError('Course effort is not set.')
+
             parts = effort.split(':')
             hours = int(parts[0])
             minutes = int(parts[1]) if len(parts) > 1 else 0
 
+            if hours < 0 or minutes < 0:
+                raise ValueError('Hours and minutes must be non-negative values.')
             if minutes >= 60:
                 raise ValueError('Minutes cannot be 60 or more.')
 
             total_hours = hours + minutes / 60
+
+            if total_hours < 0.5:
+                raise ValueError('course effort value is too small')
+
             return round(total_hours, 1)
-        except (ValueError, IndexError):
+
+        except (ValueError, IndexError) as exc:
+            log.exception(
+                'Invalid course-effort for course %s. Assuming default value (%s hours). Error: %s',
+                course_id, settings.FX_DEFAULT_COURSE_EFFORT, str(exc)
+            )
             return settings.FX_DEFAULT_COURSE_EFFORT
 
     result = list(
@@ -92,11 +109,13 @@ def get_learning_hours_count(
             )
         ).annotate(
             certificates_count=Count('id')
-        ).values('course_effort', 'certificates_count')
+        ).values('course_effort', 'certificates_count', 'course_id')
     )
 
     return sum(
         parse_course_effort(
-            entry.get('course_effort', settings.FX_DEFAULT_COURSE_EFFORT)) * entry.get('certificates_count', 0)
+            entry.get('course_effort', settings.FX_DEFAULT_COURSE_EFFORT),
+            entry.get('course_id')
+        ) * entry.get('certificates_count', 0)
         for entry in result
     )
