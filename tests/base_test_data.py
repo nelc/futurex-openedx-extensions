@@ -316,6 +316,7 @@ expected_statistics = {
         'enrollments_count': 26,
         'hidden_courses_count': 0,
         'learners_count': 16,
+        'learning_hours_count': 14 * 20,
     },
     '2': {
         'certificates_count': 9,
@@ -323,6 +324,7 @@ expected_statistics = {
         'enrollments_count': 21,
         'hidden_courses_count': 0,
         'learners_count': 21,
+        'learning_hours_count': 9 * 20,
     },
     '3': {
         'certificates_count': 0,
@@ -330,6 +332,8 @@ expected_statistics = {
         'enrollments_count': 4,
         'hidden_courses_count': 0,
         'learners_count': 6,
+        'learning_hours_count': 0,
+
     },
     '7': {
         'certificates_count': 7,
@@ -337,6 +341,8 @@ expected_statistics = {
         'enrollments_count': 14,
         'hidden_courses_count': 0,
         'learners_count': 17,
+        'learning_hours_count': 7 * 20,
+
     },
     '8': {
         'certificates_count': 2,
@@ -344,11 +350,14 @@ expected_statistics = {
         'enrollments_count': 7,
         'hidden_courses_count': 0,
         'learners_count': 9,
+        'learning_hours_count': 2 * 20
+
     },
     'total_certificates_count': 32,
     'total_courses_count': 23,
     'total_enrollments_count': 72,
     'total_hidden_courses_count': 0,
     'total_learners_count': 69,
+    'total_learning_hours_count': 640,
     'limited_access': False,
 }

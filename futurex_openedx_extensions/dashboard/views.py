@@ -27,7 +27,10 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_enrollments_queryset,
     get_learners_queryset,
 )
-from futurex_openedx_extensions.dashboard.statistics.certificates import get_certificates_count
+from futurex_openedx_extensions.dashboard.statistics.certificates import (
+    get_certificates_count,
+    get_learning_hours_count,
+)
 from futurex_openedx_extensions.dashboard.statistics.courses import (
     get_courses_count,
     get_courses_count_by_status,
@@ -84,14 +87,19 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
     STAT_ENROLLMENTS = 'enrollments'
     STAT_HIDDEN_COURSES = 'hidden_courses'
     STAT_LEARNERS = 'learners'
+    STAT_LEARNING_HOURS = 'learning_hours'
 
-    valid_stats = [STAT_CERTIFICATES, STAT_COURSES, STAT_ENROLLMENTS, STAT_HIDDEN_COURSES, STAT_LEARNERS]
+    valid_stats = [
+        STAT_CERTIFICATES, STAT_COURSES, STAT_ENROLLMENTS, STAT_HIDDEN_COURSES, STAT_LEARNERS, STAT_LEARNING_HOURS
+    ]
+
     STAT_RESULT_KEYS = {
         STAT_CERTIFICATES: 'certificates_count',
         STAT_COURSES: 'courses_count',
         STAT_ENROLLMENTS: 'enrollments_count',
         STAT_HIDDEN_COURSES: 'hidden_courses_count',
         STAT_LEARNERS: 'learners_count',
+        STAT_LEARNING_HOURS: 'learning_hours_count',
     }
 
     authentication_classes = default_auth_classes
@@ -127,6 +135,11 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         """Get the count of learners for the given tenant"""
         return get_learners_count(one_tenant_permission_info, include_staff=include_staff)
 
+    @staticmethod
+    def _get_learning_hours_count_data(one_tenant_permission_info: dict) -> int:
+        """Get the count of learning_hours for the given tenant"""
+        return get_learning_hours_count(one_tenant_permission_info)
+
     def _get_stat_count(self, stat: str, tenant_id: int, include_staff: bool) -> int:
         """Get the count of the given stat for the given tenant"""
         one_tenant_permission_info = get_tenant_limited_fx_permission_info(self.fx_permission_info, tenant_id)
@@ -143,6 +156,11 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
 
         if stat == self.STAT_HIDDEN_COURSES:
             return self._get_courses_count_data(one_tenant_permission_info, visible_filter=False)
+
+        if stat == self.STAT_LEARNING_HOURS:
+            return self._get_learning_hours_count_data(
+                one_tenant_permission_info,
+            )
 
         return self._get_learners_count_data(one_tenant_permission_info, include_staff)
 

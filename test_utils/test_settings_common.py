@@ -100,3 +100,5 @@ CMS_ROOT_URL = 'https://studio.example.com'
 NELC_DASHBOARD_BASE = 'dashboard.example.com'
 
 FX_DASHBOARD_STORAGE_DIR = 'test_dir'
+
+FX_DEFAULT_COURSE_EFFORT = 20

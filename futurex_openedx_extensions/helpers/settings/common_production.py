@@ -32,3 +32,10 @@ def plugin_settings(settings: Any) -> None:
         'FX_DASHBOARD_STORAGE_DIR',
         'fx_dashboard'
     )
+
+    # Default Course EFfort
+    settings.FX_DEFAULT_COURSE_EFFORT = getattr(
+        settings,
+        'FX_DEFAULT_COURSE_EFFORT',
+        '12',
+    )
