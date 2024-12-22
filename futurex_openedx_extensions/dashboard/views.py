@@ -88,9 +88,11 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
     STAT_HIDDEN_COURSES = 'hidden_courses'
     STAT_LEARNERS = 'learners'
     STAT_LEARNING_HOURS = 'learning_hours'
+    STAT_UNIQUE_LEARNERS = 'unique_learners'
 
     valid_stats = [
-        STAT_CERTIFICATES, STAT_COURSES, STAT_ENROLLMENTS, STAT_HIDDEN_COURSES, STAT_LEARNERS, STAT_LEARNING_HOURS
+        STAT_CERTIFICATES, STAT_COURSES, STAT_ENROLLMENTS, STAT_HIDDEN_COURSES, STAT_LEARNERS, STAT_LEARNING_HOURS,
+        STAT_UNIQUE_LEARNERS,
     ]
 
     STAT_RESULT_KEYS = {
@@ -100,6 +102,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         STAT_HIDDEN_COURSES: 'hidden_courses_count',
         STAT_LEARNERS: 'learners_count',
         STAT_LEARNING_HOURS: 'learning_hours_count',
+        STAT_UNIQUE_LEARNERS: 'unique_learners',
     }
 
     authentication_classes = default_auth_classes
@@ -142,27 +145,33 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
 
     def _get_stat_count(self, stat: str, tenant_id: int, include_staff: bool) -> int:
         """Get the count of the given stat for the given tenant"""
+        if stat == self.STAT_UNIQUE_LEARNERS:
+            return get_learners_count(self.fx_permission_info, include_staff)
+
         one_tenant_permission_info = get_tenant_limited_fx_permission_info(self.fx_permission_info, tenant_id)
         if stat == self.STAT_CERTIFICATES:
-            return self._get_certificates_count_data(one_tenant_permission_info)
+            result = self._get_certificates_count_data(one_tenant_permission_info)
 
-        if stat == self.STAT_COURSES:
-            return self._get_courses_count_data(one_tenant_permission_info, visible_filter=True)
+        elif stat == self.STAT_COURSES:
+            result = self._get_courses_count_data(one_tenant_permission_info, visible_filter=True)
 
-        if stat == self.STAT_ENROLLMENTS:
-            return self._get_enrollments_count_data(
+        elif stat == self.STAT_ENROLLMENTS:
+            result = self._get_enrollments_count_data(
                 one_tenant_permission_info, visible_filter=True, include_staff=include_staff,
             )
 
-        if stat == self.STAT_HIDDEN_COURSES:
-            return self._get_courses_count_data(one_tenant_permission_info, visible_filter=False)
+        elif stat == self.STAT_HIDDEN_COURSES:
+            result = self._get_courses_count_data(one_tenant_permission_info, visible_filter=False)
 
-        if stat == self.STAT_LEARNING_HOURS:
-            return self._get_learning_hours_count_data(
+        elif stat == self.STAT_LEARNING_HOURS:
+            result = self._get_learning_hours_count_data(
                 one_tenant_permission_info,
             )
 
-        return self._get_learners_count_data(one_tenant_permission_info, include_staff)
+        else:
+            result = self._get_learners_count_data(one_tenant_permission_info, include_staff)
+
+        return result
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
         """
@@ -187,6 +196,11 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
 
         tenant_ids = self.fx_permission_info['view_allowed_tenant_ids_any_access']
 
+        if self.STAT_UNIQUE_LEARNERS in stats:
+            total_unique_learners = self._get_stat_count(self.STAT_UNIQUE_LEARNERS, 0, include_staff)
+            stats.remove(self.STAT_UNIQUE_LEARNERS)
+        else:
+            total_unique_learners = None
         result = dict({tenant_id: {} for tenant_id in tenant_ids})
         result.update({
             f'total_{self.STAT_RESULT_KEYS[stat]}': 0 for stat in stats
@@ -197,6 +211,8 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
                 result[tenant_id][self.STAT_RESULT_KEYS[stat]] = count
                 result[f'total_{self.STAT_RESULT_KEYS[stat]}'] += count
 
+        if total_unique_learners is not None:
+            result['total_unique_learners'] = total_unique_learners
         result['limited_access'] = self.fx_permission_info['view_allowed_course_access_orgs'] != []
 
         return JsonResponse(result)

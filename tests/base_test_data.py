@@ -359,5 +359,6 @@ expected_statistics = {
     'total_hidden_courses_count': 0,
     'total_learners_count': 69,
     'total_learning_hours_count': 640,
+    'total_unique_learners': 37,
     'limited_access': False,
 }

@@ -88,7 +88,7 @@ class TestTotalCountsView(BaseTestViewMixin):
         """Test get method"""
         self.login_user(self.staff_user)
         response = self.client.get(
-            self.url + '?stats=certificates,courses,hidden_courses,learners,enrollments,learning_hours'
+            self.url + '?stats=certificates,courses,hidden_courses,learners,enrollments,learning_hours,unique_learners'
         )
         self.assertTrue(isinstance(response, JsonResponse))
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
