@@ -83,12 +83,27 @@ def test_get_learning_hours_count_for_default_course_effort(
     ('-55', 10 * 2, 'Invalid, neg hour, use default value'),
     ('0:10', 10 * 2, 'Invalid, course effort value is too small less then 0.5, use default value'),
 ])
-def test_get_learning_hours_count_for_different_course_effor_format(
-    base_data, fx_permission_info, effort, expected_result, usecase
-):  # pylint: disable=unused-argument
+def test_get_learning_hours_count_for_different_course_effort_format(
+    base_data, fx_permission_info, effort, expected_result, usecase, caplog,
+):  # pylint: disable=unused-argument, too-many-arguments
     """Verify get_learning_hours_count function for different course format."""
     fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs([8])
     fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs([8])
     CourseOverview.objects.filter(id='course-v1:ORG8+1+1').update(effort=effort)
     result = certificates.get_learning_hours_count(fx_permission_info)
     assert result == expected_result, f'Wrong learning hours count  usecase: {usecase}'
+    if usecase.startswith('Invalid'):
+        assert 'Invalid course-effort for course course-v1:ORG8+1+1. Assuming default value' in caplog.text
+
+
+@pytest.mark.django_db
+@override_settings(FX_DEFAULT_COURSE_EFFORT=10)
+def test_get_learning_hours_count_for_different_course_effort_not_set(
+    base_data, fx_permission_info, caplog,
+):  # pylint: disable=unused-argument
+    """Verify get_learning_hours_count function when the effort is not set."""
+    fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs([8])
+    fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs([8])
+    result = certificates.get_learning_hours_count(fx_permission_info)
+    assert result == 10 * 2
+    assert 'Invalid course-effort for course course-v1:ORG8+1+1. Assuming default value' not in caplog.text
