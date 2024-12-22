@@ -33,9 +33,9 @@ def plugin_settings(settings: Any) -> None:
         'fx_dashboard'
     )
 
-    # Default Course EFfort
+    # Default Course Effort
     settings.FX_DEFAULT_COURSE_EFFORT = getattr(
         settings,
         'FX_DEFAULT_COURSE_EFFORT',
-        '12',
+        12,
     )
