@@ -284,14 +284,14 @@ def test_course_score_and_certificate_serializer_for_required_child_methods():
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.dashboard.serializers.CourseScoreAndCertificateSerializer.collect_grading_info')
 def test_learner_enrollments_serializer(mock_collect, base_data,):  # pylint: disable=unused-argument
-    """Verify that the LearnerDetailsForCourseSerializer returns the needed fields."""
+    """Verify that the LearnerEnrollmentSerializer returns the needed fields."""
     queryset = CourseEnrollment.objects.filter(user_id=10, course_id='course-v1:ORG3+1+1').annotate(
         certificate_available=Value(True),
         course_score=Value(0.67),
         active_in_course=Value(True),
     )
     serializer = LearnerEnrollmentSerializer(queryset, context={
-        'course_ids': ['course-v1:ORG3+1+1']
+        'course_id': 'course-v1:ORG3+1+1'
     }, many=True)
     mock_collect.assert_called_once()
     data = serializer.data
@@ -299,6 +299,64 @@ def test_learner_enrollments_serializer(mock_collect, base_data,):  # pylint: di
     assert data[0]['certificate_available'] is True
     assert data[0]['course_score'] == 0.67
     assert data[0]['active_in_course'] is True
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_course_blocks_completion_summary')
+@pytest.mark.parametrize('is_course_id_in_context, optional_field_tags', [
+    (True, ['exam_scores']),
+    (True, ['__all__']),
+    (True, ['csv_export']),
+    (False, ['exam_scores']),
+    (False, ['__all__']),
+    (False, ['csv_export']),
+])
+def test_learner_enrollment_serializer_exam_scores(
+    mock_get_completion, is_course_id_in_context, optional_field_tags, grading_context, base_data,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """
+    Verify that the LearnerEnrollmentSerializer returns exam_scores
+    only when course_id is set in serializer_context
+    """
+    queryset = CourseEnrollment.objects.filter(course_id='course-v1:ORG2+1+1').annotate(
+        certificate_available=Value(True),
+        course_score=Value(0.67),
+        active_in_course=Value(True),
+    )
+    PersistentSubsectionGrade.objects.create(
+        user_id=queryset[0].user.id,
+        course_id='course-v1:ORG2+1+1',
+        usage_key='block-v1:ORG2+1+1+type@homework+block@1',
+        earned_graded=0,
+        possible_graded=0,
+        earned_all=77.0,
+        possible_all=88.0,
+    )
+    PersistentSubsectionGrade.objects.create(
+        user_id=queryset[0].user.id,
+        course_id='course-v1:ORG2+1+1',
+        usage_key='block-v1:ORG2+1+1+type@homework+block@2',
+        earned_graded=0,
+        possible_graded=0,
+        earned_all=9.0,
+        possible_all=10.0,
+        first_attempted=now() - timedelta(days=1),
+    )
+    mock_get_completion.return_value = {'complete_count': 2, 'incomplete_count': 1, 'locked_count': 1}
+    context = {'requested_optional_field_tags': optional_field_tags}
+
+    if is_course_id_in_context:
+        context.update({'course_id': 'course-v1:ORG2+1+1'})
+
+    serializer = LearnerEnrollmentSerializer(queryset[0], context=context)
+    data = serializer.data
+
+    if is_course_id_in_context:
+        assert 'earned - Homework 1: First Homework' in data.keys()
+        assert 'earned - Homework 2: Second Homework' in data.keys()
+    else:
+        assert 'earned - Homework 1: First Homework' not in data.keys()
+        assert 'earned - Homework 2: Second Homework' not in data.keys()
 
 
 def test_learner_details_for_course_serializer_optional_fields():
@@ -367,7 +425,7 @@ def test_learner_details_for_course_serializer_collect_grading_info_not_used(
 
     assert not serializer.grading_info
     assert not serializer.subsection_locations
-    serializer.collect_grading_info(['course-v1:ORG2+1+1'])
+    serializer.collect_grading_info()
     assert not serializer.grading_info
     assert not serializer.subsection_locations
 

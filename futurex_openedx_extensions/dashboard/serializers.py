@@ -241,6 +241,9 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
 class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
     """
     Course Score and Certificate Details Serializer
+
+    Handles data for multiple courses, but exam_scores is included only for a single course when course_id is
+    provided in the context. Otherwise, exam_scores is excluded, even if requested in requested_optional_field_tags.
     """
     exam_scores = SerializerOptionalMethodField(field_tags=['exam_scores', 'csv_export'])
     certificate_available = serializers.BooleanField()
@@ -266,27 +269,34 @@ class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
         self._grading_info: Dict[str, Any] = {}
         self._subsection_locations: Dict[str, Any] = {}
 
-    def collect_grading_info(self, course_ids: list) -> None:
-        """Collect the grading info."""
+        if self.context.get('course_id'):
+            self.collect_grading_info()
+
+    def collect_grading_info(self) -> None:
+        """
+        Collect the grading info.
+        """
+        course_id = CourseLocator.from_string(self.context.get('course_id'))
         self._grading_info = {}
         self._subsection_locations = {}
-        index = 0
         if not self.is_optional_field_requested('exam_scores'):
             return
-        for course_id in course_ids:
-            grading_context = grading_context_for_course(get_course_by_id(course_id))
-            for assignment_type_name, subsection_infos in grading_context['all_graded_subsections_by_type'].items():
-                for subsection_index, subsection_info in enumerate(subsection_infos, start=1):
-                    header_enum = f' {subsection_index}' if len(subsection_infos) > 1 else ''
-                    header_name = f'{assignment_type_name}{header_enum}'
-                    if self.is_exam_name_in_header:
-                        header_name += f': {subsection_info["subsection_block"].display_name}'
-                    self._grading_info[str(index)] = {
-                        'header_name': header_name,
-                        'location': str(subsection_info['subsection_block'].location),
-                    }
-                    self._subsection_locations[str(subsection_info['subsection_block'].location)] = str(index)
-                    index += 1
+
+        grading_context = grading_context_for_course(get_course_by_id(course_id))
+        index = 0
+        for assignment_type_name, subsection_infos in grading_context['all_graded_subsections_by_type'].items():
+            for subsection_index, subsection_info in enumerate(subsection_infos, start=1):
+                header_enum = f' {subsection_index}' if len(subsection_infos) > 1 else ''
+                header_name = f'{assignment_type_name}{header_enum}'
+                if self.is_exam_name_in_header:
+                    header_name += f': {subsection_info["subsection_block"].display_name}'
+
+                self._grading_info[str(index)] = {
+                    'header_name': header_name,
+                    'location': str(subsection_info['subsection_block'].location),
+                }
+                self._subsection_locations[str(subsection_info['subsection_block'].location)] = str(index)
+                index += 1
 
     @property
     def is_exam_name_in_header(self) -> bool:
@@ -387,15 +397,9 @@ class LearnerDetailsForCourseSerializer(
         model = get_user_model()
         fields = LearnerBasicDetailsSerializer.Meta.fields + CourseScoreAndCertificateSerializer.Meta.fields
 
-    def __init__(self, *args: Any, **kwargs: Any):
-        """Initialize the serializer."""
-        super().__init__(*args, **kwargs)
-        self._course_id = CourseLocator.from_string(self.context.get('course_id'))
-        self.collect_grading_info([self._course_id])
-
     def _get_course_id(self, obj: Any = None) -> CourseLocator:
         """Get the course ID. Its helper method required for CourseScoreAndCertificateSerializer"""
-        return self._course_id
+        return CourseLocator.from_string(self.context.get('course_id'))
 
     def _get_user(self, obj: Any = None) -> get_user_model:
         """Get the User. Its helper method required for CourseScoreAndCertificateSerializer"""
@@ -415,12 +419,6 @@ class LearnerEnrollmentSerializer(
             CourseScoreAndCertificateSerializer.Meta.fields +
             ['course_id']
         )
-
-    def __init__(self, *args: Any, **kwargs: Any):
-        """Initialize the serializer."""
-        super().__init__(*args, **kwargs)
-        course_ids = self.context.get('course_ids')
-        self.collect_grading_info(course_ids)
 
     def _get_course_id(self, obj: Any = None) -> CourseLocator | None:
         """Get the course ID. Its helper method required for CourseScoreAndCertificateSerializer"""

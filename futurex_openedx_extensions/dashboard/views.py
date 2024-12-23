@@ -490,6 +490,7 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     fx_view_name = 'learners_enrollment_details'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/enrollments: Get the list of enrollments'
+    is_single_course_requested = False
 
     def get_queryset(self, *args: Any, **kwargs: Any) -> QuerySet:
         """Get the list of learners for a course"""
@@ -506,6 +507,9 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             username.strip() for username in usernames.split(',')
         ] if usernames else None
 
+        if course_ids_list and len(course_ids_list) == 1:
+            self.is_single_course_requested = True
+
         return get_learners_enrollments_queryset(
             fx_permission_info=self.request.fx_permission_info,
             user_ids=user_ids_list,
@@ -518,8 +522,9 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     def get_serializer_context(self) -> Dict[str, Any]:
         """Get the serializer context"""
         context = super().get_serializer_context()
-        context['course_ids'] = [course_enrollment.course_id for course_enrollment in self.get_queryset()]
-        context['omit_subsection_name'] = self.request.query_params.get('omit_subsection_name', '0')
+        if self.is_single_course_requested and self.get_queryset().exists():
+            context['course_id'] = str(self.get_queryset().first().course_id)
+            context['omit_subsection_name'] = self.request.query_params.get('omit_subsection_name', '0')
         return context
 
 
