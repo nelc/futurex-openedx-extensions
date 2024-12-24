@@ -481,7 +481,7 @@ class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIV
         return context
 
 
-@exclude_schema_for('get')
+@docs('LearnersEnrollmentView.get')
 class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners for a course"""
     serializer_class = serializers.LearnerEnrollmentSerializer
@@ -515,7 +515,8 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             user_ids=user_ids_list,
             course_ids=course_ids_list,
             usernames=usernames_list,
-            search_text=self.request.query_params.get('search_text'),
+            learner_search=self.request.query_params.get('learner_search'),
+            course_search=self.request.query_params.get('course_search'),
             include_staff=self.request.query_params.get('include_staff', '0') == '1',
         )
 

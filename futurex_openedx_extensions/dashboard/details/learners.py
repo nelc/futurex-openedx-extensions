@@ -270,7 +270,8 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     user_ids: list = None,
     course_ids: list = None,
     usernames: list = None,
-    search_text: str | None = None,
+    learner_search: str | None = None,
+    course_search: str | None = None,
     include_staff: bool = False,
 ) -> QuerySet:
     """
@@ -279,12 +280,13 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
 
     :param course_ids: List of course IDs to filter by (optional).
     :param user_ids: List of user IDs to filter by (optional).
-    :param search_text: Text to filter users by (optional).
+    :param learner_search: Text to search enrollments by user (username, email or national_id) (optional).
+    :param course_search: Text to search enrollments by course (dispaly name, id) (optional).
     :param include_staff: Flag to include staff users (default: False).
     :return: List of dictionaries containing user and course details.
     """
     accessible_users = get_permitted_learners_queryset(
-        queryset=get_learners_search_queryset(search_text),
+        queryset=get_learners_search_queryset(search_text=learner_search),
         fx_permission_info=fx_permission_info,
         include_staff=include_staff,
     )
@@ -314,6 +316,13 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     if course_ids:
         verify_course_ids(course_ids)
         accessible_courses = accessible_courses.filter(id__in=course_ids)
+
+    course_search = (course_search or '').strip()
+    if course_search:
+        accessible_courses = accessible_courses.filter(
+            Q(display_name__icontains=course_search) |
+            Q(id__icontains=course_search),
+        )
 
     queryset = CourseEnrollment.objects.filter(
         is_active=True,
