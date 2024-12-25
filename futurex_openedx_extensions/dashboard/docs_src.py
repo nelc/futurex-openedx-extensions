@@ -390,6 +390,61 @@ docs_src = {
         'responses': responses(),
     },
 
+    'LearnersEnrollmentView.get': {
+        'summary': 'Get the list of enrollments',
+        'description': 'Get the list of enrollments in the tenants, which is the list of all learners having at '
+        ' least one enrollment in any course.',
+        'parameters': [
+            common_parameters['tenant_ids'],
+            query_parameter(
+                'course_ids',
+                str,
+                'a comma separated list of course ids to filter the results by. If not provided, the system will '
+                'assume all courses that are accessible to the caller.',
+            ),
+            query_parameter(
+                'user_ids',
+                str,
+                'a comma separated list of learner user ids to filter the results by. If not provided, the system '
+                'will assume all users that are accessible to the caller.',
+            ),
+            query_parameter(
+                'usernames',
+                str,
+                'a comma separated list of learner usernames to filter the results by. If not provided, the system '
+                ' will assume all users that are accessible to the caller.',
+            ),
+            query_parameter(
+                'learner_search',
+                str,
+                'A search text to filter results, matched against the user\'s full name, username, national ID, and '
+                ' email address.',
+            ),
+            query_parameter(
+                'course_search',
+                str,
+                'A search text to filter results, matched against the course\'s ID and display name.',
+            ),
+            query_parameter(
+                'optional_field_tags',
+                str,
+                'a comma seperated list of optional_fields. The data `exam_scores`, `certificate_url` and `progress` '
+                'in result are optional and can only be added if requested exclusively. Caller can also use `__all__` '
+                ' to include all optional fields in result.',
+            ),
+            common_parameters['include_staff'],
+            common_parameters['download'],
+            query_parameter(
+                'omit_subsection_name',
+                int,
+                'Omit the subsection name from the response. Can be `0` or `1`. This is useful when `exam_scores`'
+                ' optional fields are requested; it\'ll omit the subsection names for cleaner representation of the'
+                ' data. Default is `0`. Any value other than `1` is considered as `0`.',
+            ),
+        ],
+        'responses': responses(),
+    },
+
     'LearnerInfoView.get': {
         'summary': 'Get learner\'s information',
         'description': 'Get full information for a specific learner using the `username`. The caller must have access'

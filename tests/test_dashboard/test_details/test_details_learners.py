@@ -334,3 +334,26 @@ def test_get_learners_enrollments_queryset_for_accessible_courses_and_users(
     assert not (
         {str(enrollment.course.id) for enrollment in queryset} - set(expected_course_ids)
     ), f'unexpected enrollment course ids for case: {usecase}'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'course_search, learner_search, expected_count, usecase',
+    [
+        ('', '', 25, 'no search'),
+        ('Course 5', '', 8, 'only course name search'),
+        ('', 'user15', 2, 'only user search'),
+        ('Course 5', 'user15', 1, 'only user search'),
+    ],
+)
+def test_get_learners_enrollments_queryset_for_course_and_learner_search(
+    course_search, learner_search, expected_count, usecase, fx_permission_info,
+):
+    """Test get_learners_by_course_queryset result for accessible users and courses."""
+    fx_permission_info['view_allowed_full_access_orgs'] = ['org1', 'org2']
+    queryset = get_learners_enrollments_queryset(
+        fx_permission_info=fx_permission_info,
+        course_search=course_search,
+        learner_search=learner_search
+    )
+    assert queryset.count() == expected_count, f'unexpected enrollment queryset count for case: {usecase}'
