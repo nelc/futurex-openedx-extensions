@@ -1,6 +1,7 @@
 """Helper functions for FutureX Open edX Extensions."""
 from __future__ import annotations
 
+import importlib
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List
@@ -197,3 +198,74 @@ def get_partial_access_course_ids(fx_permission_info: dict) -> List[str]:
     ).values_list('id', flat=True)
 
     return [str(course_id) for course_id in only_limited_access]
+
+
+def import_from_path(import_path: str) -> Any:
+    """
+    Import a class, function, or a variable from the given path. The path should be formatted as
+    `module.module.module::class_or_method_or_variable_name`. The path should not contain any whitespace. Only one
+    `module` is mandatory, but the rest is optional.
+
+    :param import_path: Path to import the class, function, or variable from.
+    :type import_path: str
+    :return: Imported class, function, or variable.
+    :rtype: Any
+    """
+    import_path_pattern = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*::[a-zA-Z_][a-zA-Z0-9_]*$')
+
+    if not import_path_pattern.match(import_path):
+        raise ValueError(
+            'Invalid import path used with import_from_path. The path should be formatted as '
+            '`module.module.module::class_or_method_or_variable_name`.'
+        )
+
+    module_path, target_object = import_path.split('::', 1)
+    return getattr(importlib.import_module(module_path), target_object)
+
+
+def get_optional_field_class() -> Any:
+    return import_from_path(
+        'futurex_openedx_extensions.dashboard.serializers::SerializerOptionalMethodField'
+    )
+
+
+def get_available_optional_field_tags(serializer_class_path: str) -> Dict[str, List[str]]:
+    """
+    Get the available optional field tags of the serializer class.
+
+    :param serializer_class_path: Name of the serializer class. See `import_from_path` for the format.
+    :type serializer_class_path: str
+    :return: Available optional field tags of the serializer class.
+    :rtype: Dict(str, List[str])
+    """
+    result: Dict[str, List[str]] = {}
+    for field_name, field in import_from_path(serializer_class_path)().fields.items():
+        if not issubclass(field.__class__, get_optional_field_class()):
+            continue
+
+        for tag in field.field_tags:
+            if tag not in result:
+                result[tag] = []
+            result[tag].append(field_name)
+
+    return result
+
+
+def get_available_optional_field_tags_docs_table(serializer_class_path: str) -> str:
+    """
+    Get the available optional field tags of the serializer class in a markdown table format.
+
+    :param serializer_class_path: Name of the serializer class. See `import_from_path` for the format.
+    :type serializer_class_path: str
+    :return: Available optional field tags of the serializer class in a markdown table format.
+    :rtype: str
+    """
+    tags = get_available_optional_field_tags(serializer_class_path)
+    tags = dict(sorted(tags.items()))
+    result = ''
+    for tag, fields in tags.items():
+        tag = tag.replace('_', '\\_')
+        result += f'| {tag} | {", ".join([f"`{field}`" for field in fields])} |\n'
+    result += '----------------\n'
+
+    return result
