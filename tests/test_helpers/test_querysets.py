@@ -180,6 +180,90 @@ def test_get_learners_search_queryset_active_filter(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    'user_ids_filter, usernames_filter, expected_count, expected_error, usecase',
+    [
+        ([], [], 64, None, 'no filter'),
+        ([15, 21], [], 2, None, 'valid, only user ids filter for existing users'),
+        ([15, 100000001], [], 1, None, 'valid, user ids filter with non-existing users'),
+        (None, ['user15', 'user29'], 2, None, 'valid, only usernames filter with existing usernames'),
+        (None, ['user15', 'non-exist'], 1, None, 'valid, only usernames filter with non-existing username'),
+        ([21], ['user15'], 2, None, 'valid, both filters'),
+        ([21, 15], ['user15'], 2, None, 'valid, both filters with repeated user'),
+        ([15, 29, 'not-int', 0.2], None, 0, 'Invalid user ids: [\'not-int\', 0.2]', 'invalid user ids'),
+        (None, [11], 0, 'Invalid usernames: [11]', 'invalid usernames'),
+    ]
+)
+def test_get_learners_search_queryset_for_userids_and_usernames(
+    base_data, user_ids_filter, usernames_filter, expected_count, expected_error, usecase
+):  # pylint: disable=too-many-arguments, unused-argument
+    """
+    Verify that get_learners_search_queryset returns the correct QuerySet when userids and usernames filters are used
+    """
+    if expected_error:
+        with pytest.raises(FXCodedException) as exc_info:
+            queryset = querysets.get_learners_search_queryset(user_ids=user_ids_filter, usernames=usernames_filter)
+        assert str(exc_info.value) == expected_error
+    else:
+        queryset = querysets.get_learners_search_queryset(user_ids=user_ids_filter, usernames=usernames_filter)
+        assert queryset.count() == expected_count, f'unexpected learners queryset count for case: {usecase}'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'limited_access_course_ids, full_access_orgs, expected_count, usecase',
+    [
+        ([], ['org1', 'org2'], 12, 'full access orgs'),
+        (['course-v1:ORG1+5+5'], [], 1, 'course limited access'),
+        (['course-v1:ORG2+4+4'], ['org1'], 6, 'full access orgs with course limited access'),
+    ],
+)
+@patch('futurex_openedx_extensions.helpers.querysets.get_partial_access_course_ids')
+def test_get_course_search_queryset(
+    mocked_partial_course_ids, limited_access_course_ids,
+    full_access_orgs, expected_count, usecase, fx_permission_info,
+):  # pylint: disable=too-many-arguments
+    """Test get_course_search_queryset result"""
+    mocked_partial_course_ids.return_value = limited_access_course_ids
+    fx_permission_info['view_allowed_full_access_orgs'] = full_access_orgs
+    queryset = querysets.get_course_search_queryset(
+        fx_permission_info=fx_permission_info,
+    )
+    assert queryset.count() == expected_count, f'unexpected courses queryset count for case: {usecase}'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'search_text, course_ids_filter, expected_count, expected_error, usecase',
+    [
+        (None, None, 12, None, 'valid: no filter or search'),
+        ('Course 5', None, 2, None, 'valid: search with matching course'),
+        ('non-exist', None, 0, None, 'valid: search with no matching course'),
+        ('', ['course-v1:ORG2+4+4'], 1, None, 'valid: filter by course ID'),
+        ('', ['course-v1:ORG2+4+4', 'invalid'], 0, 'Invalid course ID format: invalid', 'invalid: course ID format'),
+        ('', ['course-v1:ORG2+4+4', 'course-v1:ORG1+5+1000'], 1, None, 'valid: filter with one non-existent course ID'),
+        ('course 4', ['course-v1:ORG2+4+4'], 1, None, 'valid: search and course id filter'),
+        ('course 5', ['course-v1:ORG2+4+4'], 0, None, 'valid: no course matches the condition'),
+    ],
+)
+def test_get_course_search_queryset_for_search_and_filter(
+    search_text, course_ids_filter, expected_count, expected_error, usecase, fx_permission_info,
+):  # pylint: disable=too-many-arguments
+    """Test get_course_search_queryset result for search and course ids filter"""
+    fx_permission_info['view_allowed_full_access_orgs'] = ['org1', 'org2']
+    if expected_error:
+        with pytest.raises(FXCodedException) as exc_info:
+            querysets.get_course_search_queryset(
+                fx_permission_info, search_text=search_text, course_ids=course_ids_filter
+            )
+        assert str(exc_info.value) == expected_error
+    else:
+        assert querysets.get_course_search_queryset(
+            fx_permission_info, search_text=search_text, course_ids=course_ids_filter
+        ).count() == expected_count, f'unexpected courses queryset count for case: {usecase}'
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize('full_access, partial_access, expected_with_staff, expected_without_staff', [
     ([7, 8], [], 26, 22),
     ([7], [8], 21, 18),
