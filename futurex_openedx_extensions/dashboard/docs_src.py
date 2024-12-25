@@ -6,6 +6,8 @@ from typing import Any, Dict, List
 from drf_yasg import openapi
 from edx_api_doc_tools import path_parameter, query_parameter
 
+from futurex_openedx_extensions.helpers.extractors import get_available_optional_field_tags_docs_table
+
 default_responses = {
     200: 'Success.',
     401: 'Unauthorized access. Authentication credentials were missing or incorrect.',
@@ -116,7 +118,13 @@ repeated_descriptions = {
 
     'visible_course_definition': '\n**Note:** A *visible course* is the course with `Course Visibility In Catalog`'
     ' value set to `about` or `both`; and `visible_to_staff_only` is set to `False`. Courses are visible by default'
-    ' when created.'
+    ' when created.',
+
+    'optional_field_tags': 'Optional fields are not included in the response by default. Caller can request them by'
+    ' using the `optional_field_tags` parameter. It accepts a comma-separated list of optional field tags. The'
+    ' following are the available tags along with the fields they include:\n'
+    '| tag | mapped fields |\n'
+    '|-----|---------------|\n'
 }
 
 docs_src = {
@@ -291,6 +299,13 @@ docs_src = {
                 'a search text to filter the results by. The search text will be matched against the `filename` and the'
                 ' `notes`.',
             ),
+            query_parameter(
+                'optional_field_tags',
+                str,
+                repeated_descriptions['optional_field_tags'] + get_available_optional_field_tags_docs_table(
+                    'futurex_openedx_extensions.dashboard.serializers::DataExportTaskSerializer',
+                )
+            ),
         ],
         'responses': responses(),
     },
@@ -327,6 +342,13 @@ docs_src = {
                 'id',
                 int,
                 'The task ID to retrieve.',
+            ),
+            query_parameter(
+                'optional_field_tags',
+                str,
+                repeated_descriptions['optional_field_tags'] + get_available_optional_field_tags_docs_table(
+                    'futurex_openedx_extensions.dashboard.serializers::DataExportTaskSerializer',
+                )
             ),
         ],
         'responses': responses(),
@@ -378,6 +400,13 @@ docs_src = {
                 ' username, national ID, and email address.',
             ),
             common_parameters['include_staff'],
+            query_parameter(
+                'optional_field_tags',
+                str,
+                repeated_descriptions['optional_field_tags'] + get_available_optional_field_tags_docs_table(
+                    'futurex_openedx_extensions.dashboard.serializers::LearnerDetailsForCourseSerializer',
+                )
+            ),
             common_parameters['download'],
             query_parameter(
                 'omit_subsection_name',
@@ -425,14 +454,14 @@ docs_src = {
                 str,
                 'A search text to filter results, matched against the course\'s ID and display name.',
             ),
+            common_parameters['include_staff'],
             query_parameter(
                 'optional_field_tags',
                 str,
-                'a comma seperated list of optional_fields. The data `exam_scores`, `certificate_url` and `progress` '
-                'in result are optional and can only be added if requested exclusively. Caller can also use `__all__` '
-                ' to include all optional fields in result.',
+                repeated_descriptions['optional_field_tags'] + get_available_optional_field_tags_docs_table(
+                    'futurex_openedx_extensions.dashboard.serializers::LearnerEnrollmentSerializer',
+                )
             ),
-            common_parameters['include_staff'],
             common_parameters['download'],
             query_parameter(
                 'omit_subsection_name',

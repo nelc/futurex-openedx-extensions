@@ -4,17 +4,46 @@ from unittest.mock import Mock, patch
 import pytest
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
+from futurex_openedx_extensions.dashboard.serializers import SerializerOptionalMethodField
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.extractors import (
     DictHashcode,
     DictHashcodeSet,
+    get_available_optional_field_tags,
+    get_available_optional_field_tags_docs_table,
     get_course_id_from_uri,
     get_first_not_empty_item,
+    get_optional_field_class,
     get_orgs_of_courses,
     get_partial_access_course_ids,
+    import_from_path,
     verify_course_ids,
 )
+
+
+class DummySerializerWithOptionalMethodField:  # pylint: disable=too-few-public-methods
+    """Dummy class for testing."""
+    def __init__(self, *args, **kwargs):
+        """Initialize the DummySerializer."""
+        self._fields = {
+            'fieldA': 'not optional',
+            'fieldB': 'not optional',
+            'fieldC': SerializerOptionalMethodField(field_tags=['tag1', 'tag2']),
+            'fieldD': SerializerOptionalMethodField(field_tags=['tag1', 'tag3']),
+        }
+
+    @property
+    def fields(self):
+        return self._fields
+
+
+@pytest.fixture
+def mock_import_from_path():
+    """Mock the import_from_path function for testing."""
+    with patch('futurex_openedx_extensions.helpers.extractors.import_from_path') as mock_import:
+        mock_import.return_value = DummySerializerWithOptionalMethodField
+        yield mock_import
 
 
 @pytest.mark.parametrize('items, expected, error_message', [
@@ -314,3 +343,82 @@ def test_get_partial_access_course_ids_found(base_data, fx_permission_info):  # 
     result = get_partial_access_course_ids(fx_permission_info)
     assert isinstance(result, list)
     assert result == ['course-v1:ORG3+1+1']
+
+
+@pytest.mark.parametrize(
+    'import_path, expected_call, expected_result',
+    [
+        ('valid_module::valid_object', 'valid_module', 'mocked_object'),
+        ('valid_module.valid_module::valid_object', 'valid_module.valid_module', 'mocked_object'),
+    ],
+)
+@patch('futurex_openedx_extensions.helpers.extractors.importlib.import_module')
+def test_import_from_path_valid(mock_import_module, import_path, expected_call, expected_result):
+    """Verify that import_from_path returns the expected object from the module."""
+    mocked_module = Mock()
+    mock_import_module.return_value = mocked_module
+    mocked_module.valid_object = expected_result
+
+    result = import_from_path(import_path)
+    assert result == expected_result
+    mock_import_module.assert_called_once_with(expected_call)
+
+
+@pytest.mark.parametrize(
+    'import_path, error_reason',
+    [
+        ('module:object', 'Single colon'),
+        ('module::object name', 'Whitespace in object'),
+        ('module name::object', 'Whitespace in module'),
+        ('::object', 'Missing module'),
+        ('123module::object', 'Invalid module name'),
+    ],
+)
+def test_import_from_path_invalid(import_path, error_reason):  # pylint: disable=unused-argument
+    """Verify that import_from_path raises a ValueError for an invalid import path."""
+    with pytest.raises(ValueError, match='Invalid import path used with import_from_path'):
+        import_from_path(import_path)
+
+
+def test_get_optional_field_class():
+    """Verify that get_optional_field_class returns the expected class."""
+    assert get_optional_field_class() == SerializerOptionalMethodField
+
+
+@patch('futurex_openedx_extensions.helpers.extractors.get_optional_field_class')
+def test_get_available_optional_field_tags(
+    mock_get_optional_field_class, mock_import_from_path,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that get_available_optional_field_tags returns the expected tags for a serializer."""
+    mock_get_optional_field_class.return_value = SerializerOptionalMethodField
+    tags = get_available_optional_field_tags('serializer class path, not being used in this test because of the mock')
+    assert tags == {
+        '__all__': ['fieldC', 'fieldD'],
+        'tag1': ['fieldC', 'fieldD'],
+        'tag2': ['fieldC'],
+        'tag3': ['fieldD'],
+    }
+
+
+@patch('futurex_openedx_extensions.helpers.extractors.get_available_optional_field_tags')
+def test_get_available_optional_field_tags_docs_table(
+    mock_get_tags, mock_import_from_path,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that get_available_optional_field_tags_docs_table returns the expected table."""
+    mock_get_tags.return_value = {
+        '__all__': ['fieldA', 'field_B', 'field__C', '__fieldD__'],
+        'tag1': ['fieldA', '__fieldD__'],
+        'tag2': ['field_B'],
+        'tag3': ['field__C', '__fieldD__'],
+    }
+
+    result = get_available_optional_field_tags_docs_table(
+        'serializer class path, not being used in this test because of the mock',
+    )
+    assert result == (
+        '| \\_\\_all\\_\\_ | `fieldA`, `field_B`, `field__C`, `__fieldD__` |\n'
+        '| tag1 | `fieldA`, `__fieldD__` |\n'
+        '| tag2 | `field_B` |\n'
+        '| tag3 | `field__C`, `__fieldD__` |\n'
+        '----------------\n'
+    )

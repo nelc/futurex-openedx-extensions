@@ -259,7 +259,7 @@ class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
             'active_in_course',
             'progress',
             'certificate_url',
-            'exam_scores'
+            'exam_scores',
         ]
 
     def __init__(self, *args: Any, **kwargs: Any):
