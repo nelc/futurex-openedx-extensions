@@ -12,7 +12,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 
 from futurex_openedx_extensions.helpers.converters import get_allowed_roles
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids
+from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids, verify_course_ids
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole, CourseEnrollment, UserSignupSource
@@ -208,11 +208,13 @@ def get_base_queryset_courses(
     return q_set
 
 
-def get_learners_search_queryset(
+def get_learners_search_queryset(  # pylint: disable=too-many-arguments
     search_text: str | None = None,
     superuser_filter: bool | None = False,
     staff_filter: bool | None = False,
-    active_filter: bool | None = True
+    active_filter: bool | None = True,
+    user_ids: List[int] | None = None,
+    usernames: List[str] | None = None,
 ) -> QuerySet:
     """
     Get the learners queryset for the given search text.
@@ -244,6 +246,59 @@ def get_learners_search_queryset(
             Q(extrainfo__national_id__icontains=search_text) |
             Q(email__icontains=search_text) |
             Q(profile__name__icontains=search_text)
+        )
+
+    user_filter = Q()
+    if user_ids:
+        invalid_user_ids = [user_id for user_id in user_ids if not isinstance(user_id, int)]
+        if invalid_user_ids:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'Invalid user ids: {invalid_user_ids}',
+            )
+        user_filter |= Q(id__in=user_ids)
+    if usernames:
+        invalid_usernames = [username for username in usernames if not isinstance(username, str)]
+        if invalid_usernames:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'Invalid usernames: {invalid_usernames}',
+            )
+        user_filter |= Q(username__in=usernames)
+
+    queryset = queryset.filter(user_filter)
+
+    return queryset
+
+
+def get_course_search_queryset(
+    fx_permission_info: dict,
+    search_text: str | None = None,
+    course_ids: List[str] | None = None,
+) -> QuerySet:
+    """
+    Get the courses queryset for the given search text.
+
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
+    :param search_text: Search text to filter the courses by
+    :type search_text: str | None
+    :return: QuerySet of courses
+    :rtype: QuerySet
+    """
+    queryset = CourseOverview.objects.filter(
+        Q(id__in=get_partial_access_course_ids(fx_permission_info)) |
+        Q(org__in=fx_permission_info['view_allowed_full_access_orgs'])
+    )
+    if course_ids:
+        verify_course_ids(course_ids)
+        queryset = queryset.filter(id__in=course_ids)
+
+    course_search = (search_text or '').strip()
+    if course_search:
+        queryset = queryset.filter(
+            Q(display_name__icontains=course_search) |
+            Q(id__icontains=course_search),
         )
 
     return queryset

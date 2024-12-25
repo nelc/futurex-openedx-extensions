@@ -11,13 +11,11 @@ from django.utils import timezone
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.grades.models import PersistentCourseGrade
-from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
-from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids, verify_course_ids
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_base_queryset_courses,
+    get_course_search_queryset,
     get_learners_search_queryset,
     get_one_user_queryset,
     get_permitted_learners_queryset,
@@ -286,43 +284,20 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     :return: List of dictionaries containing user and course details.
     """
     accessible_users = get_permitted_learners_queryset(
-        queryset=get_learners_search_queryset(search_text=learner_search),
+        queryset=get_learners_search_queryset(
+            search_text=learner_search,
+            user_ids=user_ids,
+            usernames=usernames,
+        ),
         fx_permission_info=fx_permission_info,
         include_staff=include_staff,
     )
-    user_filter = Q()
-    if user_ids:
-        invalid_user_ids = [user_id for user_id in user_ids if not isinstance(user_id, int)]
-        if invalid_user_ids:
-            raise FXCodedException(
-                code=FXExceptionCodes.INVALID_INPUT,
-                message=f'Invalid user ids: {invalid_user_ids}',
-            )
-        user_filter |= Q(id__in=user_ids)
-    if usernames:
-        invalid_usernames = [username for username in usernames if not isinstance(username, str)]
-        if invalid_usernames:
-            raise FXCodedException(
-                code=FXExceptionCodes.INVALID_INPUT,
-                message=f'Invalid usernames: {invalid_usernames}',
-            )
-        user_filter |= Q(username__in=usernames)
-    accessible_users = accessible_users.filter(user_filter)
 
-    accessible_courses = CourseOverview.objects.filter(
-        Q(id__in=get_partial_access_course_ids(fx_permission_info)) |
-        Q(org__in=fx_permission_info['view_allowed_full_access_orgs'])
+    accessible_courses = get_course_search_queryset(
+        fx_permission_info=fx_permission_info,
+        search_text=course_search,
+        course_ids=course_ids,
     )
-    if course_ids:
-        verify_course_ids(course_ids)
-        accessible_courses = accessible_courses.filter(id__in=course_ids)
-
-    course_search = (course_search or '').strip()
-    if course_search:
-        accessible_courses = accessible_courses.filter(
-            Q(display_name__icontains=course_search) |
-            Q(id__icontains=course_search),
-        )
 
     queryset = CourseEnrollment.objects.filter(
         is_active=True,
