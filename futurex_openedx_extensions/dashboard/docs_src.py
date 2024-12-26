@@ -1,19 +1,65 @@
 """Helpers for generating Swagger documentation for the FutureX Open edX Extensions API."""
+# pylint: disable=too-many-lines
 from __future__ import annotations
 
 from typing import Any, Dict, List
 
 from drf_yasg import openapi
-from edx_api_doc_tools import path_parameter, query_parameter
+from edx_api_doc_tools import ParameterLocation, path_parameter, query_parameter
 
-from futurex_openedx_extensions.helpers.extractors import get_available_optional_field_tags_docs_table
+from futurex_openedx_extensions.dashboard import serializers
+from futurex_openedx_extensions.helpers.extractors import (
+    get_available_optional_field_tags,
+    get_available_optional_field_tags_docs_table,
+)
 
 default_responses = {
     200: 'Success.',
-    401: 'Unauthorized access. Authentication credentials were missing or incorrect.',
-    400: 'Bad request. Details in the response body.',
-    403: 'Forbidden access. Details in the response body.',
-    404: 'Resource not found, or not accessible to the user.',
+    400: openapi.Response(
+        description='Bad request. Details in the response body.',
+        schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'detail': openapi.Schema(type=openapi.TYPE_OBJECT),
+                'reason': openapi.Schema(type=openapi.TYPE_STRING),
+            },
+            example={
+                'reason': 'Invalid course ID format: aaa-v1:course1',
+                'detail': {},
+            }
+        ),
+    ),
+    404: openapi.Response(
+        description='Resource not found, or not accessible to the user.',
+        schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'detail': openapi.Schema(type=openapi.TYPE_OBJECT),
+                'reason': openapi.Schema(type=openapi.TYPE_STRING),
+            },
+            example={
+                'detail': 'Not found',
+            }
+        ),
+    ),
+    403: openapi.Response(
+        description='Forbidden access. Details in the response body.',
+        schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'detail': openapi.Schema(type=openapi.TYPE_OBJECT),
+                'reason': openapi.Schema(type=openapi.TYPE_STRING),
+            },
+            example={
+                'reason': 'Invalid tenant IDs provided',
+                'detail': {
+                    'tenant_ids': [
+                        '10000'
+                    ]
+                },
+            }
+        ),
+    ),
 }
 
 
@@ -53,27 +99,63 @@ def responses(
     return result
 
 
+def get_optional_parameter(path: str) -> Any:
+    """
+    Get optional_field_tags parameter with given path
+    """
+    return openapi.Parameter(
+        'optional_field_tags',
+        ParameterLocation.QUERY,
+        required=False,
+        type=openapi.TYPE_STRING,
+        enum=list(get_available_optional_field_tags(path).keys()),
+        description=repeated_descriptions['optional_field_tags'] + get_available_optional_field_tags_docs_table(path)
+    )
+
+
 common_parameters = {
-    'download': query_parameter(
-        'download',
-        str,
-        'Trigger a data export task for the results. Currently only `download=csv` is supported. The response will no'
-        ' longer be a list of objects, but a JSON object with `export_task_id` field. Then the `export_task_id` can'
-        ' be used with the `/fx/export/v1/tasks/` endpoints.\n'
-        '\n**Note:** this parameter will disable pagination options `page` and `page_size`. Therefore, the exported CSV'
-        ' will contain all the result\'s records.',
-    ),
-    'include_staff': query_parameter(
+    'include_staff': openapi.Parameter(
         'include_staff',
-        int,
-        'include staff users in the result `1` or `0`. Default is `0`. Any value other than `1` is considered as `0`. '
-        'A staff user is any user who has a role within the tenant.',
+        ParameterLocation.QUERY,
+        required=False,
+        type=openapi.TYPE_INTEGER,
+        enum=[1, 0],
+        description=(
+            'include staff users in the result `1` or `0`. Default is `0`. Any value other than `1` is considered'
+            ' as `0`. A staff user is any user who has a role within the tenant.'
+        )
+    ),
+    'download': openapi.Parameter(
+        'download',
+        ParameterLocation.QUERY,
+        required=False,
+        type=openapi.TYPE_STRING,
+        enum=['csv'],
+        description=(
+            'Trigger a data export task for the results. Currently only `download=csv` is supported. The response'
+            ' will no longer be a list of objects, but a JSON object with `export_task_id` field. Then the'
+            ' `export_task_id` can be used with the `/fx/export/v1/tasks/` endpoints.\n'
+            '\n**Note:** this parameter will disable pagination options `page` and `page_size`. Therefore, the'
+            ' exported CSV will contain all the result\'s records.'
+        )
     ),
     'tenant_ids': query_parameter(
         'tenant_ids',
         str,
         'a comma separated list of tenant ids to filter the results by. If not provided, the system will assume all'
         ' tenants that are accessible to the user.',
+    ),
+    'omit_subsection_name': openapi.Parameter(
+        'omit_subsection_name',
+        ParameterLocation.QUERY,
+        required=False,
+        type=openapi.TYPE_INTEGER,
+        enum=['1', '0'],
+        description=(
+            'Omit the subsection name from the response. Can be `0` or `1`. This is useful when `exam_scores`'
+            ' optional fields are requested; it\'ll omit the subsection names for cleaner representation of the'
+            ' data. Default is `0`. Any value other than `1` is considered as `0`.'
+        )
     ),
 }
 
@@ -125,6 +207,89 @@ repeated_descriptions = {
     ' following are the available tags along with the fields they include:\n'
     '| tag | mapped fields |\n'
     '|-----|---------------|\n'
+}
+
+
+common_schemas = {
+    'role': openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'user_id': openapi.Schema(
+                type=openapi.TYPE_INTEGER,
+            ),
+            'email': openapi.Schema(
+                type=openapi.TYPE_STRING,
+            ),
+            'username': openapi.Schema(
+                type=openapi.TYPE_STRING,
+            ),
+            'national_id': openapi.Schema(
+                type=openapi.TYPE_STRING,
+            ),
+            'full_name': openapi.Schema(
+                type=openapi.TYPE_STRING,
+            ),
+            'alternative_full_name': openapi.Schema(
+                type=openapi.TYPE_STRING,
+            ),
+            'global_roles': openapi.Schema(
+                type=openapi.TYPE_ARRAY,
+                items=openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                ),
+                example=['support', 'staff']
+            ),
+            'tenants': openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                additional_properties=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'tenant_roles': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                            ),
+                            example=['support']
+                        ),
+                        'course_roles': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            additional_properties=openapi.Schema(
+                                type=openapi.TYPE_ARRAY,
+                                items=openapi.Schema(
+                                    type=openapi.TYPE_STRING,
+                                ),
+                            ),
+                            example={
+                                'course-v1:nelp_org+222+22': ['staff']
+                            }
+                        ),
+                    }
+                )
+            ),
+            'is_system_staff': openapi.Schema(
+                type=openapi.TYPE_BOOLEAN,
+                example=False
+            ),
+        },
+        example={
+            'user_id': 13,
+            'email': 'user1@example.com',
+            'username': 'user1',
+            'national_id': '12345',
+            'full_name': 'user1',
+            'alternative_full_name': 'عالي',
+            'global_roles': [],
+            'tenants': {
+                '4': {
+                    'tenant_roles': ['support'],
+                    'course_roles': {
+                        'course-v1:nelp_org+222+22': ['staff']
+                    }
+                }
+            },
+            'is_system_staff': False
+        }
+    )
 }
 
 docs_src = {
@@ -252,24 +417,39 @@ docs_src = {
                 'a search text to filter the results by. The search text will be matched against the course\'s ID and'
                 ' display name.',
             ),
-            query_parameter(
+            openapi.Parameter(
                 'sort',
-                str,
-                'Which field to use when ordering the results. Available fields are:\n'
-                '- `display_name`: (**default**) course display name.\n'
-                '- `id`: course ID.\n'
-                '- `self_paced`: course self-paced status.\n'
-                '- `org`: course organization.\n'
-                '- `enrolled_count`: course enrolled learners count.\n'
-                '- `certificates_count`: course issued certificates count.\n'
-                '- `completion_rate`: course completion rate.\n'
-                '\nAdding a dash before the field name will reverse the order. For example, `-display_name` will sort'
-                ' the results by the course display name in descending order.',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=[
+                    'display_name', 'id', 'self_paced', 'org', 'enrolled_count', 'certificates_count',
+                    'completeion_rate', '-display_name', '-id', '-self_paced', '-org', '-enrolled_count',
+                    '-certificates_count', '-completeion_rate',
+                ],
+                description=(
+                    'Which field to use when ordering the results. Available fields are:\n'
+                    '- `display_name`: (**default**) course display name.\n'
+                    '- `id`: course ID.\n'
+                    '- `self_paced`: course self-paced status.\n'
+                    '- `org`: course organization.\n'
+                    '- `enrolled_count`: course enrolled learners count.\n'
+                    '- `certificates_count`: course issued certificates count.\n'
+                    '- `completion_rate`: course completion rate.\n'
+                    '\nAdding a dash before the field name will reverse the order. For example, `-display_name`'
+                    ' will sort the results by the course display name in descending order.'
+                )
             ),
             common_parameters['include_staff'],
             common_parameters['download'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: serializers.CourseDetailsSerializer(read_only=True, required=False),
+
+            },
+            remove=[400]
+        ),
     },
 
     'DataExportManagementView.list': {
@@ -287,11 +467,16 @@ docs_src = {
                 str,
                 'The related ID to filter the results by. The related ID is the ID of the object that the data export',
             ),
-            query_parameter(
+            openapi.Parameter(
                 'sort',
-                str,
-                'Which field to use when ordering the results according to any of the result fields. The default is'
-                ' `-id` (sorting descending by the task ID).',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=['-id'],
+                description=(
+                    'Which field to use when ordering the results according to any of the result fields. The default is'
+                    ' `-id` (sorting descending by the task ID).'
+                )
             ),
             query_parameter(
                 'search_text',
@@ -299,15 +484,14 @@ docs_src = {
                 'a search text to filter the results by. The search text will be matched against the `filename` and the'
                 ' `notes`.',
             ),
-            query_parameter(
-                'optional_field_tags',
-                str,
-                repeated_descriptions['optional_field_tags'] + get_available_optional_field_tags_docs_table(
-                    'futurex_openedx_extensions.dashboard.serializers::DataExportTaskSerializer',
-                )
-            ),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::DataExportTaskSerializer'),
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: serializers.DataExportTaskSerializer(read_only=True, required=False),
+            },
+            remove=[400]
+        ),
     },
 
     'DataExportManagementView.partial_update': {
@@ -331,7 +515,12 @@ docs_src = {
                 'The task ID to retrieve.',
             ),
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: serializers.DataExportTaskSerializer(read_only=True, required=False),
+            },
+            remove=[400]
+        ),
     },
 
     'DataExportManagementView.retrieve': {
@@ -343,15 +532,14 @@ docs_src = {
                 int,
                 'The task ID to retrieve.',
             ),
-            query_parameter(
-                'optional_field_tags',
-                str,
-                repeated_descriptions['optional_field_tags'] + get_available_optional_field_tags_docs_table(
-                    'futurex_openedx_extensions.dashboard.serializers::DataExportTaskSerializer',
-                )
-            ),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::DataExportTaskSerializer')
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: serializers.DataExportTaskSerializer(read_only=True, required=False),
+            },
+            remove=[400]
+        ),
     },
 
     'GlobalRatingView.get': {
@@ -364,7 +552,41 @@ docs_src = {
         'parameters': [
             common_parameters['tenant_ids'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'total_rating': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'total_count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'courses_count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'rating_counts': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                '1': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                '2': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                '3': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                '4': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                '5': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            }
+                        ),
+                    },
+                    example={
+                        'total_rating': 10,
+                        'total_count': 10,
+                        'courses_count': 3,
+                        'rating_counts': {
+                            '1': 0,
+                            '2': 5,
+                            '3': 2,
+                            '4': 2,
+                            '5': 1,
+                        }
+                    }
+                ),
+            },
+            remove=[400]
+        ),
     },
 
     'LearnerCoursesView.get': {
@@ -379,7 +601,11 @@ docs_src = {
             common_parameters['tenant_ids'],
             common_parameters['include_staff'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: serializers.LearnerCoursesDetailsSerializer(read_only=True, required=False),
+            },
+        ),
     },
 
     'LearnersDetailsForCourseView.get': {
@@ -400,23 +626,18 @@ docs_src = {
                 ' username, national ID, and email address.',
             ),
             common_parameters['include_staff'],
-            query_parameter(
-                'optional_field_tags',
-                str,
-                repeated_descriptions['optional_field_tags'] + get_available_optional_field_tags_docs_table(
-                    'futurex_openedx_extensions.dashboard.serializers::LearnerDetailsForCourseSerializer',
-                )
+            get_optional_parameter(
+                'futurex_openedx_extensions.dashboard.serializers::LearnerDetailsForCourseSerializer'
             ),
             common_parameters['download'],
-            query_parameter(
-                'omit_subsection_name',
-                int,
-                'Omit the subsection name from the response. Can be `0` or `1`. This is useful when `exam_scores`'
-                ' optional fields are requested; it\'ll omit the subsection names for cleaner representation of the'
-                ' data. Default is `0`. Any value other than `1` is considered as `0`.',
-            ),
+            common_parameters['omit_subsection_name']
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: serializers.LearnerDetailsForCourseSerializer(read_only=True, required=False),
+            },
+            remove=[400]
+        ),
     },
 
     'LearnersEnrollmentView.get': {
@@ -455,23 +676,15 @@ docs_src = {
                 'A search text to filter results, matched against the course\'s ID and display name.',
             ),
             common_parameters['include_staff'],
-            query_parameter(
-                'optional_field_tags',
-                str,
-                repeated_descriptions['optional_field_tags'] + get_available_optional_field_tags_docs_table(
-                    'futurex_openedx_extensions.dashboard.serializers::LearnerEnrollmentSerializer',
-                )
-            ),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::LearnerEnrollmentSerializer'),
             common_parameters['download'],
-            query_parameter(
-                'omit_subsection_name',
-                int,
-                'Omit the subsection name from the response. Can be `0` or `1`. This is useful when `exam_scores`'
-                ' optional fields are requested; it\'ll omit the subsection names for cleaner representation of the'
-                ' data. Default is `0`. Any value other than `1` is considered as `0`.',
-            ),
+            common_parameters['omit_subsection_name'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: serializers.LearnerEnrollmentSerializer(read_only=True, required=False),
+            }
+        ),
     },
 
     'LearnerInfoView.get': {
@@ -483,7 +696,11 @@ docs_src = {
             common_parameters['tenant_ids'],
             common_parameters['include_staff'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: serializers.LearnerDetailsExtendedSerializer(read_only=True, required=False),
+            },
+        ),
     },
 
     'LearnersView.get': {
@@ -503,7 +720,12 @@ docs_src = {
             common_parameters['include_staff'],
             common_parameters['download'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: serializers.LearnerDetailsSerializer(read_only=True, required=False),
+            },
+            remove=[400]
+        ),
     },
 
     'MyRolesView.get': {
@@ -512,7 +734,12 @@ docs_src = {
         'parameters': [
             common_parameters['tenant_ids'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: common_schemas['role'],
+            },
+            remove=[400]
+        ),
     },
 
     'TotalCountsView.get': {
@@ -724,7 +951,7 @@ docs_src = {
                 '| 5001 | Course creator record not found (caused by old bad entry) |\n'
                 '------------------------------\n'
             },
-            remove=[200, 400],
+            remove=[200],
         ),
     },
 
@@ -753,7 +980,12 @@ docs_src = {
         'parameters': [
             common_parameters['tenant_ids'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: common_schemas['role'],
+            },
+            remove=[400]
+        ),
     },
 
     'UserRolesManagementView.retrieve': {
@@ -763,7 +995,12 @@ docs_src = {
             common_path_parameters['username-staff'],
             common_parameters['tenant_ids'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: common_schemas['role'],
+            },
+            remove=[400]
+        ),
     },
 
     'UserRolesManagementView.update': {
@@ -801,7 +1038,11 @@ docs_src = {
         'parameters': [
             common_path_parameters['username-staff'],
         ],
-        'responses': responses(),
+        'responses': responses(
+            overrides={
+                200: common_schemas['role'],
+            },
+        ),
     },
 
     'VersionInfoView.get': {
@@ -809,6 +1050,19 @@ docs_src = {
         'description': 'Get fx-openedx-extentions running version. The caller must be a system staff.',
         'parameters': [
         ],
-        'responses': responses(remove=[400, 404]),
+        'responses': responses(
+            remove=[400, 404],
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'version': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='Runnining version i.e 3.4.11',
+                        ),
+                    },
+                ),
+            },
+        ),
     },
 }
