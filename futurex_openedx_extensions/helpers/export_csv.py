@@ -116,13 +116,17 @@ def _upload_file_to_storage(local_file_path: str, filename: str, tenant_id: int)
     Upload a file to the default storage (e.g., S3).
 
     :param local_file_path: Path to the local file to upload
-    :param filename: ilename for generated CSV
+    :param filename: filename for generated CSV
     :return: The path of the uploaded file
     """
     storage_path = os.path.join(_get_storage_dir(str(tenant_id)), filename)
     with open(local_file_path, 'rb') as file:
         content_file = ContentFile(file.read())
         default_storage.save(storage_path, content_file)
+
+    if isinstance(default_storage, S3Boto3Storage):
+        default_storage.bucket.Object(storage_path).Acl().put(ACL='private')
+
     return storage_path
 
 
