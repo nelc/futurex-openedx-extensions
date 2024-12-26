@@ -2,6 +2,7 @@
 # pylint: disable=too-many-lines
 from __future__ import annotations
 
+import json
 import logging
 import re
 from copy import deepcopy
@@ -16,6 +17,7 @@ from django.db.models.functions import Lower
 from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from xmodule.modulestore.django import modulestore
 
@@ -482,6 +484,15 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
             return Response(
                 error_details_to_dictionary(reason=str(exc)),
                 status=http_status.HTTP_400_BAD_REQUEST
+            )
+        if isinstance(exc, PermissionDenied):
+            try:
+                msg = json.loads(str(exc))
+            except (json.JSONDecodeError, TypeError):
+                msg = error_details_to_dictionary(reason=str(exc))
+            return Response(
+                msg,
+                status=http_status.HTTP_403_FORBIDDEN
             )
         return super().handle_exception(exc)  # type: ignore
 
