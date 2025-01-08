@@ -1,5 +1,6 @@
 """Test permissions helper classes"""
 # pylint: disable=too-many-lines
+import json
 from unittest.mock import Mock, patch
 
 import pytest
@@ -13,6 +14,7 @@ from opaque_keys.edx.keys import CourseKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from organizations.models import Organization
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -2578,24 +2580,51 @@ def test_add_missing_signup_source_record(mock_signup, base_data):  # pylint: di
 
 
 @pytest.mark.parametrize(
-    'exception, expected_result', [
-        (FXCodedException(message='This is an FX coded exception', code=11), {
-            'reason': 'This is an FX coded exception',
-            'details': {}
-        }),
-        (Exception('Generic Exception'), None),
-        (ValueError('A value error occurred'), None),
+    'exception, expected_result, expected_status, usecase', [
+        (
+            FXCodedException(message='This is an FX coded exception', code=11),
+            {
+                'reason': 'This is an FX coded exception',
+                'details': {}
+            },
+            status.HTTP_400_BAD_REQUEST,
+            'FXCodedException should return a valid 400 HTTP status response'
+        ),
+        (
+            PermissionDenied(detail=json.dumps({'reason': 'some error'})),
+            {'reason': 'some error'},
+            status.HTTP_403_FORBIDDEN,
+            'PermissionDenied with valid JSON should return a 403 HTTP status response'
+        ),
+        (
+            PermissionDenied(detail='You do not have permission to perform this action'),
+            {'reason': 'You do not have permission to perform this action', 'details': {}},
+            status.HTTP_403_FORBIDDEN,
+            'PermissionDenied without proper JSON should also return 403 http response with readable error msg'
+        ),
+        (
+            Exception('Generic Exception'),
+            None,
+            None,
+            'Generic exceptions should fall back to default handling'
+        ),
+        (
+            ValueError('A value error occurred'),
+            None,
+            None,
+            'ValueErrors should fall back to default handling'
+        ),
     ]
 )
-def test_fx_exception_handler(exception, expected_result):
+def test_fx_exception_handler(exception, expected_result, expected_status, usecase):
     """
     Test fx_exception_handler with different types of exceptions.
     """
     mixin = FXViewRoleInfoMixin()
     if expected_result is None:
-        with pytest.raises(Exception or ValueError):
+        with pytest.raises(Exception or ValueError or PermissionDenied):
             mixin.handle_exception(exception)
     else:
         response = mixin.handle_exception(exception)
-        assert response.data == expected_result
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data == expected_result, f'Unexpected response for usecase: {usecase}'
+        assert response.status_code == expected_status
