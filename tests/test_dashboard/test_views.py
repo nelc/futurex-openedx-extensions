@@ -32,7 +32,6 @@ from futurex_openedx_extensions.helpers.permissions import (
     IsSystemStaff,
 )
 from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole
-from tests.base_test_data import expected_statistics
 from tests.fixture_helpers import get_all_orgs, get_test_data_dict, get_user1_fx_permission_info
 from tests.test_dashboard.test_mixins import MockPatcherMixin
 
@@ -92,7 +91,52 @@ class TestTotalCountsView(BaseTestViewMixin):
         )
         self.assertTrue(isinstance(response, JsonResponse))
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        self.assertDictEqual(json.loads(response.content), expected_statistics)
+        self.assertDictEqual(json.loads(response.content), {
+            '1': {
+                'certificates_count': 11, 'courses_count': 12, 'hidden_courses_count': 0,
+                'learners_count': 16, 'enrollments_count': 26, 'learning_hours_count': 280
+            },
+            '2': {
+                'certificates_count': 8, 'courses_count': 5, 'hidden_courses_count': 0,
+                'learners_count': 21, 'enrollments_count': 21, 'learning_hours_count': 180
+            },
+            '3': {
+                'certificates_count': 0, 'courses_count': 1, 'hidden_courses_count': 0,
+                'learners_count': 6, 'enrollments_count': 4, 'learning_hours_count': 0
+            },
+            '7': {
+                'certificates_count': 6, 'courses_count': 3, 'hidden_courses_count': 0,
+                'learners_count': 17, 'enrollments_count': 14, 'learning_hours_count': 140
+            },
+            '8': {
+                'certificates_count': 2, 'courses_count': 2, 'hidden_courses_count': 0,
+                'learners_count': 9, 'enrollments_count': 7, 'learning_hours_count': 40
+            },
+            'total_certificates_count': 27, 'total_courses_count': 23, 'total_hidden_courses_count': 0,
+            'total_learners_count': 69, 'total_enrollments_count': 72, 'total_learning_hours_count': 640,
+            'total_unique_learners': 37, 'limited_access': False
+        })
+
+    def test_all_stats_with_include_staff(self):
+        """Test get method"""
+        self.login_user(self.staff_user)
+        response = self.client.get(
+            self.url + '?stats=certificates,courses,learners,enrollments&include_staff=1'
+        )
+        self.assertTrue(isinstance(response, JsonResponse))
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertDictEqual(json.loads(response.content), {
+            '1': {'certificates_count': 14, 'courses_count': 12, 'learners_count': 18, 'enrollments_count': 32},
+            '2': {'certificates_count': 9, 'courses_count': 5, 'learners_count': 26, 'enrollments_count': 25},
+            '3': {'certificates_count': 0, 'courses_count': 1, 'learners_count': 6, 'enrollments_count': 4},
+            '7': {'certificates_count': 7, 'courses_count': 3, 'learners_count': 20, 'enrollments_count': 17},
+            '8': {'certificates_count': 2, 'courses_count': 2, 'learners_count': 10, 'enrollments_count': 8},
+            'total_certificates_count': 32,
+            'total_courses_count': 23,
+            'total_learners_count': 80,
+            'total_enrollments_count': 86,
+            'limited_access': False
+        })
 
     def test_limited_access(self):
         """Test get method with limited access"""
@@ -109,9 +153,9 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertTrue(isinstance(response, JsonResponse))
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         expected_response = {
-            '1': {'certificates_count': 14, 'courses_count': 12, 'learners_count': 16},
-            '2': {'certificates_count': 9, 'courses_count': 5, 'learners_count': 21},
-            'total_certificates_count': 23,
+            '1': {'certificates_count': 11, 'courses_count': 12, 'learners_count': 16},
+            '2': {'certificates_count': 8, 'courses_count': 5, 'learners_count': 21},
+            'total_certificates_count': 19,
             'total_courses_count': 17,
             'total_learners_count': 37,
             'limited_access': False,

@@ -24,6 +24,7 @@ from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
@@ -143,6 +144,12 @@ def get_courses_queryset(
             GeneratedCertificate.objects.filter(
                 course_id=OuterRef('id'),
                 status='downloadable'
+            ).annotate(
+                course__org=Subquery(
+                    CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')
+                )
+            ).filter(
+                ~is_staff_queryset
             ).values('course_id').annotate(count=Count('id')).values('count'),
             output_field=IntegerField(),
         ), 0),
