@@ -5,19 +5,22 @@ import logging
 from typing import Dict
 
 from django.conf import settings
-from django.db.models import Count, OuterRef, Subquery
+from django.db.models import BooleanField, Count, OuterRef, Q, Subquery, Value
 from django.db.models.functions import Lower
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
+from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
 
 log = logging.getLogger(__name__)
 
 
 def get_certificates_count(
-    fx_permission_info: dict, visible_courses_filter: bool | None = True, active_courses_filter: bool | None = None
+    fx_permission_info: dict,
+    visible_courses_filter: bool | None = True,
+    active_courses_filter: bool | None = None,
+    include_staff: bool | None = None
 ) -> Dict[str, int]:
     """
     Get the count of issued certificates in the given tenants. The count is grouped by organization. Certificates
@@ -32,18 +35,32 @@ def get_certificates_count(
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
-    result = list(GeneratedCertificate.objects.filter(
-        status='downloadable',
-        course_id__in=get_base_queryset_courses(
-            fx_permission_info,
-            visible_filter=visible_courses_filter,
-            active_filter=active_courses_filter,
-        ),
-    ).annotate(course_org=Subquery(
-        CourseOverview.objects.filter(
-            id=OuterRef('course_id')
-        ).values(org_lower_case=Lower('org'))
-    )).values('course_org').annotate(certificates_count=Count('id')).values_list('course_org', 'certificates_count'))
+    if include_staff:
+        is_staff_queryset = Q(Value(False, output_field=BooleanField()))
+    else:
+        is_staff_queryset = check_staff_exist_queryset(
+            ref_user_id='user_id', ref_org='course_org', ref_course_id='course_id',
+        )
+
+    result = list(
+        GeneratedCertificate.objects.filter(
+            status='downloadable',
+            course_id__in=get_base_queryset_courses(
+                fx_permission_info,
+                visible_filter=visible_courses_filter,
+                active_filter=active_courses_filter,
+            ),
+        )
+        .annotate(
+            course_org=Subquery(
+                CourseOverview.objects.filter(
+                    id=OuterRef('course_id')
+                ).values(org_lower_case=Lower('org'))
+            )
+        )
+        .filter(~is_staff_queryset)
+        .values('course_org').annotate(certificates_count=Count('id')).values_list('course_org', 'certificates_count')
+    )
 
     return dict(result)
 

@@ -115,9 +115,9 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
     fx_view_description = 'api/fx/statistics/v1/total_counts/: Get the total count statistics'
 
     @staticmethod
-    def _get_certificates_count_data(one_tenant_permission_info: dict) -> int:
+    def _get_certificates_count_data(one_tenant_permission_info: dict, include_staff: bool) -> int:
         """Get the count of certificates for the given tenant"""
-        collector_result = get_certificates_count(one_tenant_permission_info)
+        collector_result = get_certificates_count(one_tenant_permission_info, include_staff=include_staff)
         return sum(certificate_count for certificate_count in collector_result.values())
 
     @staticmethod
@@ -153,7 +153,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
 
         one_tenant_permission_info = get_tenant_limited_fx_permission_info(self.fx_permission_info, tenant_id)
         if stat == self.STAT_CERTIFICATES:
-            result = self._get_certificates_count_data(one_tenant_permission_info)
+            result = self._get_certificates_count_data(one_tenant_permission_info, include_staff=include_staff)
 
         elif stat == self.STAT_COURSES:
             result = self._get_courses_count_data(one_tenant_permission_info, visible_filter=True)
@@ -254,7 +254,7 @@ class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     def get_queryset(self) -> QuerySet:
         """Get the list of learners"""
         search_text = self.request.query_params.get('search_text')
-        include_staff = self.request.query_params.get('include_staff', '0') == '1'
+        include_staff = self.request.query_params.get('include_staff')
 
         return get_courses_queryset(
             fx_permission_info=self.fx_permission_info,
