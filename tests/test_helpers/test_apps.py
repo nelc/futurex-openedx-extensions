@@ -15,6 +15,12 @@ helpers_default_settings = [
     ('FX_DASHBOARD_STORAGE_DIR', 'fx_dashboard'),  # fx_dashboard
     ('FX_DEFAULT_COURSE_EFFORT', 12),  # 12 hours
     ('FX_TASK_MINUTES_LIMIT', 5),  # 5 minutes
+    ('FX_MAX_PERIOD_CHUNKS_MAP', {
+        'day': 365,
+        'month': 12,
+        'quarter': 4,
+        'year': 1,
+    }),  # Max Period Chunks
 ]
 
 

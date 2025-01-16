@@ -1,4 +1,5 @@
 """Fixtures for tests."""
+from datetime import date, datetime
 from unittest.mock import Mock
 
 from django.contrib.auth import get_user_model
@@ -12,6 +13,8 @@ def get_user1_fx_permission_info():
         'is_system_staff_user': True,
         'user_roles': [],
         'view_allowed_tenant_ids_any_access': [1, 2, 3, 7, 8],
+        'view_allowed_tenant_ids_full_access': [1, 2, 3, 7, 8],
+        'view_allowed_tenant_ids_partial_access': [],
         'view_allowed_roles': [],
         'view_allowed_full_access_orgs': get_all_orgs(),
         'view_allowed_course_access_orgs': [],
@@ -172,3 +175,8 @@ def get_test_data_dict_without_course_roles_org3():
             },
         },
     }
+
+
+def d_t(date_str: str) -> date | None:
+    """Convert a date string to a date object."""
+    return datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else None

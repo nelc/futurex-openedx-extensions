@@ -1,5 +1,10 @@
 """Tests for courses statistics."""
+from datetime import datetime
+from unittest.mock import patch
+
 import pytest
+from common.djangoapps.student.models import CourseEnrollment
+from django.db.models import CharField, Value
 from eox_nelp.course_experience.models import FeedbackCourse
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
@@ -7,6 +12,7 @@ from futurex_openedx_extensions.dashboard.statistics import courses
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list
 from tests.base_test_data import _base_data
+from tests.fixture_helpers import d_t
 
 
 @pytest.mark.django_db
@@ -103,3 +109,117 @@ def test_get_courses_ratings_no_rating(base_data, fx_permission_info):  # pylint
     assert set(result.keys()) == set(expected_keys)
     assert all(result[key] is not None for key in expected_keys)
     assert all(result[key] == 0 for key in expected_keys)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.statistics.courses.get_valid_duration')
+@patch('futurex_openedx_extensions.dashboard.statistics.courses._get_enrollments_count')
+@patch('futurex_openedx_extensions.dashboard.statistics.courses.annotate_period')
+def test_get_enrollments_count_aggregated_calls(
+    mock_annotate_period, mock_get_enrollments_count, mock_get_valid_duration,
+):
+    """Verify get_enrollments_count_aggregated calls other function with the right argument."""
+    mock_get_valid_duration.return_value = (None, None)
+    mock_get_enrollments_count.return_value = CourseEnrollment.objects.all()
+    mock_annotate_period.return_value = mock_get_enrollments_count.return_value.annotate(
+        period=Value('', output_field=CharField()),
+    )
+    fx_permission_info = {'dummy_fx_info': {}}
+    period = 'dummy_period'
+    date_from = 'dummy_date_from'
+    date_to = 'dummy_date_to'
+    favors_backward = 'dummy_favors_backward'
+    max_chunks = 'dummy_max_chunks'
+    visible_filter = 'dummy_visible_filter'
+    active_filter = 'dummy_active_filter'
+    include_staff = 'dummy_include_staff'
+
+    courses.get_enrollments_count_aggregated(
+        fx_permission_info=fx_permission_info,
+        visible_filter=visible_filter,
+        active_filter=active_filter,
+        include_staff=include_staff,
+        aggregate_period=period,
+        date_from=date_from,
+        date_to=date_to,
+        favors_backward=favors_backward,
+        max_period_chunks=max_chunks,
+    )
+    mock_get_valid_duration.assert_called_once_with(
+        period=period,
+        date_from=date_from,
+        date_to=date_to,
+        favors_backward=favors_backward,
+        max_chunks=max_chunks,
+    )
+    mock_get_enrollments_count.assert_called_once_with(
+        fx_permission_info,
+        visible_filter=visible_filter,
+        active_filter=active_filter,
+        include_staff=include_staff,
+    )
+    mock_annotate_period.assert_called_once_with(
+        query_set=mock_get_enrollments_count.return_value,
+        period=period,
+        field_name='created',
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('date_from, date_to, expected_result', [
+    (d_t('2020-12-26'), d_t('2021-03-21'), [
+        {'period': '2020-12-26', 'enrollments_count': 5},
+        {'period': '2021-02-14', 'enrollments_count': 2},
+        {'period': '2021-03-21', 'enrollments_count': 12}
+    ]),
+    (d_t('2020-01-01'), d_t('2021-01-01'), [
+        {'period': '2020-12-26', 'enrollments_count': 5},
+    ]),
+    (d_t('2022-03-21'), d_t('2022-12-26'), []),
+    (d_t('2022-12-26'), d_t('2022-03-21'), []),
+])
+def test_get_enrollments_count_aggregated_result(
+    date_from, date_to, expected_result, base_data, fx_permission_info,
+):  # pylint: disable=unused-argument
+    """Verify get_enrollments_count_aggregated function."""
+    def _is_unusable_enrollment(_enrollment):
+        """Check if an enrollment is unusable."""
+        return (
+            _enrollment.user.is_staff or
+            _enrollment.user.is_superuser or
+            not _enrollment.user.is_active or
+            _enrollment.is_active is False
+        )
+
+    assert CourseEnrollment.objects.count() == 73, 'bad test data'
+    test_data = [
+        (5, '2020-12-26'),
+        (2, '2021-02-14'),
+        (12, '2021-03-21'),
+    ]
+    enrollment_id = 1
+    for data in test_data:
+        count = data[0]
+        while count > 0:
+            enrollment = CourseEnrollment.objects.get(id=enrollment_id)
+            enrollment_id += 1
+            if _is_unusable_enrollment(enrollment):
+                continue
+            enrollment.created = data[1]
+            enrollment.save()
+            count -= 1
+
+    result, calculated_from, calculated_to = courses.get_enrollments_count_aggregated(
+        fx_permission_info,
+        include_staff=True,
+        date_from=date_from,
+        date_to=date_to,
+        aggregate_period='day',
+        max_period_chunks=-1,
+    )
+    assert result.count() == len(expected_result)
+    assert list(result) == expected_result
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+    assert calculated_from == datetime.combine(date_from, datetime.min.time())
+    assert calculated_to == datetime.combine(date_to, datetime.max.time())
