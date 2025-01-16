@@ -86,6 +86,12 @@ FX_CACHE_TIMEOUT_COURSE_ACCESS_ROLES = 60 * 31  # 31 minutes
 FX_CACHE_TIMEOUT_TENANTS_INFO = 60 * 60 * 3  # 3 hours
 FX_CACHE_TIMEOUT_VIEW_ROLES = 60 * 31  # 31 minutes
 FX_TASK_MINUTES_LIMIT = 6  # 6 minutes
+FX_MAX_PERIOD_CHUNKS_MAP = {
+    'day': 365 * 2,
+    'month': 12 * 2,
+    'quarter': 4 * 2,
+    'year': 1 * 2,
+}
 
 FX_CLICKHOUSE_USER = 'dummy_test_user'
 FX_CLICKHOUSE_PASSWORD = 'dummy_test_password'

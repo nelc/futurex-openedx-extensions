@@ -800,3 +800,47 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
             'global_roles',
             'tenants',
         ]
+
+
+class ReadOnlySerializer(serializers.Serializer):
+    """A serializer that is only used for read operations and does not require create/update methods."""
+
+    def create(self, validated_data: Any) -> Any:
+        """Not implemented: Create a new object."""
+        raise ValueError('This serializer is read-only and does not support object creation.')
+
+    def update(self, instance: Any, validated_data: Any) -> Any:
+        """Not implemented: Update an existing object."""
+        raise ValueError('This serializer is read-only and does not support object updates.')
+
+
+class AggregatedCountsQuerySettingsSerializer(ReadOnlySerializer):
+    """Serializer for aggregated counts settings."""
+    aggregate_period = serializers.CharField()
+    date_from = serializers.DateTimeField(format=DEFAULT_DATETIME_FORMAT)
+    date_to = serializers.DateTimeField(format=DEFAULT_DATETIME_FORMAT)
+
+
+class AggregatedCountsTotalsSerializer(ReadOnlySerializer):
+    enrollments_count = serializers.IntegerField(required=False, allow_null=True)
+
+
+class AggregatedCountsValuesSerializer(ReadOnlySerializer):
+    label = serializers.CharField()
+    value = serializers.IntegerField()
+
+
+class AggregatedCountsAllTenantsSerializer(ReadOnlySerializer):
+    enrollments_count = AggregatedCountsValuesSerializer(required=False, allow_null=True, many=True)
+    totals = AggregatedCountsTotalsSerializer()
+
+
+class AggregatedCountsOneTenantSerializer(AggregatedCountsAllTenantsSerializer):
+    tenant_id = serializers.IntegerField()
+
+
+class AggregatedCountsSerializer(ReadOnlySerializer):
+    query_settings = AggregatedCountsQuerySettingsSerializer()
+    all_tenants = AggregatedCountsAllTenantsSerializer()
+    by_tenant = AggregatedCountsOneTenantSerializer(many=True)
+    limited_access = serializers.BooleanField()

@@ -4,9 +4,12 @@ from __future__ import annotations
 import importlib
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
+from dateutil.relativedelta import relativedelta
+from django.conf import settings
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from xmodule.modulestore.django import modulestore
 
@@ -269,3 +272,166 @@ def get_available_optional_field_tags_docs_table(serializer_class_path: str) -> 
     result += '----------------\n'
 
     return result
+
+
+def get_valid_date_duration(
+    period: str,
+    date_point: date,
+    target_backward: bool,
+    max_chunks: int = 0,
+) -> date | None:
+    """
+    Get the date point after/before the given period and date range. If max_chunks is 0, it will use the default value
+    for the period from settings. If max_chunks is negative, it will return None.
+
+    :param period: Period type to use. Possible values are 'day', 'month', 'quarter', and 'year'.
+    :type period: str
+    :param date_point: date point to start from or end to.
+    :type date_point: date
+    :param target_backward: True to get the date before date_point, False to get the date after it.
+    :type target_backward: bool
+    :param max_chunks: Maximum number of chunks to return. 0 means as default, negative means no limit.
+    :type max_chunks: int | None
+    :return: date_to for the given period and date range. Or None if no limit.
+    :rtype: date | None
+    """
+    if not isinstance(date_point, date):
+        raise FXCodedException(
+            code=FXExceptionCodes.INVALID_INPUT,
+            message=f'get_valid_date_duration: invalid date type {date_point.__class__.__name__}',
+        )
+
+    period = period.lower()
+
+    if max_chunks == 0:
+        max_chunks = settings.FX_MAX_PERIOD_CHUNKS_MAP.get(period, 0)
+
+    if max_chunks > 0:
+        if target_backward:
+            max_chunks -= 1
+
+        match period:
+            case 'day':
+                delta_days = relativedelta(days=max_chunks)
+
+            case 'month':
+                delta_days = relativedelta(months=max_chunks)
+                date_point = date_point.replace(day=1)
+
+            case 'quarter':
+                delta_days = relativedelta(months=3 * max_chunks)
+                date_point = date_point.replace(month=(date_point.month // 3) * 3 + 1, day=1)
+
+            case 'year':
+                delta_days = relativedelta(years=max_chunks)
+                date_point = date_point.replace(month=1, day=1)
+
+            case _:
+                raise FXCodedException(
+                    code=FXExceptionCodes.INVALID_INPUT,
+                    message=f'Invalid period value: {period}',
+                )
+
+        if target_backward:
+            target_date = date_point - delta_days
+        else:
+            target_date = date_point + delta_days - relativedelta(days=1)
+
+    else:
+        target_date = None
+
+    return target_date
+
+
+def get_max_valid_date_to(
+    period: str,
+    date_from: date,
+    max_chunks: int = 0,
+) -> date | None:
+    """
+    Get the maximum possible date_to value for the given period and date range.
+
+    :param period: Period type to use. Possible values are 'day', 'month', 'quarter', and 'year'.
+    :type period: str
+    :param date_from: date point to start from.
+    :type date_from: date
+    :param max_chunks: Maximum number of chunks to return. 0 means as default, negative means no limit.
+    :type max_chunks: int | None
+    :return: date_to for the given period and date range. Or None if no limit.
+    :rtype: date | None
+    """
+    return get_valid_date_duration(period=period, date_point=date_from, target_backward=False, max_chunks=max_chunks)
+
+
+def get_min_valid_date_from(
+    period: str,
+    date_to: date,
+    max_chunks: int = 0,
+) -> date | None:
+    """
+    Get the minimum possible date_from value for the given period and date range.
+
+    :param period: Period type to use. Possible values are 'day', 'month', 'quarter', and 'year'.
+    :type period: str
+    :param date_to: date point to end to.
+    :type date_to: date
+    :param max_chunks: Maximum number of chunks to return. 0 means as default, negative means no limit.
+    :type max_chunks: int | None
+    :return: date_to for the given period and date range. Or None if no limit.
+    :rtype: date | None
+    """
+    return get_valid_date_duration(period=period, date_point=date_to, target_backward=True, max_chunks=max_chunks)
+
+
+def get_valid_duration(
+    period: str,
+    date_from: date | None,
+    date_to: date | None,
+    favors_backward: bool = True,
+    max_chunks: int = 0,
+) -> tuple[datetime | None, datetime | None]:
+    """
+    Get the valid date range for the given period and date range. If favors_forward is True, it will favor the
+    forward direction. If max_chunks is 0, it will use the default value for the period from settings. If max_chunks is
+    negative, it will return None.
+
+    :param period: Period type to use. Possible values are 'day', 'month', 'quarter', and 'year'.
+    :type period: str
+    :param date_from: date point to start from.
+    :type date_from: date | None
+    :param date_to: date point to end to.
+    :type date_to: date | None
+    :param favors_backward: True to favor the backward direction, False to favor the forward direction.
+    :type favors_backward: bool
+    :param max_chunks: Maximum number of chunks to return. 0 means as default, negative means no limit.
+    :type max_chunks: int | None
+    :return: date_from and date_to for the given period and date range.
+    :rtype: Tuple[date | None, date | None]
+    """
+    if date_to and date_from and date_to < date_from:
+        date_from, date_to = date_to, date_from
+
+    if date_from is None and date_to is None and max_chunks >= 0:
+        if favors_backward:
+            date_to = datetime.now().date()
+        else:
+            date_from = datetime.now().date()
+
+    calculated_from = get_min_valid_date_from(period, date_to, max_chunks) if date_to else None
+    calculated_to = get_max_valid_date_to(period, date_from, max_chunks) if date_from else None
+
+    if date_from and date_to:
+        if favors_backward and calculated_from and calculated_from > date_from:
+            date_from = calculated_from
+        elif not favors_backward and calculated_to and calculated_to < date_to:
+            date_to = calculated_to
+    elif date_to and date_from is None:
+        date_from = calculated_from
+    elif date_from and date_to is None:
+        date_to = calculated_to
+    else:
+        date_from = calculated_from
+        date_to = calculated_to
+
+    return datetime.combine(date_from, datetime.min.time()) if date_from else None, \
+        datetime.combine(date_to, datetime.max.time()) if date_to else None
