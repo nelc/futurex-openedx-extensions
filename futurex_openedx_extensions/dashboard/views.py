@@ -11,6 +11,7 @@ from django.db import transaction
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from edx_api_doc_tools import exclude_schema_for
 from rest_framework import status as http_status
@@ -93,11 +94,6 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
     STAT_LEARNING_HOURS = 'learning_hours'
     STAT_UNIQUE_LEARNERS = 'unique_learners'
 
-    valid_stats = [
-        STAT_CERTIFICATES, STAT_COURSES, STAT_ENROLLMENTS, STAT_HIDDEN_COURSES, STAT_LEARNERS, STAT_LEARNING_HOURS,
-        STAT_UNIQUE_LEARNERS,
-    ]
-
     STAT_RESULT_KEYS = {
         STAT_CERTIFICATES: 'certificates_count',
         STAT_COURSES: 'courses_count',
@@ -114,10 +110,19 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/statistics/v1/total_counts/: Get the total count statistics'
 
-    @staticmethod
-    def _get_certificates_count_data(one_tenant_permission_info: dict, include_staff: bool) -> int:
+    def __init__(self, **kwargs) -> None:
+        super().__init__()
+        self.valid_stats = [
+            self.STAT_CERTIFICATES, self.STAT_COURSES, self.STAT_ENROLLMENTS, self.STAT_HIDDEN_COURSES,
+            self.STAT_LEARNERS, self.STAT_LEARNING_HOURS, self.STAT_UNIQUE_LEARNERS,
+        ]
+        self.stats = []
+        self.include_staff = False
+        self.tenant_ids = []
+
+    def _get_certificates_count_data(self, one_tenant_permission_info: dict) -> int:
         """Get the count of certificates for the given tenant"""
-        collector_result = get_certificates_count(one_tenant_permission_info, include_staff=include_staff)
+        collector_result = get_certificates_count(one_tenant_permission_info, include_staff=self.include_staff)
         return sum(certificate_count for certificate_count in collector_result.values())
 
     @staticmethod
@@ -126,42 +131,36 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         collector_result = get_courses_count(one_tenant_permission_info, visible_filter=visible_filter)
         return sum(org_count['courses_count'] for org_count in collector_result)
 
-    @staticmethod
-    def _get_enrollments_count_data(
-        one_tenant_permission_info: dict, visible_filter: bool | None, include_staff: bool,
-    ) -> int:
+    def _get_enrollments_count_data(self, one_tenant_permission_info: dict, visible_filter: bool | None) -> int:
         """Get the count of enrollments for the given tenant"""
         collector_result = get_enrollments_count(
-            one_tenant_permission_info, visible_filter=visible_filter, include_staff=include_staff,
+            one_tenant_permission_info, visible_filter=visible_filter, include_staff=self.include_staff,
         )
         return sum(org_count['enrollments_count'] for org_count in collector_result)
 
-    @staticmethod
-    def _get_learners_count_data(one_tenant_permission_info: dict, include_staff: bool) -> int:
+    def _get_learners_count_data(self, one_tenant_permission_info: dict) -> int:
         """Get the count of learners for the given tenant"""
-        return get_learners_count(one_tenant_permission_info, include_staff=include_staff)
+        return get_learners_count(one_tenant_permission_info, include_staff=self.include_staff)
 
     @staticmethod
     def _get_learning_hours_count_data(one_tenant_permission_info: dict) -> int:
         """Get the count of learning_hours for the given tenant"""
         return get_learning_hours_count(one_tenant_permission_info)
 
-    def _get_stat_count(self, stat: str, tenant_id: int, include_staff: bool) -> int:
+    def _get_stat_count(self, stat: str, tenant_id: int) -> Any:
         """Get the count of the given stat for the given tenant"""
         if stat == self.STAT_UNIQUE_LEARNERS:
-            return get_learners_count(self.fx_permission_info, include_staff)
+            return get_learners_count(self.fx_permission_info, self.include_staff)
 
         one_tenant_permission_info = get_tenant_limited_fx_permission_info(self.fx_permission_info, tenant_id)
         if stat == self.STAT_CERTIFICATES:
-            result = self._get_certificates_count_data(one_tenant_permission_info, include_staff=include_staff)
+            result = self._get_certificates_count_data(one_tenant_permission_info)
 
         elif stat == self.STAT_COURSES:
             result = self._get_courses_count_data(one_tenant_permission_info, visible_filter=True)
 
         elif stat == self.STAT_ENROLLMENTS:
-            result = self._get_enrollments_count_data(
-                one_tenant_permission_info, visible_filter=True, include_staff=include_staff,
-            )
+            result = self._get_enrollments_count_data(one_tenant_permission_info, visible_filter=True)
 
         elif stat == self.STAT_HIDDEN_COURSES:
             result = self._get_courses_count_data(one_tenant_permission_info, visible_filter=False)
@@ -176,39 +175,95 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
 
         return result
 
-    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
-        """Returns the total count statistics for the selected tenants."""
-        stats = request.query_params.get('stats', '').split(',')
-        invalid_stats = list(set(stats) - set(self.valid_stats))
+    def _load_query_params(self, request: Any) -> None:
+        """Load the query parameters"""
+        self.stats = request.query_params.get('stats', '').split(',')
+        invalid_stats = list(set(self.stats) - set(self.valid_stats))
         if invalid_stats:
-            return Response(
-                error_details_to_dictionary(reason='Invalid stats type', invalid=invalid_stats),
-                status=http_status.HTTP_400_BAD_REQUEST
-            )
-        include_staff = request.query_params.get('include_staff', '0') == '1'
+            raise ParseError(f'Invalid stats type: {invalid_stats}')
+        self.include_staff = request.query_params.get('include_staff', '0') == '1'
+        self.tenant_ids = self.fx_permission_info['view_allowed_tenant_ids_any_access']
 
-        tenant_ids = self.fx_permission_info['view_allowed_tenant_ids_any_access']
-
-        if self.STAT_UNIQUE_LEARNERS in stats:
-            total_unique_learners = self._get_stat_count(self.STAT_UNIQUE_LEARNERS, 0, include_staff)
-            stats.remove(self.STAT_UNIQUE_LEARNERS)
+    def _construct_result(self) -> None:
+        """Construct the result dictionary"""
+        if self.STAT_UNIQUE_LEARNERS in self.stats:
+            total_unique_learners = self._get_stat_count(self.STAT_UNIQUE_LEARNERS, 0, self.include_staff)
+            self.stats.remove(self.STAT_UNIQUE_LEARNERS)
         else:
             total_unique_learners = None
-        result = dict({tenant_id: {} for tenant_id in tenant_ids})
+        result = dict({tenant_id: {} for tenant_id in self.tenant_ids})
         result.update({
-            f'total_{self.STAT_RESULT_KEYS[stat]}': 0 for stat in stats
+            f'total_{self.STAT_RESULT_KEYS[stat]}': 0 for stat in self.stats
         })
-        for tenant_id in tenant_ids:
-            for stat in stats:
-                count = self._get_stat_count(stat, tenant_id, include_staff)
+
+        for tenant_id in self.tenant_ids:
+            for stat in self.stats:
+                count = self._get_stat_count(stat, tenant_id, self.include_staff)
                 result[tenant_id][self.STAT_RESULT_KEYS[stat]] = count
                 result[f'total_{self.STAT_RESULT_KEYS[stat]}'] += count
 
         if total_unique_learners is not None:
             result['total_unique_learners'] = total_unique_learners
+
         result['limited_access'] = self.fx_permission_info['view_allowed_course_access_orgs'] != []
 
-        return JsonResponse(result)
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
+        """Returns the total count statistics for the selected tenants."""
+        self._load_query_params(request)
+
+        return JsonResponse(self._construct_result())
+
+
+class AggregatedCountsView(TotalCountsView):
+    """
+    View to get the aggregated count statistics
+    """
+    AGGREGATE_PERIOD_DAY = 'day'
+    AGGREGATE_PERIOD_WEEK = 'week'
+    AGGREGATE_PERIOD_MONTH = 'month'
+
+    VALID_AGGREGATE_PERIOD = [AGGREGATE_PERIOD_DAY, AGGREGATE_PERIOD_WEEK, AGGREGATE_PERIOD_MONTH]
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__()
+        self.valid_stats = [self.STAT_ENROLLMENTS]
+        self.aggregate_period = self.AGGREGATE_PERIOD_DAY
+        self.date_to = timezone.now().date()
+        self.date_from = self.date_to
+
+    def _load_query_params(self, request: Any) -> None:
+        """"""
+        super()._load_query_params(request)
+
+        aggregate_period = request.query_params.get('aggregate_period')
+        if aggregate_period is not None:
+            if aggregate_period not in self.VALID_AGGREGATE_PERIOD:
+                raise ParseError(f'Invalid aggregate_period: {aggregate_period}')
+            self.aggregate_period = aggregate_period
+
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        try:
+            self.date_from = timezone.datetime.strptime(date_from, '%Y-%m-%d').date()
+            self.date_to = timezone.datetime.strptime(date_to, '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            raise ParseError('Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD')
+
+        if self.date_from > self.date_to:
+            raise ParseError('Invalid dates. date_from must be less than or equal to date_to')
+
+    def _construct_result(self) -> None:
+        """Construct the result dictionary"""
+        for tenant_id in self.tenant_ids:
+            for stat in self.stats:
+                count = self._get_stat_count(stat, tenant_id, self.include_staff)
+                result[tenant_id][self.STAT_RESULT_KEYS[stat]] = count
+                result[f'total_{self.STAT_RESULT_KEYS[stat]}'] += count
+
+        if total_unique_learners is not None:
+            result['total_unique_learners'] = total_unique_learners
+
+        result['limited_access'] = self.fx_permission_info['view_allowed_course_access_orgs'] != []
 
 
 @docs('LearnersView.get')
