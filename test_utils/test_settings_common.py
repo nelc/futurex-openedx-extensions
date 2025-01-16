@@ -42,6 +42,9 @@ INSTALLED_APPS = (
 )
 
 USE_TZ = True
+TIME_ZONE = 'UTC'
+DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
+DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
 LOCALE_PATHS = [
     root('futurex_openedx_extensions', 'conf', 'locale'),
@@ -86,6 +89,12 @@ FX_CACHE_TIMEOUT_COURSE_ACCESS_ROLES = 60 * 31  # 31 minutes
 FX_CACHE_TIMEOUT_TENANTS_INFO = 60 * 60 * 3  # 3 hours
 FX_CACHE_TIMEOUT_VIEW_ROLES = 60 * 31  # 31 minutes
 FX_TASK_MINUTES_LIMIT = 6  # 6 minutes
+FX_MAX_PERIOD_CHUNKS_MAP = {
+    'day': 200,
+    'month': 24,
+    'quarter': 12,
+    'year': 3,
+}
 
 FX_CLICKHOUSE_USER = 'dummy_test_user'
 FX_CLICKHOUSE_PASSWORD = 'dummy_test_password'

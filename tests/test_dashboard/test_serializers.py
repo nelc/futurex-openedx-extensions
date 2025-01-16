@@ -6,6 +6,7 @@ from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, SocialLink, UserProfile
 from custom_reg_form.models import ExtraInfo
 from deepdiff import DeepDiff
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Value
 from django.utils.timezone import get_current_timezone, now, timedelta
@@ -25,6 +26,7 @@ from futurex_openedx_extensions.dashboard.serializers import (
     LearnerDetailsForCourseSerializer,
     LearnerDetailsSerializer,
     LearnerEnrollmentSerializer,
+    ReadOnlySerializer,
     UserRolesSerializer,
 )
 from futurex_openedx_extensions.helpers import constants as cs
@@ -721,8 +723,8 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
             data = LearnerCoursesDetailsSerializer(course, context={'request': request}).data
 
     assert data['id'] == str(course.id)
-    assert data['enrollment_date'] == enrollment_date.isoformat()
-    assert data['last_activity'] == last_activity.isoformat()
+    assert data['enrollment_date'] == enrollment_date.strftime(settings.DATETIME_FORMAT)
+    assert data['last_activity'] == last_activity.strftime(settings.DATETIME_FORMAT)
     assert data['progress_url'] == f'https://test.com/learning/course/{course.id}/progress/{course.related_user_id}/'
     assert data['grades_url'] == f'https://test.com/gradebook/{course.id}/'
     assert data['progress'] == completion_summary
@@ -936,3 +938,19 @@ def test_user_roles_serializer_parse_query_params_values(excluded_role_types, re
         },
         ignore_order=True,
     )
+
+
+def test_read_only_serializer_create():
+    """Verify that the ReadOnlySerializer does not allow creating objects."""
+    serializer = ReadOnlySerializer(data={})
+    with pytest.raises(ValueError) as exc_info:
+        serializer.create({})
+    assert str(exc_info.value) == 'This serializer is read-only and does not support object creation.'
+
+
+def test_read_only_serializer_update():
+    """Verify that the ReadOnlySerializer does not allow updating objects."""
+    serializer = ReadOnlySerializer(data={})
+    with pytest.raises(ValueError) as exc_info:
+        serializer.update({}, {})
+    assert str(exc_info.value) == 'This serializer is read-only and does not support object updates.'

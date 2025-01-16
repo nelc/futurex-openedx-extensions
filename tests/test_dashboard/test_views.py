@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import ddt
 import pytest
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -16,6 +16,7 @@ from django.urls import resolve, reverse
 from django.utils.timezone import now, timedelta
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
+from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
@@ -81,7 +82,7 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url + '?stats=invalid')
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data, {'reason': 'Invalid stats type', 'details': {'invalid': ['invalid']}})
+        self.assertEqual(str(response.data['detail']), "Invalid stats type: ['invalid']")
 
     def test_all_stats(self):
         """Test get method"""
@@ -161,6 +162,161 @@ class TestTotalCountsView(BaseTestViewMixin):
             'limited_access': False,
         }
         self.assertDictEqual(json.loads(response.content), expected_response)
+
+
+@ddt.ddt
+@pytest.mark.usefixtures('base_data')
+class TestAggregatedCountsView(BaseTestViewMixin):
+    """Tests for AggregatedCountsView"""
+    VIEW_NAME = 'fx_dashboard:aggregated-counts'
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_invalid_stats(self):
+        """Test invalid stats"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url + '?stats=invalid')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(str(response.data['detail']), "Invalid stats type: ['invalid']")
+
+    @patch('futurex_openedx_extensions.dashboard.views.AggregatedCountsView._construct_result')
+    @ddt.data(
+        (None, '2024-01-01', '2024-01-01', 'Invalid aggregate_period: None'),
+        ('day', '2024-01-01', '2024-01-01', None),
+        ('day', '2024-01-01', '2024-01-02', None),
+        ('day', '2024-01-02', '2024-01-01', None),
+        ('day', None, '2024-01-01', None),
+        ('day', '2024-01-02', None, None),
+        ('day', None, None, None),
+        ('invalid', '2024-01-01', '2024-01-02', 'Invalid aggregate_period: invalid'),
+        (
+            'day',
+            'invalid', '2024-01-02',
+            'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
+        ),
+        (
+            'day',
+            '2024-01-01',
+            'invalid',
+            'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
+        ),
+        ('day', '2024-01-03', '2024-01-02', None),
+    )
+    @ddt.unpack
+    def test_load_query_params(
+        self, aggregate_period, date_from, date_to, error_message, mock_construct_result,
+    ):  # pylint: disable=too-many-arguments
+        """Verify that _load_query_params works as expected"""
+        mock_construct_result.return_value = {
+            'query_settings': {
+                'aggregate_period': aggregate_period,
+                'date_from': date_from,
+                'date_to': date_to,
+            },
+            'by_tenant': [],
+            'all_tenants': {
+                'enrollments_count': [],
+                'totals': {
+                    'enrollments_count': 0,
+                },
+            },
+            'limited_access': False,
+        }
+        self.login_user(self.staff_user)
+        url = self.url + f'?stats=enrollments&aggregate_period={aggregate_period}'
+        if date_from:
+            url += f'&date_from={date_from}'
+        if date_to:
+            url += f'&date_to={date_to}'
+        response = self.client.get(url)
+        if error_message:
+            self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+            self.assertEqual(str(response.data['detail']), error_message)
+        else:
+            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+    def _prepare_test_dates_for_aggregated_counts(self):
+        """Prepare test dates for aggregated counts"""
+        self.assertEqual(CourseEnrollment.objects.count(), 73)
+        enrollments = CourseEnrollment.objects.filter(
+            is_active=True,
+            user_id__lt=30,
+            user__is_superuser=False,
+            user__is_staff=False,
+            user__is_active=True,
+            course__org='org2',
+        )
+        assert enrollments.count() == 16, 'bad test data'
+        count = 7
+        enrollment = enrollments.first()
+        while enrollment and count > 0:
+            enrollment.created = '2024-08-07' if count < 4 else '2024-12-26'
+            enrollment.save()
+            count -= 1
+            enrollment = enrollments.filter(id__gt=enrollment.id).first()
+
+        assert CourseEnrollment.objects.filter(created='2024-08-07').count() == 3, 'test data preparation failed!'
+        assert CourseEnrollment.objects.filter(created='2024-12-26').count() == 4, 'test data preparation failed!'
+
+        expected_result = {
+            'query_settings': {
+                'aggregate_period': 'day',
+                'date_from': '2024-06-10T00:00:00Z',
+                'date_to': '2024-12-26T23:59:59.999999Z',
+            },
+            'all_tenants': {
+                'enrollments_count': [
+                    {'label': '2024-08-07', 'value': 3},
+                    {'label': '2024-12-26', 'value': 4},
+                ],
+                'totals': {'enrollments_count': 7},
+            },
+            'by_tenant': [
+                {
+                    'enrollments_count': [
+                        {'label': '2024-08-07', 'value': 3},
+                        {'label': '2024-12-26', 'value': 4},
+                    ],
+                    'totals': {'enrollments_count': 7},
+                    'tenant_id': 1,
+                },
+                {
+                    'enrollments_count': [],
+                    'totals': {'enrollments_count': 0},
+                    'tenant_id': 2,
+                },
+            ],
+            'limited_access': False,
+        }
+        return expected_result
+
+    def test_all_stats(self):
+        """Test get method"""
+        expected_result = self._prepare_test_dates_for_aggregated_counts()
+
+        self.login_user(self.staff_user)
+        response = self.client.get(
+            self.url + '?&tenant_ids=1,2&include_staff=1&stats=enrollments&date_to=2024-12-26&aggregate_period=day'
+        )
+        self.assertTrue(isinstance(response, Response))
+        self.assertEqual(
+            response.status_code,
+            http_status.HTTP_200_OK,
+            f'{http_status}: {response.data.get("detail")}',
+        )
+        print(json.loads(response.content))
+        self.assertDictEqual(json.loads(response.content), expected_result)
+
+    @ddt.data('courses', 'learners', 'learning_hours', 'certificates')
+    def test_unsupported_stats(self, stat):
+        """Test unsupported stats"""
+        view = views.AggregatedCountsView()
+        view.request = self._get_request()
+        with pytest.raises(NotImplementedError):
+            view._get_stat_count(stat=stat, tenant_id=1)  # pylint: disable=protected-access
 
 
 @pytest.mark.usefixtures('base_data')
