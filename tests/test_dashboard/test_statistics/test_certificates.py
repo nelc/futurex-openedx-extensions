@@ -55,19 +55,22 @@ def test_get_certificates_count_not_downloadable(base_data, fx_permission_info):
 
 @pytest.mark.django_db
 @override_settings(FX_DEFAULT_COURSE_EFFORT=10)
-@pytest.mark.parametrize('tenant_ids, expected_result', [
-    ([1], 14 * 10),
-    ([2], 9 * 10),
-    ([3], 0 * 10),
+@pytest.mark.parametrize('tenant_ids, expected_result, expected_result_with_staff', [
+    ([1], 11 * 10, 14 * 10),
+    ([2], 8 * 10, 9 * 10),
+    ([3], 0 * 10, 0 * 10),
 ])
 def test_get_learning_hours_count_for_default_course_effort(
-    base_data, fx_permission_info, tenant_ids, expected_result
+    base_data, fx_permission_info, tenant_ids, expected_result, expected_result_with_staff,
 ):  # pylint: disable=unused-argument
     """Verify get_learning_hours_count function."""
     fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs(tenant_ids)
     fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs(tenant_ids)
     result = certificates.get_learning_hours_count(fx_permission_info)
     assert result == expected_result, \
+        f'Wrong learning hours count for tenant(s) {tenant_ids}. expected: {expected_result}, got: {result}'
+    result = certificates.get_learning_hours_count(fx_permission_info, include_staff=True)
+    assert result == expected_result_with_staff, \
         f'Wrong learning hours count for tenant(s) {tenant_ids}. expected: {expected_result}, got: {result}'
 
 

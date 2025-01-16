@@ -66,7 +66,10 @@ def get_certificates_count(
 
 
 def get_learning_hours_count(
-    fx_permission_info: dict, visible_courses_filter: bool | None = True, active_courses_filter: bool | None = None
+    fx_permission_info: dict,
+    visible_courses_filter: bool | None = True,
+    active_courses_filter: bool | None = None,
+    include_staff: bool | None = None,
 ) -> int:
     """
     Get the count of learning hours in the given tenants. The count is grouped by course_effort. Certificates
@@ -78,6 +81,8 @@ def get_learning_hours_count(
     :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
     :type active_courses_filter: bool | None
+    :param include_staff: Include staff members in the count
+    :type include_staff: bool | None
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
@@ -117,15 +122,28 @@ def get_learning_hours_count(
             )
             return settings.FX_DEFAULT_COURSE_EFFORT
 
+    queryset = GeneratedCertificate.objects.filter(
+        status='downloadable',
+        course_id__in=get_base_queryset_courses(
+            fx_permission_info,
+            visible_filter=visible_courses_filter,
+            active_filter=active_courses_filter,
+        ),
+    )
+
+    if not include_staff:
+        queryset = queryset.annotate(
+            course_org=Subquery(
+                CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')
+            )
+        ).filter(
+            ~check_staff_exist_queryset(
+                ref_user_id='user_id', ref_org='course_org', ref_course_id='course_id',
+            )
+        )
+
     result = list(
-        GeneratedCertificate.objects.filter(
-            status='downloadable',
-            course_id__in=get_base_queryset_courses(
-                fx_permission_info,
-                visible_filter=visible_courses_filter,
-                active_filter=active_courses_filter,
-            ),
-        ).annotate(
+        queryset.annotate(
             course_effort=Subquery(
                 CourseOverview.objects.filter(
                     id=OuterRef('course_id')
