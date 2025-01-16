@@ -94,11 +94,11 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertDictEqual(json.loads(response.content), {
             '1': {
                 'certificates_count': 11, 'courses_count': 12, 'hidden_courses_count': 0,
-                'learners_count': 16, 'enrollments_count': 26, 'learning_hours_count': 280
+                'learners_count': 16, 'enrollments_count': 26, 'learning_hours_count': 220
             },
             '2': {
                 'certificates_count': 8, 'courses_count': 5, 'hidden_courses_count': 0,
-                'learners_count': 21, 'enrollments_count': 21, 'learning_hours_count': 180
+                'learners_count': 21, 'enrollments_count': 21, 'learning_hours_count': 160
             },
             '3': {
                 'certificates_count': 0, 'courses_count': 1, 'hidden_courses_count': 0,
@@ -106,14 +106,14 @@ class TestTotalCountsView(BaseTestViewMixin):
             },
             '7': {
                 'certificates_count': 6, 'courses_count': 3, 'hidden_courses_count': 0,
-                'learners_count': 17, 'enrollments_count': 14, 'learning_hours_count': 140
+                'learners_count': 17, 'enrollments_count': 14, 'learning_hours_count': 120
             },
             '8': {
                 'certificates_count': 2, 'courses_count': 2, 'hidden_courses_count': 0,
                 'learners_count': 9, 'enrollments_count': 7, 'learning_hours_count': 40
             },
             'total_certificates_count': 27, 'total_courses_count': 23, 'total_hidden_courses_count': 0,
-            'total_learners_count': 69, 'total_enrollments_count': 72, 'total_learning_hours_count': 640,
+            'total_learners_count': 69, 'total_enrollments_count': 72, 'total_learning_hours_count': 540,
             'total_unique_learners': 37, 'limited_access': False
         })
 

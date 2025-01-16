@@ -142,9 +142,9 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         return get_learners_count(one_tenant_permission_info, include_staff=include_staff)
 
     @staticmethod
-    def _get_learning_hours_count_data(one_tenant_permission_info: dict) -> int:
+    def _get_learning_hours_count_data(one_tenant_permission_info: dict, include_staff: bool) -> int:
         """Get the count of learning_hours for the given tenant"""
-        return get_learning_hours_count(one_tenant_permission_info)
+        return get_learning_hours_count(one_tenant_permission_info, include_staff=include_staff)
 
     def _get_stat_count(self, stat: str, tenant_id: int, include_staff: bool) -> int:
         """Get the count of the given stat for the given tenant"""
@@ -169,6 +169,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         elif stat == self.STAT_LEARNING_HOURS:
             result = self._get_learning_hours_count_data(
                 one_tenant_permission_info,
+                include_staff=include_staff,
             )
 
         else:
