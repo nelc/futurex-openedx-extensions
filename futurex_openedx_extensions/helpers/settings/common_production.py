@@ -39,3 +39,10 @@ def plugin_settings(settings: Any) -> None:
         'FX_DEFAULT_COURSE_EFFORT',
         12,
     )
+
+    # Default Course Effort
+    settings.FX_TASK_MINUTES_LIMIT = getattr(
+        settings,
+        'FX_TASK_MINUTES_LIMIT',
+        15,
+    )
