@@ -14,6 +14,7 @@ helpers_default_settings = [
     ('FX_CACHE_TIMEOUT_VIEW_ROLES', 60 * 30),  # 30 minutes
     ('FX_DASHBOARD_STORAGE_DIR', 'fx_dashboard'),  # fx_dashboard
     ('FX_DEFAULT_COURSE_EFFORT', 12),  # 12 hours
+    ('FX_TASK_MINUTES_LIMIT', 5),  # 5 minutes
 ]
 
 

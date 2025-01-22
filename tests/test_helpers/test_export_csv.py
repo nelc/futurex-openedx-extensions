@@ -1,8 +1,9 @@
 """Test export csv"""
 import csv
+import logging
 import os
 import tempfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from django.conf import settings
@@ -13,6 +14,7 @@ from storages.backends.s3boto3 import S3Boto3Storage
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.export_csv import (
+    _combine_partial_files,
     _generate_csv_with_tracked_progress,
     _get_mocked_request,
     _get_response_data,
@@ -140,16 +142,15 @@ def test_get_response_data_failure(
 @pytest.mark.django_db
 @override_settings(ALLOWED_HOSTS=['example.com'])
 @patch('futurex_openedx_extensions.helpers.export_csv._get_response_data')
-def test_paginated_response_generator(mock_get_response_data):
+def test_paginated_response_generator(mock_get_response_data, view_data):
     """Test _paginated_response_generator"""
     url = 'http://example.com/api/data'
     fx_info = {'role': 'admin', 'user': get_user_model().objects.get(id=30)}
-    page_size = 2
-    view_data = {'url': f'{url}?test=value&page_size={page_size}'}
+    view_data['url'] = f'{url}?test=value'
     mocked_response_1 = MagicMock()
     mocked_response_1.status_code = 200
     mocked_response_1.data = {
-        'next': f'{url}?test=value&page_size={page_size}&page=2',
+        'next': f'{url}?test=value&page_size={view_data["page_size"]}&page=2',
         'results': [{'id': 1}, {'id': 2}],
         'count': 3
     }
@@ -162,32 +163,38 @@ def test_paginated_response_generator(mock_get_response_data):
     }
     mock_get_response_data.side_effect = [
         (mocked_response_1.data['results'], 3),
-        (mocked_response_2.data['results'], 3)
+        (mocked_response_2.data['results'], 3),
+        (mocked_response_2.data['results'], 3),  # for the long running process check
     ]
     view_instance = MagicMock()
     view_instance.side_effect = [
         mocked_response_1,
-        mocked_response_2
+        mocked_response_2,
+        mocked_response_2,  # for the long running process check
     ]
-    generator = _paginated_response_generator(fx_info, view_data, view_instance)
-    results = list(generator)
+
+    results = list(_paginated_response_generator(fx_info, view_data, view_instance))
     assert len(results) == 2
     assert results[0] == ([{'id': 1}, {'id': 2}], 0.67, 2)
     assert results[1] == ([{'id': 3}], 1.0, 3)
-    # view_instace should be called twice
+
     view_instance.assert_called()
     assert view_instance.call_count == 2
+    assert view_data['end_page'] is None
+
+    with patch('futurex_openedx_extensions.helpers.export_csv._is_long_running_process', return_value=True):
+        list(_paginated_response_generator(fx_info, view_data, view_instance))
+        assert view_data['end_page'] is not None
 
 
 @pytest.mark.django_db
 @override_settings(ALLOWED_HOSTS=['example.com'])
 @patch('futurex_openedx_extensions.helpers.export_csv._get_response_data')
 def test_paginated_response_generator_for_empty_response_data(
-    mock_get_response_data, base_data,
+    mock_get_response_data, base_data, view_data,
 ):  # pylint: disable=unused-argument
     """Test _paginated_response_generator for empty response when there are no records"""
     fx_info = {'role': 'admin', 'user': get_user_model().objects.get(id=30)}
-    view_data = {'url': 'http://example.com/api/data?test=value&page_size=2'}
     mocked_response = MagicMock()
     mocked_response.status_code = 200
     mocked_response.data = {'count': 0, 'next': None, 'results': []}
@@ -211,7 +218,8 @@ def test_get_storage_dir():
     assert result == expected
 
 
-def test_upload_file_to_storage():
+@pytest.mark.parametrize('partial', [True, False])
+def test_upload_file_to_storage(partial):
     """Test uploading a file to the default storage."""
     dummy_content = b'Test content'
     # create dummy temp file
@@ -220,7 +228,9 @@ def test_upload_file_to_storage():
         temp_file_path = temp_file.name
     fake_tenant = 'fake'
     storage_path = f'{settings.FX_DASHBOARD_STORAGE_DIR}/{fake_tenant}/exported_files/{_FILENAME}'
-    result = _upload_file_to_storage(temp_file_path, _FILENAME, fake_tenant)
+    if partial:
+        storage_path = f'{storage_path}_parts/{_FILENAME}_000001'
+    result = _upload_file_to_storage(temp_file_path, _FILENAME, fake_tenant, partial_tag=1 if partial else 0)
     assert result == storage_path
     # verify file created on default storage with right content
     with default_storage.open(storage_path, 'rb') as storage_file:
@@ -228,6 +238,8 @@ def test_upload_file_to_storage():
         assert uploaded_content == dummy_content
     os.remove(temp_file_path)
     default_storage.delete(storage_path)
+    if partial:
+        os.rmdir(f'{settings.FX_DASHBOARD_STORAGE_DIR}/{fake_tenant}/exported_files/{_FILENAME}_parts')
     os.rmdir(f'{settings.FX_DASHBOARD_STORAGE_DIR}/{fake_tenant}/exported_files')
     os.rmdir(f'{settings.FX_DASHBOARD_STORAGE_DIR}/{fake_tenant}')
     os.rmdir(settings.FX_DASHBOARD_STORAGE_DIR)
@@ -235,7 +247,7 @@ def test_upload_file_to_storage():
 
 @patch('futurex_openedx_extensions.helpers.export_csv.default_storage')
 @patch('futurex_openedx_extensions.helpers.export_csv._get_storage_dir')
-def test_upload_file_to_storage_set_private(mock_get_storage_dir, mock_storage):
+def test_upload_file_to_storage_set_private(mock_get_storage_dir, mock_storage):  # pylint: disable=redefined-outer-name
     """Verify that the uploaded file is set to private when the storage type is S3Boto3Storage."""
     mock_get_storage_dir.return_value = 'fake_exported_files'
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
@@ -260,9 +272,14 @@ def test_upload_file_to_storage_set_private(mock_get_storage_dir, mock_storage):
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.export_csv._paginated_response_generator')
 @patch('futurex_openedx_extensions.helpers.models.DataExportTask.get_task')
+@pytest.mark.parametrize('last_percentage, case_description', [
+    (0.99, 'last percentage could be less than %100 if some records were dropped from the view during the export'),
+    (1.0, 'mostly, last percentage will be %100'),
+    (1.01, 'we allow the possibility of %1 records added to the view during the export'),
+])
 def test_generate_csv_with_tracked_progress(
-    mock_get_task, mock_generator, base_data,
-):  # pylint: disable=unused-argument
+    mock_get_task, mock_generator, last_percentage, case_description, base_data, view_data,
+):  # pylint: disable=unused-argument, too-many-arguments
     """Test _generate_csv_with_tracked_progress."""
     tenant = MagicMock(id=1)
     task = MagicMock()
@@ -273,22 +290,17 @@ def test_generate_csv_with_tracked_progress(
     storage_dir = f'{settings.FX_DASHBOARD_STORAGE_DIR}/{str(tenant.id)}/exported_files'
     fake_storage_path = f'{storage_dir}/{_FILENAME}'
     fx_permission_info = {'user': get_user_model().objects.get(id=30), 'role': 'admin'}
-    view_data = {
-        'page_size': 2,
-        'url': 'http://example.com',
-        'kwargs': {}
-    }
     mock_generator.return_value = iter([
         ([{'id': 1}, {'id': 2}], 0.67, 2),
-        ([{'id': 3}], 1.0, 3)
+        ([{'id': 3}], last_percentage, 3)
     ])
-    result = _generate_csv_with_tracked_progress(
+    assert _generate_csv_with_tracked_progress(
         task, fx_permission_info, view_data, _FILENAME, MagicMock()
     )
-    assert result == fake_storage_path
     task.save.assert_called()
     assert task.save.call_count == 2
-    assert task.progress == 1.0
+    assert task.progress == 1.0, 'Test case failed! progress must be %100 when the task is finished, regardless of' \
+        ' the value of last_percentage. Failed case: ' + case_description
     with open(fake_storage_path, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         rows = list(reader)
@@ -333,8 +345,8 @@ def test_generate_csv_with_tracked_progress_for_exception(
 @patch('futurex_openedx_extensions.helpers.export_csv.os.remove')
 @patch('futurex_openedx_extensions.helpers.models.DataExportTask.get_task')
 def test_generate_csv_with_tracked_progress_for_os_removal_exception(
-    mock_get_task, mock_os_remove, mock_generator, mock_file_upload, base_data,
-):  # pylint: disable=unused-argument
+    mock_get_task, mock_os_remove, mock_generator, mock_file_upload, base_data, view_data,
+):  # pylint: disable=unused-argument, too-many-arguments
     """Test _generate_csv_with_tracked_progress for os exception"""
     tenant = MagicMock(id=1)
     task = MagicMock()
@@ -343,45 +355,32 @@ def test_generate_csv_with_tracked_progress_for_os_removal_exception(
     mock_get_task.return_value = task
 
     fake_storage_path = f'{settings.FX_DASHBOARD_STORAGE_DIR}/{str(tenant.id)}/{_FILENAME}'
-    view_data = {
-        'page_size': 2,
-        'url': 'http://example.com',
-        'kwargs': {}
-    }
     mock_generator.return_value = iter([])
     mock_os_remove.side_effect = Exception('Some exception')
     mock_file_upload.return_value = fake_storage_path
-    result = _generate_csv_with_tracked_progress(
+    assert _generate_csv_with_tracked_progress(
         task_id=task.id,
         fx_permission_info={'not': 'reached in this test'},
         view_data=view_data,
         filename=_FILENAME,
         view_instance=MagicMock(),
     )
-    # assert that os remove exception does not impact return value
-    assert result == fake_storage_path
 
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.export_csv._paginated_response_generator')
 def test_generate_csv_with_tracked_progress_for_empty_records(
-    mock_generator, fx_task, base_data,
+    mock_generator, fx_task, base_data, view_data,
 ):  # pylint: disable=redefined-outer-name, unused-argument
     """_generate_csv_with_tracked_progress for empty records"""
     tenant = MagicMock(id=1)
     storage_dir = f'{settings.FX_DASHBOARD_STORAGE_DIR}/{str(tenant.id)}/exported_files'
     fake_storage_path = f'{storage_dir}/{_FILENAME}'
     fx_permission_info = {'user': get_user_model().objects.get(id=30), 'role': 'admin'}
-    view_data = {
-        'page_size': 2,
-        'url': 'http://example.com',
-        'kwargs': {}
-    }
     mock_generator.return_value = iter([([], 0, 0)])
-    result = _generate_csv_with_tracked_progress(
+    assert _generate_csv_with_tracked_progress(
         fx_task.id, fx_permission_info, view_data, _FILENAME, MagicMock(),
     )
-    assert result == fake_storage_path
     assert fx_task.progress == 0
     with open(fake_storage_path, 'r', newline='', encoding='utf-8') as f:
         assert f.read() == ''
@@ -392,10 +391,63 @@ def test_generate_csv_with_tracked_progress_for_empty_records(
 
 
 @pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.export_csv._paginated_response_generator')
+@patch('futurex_openedx_extensions.helpers.export_csv._upload_file_to_storage')
+def test_generate_csv_with_tracked_progress_for_single_file_export(
+    _, mock_generator, fx_task, base_data, view_data, caplog,
+):  # pylint: disable=redefined-outer-name, unused-argument
+    """Verify that _generate_csv_with_tracked_progress works for a single file export."""
+    caplog.set_level(logging.INFO)
+    mock_generator.side_effect = iter([[], 0, 0])
+    assert _generate_csv_with_tracked_progress(
+        fx_task.id, {'dummy': 'dummy'}, view_data, _FILENAME, MagicMock(),
+    )
+    assert 'CSV Export: file uploaded successfully for task 1 (no partial files).' in caplog.text
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.export_csv._paginated_response_generator')
+@patch('futurex_openedx_extensions.helpers.export_csv._upload_file_to_storage')
+def test_generate_csv_with_tracked_progress_for_partial_export(
+    _, mock_generator, fx_task, base_data, view_data, caplog,
+):  # pylint: disable=redefined-outer-name, unused-argument
+    """Verify that _generate_csv_with_tracked_progress works for a partial export."""
+    def generator_side_effect(_, sent_view_data, __):
+        sent_view_data['end_page'] = 1
+        yield [], 0, 0
+
+    caplog.set_level(logging.INFO)
+
+    mock_generator.side_effect = generator_side_effect
+    assert not _generate_csv_with_tracked_progress(
+        fx_task.id, {'dummy': 'dummy'}, view_data, _FILENAME, MagicMock(),
+    )
+    assert 'CSV Export: partial file uploaded successfully for task 1' in caplog.text
+    assert view_data['start_page'] == 2
+    assert view_data['end_page'] is None
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.export_csv._combine_partial_files')
+@patch('futurex_openedx_extensions.helpers.export_csv._paginated_response_generator')
+@patch('futurex_openedx_extensions.helpers.export_csv._upload_file_to_storage')
+def test_generate_csv_with_tracked_progress_for_last_partial_export(
+    _, mock_generator, combine_mock, fx_task, base_data, view_data,
+):  # pylint: disable=redefined-outer-name, unused-argument
+    """Verify that _generate_csv_with_tracked_progress works for a last partial export."""
+    mock_generator.side_effect = iter([[], 0, 0])
+    view_data['start_page'] = 2
+    assert _generate_csv_with_tracked_progress(
+        fx_task.id, {'dummy': 'dummy'}, view_data, _FILENAME, MagicMock(),
+    )
+    combine_mock.assert_called_once()
+
+
+@pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.export_csv._get_view_class_instance')
 @patch('futurex_openedx_extensions.helpers.export_csv._generate_csv_with_tracked_progress')
 def test_export_data_to_csv(
-    mock_generate_csv, mock_get_view, fx_task, base_data,
+    mock_generate_csv, mock_get_view, fx_task, base_data, view_data,
 ):  # pylint: disable=redefined-outer-name, unused-argument
     """Test _export_data_to_csv"""
     user = get_user_model().objects.get(id=30)
@@ -403,14 +455,10 @@ def test_export_data_to_csv(
     mock_view_instance.view_class.pagination_class.max_page_size = 50
     mock_get_view.return_value = mock_view_instance
     url = 'http://example.com/api/data'
-    view_data = {
-        'path': 'some/path',
-        'query_params': {}
-    }
     fx_permission_info = {'user_id': user.id, 'role': 'admin'}
     fake_storage_path = f'{settings.FX_DASHBOARD_STORAGE_DIR}/{_FILENAME}'
     mock_generate_csv.return_value = fake_storage_path
-    expected_url = f'{url}?page_size=50'
+    expected_url = f'{url}?page={view_data["start_page"]}&page_size=50'
     result = export_data_to_csv(fx_task.id, url, view_data, fx_permission_info, _FILENAME)
     assert result == fake_storage_path
     assert fx_permission_info['user'] == user
@@ -427,7 +475,7 @@ def test_export_data_to_csv(
 @patch('futurex_openedx_extensions.helpers.export_csv._get_view_class_instance')
 @patch('futurex_openedx_extensions.helpers.export_csv._generate_csv_with_tracked_progress')
 def test_export_data_to_csv_for_default_page_size(
-    mock_generate_csv, mock_get_view, fx_task, base_data,
+    mock_generate_csv, mock_get_view, fx_task, base_data, view_data,
 ):  # pylint: disable=redefined-outer-name, unused-argument
     """Test _export_data_to_csv"""
     user = get_user_model().objects.get(id=30)
@@ -436,13 +484,9 @@ def test_export_data_to_csv_for_default_page_size(
     mocked_view_instance.view_class.pagination_class.max_page_size = None
     mock_get_view.return_value = mocked_view_instance
     url = 'http://example.com/api/data'
-    view_data = {
-        'path': 'some/path',
-        'query_params': {}
-    }
     fx_permission_info = {'user_id': user.id, 'role': 'admin'}
     mock_generate_csv.return_value = fake_storage_path
-    expected_url = f'{url}?page_size=100'
+    expected_url = f'{url}?page={view_data["start_page"]}&page_size=100'
     result = export_data_to_csv(fx_task.id, url, view_data, fx_permission_info, _FILENAME)
     assert result == fake_storage_path
     assert view_data['url'] == expected_url
@@ -453,7 +497,7 @@ def test_export_data_to_csv_for_default_page_size(
 @patch('futurex_openedx_extensions.helpers.export_csv._get_view_class_instance')
 @patch('futurex_openedx_extensions.helpers.export_csv._generate_csv_with_tracked_progress')
 def test_export_data_to_csv_for_missing_pagination_class(
-    mock_generate_csv, mock_get_view, fx_task, base_data,
+    mock_generate_csv, mock_get_view, fx_task, base_data, view_data,
 ):  # pylint: disable=redefined-outer-name, unused-argument
     """Test _export_data_to_csv"""
     user = get_user_model().objects.get(id=30)
@@ -462,13 +506,9 @@ def test_export_data_to_csv_for_missing_pagination_class(
     mocked_view_instance.view_class.pagination_class = None
     mock_get_view.return_value = mocked_view_instance
     url = 'http://example.com/api/data'
-    view_data = {
-        'path': 'some/path',
-        'query_params': {}
-    }
     fx_permission_info = {'user_id': user.id, 'role': 'admin'}
     mock_generate_csv.return_value = fake_storage_path
-    expected_url = f'{url}?page_size=100'
+    expected_url = f'{url}?page={view_data["start_page"]}&page_size=100'
     result = export_data_to_csv(fx_task.id, url, view_data, fx_permission_info, _FILENAME)
     assert result == fake_storage_path
     assert view_data['url'] == expected_url
@@ -479,16 +519,12 @@ def test_export_data_to_csv_for_missing_pagination_class(
 @patch('futurex_openedx_extensions.helpers.export_csv._get_view_class_instance')
 @patch('futurex_openedx_extensions.helpers.export_csv._generate_csv_with_tracked_progress')
 def test_export_data_to_csv_for_filename_extension(
-    mock_generate_csv, mock_get_view, fx_task, base_data,
+    mock_generate_csv, mock_get_view, fx_task, base_data, view_data
 ):  # pylint: disable=redefined-outer-name, unused-argument
     """Test _export_data_to_csv"""
     filename = 'test'
     mock_view_instance = MagicMock()
     mock_get_view.return_value = mock_view_instance
-    view_data = {
-        'path': 'some/path',
-        'query_params': {}
-    }
     fx_permission_info = {'user_id': 30, 'role': 'admin'}
     mock_generate_csv.return_value = 'randome/path/test.csv'
     export_data_to_csv(fx_task.id, 'http://example.com/api', view_data, fx_permission_info, filename)
@@ -572,7 +608,7 @@ def test_generate_file_url_for_s3_storage(
     mocked_boto3_client, mocked_is_instance
 ):  # pylint: disable=unused-argument
     """
-    test generate_file_url funtionality for s3 storage that
+    test generate_file_url functionality for s3 storage that
     needed s3 storage fucntions are called with correct arguments
     """
     dummy_file_path = 'fake/file.csv'
@@ -586,3 +622,89 @@ def test_generate_file_url_for_s3_storage(
         HttpMethod='GET',
         ExpiresIn=3600
     )
+
+
+@pytest.fixture
+def mock_default_storage():
+    """Fixture for default storage."""
+    with patch('futurex_openedx_extensions.helpers.export_csv.default_storage') as mock_storage:
+        yield mock_storage
+
+
+@pytest.fixture
+def mock_upload_file_to_storage():
+    """Fixture for upload file to storage."""
+    with patch('futurex_openedx_extensions.helpers.export_csv._upload_file_to_storage') as mock_upload:
+        yield mock_upload
+
+
+@pytest.fixture
+def mock_get_storage_dir():
+    """Fixture for get storage dir."""
+    with patch('futurex_openedx_extensions.helpers.export_csv._get_storage_dir') as mock_storage_dir:
+        yield mock_storage_dir
+
+
+@pytest.fixture
+def mock_data_export_task():
+    """Fixture for data export task."""
+    with patch('futurex_openedx_extensions.helpers.export_csv.DataExportTask.get_task') as mock_get_task:
+        mock_task = MagicMock()
+        mock_task.tenant.id = 123
+        mock_get_task.return_value = mock_task
+        yield mock_get_task
+
+
+@patch('futurex_openedx_extensions.helpers.export_csv.os.remove')
+@pytest.mark.parametrize('os_rm_failure', [True, False])
+def test_combine_partial_files_success(
+    mock_os_remove,
+    os_rm_failure,
+    mock_default_storage,
+    mock_get_storage_dir,
+    mock_upload_file_to_storage,
+    mock_data_export_task,
+    caplog,
+):  # pylint: disable=too-many-arguments, redefined-outer-name, unused-argument
+    """Verify the outcome of _combine_partial_files."""
+    caplog.set_level(logging.INFO)
+
+    mock_get_storage_dir.return_value = '/mock/storage/dir'
+    mock_default_storage.listdir.return_value = ([], ['part1.csv', 'part2.csv'])
+    mock_open_file = mock_open(read_data='file1_content')
+    mock_open_file.return_value.read.side_effect = [b'file1_content', b'file2_content']
+    mock_default_storage.open.side_effect = mock_open_file
+
+    if os_rm_failure:
+        mock_os_remove.side_effect = Exception('Some exception')
+
+    with tempfile.NamedTemporaryFile(mode='w', newline='', encoding='utf-8', delete=False) as temp_file:
+        with patch(
+            'futurex_openedx_extensions.helpers.export_csv.tempfile.NamedTemporaryFile',
+            return_value=temp_file,
+        ) as mock_tmp_file:
+            _combine_partial_files(task_id=1, filename='export.csv', tenant_id=123)
+
+            mock_get_storage_dir.assert_called_once_with('123')
+            mock_default_storage.listdir.assert_called_once_with(
+                os.path.join('/mock/storage/dir', 'export.csv_parts')
+            )
+            mock_default_storage.open.assert_any_call(
+                os.path.join('/mock/storage/dir', 'export.csv_parts', 'part1.csv')
+            )
+            mock_default_storage.open.assert_any_call(
+                os.path.join('/mock/storage/dir', 'export.csv_parts', 'part2.csv')
+            )
+            mock_upload_file_to_storage.assert_called_once_with(
+                mock_tmp_file.return_value.name, 'export.csv', 123,
+            )
+            for part_file in ['part1.csv', 'part2.csv']:
+                mock_default_storage.delete.assert_any_call(
+                    os.path.join('/mock/storage/dir', 'export.csv_parts', part_file)
+                )
+            mock_default_storage.delete.assert_any_call(
+                os.path.join('/mock/storage/dir', 'export.csv_parts')
+            )
+            mock_os_remove.assert_called_once_with(temp_file.name)
+
+    assert not os_rm_failure or 'CSV Export: failed to remove temporary combined file for task' in caplog.text
