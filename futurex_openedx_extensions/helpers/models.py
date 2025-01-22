@@ -499,6 +499,7 @@ class DataExportTask(models.Model):
             fx_task.started_at = timezone.now()
         if status == cls.STATUS_COMPLETED:
             fx_task.completed_at = timezone.now()
+            fx_task.progress = 1.0
         fx_task.save()
 
     @classmethod
