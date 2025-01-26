@@ -11,7 +11,7 @@ from futurex_openedx_extensions.helpers.tasks import export_data_to_csv_task
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.tasks.export_data_to_csv')
-def test_export_data_to_csv_task(mocked_export_data_to_csv):
+def test_export_data_to_csv_task(mocked_export_data_to_csv, base_data):  # pylint: disable=unused-argument
     """test export_data_to_csv_task functionality"""
     filename = 'test_file.csv'
     url = 'http://example.com/view'
@@ -21,7 +21,7 @@ def test_export_data_to_csv_task(mocked_export_data_to_csv):
         filename=filename,
         view_name='fake',
         user=user,
-        tenant_id=1
+        tenant_id=1,
     )
     fx_permission_info = {'user_id': user.id, 'role': 'admin'}
     assert fx_task.status == DataExportTask.STATUS_IN_QUEUE
