@@ -66,6 +66,8 @@ class ExportCSVMixin:
             'query_params': filtered_query_params,
             'kwargs': self.kwargs,  # type: ignore[attr-defined]
             'path': self.request.path,  # type: ignore[attr-defined]
+            'start_page': 1,
+            'end_page': None,
         }
         tenant_id = self.request.fx_permission_info[  # type: ignore[attr-defined]
             'view_allowed_tenant_ids_any_access'

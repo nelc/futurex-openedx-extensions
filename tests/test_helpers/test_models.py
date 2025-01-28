@@ -434,7 +434,6 @@ def test_data_export_task_set_status(
 @pytest.mark.parametrize('status, new_status', [
     (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_IN_QUEUE),
     (DataExportTask.STATUS_IN_QUEUE, DataExportTask.STATUS_COMPLETED),
-    (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_PROCESSING),
     (DataExportTask.STATUS_PROCESSING, DataExportTask.STATUS_IN_QUEUE),
 ])
 def test_data_export_task_set_status_invalid_transition(
@@ -452,6 +451,21 @@ def test_data_export_task_set_status_invalid_transition(
         DataExportTask.set_status(task.id, new_status)
     assert exc_info.value.code == FXExceptionCodes.EXPORT_CSV_TASK_CHANGE_STATUS_NOT_POSSIBLE.value
     assert str(exc_info.value) == f'Cannot change task status from ({status}) to ({new_status})'
+
+
+@pytest.mark.django_db
+def test_data_export_task_set_status_processing_continue(base_data):  # pylint: disable=unused-argument
+    """Verify that DataExportTask.set_status will not call save if status is just a continuation of processing."""
+    task = DataExportTask.objects.create(
+        filename='test.csv',
+        view_name='test_view',
+        user_id=1,
+        tenant_id=1,
+        status=DataExportTask.STATUS_PROCESSING,
+    )
+    with patch('futurex_openedx_extensions.helpers.models.DataExportTask.save') as mock_save:
+        DataExportTask.set_status(task.id, DataExportTask.STATUS_PROCESSING)
+    mock_save.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -518,7 +532,7 @@ def test_data_export_task_set_progress(base_data):  # pylint: disable=unused-arg
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('invalid_progress', [
-    None, 'not an int', 1.00001, -0.00001,
+    None, 'not an int', 1.0001, -0.00001,
 ])
 def test_data_export_task_set_progress_invalid_value(base_data, invalid_progress):  # pylint: disable=unused-argument
     """Verify that DataExportTask.set_progress raises FXCodedException for invalid progress value."""

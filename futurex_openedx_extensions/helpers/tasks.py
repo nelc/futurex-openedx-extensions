@@ -1,4 +1,5 @@
 """FX Helpers celery tasks"""
+import copy
 import logging
 
 from celery import shared_task
@@ -21,9 +22,18 @@ def export_data_to_csv_task(
     try:
         _ = DataExportTask.get_task(fx_task_id)
 
-        export_data_to_csv(fx_task_id, url, view_data, fx_permission_info, filename)
-
-        DataExportTask.set_status(task_id=fx_task_id, status=DataExportTask.STATUS_COMPLETED)
+        if export_data_to_csv(fx_task_id, url, view_data, copy.deepcopy(fx_permission_info), filename):
+            DataExportTask.set_status(task_id=fx_task_id, status=DataExportTask.STATUS_COMPLETED)
+        else:
+            log.info(
+                'CSV Export: initiating a continue job starting from page %s for task %s.',
+                view_data['start_page'],
+                fx_task_id,
+            )
+            next_view_data = {
+                key: view_data[key] for key in ['query_params', 'kwargs', 'path', 'start_page', 'end_page']
+            }
+            export_data_to_csv_task.delay(fx_task_id, url, next_view_data, fx_permission_info, filename)
 
     except FXCodedException as exc:
         if exc.code == FXExceptionCodes.EXPORT_CSV_TASK_NOT_FOUND.value:

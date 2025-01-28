@@ -481,6 +481,9 @@ class DataExportTask(models.Model):
             )
 
         fx_task = cls.get_task(task_id)
+        if status == fx_task.status == cls.STATUS_PROCESSING:
+            return
+
         if (
             (fx_task.status == status) or  # pylint: disable=too-many-boolean-expressions
             (fx_task.status == cls.STATUS_IN_QUEUE and status not in [cls.STATUS_PROCESSING, cls.STATUS_FAILED]) or
@@ -499,6 +502,7 @@ class DataExportTask(models.Model):
             fx_task.started_at = timezone.now()
         if status == cls.STATUS_COMPLETED:
             fx_task.completed_at = timezone.now()
+            fx_task.progress = 1.0
         fx_task.save()
 
     @classmethod
@@ -552,6 +556,7 @@ class DataExportTask(models.Model):
                 code=FXExceptionCodes.EXPORT_CSV_TASK_CANNOT_CHANGE_PROGRESS,
                 message=f'Cannot set progress for a task with status ({fx_task.status}).'
             )
+
         if not isinstance(progress, float) or progress < 0.0 or progress > 1.0:
             raise FXCodedException(
                 code=FXExceptionCodes.EXPORT_CSV_TASK_INVALID_PROGRESS_VALUE,

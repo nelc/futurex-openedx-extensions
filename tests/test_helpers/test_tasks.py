@@ -1,4 +1,5 @@
 """Tests for Fx Helpers tasks"""
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -11,11 +12,17 @@ from futurex_openedx_extensions.helpers.tasks import export_data_to_csv_task
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.tasks.export_data_to_csv')
-def test_export_data_to_csv_task(mocked_export_data_to_csv, base_data):  # pylint: disable=unused-argument
+@pytest.mark.parametrize('export_completed', [True, False])
+def test_export_data_to_csv_task(
+    mocked_export_data_to_csv, export_completed, base_data, view_data, caplog,
+):  # pylint: disable=unused-argument
     """test export_data_to_csv_task functionality"""
+    def export_data_to_csv_side_effect(*args, **kwargs):
+        DataExportTask.objects.filter(id=fx_task.id).update(status=DataExportTask.STATUS_PROCESSING)
+        return export_completed
+
     filename = 'test_file.csv'
     url = 'http://example.com/view'
-    view_data = {'query_params': {}, 'kwargs': {}, 'path': '/test/path'}
     user = get_user_model().objects.create_user(username='testuser', password='password')
     fx_task = DataExportTask.objects.create(
         filename=filename,
@@ -26,13 +33,22 @@ def test_export_data_to_csv_task(mocked_export_data_to_csv, base_data):  # pylin
     fx_permission_info = {'user_id': user.id, 'role': 'admin'}
     assert fx_task.status == DataExportTask.STATUS_IN_QUEUE
 
-    mocked_export_data_to_csv.side_effect = lambda *args, **kwargs: DataExportTask.objects.filter(
-        id=args[0]
-    ).update(status=DataExportTask.STATUS_PROCESSING)
-    export_data_to_csv_task(fx_task.id, url, view_data, fx_permission_info, filename)
+    caplog.set_level(logging.INFO)
+    mocked_export_data_to_csv.side_effect = export_data_to_csv_side_effect
+    with patch('futurex_openedx_extensions.helpers.tasks.export_data_to_csv_task.delay') as mock_delay:
+        export_data_to_csv_task(fx_task.id, url, view_data, fx_permission_info, filename)
+
     mocked_export_data_to_csv.assert_called_once_with(fx_task.id, url, view_data, fx_permission_info, filename)
     fx_task.refresh_from_db()
-    assert fx_task.status == DataExportTask.STATUS_COMPLETED
+    if export_completed:
+        mock_delay.assert_not_called()
+        assert fx_task.status == DataExportTask.STATUS_COMPLETED
+    else:
+        mock_delay.assert_called_once_with(fx_task.id, url, {
+            'query_params': {}, 'kwargs': {}, 'path': '/', 'start_page': 1, 'end_page': None,
+        }, fx_permission_info, filename)
+        assert 'CSV Export: initiating a continue job starting from page' in caplog.text
+        assert fx_task.status == DataExportTask.STATUS_PROCESSING
 
 
 @pytest.mark.django_db

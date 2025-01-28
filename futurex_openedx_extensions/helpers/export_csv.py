@@ -5,6 +5,7 @@ import csv
 import logging
 import os
 import tempfile
+from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 from urllib.parse import urlencode, urlparse
 
@@ -89,36 +90,56 @@ def _get_response_data(response: Any) -> Tuple:
     return data, count
 
 
+def _is_long_running_process(start_time: datetime) -> bool:
+    """Check if the process is running for more than the limit."""
+    return (datetime.now() - start_time).total_seconds() > settings.FX_TASK_MINUTES_LIMIT * 60
+
+
 def _paginated_response_generator(
     fx_info: dict, view_data: dict, view_instance: Any
 ) -> Generator:
     """Generator to yield paginated responses."""
-    url = view_data['url']
+    page = view_data['start_page']
     kwargs = view_data.get('kwargs', {})
-    processed_records = 0
-    while url:
+    processed_records = (page - 1) * view_data['page_size']
+    url = f'{view_data["url"]}'
+    start_time = datetime.now()
+    while url and not view_data['end_page']:
         mocked_request = _get_mocked_request(url, fx_info)
         response = view_instance(mocked_request, **kwargs)
         data, total_records = _get_response_data(response)
         processed_records += len(data)
+
         progress = round(processed_records / total_records, 2) if total_records else 0
         yield data, progress, processed_records
+        if _is_long_running_process(start_time):
+            view_data['end_page'] = page
+        page += 1
         url = response.data.get('next')
 
 
 def _get_storage_dir(dir_name: str) -> str:
-    """Return storgae dir"""
+    """Return storage dir"""
     return os.path.join(settings.FX_DASHBOARD_STORAGE_DIR, f'{str(dir_name)}/exported_files',)
 
 
-def _upload_file_to_storage(local_file_path: str, filename: str, tenant_id: int) -> str:
+def _upload_file_to_storage(local_file_path: str, filename: str, tenant_id: int, partial_tag: int = 0) -> str:
     """
     Upload a file to the default storage (e.g., S3).
 
     :param local_file_path: Path to the local file to upload
+    :type local_file_path: str
     :param filename: filename for generated CSV
+    :type filename: str
+    :param tenant_id: The tenant ID.
+    :type tenant_id: int
+    :param partial_tag: The partial file number.
+    :type partial_tag: int
     :return: The path of the uploaded file
+    :rtype: str
     """
+    if partial_tag:
+        filename = f'{filename}_parts/{filename}_{partial_tag:06d}'
     storage_path = os.path.join(_get_storage_dir(str(tenant_id)), filename)
     with open(local_file_path, 'rb') as file:
         content_file = ContentFile(file.read())
@@ -130,11 +151,53 @@ def _upload_file_to_storage(local_file_path: str, filename: str, tenant_id: int)
     return storage_path
 
 
-def _generate_csv_with_tracked_progress(
+def _combine_partial_files(task_id: int, filename: str, tenant_id: int) -> None:
+    """
+    Combine partial files into a single file.
+
+    :param task_id: The task ID.
+    :type task_id: int
+    :param filename: The filename of the partial files.
+    :type filename: str
+    :param tenant_id: The tenant ID.
+    :type tenant_id: int
+    """
+    storage_dir = _get_storage_dir(str(tenant_id))
+    parts_dir = os.path.join(storage_dir, f'{filename}_parts')
+    partial_files = default_storage.listdir(parts_dir)[1]
+
+    log.info('CSV Export: combining partial files for task %s...', task_id)
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', newline='', encoding='utf-8', delete=False) as tmp_file:
+            for partial_file in sorted(partial_files):
+                with default_storage.open(os.path.join(parts_dir, partial_file)) as file:
+                    tmp_file.write(file.read().decode('utf-8'))
+        log.info('CSV Export: uploading combined file for task %s...', task_id)
+        _upload_file_to_storage(
+            tmp_file.name, filename, DataExportTask.get_task(task_id=task_id).tenant.id,
+        )
+        log.info('CSV Export: file uploaded successfully for task %s...', task_id)
+        log.info('CSV Export: deleting partial files for task %s...', task_id)
+        for partial_file in partial_files:
+            default_storage.delete(os.path.join(parts_dir, partial_file))
+        log.info('CSV Export: deleting partial files directory for task %s...', task_id)
+        default_storage.delete(parts_dir)
+        log.info('CSV Export: partial files directory deleted successfully for task %s...', task_id)
+
+    finally:
+        try:
+            os.remove(tmp_file.name)
+            log.info('CSV Export: temporary combined file removed for task %s...', task_id)
+        except Exception as exc:
+            log.info('CSV Export: failed to remove temporary combined file for task %s: %s', task_id, str(exc))
+
+
+def _generate_csv_with_tracked_progress(  # pylint: disable=too-many-branches
     task_id: int, fx_permission_info: dict, view_data: dict, filename: str, view_instance: Any
-) -> str:
+) -> bool:
     """
     Generate response with progress and Write data to a CSV file.
+
     :param task_id: task id will be used to update progress
     :type task_id: int
     :param fx_permission_info: contains role and permission info
@@ -145,11 +208,13 @@ def _generate_csv_with_tracked_progress(
     :type filename: str
     :param view_instance: view instance
     :type view_instance: Any
-    :return: return default storage file path
+    :return: True if export fully completed, False if partially completed
+    :rtype: bool
     """
+    fully_completed = True
     page_size = view_data['page_size']
-    storage_path = None
-    batch_count = 0
+    batch_count = view_data.get('processed_batches', 0)
+    writer = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', newline='', encoding='utf-8', delete=False) as tmp_file:
             for data, progress, processed_records in _paginated_response_generator(
@@ -161,27 +226,50 @@ def _generate_csv_with_tracked_progress(
                     batch_count,
                     processed_records,
                     task_id,
-                    progress * 100,
+                    round(progress * 100, 2),
                 )
                 if data:
                     log.info('CSV Export: writing batch %s of task %s...', batch_count, task_id)
+                    if not writer:
+                        writer = csv.DictWriter(
+                            tmp_file, fieldnames=data[0].keys(), quotechar='"', quoting=csv.QUOTE_NONNUMERIC,
+                        )
                     if processed_records <= page_size:
                         # Write header only for page 1
-                        writer = csv.DictWriter(
-                            tmp_file, fieldnames=data[0].keys(), quotechar='"', quoting=csv.QUOTE_NONNUMERIC
-                        )
                         writer.writeheader()
                     writer.writerows(data)
+
+                    # Allow the possibility of %1 records added to/dropped from the view during the export
+                    # The %1 margin is just an estimate, there is no proved calculation for it
+                    if view_data['end_page'] is None and 1.01 >= progress >= 0.99:
+                        progress = 1.0
+
                     # update task progress
                     DataExportTask.set_progress(task_id, progress)
                 else:
                     log.warning('CSV Export: batch %s of task %s is empty!', batch_count, task_id)
 
-        log.info('CSV Export: uploading generated file for task %s...', task_id)
-        storage_path = _upload_file_to_storage(
-            tmp_file.name, filename, DataExportTask.get_task(task_id=task_id).tenant.id,
+        view_data['processed_batches'] = batch_count
+
+        if view_data['start_page'] == 1 and view_data['end_page'] is None:
+            log.info('CSV Export: uploading file for task %s (no partial files).', task_id)
+            partial_tag = 0
+        else:
+            log.info('CSV Export: uploading partial file for task %s.', task_id)
+            partial_tag = view_data['start_page']
+        _upload_file_to_storage(
+            tmp_file.name, filename, DataExportTask.get_task(task_id=task_id).tenant.id, partial_tag=partial_tag,
         )
-        log.info('CSV Export: file uploaded successfully for task %s...', task_id)
+
+        if view_data['start_page'] == 1 and view_data['end_page'] is None:
+            log.info('CSV Export: file uploaded successfully for task %s (no partial files).', task_id)
+        elif view_data['end_page']:
+            log.info('CSV Export: partial file uploaded successfully for task %s.', task_id)
+            view_data['start_page'] = view_data['end_page'] + 1
+            view_data['end_page'] = None
+            fully_completed = False
+        else:
+            _combine_partial_files(task_id, filename, DataExportTask.get_task(task_id=task_id).tenant.id)
 
     finally:
         try:
@@ -189,22 +277,29 @@ def _generate_csv_with_tracked_progress(
             log.info('CSV Export: temporary file removed for task %s...', task_id)
         except Exception as exc:
             log.info('CSV Export: failed to remove temporary file for task %s: %s', task_id, str(exc))
-    return storage_path
+
+    return fully_completed
 
 
 def export_data_to_csv(
     task_id: int, url: str, view_data: dict, fx_permission_info: dict, filename: str
-) -> str:
+) -> bool:
     """
     Mock view with given view params and write JSON response to CSV
 
     :param task_id: task id will be used to update progress
+    :type task_id: int
     :param url: view url will be used to mock view and get response
+    :type url: str
     :param view_data: required data for mocking
+    :type view_data: dict
     :param fx_permission_info: contains role and permission info
+    :type fx_permission_info: dict
     :param filename: filename for generated CSV
+    :type filename: str
 
-    :return: generated filename
+    :return: True if export fully completed, False if partially completed
+    :rtype: bool
     """
     if urlparse(url).query:
         raise FXCodedException(
@@ -221,6 +316,7 @@ def export_data_to_csv(
     fx_permission_info.update({'user': user})
 
     query_params = view_data.get('query_params', {})
+    query_params['page'] = view_data['start_page']
     view_instance = _get_view_class_instance(view_data.get('path', ''))
     page_size = 100
     view_pagination_class = view_instance.view_class.pagination_class
@@ -229,7 +325,7 @@ def export_data_to_csv(
         page_size = view_pagination_class.max_page_size or page_size
 
     query_params['page_size'] = page_size
-    url_with_query_str = f'{url}?{urlencode(query_params)}' if query_params else url
+    url_with_query_str = f'{url}?{urlencode(query_params)}'
 
     # Ensure the filename ends with .csv
     if not filename.endswith('.csv'):

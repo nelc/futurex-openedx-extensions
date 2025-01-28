@@ -93,7 +93,13 @@ def test_generate_csv_url_response(
         'user_id': 30, 'user': None, 'view_allowed_tenant_ids_any_access': [1], 'download_allowed': True
     }
     fake_query_params = {}
-    view_params = {'query_params': fake_query_params, 'kwargs': export_csv_mixin.kwargs, 'path': '/'}
+    view_params = {
+        'query_params': fake_query_params,
+        'kwargs': export_csv_mixin.kwargs,
+        'path': '/',
+        'start_page': 1,
+        'end_page': None,
+    }
     with patch(
         'futurex_openedx_extensions.helpers.export_mixins.ExportCSVMixin.export_filename',
         new_callable=PropertyMock
@@ -173,9 +179,9 @@ def test_get_existing_incompleted_task_count(
 def test_list_with_csv_download(
     mocked_get_query_params_func,
     mocked_get_view_request_url,
-    mocked_export_data_to_csv_task,
+    _,
     export_csv_mixin,
-):  # pylint: disable=redefined-outer-name, unused-argument
+):  # pylint: disable=redefined-outer-name
     """Test the list method with dowload csv query param."""
     filename = 'mocked_file.csv'
     fake_url = 'http://example.com/view'

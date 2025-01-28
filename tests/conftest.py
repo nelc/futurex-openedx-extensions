@@ -82,6 +82,20 @@ def roles_authorize_caller():
                     yield
 
 
+@pytest.fixture
+def view_data():
+    """Fixture for a default view data."""
+    return {
+        'query_params': {},
+        'kwargs': {},
+        'path': '/',
+        'url': 'http://example.com',
+        'page_size': 2,
+        'start_page': 1,
+        'end_page': None,
+    }
+
+
 @pytest.fixture(scope='session')
 def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-argument, too-many-statements
     """Create base data for tests."""
