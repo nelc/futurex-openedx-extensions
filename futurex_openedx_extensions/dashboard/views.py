@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
+from common.djangoapps.student.models import get_user_by_username_or_email
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage
@@ -73,7 +74,6 @@ from futurex_openedx_extensions.helpers.roles import (
 )
 from futurex_openedx_extensions.helpers.tenants import get_tenants_info
 from futurex_openedx_extensions.helpers.users import get_user_by_key
-from futurex_openedx_extensions.upgrade.models_switch import get_user_by_username_or_email
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
 

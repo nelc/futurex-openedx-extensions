@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
+from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from custom_reg_form.models import ExtraInfo
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -14,7 +15,6 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from organizations.models import Organization
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole, CourseEnrollment, UserSignupSource
 from tests.base_test_data import _base_data
 from tests.fixture_helpers import get_tenants_of_org, get_user1_fx_permission_info
 

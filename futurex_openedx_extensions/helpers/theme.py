@@ -1,12 +1,12 @@
 """"Theme helpers"""
 from typing import Any, Optional
 
+from common.djangoapps.student.models import CourseAccessRole
 from django.conf import settings
 
 from futurex_openedx_extensions.helpers.roles import get_accessible_tenant_ids
 from futurex_openedx_extensions.helpers.tenants import get_all_tenants_info
 from futurex_openedx_extensions.helpers.users import is_system_staff_user
-from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole
 
 
 def get_fx_dashboard_url(request: Any) -> Optional[str]:

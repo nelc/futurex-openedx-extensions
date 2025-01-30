@@ -2,12 +2,12 @@
 from unittest.mock import patch
 
 import pytest
+from common.djangoapps.student.models import CourseAccessRole
 from django.core.cache import cache
 
 from futurex_openedx_extensions.helpers.constants import CACHE_NAME_ALL_VIEW_ROLES
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
 from futurex_openedx_extensions.helpers.roles import cache_name_user_course_access_roles
-from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole
 
 
 @pytest.mark.django_db

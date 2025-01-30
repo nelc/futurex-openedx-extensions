@@ -1,0 +1,15 @@
+-c https://raw.githubusercontent.com/openedx/edx-platform/refs/heads/open-release/sumac.master/requirements/constraints.txt
+
+-r constraints-sumac.txt
+
+# Nelc specific requirements
+eox-tenant<v13.0.0
+
+# edx-platform related requirements. Pinned to the versions used in Sumac.
+edx-api-doc-tools==2.0.0
+edx-opaque-keys==2.11.0
+edx-lint==5.4.0
+django-filter==24.3
+django-mysql==4.14.0
+jsonfield==3.1.0
+python-dateutil==2.9.0.post0

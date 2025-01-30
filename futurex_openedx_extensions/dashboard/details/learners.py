@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from common.djangoapps.student.models import CourseEnrollment
 from django.contrib.auth import get_user_model
 from django.db.models import BooleanField, Case, Count, Exists, IntegerField, OuterRef, Q, Subquery, Value, When
 from django.db.models.functions import Coalesce
@@ -21,7 +22,6 @@ from futurex_openedx_extensions.helpers.querysets import (
     get_permitted_learners_queryset,
     update_removable_annotations,
 )
-from futurex_openedx_extensions.upgrade.models_switch import CourseEnrollment
 
 
 def get_courses_count_for_learner_queryset(

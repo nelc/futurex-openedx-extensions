@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import yaml  # type: ignore
 from clickhouse_connect import get_client as clickhouse_get_client
-from clickhouse_connect.driver.httpclient import HttpClient
+from clickhouse_connect.driver.httpclient import Client
 from clickhouse_connect.driver.query import QueryResult
 from django.conf import settings
 from django.core.paginator import EmptyPage
@@ -32,12 +32,12 @@ class ClickhouseDefaultQueriesError(ClickhouseBaseError):
     """Clickhouse default queries error."""
 
 
-def get_client() -> HttpClient:
+def get_client() -> Client:
     """
     Get Clickhouse client.
 
     :return: Clickhouse client.
-    :rtype: HttpClient
+    :rtype: Client
     """
     try:
         username = settings.FX_CLICKHOUSE_USER
@@ -73,7 +73,7 @@ def get_default_queries() -> dict:
 
 
 def validate_clickhouse_query(
-    clickhouse_client: HttpClient,
+    clickhouse_client: Client,
     query: str,
     parameters: Dict[str, Any] | None = None,
 ) -> None:
@@ -81,7 +81,7 @@ def validate_clickhouse_query(
     Validate the Clickhouse query.
 
     :param clickhouse_client: The Clickhouse client.
-    :type clickhouse_client: HttpClient
+    :type clickhouse_client: Client
     :param query: The Clickhouse query to validate.
     :type query: str
     :param parameters: The parameters to format the query with.
@@ -95,12 +95,12 @@ def validate_clickhouse_query(
         raise ClickhouseQueryParamsError(f'Clickhouse query is not valid: {exc}') from exc
 
 
-def count_result(clickhouse_client: HttpClient, query: str, parameters: Dict[str, Any] | None) -> int:
+def count_result(clickhouse_client: Client, query: str, parameters: Dict[str, Any] | None) -> int:
     """
     Count the results of the Clickhouse query.
 
     :param clickhouse_client: The Clickhouse client.
-    :type clickhouse_client: HttpClient
+    :type clickhouse_client: Client
     :param query: The Clickhouse query to count.
     :type query: str
     :param parameters: The parameters to format the query with.
@@ -119,7 +119,7 @@ def count_result(clickhouse_client: HttpClient, query: str, parameters: Dict[str
 
 
 def execute_query(
-    clickhouse_client: HttpClient,
+    clickhouse_client: Client,
     query: str,
     parameters: Dict[str, Any] | None = None,
     page: int | None = None,
@@ -129,7 +129,7 @@ def execute_query(
     Execute the Clickhouse query.
 
     :param clickhouse_client: The Clickhouse client.
-    :type clickhouse_client: HttpClient
+    :type clickhouse_client: Client
     :param query: The Clickhouse query to execute.
     :type query: str
     :param parameters: The parameters to format the query with.

@@ -1,1 +1,0 @@
-clickhouse-connect>0.5,<0.6     # as used in tutor-contrib-aspects v0.51.1

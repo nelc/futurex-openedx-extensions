@@ -2,7 +2,7 @@
 from setuptools import setup
 
 setup(
-    name='edx_platform_mocks_palm',
+    name='edx_platform_mocks_sumac',
     version='0.1.0',
     packages=[],
 )

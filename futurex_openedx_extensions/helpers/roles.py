@@ -9,6 +9,7 @@ from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict, List, Tuple
 
+from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import DatabaseError, transaction
@@ -45,7 +46,6 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_tenants_sites,
 )
 from futurex_openedx_extensions.helpers.users import get_user_by_key, is_system_staff_user
-from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole, UserSignupSource
 
 logger = logging.getLogger(__name__)
 
