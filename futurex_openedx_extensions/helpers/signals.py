@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from common.djangoapps.student.models import CourseAccessRole
 from django.core.cache import cache
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
@@ -13,7 +14,6 @@ from futurex_openedx_extensions.helpers.roles import (
     add_missing_signup_source_record,
     cache_name_user_course_access_roles,
 )
-from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole
 
 
 @receiver(post_save, sender=CourseAccessRole)

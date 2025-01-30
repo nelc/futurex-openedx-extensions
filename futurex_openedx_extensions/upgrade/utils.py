@@ -7,10 +7,10 @@ from openedx.core.release import RELEASE_LINE
 
 log = logging.getLogger(__name__)
 
-FX_EDX_PLATFORM_VERSION_PALM = 'palm'
 FX_EDX_PLATFORM_VERSION_REDWOOD = 'redwood'
+FX_EDX_PLATFORM_VERSION_SUMAC = 'sumac'
 
-FX_DASHBOARD_SUPPORTED_EDX_PLATFORM_VERSION = [FX_EDX_PLATFORM_VERSION_PALM, FX_EDX_PLATFORM_VERSION_REDWOOD]
+FX_DASHBOARD_SUPPORTED_EDX_PLATFORM_VERSION = [FX_EDX_PLATFORM_VERSION_REDWOOD, FX_EDX_PLATFORM_VERSION_SUMAC]
 
 
 def get_edx_platform_release() -> str:
@@ -22,10 +22,10 @@ def get_current_version() -> str:
     """Get the current version of the edx-platform."""
     result = get_edx_platform_release()
     if result not in FX_DASHBOARD_SUPPORTED_EDX_PLATFORM_VERSION:
-        if result < FX_EDX_PLATFORM_VERSION_PALM and result != 'master':
-            default = FX_EDX_PLATFORM_VERSION_PALM
-        else:
+        if result < FX_EDX_PLATFORM_VERSION_REDWOOD and result != 'master':
             default = FX_EDX_PLATFORM_VERSION_REDWOOD
+        else:
+            default = FX_EDX_PLATFORM_VERSION_SUMAC
         log.error(
             'edx-platform release line is (%s) which is not a supported version. '
             'Defaulting to (%s).', result, default,

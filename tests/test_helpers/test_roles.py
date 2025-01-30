@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
+from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -49,7 +50,6 @@ from futurex_openedx_extensions.helpers.roles import (
     validate_course_access_role,
 )
 from futurex_openedx_extensions.helpers.tenants import get_all_tenant_ids
-from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole, UserSignupSource
 from tests.fixture_helpers import (
     get_all_orgs,
     get_test_data_dict,

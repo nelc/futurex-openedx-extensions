@@ -149,10 +149,10 @@ setup(
     },
     install_requires=[],
     extras_require={
-        'palm': load_requirements('requirements/base.in', dynamic_constraint_files=['requirements/constraints-palm.txt']),
         'redwood': load_requirements('requirements/base.in', dynamic_constraint_files=['requirements/constraints-redwood.txt']),
+        'sumac': load_requirements('requirements/base.in', dynamic_constraint_files=['requirements/constraints-sumac.txt']),
     },
-    python_requires='>=3.8',
+    python_requires='>=3.11',
     zip_safe=False,
     keywords='Python edx',
     classifiers=[
@@ -163,7 +163,7 @@ setup(
         'License :: Other/Proprietary License',
         'Natural Language :: English',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.11',
     ],
     entry_points={
         'lms.djangoapp': [

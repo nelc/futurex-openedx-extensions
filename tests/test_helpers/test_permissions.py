@@ -3,6 +3,7 @@ import json
 from unittest.mock import Mock, patch
 
 import pytest
+from common.djangoapps.student.models import CourseAccessRole
 from deepdiff import DeepDiff
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.test import APIRequestFactory
@@ -15,7 +16,6 @@ from futurex_openedx_extensions.helpers.permissions import (
     IsSystemStaff,
     get_tenant_limited_fx_permission_info,
 )
-from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole
 from tests.fixture_helpers import get_all_orgs, set_user
 
 

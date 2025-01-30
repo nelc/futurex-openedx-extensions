@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
+from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, SocialLink, UserProfile
 from custom_reg_form.models import ExtraInfo
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
@@ -29,7 +30,6 @@ from futurex_openedx_extensions.dashboard.serializers import (
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.roles import RoleType
-from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole, CourseEnrollment, SocialLink, UserProfile
 
 
 def get_dummy_queryset(users_list=None):

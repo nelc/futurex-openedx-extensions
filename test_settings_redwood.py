@@ -1,4 +1,4 @@
-"""Test settings for edx-platform-palm"""
+"""Test settings for edx-platform-redwood"""
 from openedx.core import release
 
 from test_utils.test_settings_common import *

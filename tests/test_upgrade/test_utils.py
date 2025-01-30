@@ -13,11 +13,11 @@ def test_get_edx_platform_release():
 
 
 @pytest.mark.parametrize('release_line, expected_result, log_message', [
-    ('palm', 'palm', False),
     ('redwood', 'redwood', False),
-    ('master', 'redwood', True),
-    ('juniper', 'palm', True),
-    ('sumac', 'redwood', True),
+    ('sumac', 'sumac', False),
+    ('master', 'sumac', True),
+    ('juniper', 'redwood', True),
+    ('tulip', 'sumac', True),
 ])
 def test_get_current_version(release_line, expected_result, log_message, caplog):
     """Verify that the current version is returned and logs are correct"""

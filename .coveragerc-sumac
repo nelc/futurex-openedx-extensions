@@ -3,11 +3,11 @@ branch = True
 data_file = .coverage
 source=futurex_openedx_extensions
 omit =
-    test_settings_palm.py
     test_settings_redwood.py
+    test_settings_sumac.py
     */migrations/*
     */static/*
     # Ignore the models_switch.py file since it cannot be tested in all environments, so coverage will never be 100%
     futurex_openedx_extensions/upgrade/models_switch.py
-    # Version specific code for anything not palm
+    # Version specific code for anything not sumac
     futurex_openedx_extensions/upgrade/releases/redwood/*

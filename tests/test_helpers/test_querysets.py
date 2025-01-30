@@ -2,13 +2,13 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from common.djangoapps.student.models import CourseAccessRole, UserProfile
 from django.contrib.auth import get_user_model
 from django.db.models import Count
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers import querysets
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.upgrade.models_switch import CourseAccessRole, UserProfile
 from tests.fixture_helpers import get_tenants_orgs
 
 
