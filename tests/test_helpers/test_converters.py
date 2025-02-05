@@ -1,6 +1,6 @@
 
 """Tests for converters helpers."""
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import Mock, patch
 
 import pytest
@@ -140,3 +140,14 @@ def test_date_methods_valid_supported_methods():
         method = method_parts[0]
         assert hasattr(DateMethods, method), f'DateMethods.DATE_METHODS contains a non-existing method! ({method})'
         assert all(not item for item in method_parts[1:]), f'Bad DateMethods.DATE_METHODS format! ({method_id})'
+
+
+@pytest.mark.parametrize('value, expected_result', [
+    (date(2023, 12, 26), '2023-12-26T00:00:00Z'),
+    (datetime(2023, 12, 26, 12, 30, 45), '2023-12-26T12:30:45Z'),
+    (datetime(2023, 12, 26, 12, 30, 45).replace(microsecond=315), '2023-12-26T12:30:45Z'),
+    (None, None),
+])
+def test_dt_to_str(value, expected_result):
+    """Verify that dt_to_str return the correct string."""
+    assert converters.dt_to_str(value) == expected_result

@@ -29,7 +29,11 @@ from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
 )
-from futurex_openedx_extensions.helpers.converters import relative_url_to_absolute_url
+from futurex_openedx_extensions.helpers.converters import (
+    DEFAULT_DATETIME_FORMAT,
+    dt_to_str,
+    relative_url_to_absolute_url,
+)
 from futurex_openedx_extensions.helpers.export_csv import get_exported_file_url
 from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.roles import (
@@ -203,11 +207,11 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
 
     def get_date_joined(self, obj: Any) -> str | None:
         date_joined = self._get_user(obj).date_joined  # type: ignore
-        return date_joined.isoformat() if date_joined else None
+        return dt_to_str(date_joined)
 
     def get_last_login(self, obj: Any) -> str | None:
         last_login = self._get_user(obj).last_login  # type: ignore
-        return last_login.isoformat() if last_login else None
+        return dt_to_str(last_login)
 
     def get_national_id(self, obj: get_user_model) -> Any:
         """Return national ID."""
@@ -534,11 +538,11 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
 
     def get_start_enrollment_date(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the start enrollment date."""
-        return obj.enrollment_start
+        return dt_to_str(obj.enrollment_start)
 
     def get_end_enrollment_date(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the end enrollment date."""
-        return obj.enrollment_end
+        return dt_to_str(obj.enrollment_end)
 
     def get_image_url(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the course image URL."""
@@ -550,11 +554,11 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
 
     def get_start_date(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the start date."""
-        return obj.start
+        return dt_to_str(obj.start)
 
     def get_end_date(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the end date."""
-        return obj.end
+        return dt_to_str(obj.end)
 
 
 class CourseDetailsSerializer(CourseDetailsBaseSerializer):
@@ -582,8 +586,8 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
 
 class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
     """Serializer for learner's courses details."""
-    enrollment_date = serializers.DateTimeField()
-    last_activity = serializers.DateTimeField()
+    enrollment_date = serializers.DateTimeField(format=DEFAULT_DATETIME_FORMAT)
+    last_activity = serializers.DateTimeField(format=DEFAULT_DATETIME_FORMAT)
     certificate_url = serializers.SerializerMethodField()
     progress_url = serializers.SerializerMethodField()
     grades_url = serializers.SerializerMethodField()

@@ -28,6 +28,7 @@ from futurex_openedx_extensions.dashboard.serializers import (
     UserRolesSerializer,
 )
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.converters import dt_to_str
 from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.roles import RoleType
 
@@ -606,10 +607,10 @@ def test_course_details_base_serializer(base_data):  # pylint: disable=unused-ar
 
     assert data['id'] == str(course.id)
     assert data['self_paced'] == course.self_paced
-    assert data['start_date'] == course.start
-    assert data['end_date'] == course.end
-    assert data['start_enrollment_date'] == course.enrollment_start
-    assert data['end_enrollment_date'] == course.enrollment_end
+    assert data['start_date'] == dt_to_str(course.start)
+    assert data['end_date'] == dt_to_str(course.end)
+    assert data['start_enrollment_date'] == dt_to_str(course.enrollment_start)
+    assert data['end_enrollment_date'] == dt_to_str(course.enrollment_end)
     assert data['display_name'] == course.display_name
     assert data['image_url'] == 'https://example.com/image.jpg'
     assert data['org'] == course.org
@@ -721,8 +722,8 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
             data = LearnerCoursesDetailsSerializer(course, context={'request': request}).data
 
     assert data['id'] == str(course.id)
-    assert data['enrollment_date'] == enrollment_date.isoformat()
-    assert data['last_activity'] == last_activity.isoformat()
+    assert data['enrollment_date'] == dt_to_str(enrollment_date)
+    assert data['last_activity'] == dt_to_str(last_activity)
     assert data['progress_url'] == f'https://test.com/learning/course/{course.id}/progress/{course.related_user_id}/'
     assert data['grades_url'] == f'https://test.com/gradebook/{course.id}/'
     assert data['progress'] == completion_summary
