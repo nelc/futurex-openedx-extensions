@@ -445,6 +445,14 @@ class AccessibleTenantsInfoView(APIView):
         return JsonResponse(get_tenants_info(tenant_ids))
 
 
+class AccessibleTenantsInfoViewV2(FXViewRoleInfoMixin, AccessibleTenantsInfoView):
+    """View to get the list of accessible tenants version 2"""
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'accessible_info'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = '/api/fx/accessible/v2/info/: Get accessible tenants'
+
+
 @docs('LearnersDetailsForCourseView.get')
 class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners for a course"""
