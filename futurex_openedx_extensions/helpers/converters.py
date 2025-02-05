@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, List
 from urllib.parse import urljoin
 
 from dateutil.relativedelta import relativedelta  # type: ignore
 
 from futurex_openedx_extensions.helpers import constants as cs
+
+DEFAULT_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
 
 def ids_string_to_list(ids_string: str) -> List[int]:
@@ -205,3 +207,8 @@ def get_allowed_roles(roles_filter: List[str] | None) -> Dict[str, List[str]]:
             allowed_roles[role] = list(set(allowed_roles[role]).intersection(roles_filter))
 
     return allowed_roles
+
+
+def dt_to_str(datetime_or_date: datetime | date) -> str | None:
+    """Convert a datetime object to a string"""
+    return datetime_or_date.strftime(DEFAULT_DATETIME_FORMAT) if datetime_or_date else None
