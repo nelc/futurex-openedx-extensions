@@ -31,6 +31,7 @@ INSTALLED_APPS = (
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.messages',
+    'django.contrib.sites',
     'django.contrib.sessions',
     # 'futurex_openedx_extensions.dashboard',
     'futurex_openedx_extensions.helpers',
