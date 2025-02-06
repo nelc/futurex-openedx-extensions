@@ -67,6 +67,7 @@ class ExportCSVMixin:
             'kwargs': self.kwargs,  # type: ignore[attr-defined]
             'path': self.request.path,  # type: ignore[attr-defined]
             'start_page': 1,
+            'site_domain': self.request.site.domain,  # type: ignore[attr-defined]
             'end_page': None,
         }
         tenant_id = self.request.fx_permission_info[  # type: ignore[attr-defined]

@@ -3,6 +3,7 @@ from unittest.mock import PropertyMock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
 from rest_framework import status as http_status
 from rest_framework.test import APIRequestFactory
 
@@ -22,6 +23,7 @@ def export_csv_mixin():
     view_instance = TestView()
     request = APIRequestFactory().get('/')
     request.user = get_user_model().objects.get(username='user30')
+    request.site = Site.objects.create(domain='abc.example.com')
     request.fx_permission_info = {
         'user': request.user,
         'view_allowed_tenant_ids_any_access': [1],
@@ -99,6 +101,7 @@ def test_generate_csv_url_response(
         'path': '/',
         'start_page': 1,
         'end_page': None,
+        'site_domain': 'abc.example.com',
     }
     with patch(
         'futurex_openedx_extensions.helpers.export_mixins.ExportCSVMixin.export_filename',

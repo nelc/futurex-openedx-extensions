@@ -12,6 +12,7 @@ from urllib.parse import urlencode, urlparse
 import boto3
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.urls import resolve
@@ -47,7 +48,7 @@ def _get_view_class_instance(path: str) -> Any:
     )
 
 
-def _get_mocked_request(url_with_query_str: str, fx_info: dict) -> Request:
+def _get_mocked_request(url_with_query_str: str, fx_info: dict, site: Site) -> Request:
     """Create mocked request"""
     if not url_with_query_str.startswith('http'):
         raise FXCodedException(
@@ -59,6 +60,7 @@ def _get_mocked_request(url_with_query_str: str, fx_info: dict) -> Request:
     mocked_request = factory.get(url_with_query_str, HTTP_HOST=urlparse(url_with_query_str).hostname)
     mocked_request.user = fx_info['user']
     mocked_request.fx_permission_info = fx_info
+    mocked_request.site = site
     return mocked_request
 
 
@@ -105,7 +107,7 @@ def _paginated_response_generator(
     url = f'{view_data["url"]}'
     start_time = datetime.now()
     while url and not view_data['end_page']:
-        mocked_request = _get_mocked_request(url, fx_info)
+        mocked_request = _get_mocked_request(url, fx_info, view_data['site'])
         response = view_instance(mocked_request, **kwargs)
         data, total_records = _get_response_data(response)
         processed_records += len(data)
@@ -334,7 +336,8 @@ def export_data_to_csv(
     view_data.update({
         'url': url_with_query_str,
         'page_size': page_size,
-        'view_instance': view_instance
+        'view_instance': view_instance,
+        'site': Site.objects.get(domain=view_data['site_domain'])
     })
 
     return _generate_csv_with_tracked_progress(
