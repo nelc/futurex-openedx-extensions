@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from django.conf import settings
 from drf_yasg import openapi
 from edx_api_doc_tools import ParameterLocation, path_parameter, query_parameter
 
@@ -208,7 +209,6 @@ repeated_descriptions = {
     '| tag | mapped fields |\n'
     '|-----|---------------|\n'
 }
-
 
 common_schemas = {
     'role': openapi.Schema(
@@ -872,6 +872,217 @@ docs_src = {
                     'total_unique_learners': 55,
                     'limited_access': False,
                 },
+            },
+        ),
+    },
+
+    'AggregatedCountsView.get': {
+        'summary': 'Get aggregated total counts statistics',
+        'description': 'Get aggregated total counts for enrollments.',
+        'parameters': [
+            common_parameters['tenant_ids'],
+            openapi.Parameter(
+                'stats',
+                ParameterLocation.QUERY,
+                required=True,
+                type=openapi.TYPE_STRING,
+                enum=['enrollments'],
+                description=(
+                    'A comma-separated list of the types of count statistics to include in the response.'
+                    ' Available count statistics are:\n'
+                    '- `enrollments`: total number of enrollments in visible courses in the selected tenants.\n'
+                ),
+            ),
+            openapi.Parameter(
+                'aggregate_period',
+                ParameterLocation.QUERY,
+                required=True,
+                type=openapi.TYPE_STRING,
+                enum=['day', 'month', 'quarter', 'year'],
+                description=(
+                    'The criteria to be used in the aggregation. Available periods are:\n'
+                    '- `day`: daily aggregation. labels will be generated in the format `YYYY-MM-DD`\n'
+                    '- `month`: monthly aggregation. labels will be generated in the format `YYYY-MM`\n'
+                    '- `quarter`: quarterly aggregation. labels will be generated in the format `YYYY-Qn`\n'
+                    '- `year`: yearly aggregation. labels will be generated in the format `YYYY`\n'
+                ),
+            ),
+            query_parameter(
+                'date_from',
+                str,
+                description=(
+                    'The date to start the aggregation from. The date format must be `YYYY-MM-DD`. See the'
+                    ' details `favors_backward` parameter that describes the behavior of `date_from`, `date_to`, and'
+                    ' `favors_backward` parameters.'
+                ),
+            ),
+            query_parameter(
+                'date_to',
+                str,
+                description=(
+                    'The date to end the aggregation from. The date format must be `YYYY-MM-DD`. See the'
+                    ' details `favors_backward` parameter that describes the behavior of `date_from`, `date_to`, and'
+                    ' `favors_backward` parameters.'
+                ),
+            ),
+            openapi.Parameter(
+                'favors_backward',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_INTEGER,
+                enum=[0, 1],
+                description=(
+                    'This parameter is used when both `date_from` and `date_to` are not provided, or both'
+                    ' are provided. Otherwise it\'ll be ignored.\n'
+                    'The following describes the behavior of this parameter:\n'
+                    '- **Case 1:**'
+                    ' `date_to` is set, and `date_from` is not set: the system will calculate the `date_from` by going'
+                    ' backward from `date_to` by the number of periods specified in `max_period_chunks`.\n'
+                    '- **Case 2:**'
+                    ' `date_from` is set, and `date_to` is not set: the system will calculate the `date_to` by going'
+                    ' forward from `date_from` by the number of periods specified in `max_period_chunks`.\n'
+                    '- **Case 3:**'
+                    ' `date_from` and `date_to` are both not set:\n'
+                    '  - if `favors_backward` is set to `1`; the system will set `date_to` to the current date, and'
+                    ' calculate the `date_from` by going backward from `date_to` by the number of periods specified in'
+                    ' `max_period_chunks`.\n'
+                    '  - if `favors_backward` is set to `0`; the system will set `date_from` to the current date, and'
+                    ' calculate the `date_to` by going forward from `date_from` by the number of periods specified in'
+                    ' `max_period_chunks`.\n'
+                    '- **Case 4:**'
+                    ' `date_from` and `date_to` are both set: the system will switch the values if `date_from` is'
+                    ' greater than `date_to`. Then:\n'
+                    '  - if `favors_backward` is set to `1`; the system will calculate the minimum allowed date by'
+                    ' going backward from `date_to` by the number of periods specified in `max_period_chunks`. Then'
+                    ' it\'ll set that value to `date_from` if-and-only-if `date_from` is less than the allowed date.\n'
+                    '  - if `favors_backward` is set to `0`; the system will calculate the maximum allowed date by'
+                    ' going forward from `date_from` by the number of periods specified in `max_period_chunks`. Then'
+                    ' it\'ll set that value to `date_to` if-and-only-if `date_to` is less than the allowed date.\n'
+                    '\n**Note:** for any period other than `day`; the calculated `date_from` will be set to the first'
+                    ' day of the period. And the calculated `date_to` will be set to the last day of the period.'
+                ),
+            ),
+            query_parameter(
+                'max_period_chunks',
+                int,
+                description=(
+                    'The maximum number of periods to include in the response. Any value less than 1 will be'
+                    ' converted use the default as in system configuration' +
+                    f':\n\n**`{settings.FX_MAX_PERIOD_CHUNKS_MAP}`**\n' if hasattr(
+                        settings, 'FX_MAX_PERIOD_CHUNKS_MAP',
+                    ) else '' +
+                    '\nThe default value is `0`.\n'
+                    '\n**Note:** Any value exceeding the maximum allowed will be truncated to default.'
+                ),
+            ),
+            openapi.Parameter(
+                'fill_missing_periods',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_INTEGER,
+                enum=[0, 1],
+                description=(
+                    'Fill the missing periods from data with zeros. Default is `1` (fill). This default'
+                    ' ensures the repose never returns an empty period. If set to `0`, then the response will'
+                    ' include only the periods with data.'
+                ),
+            ),
+            common_parameters['include_staff'],
+        ],
+        'responses': responses(
+            success_description='The response is a JSON object with the requested statistics.',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                description='aggregated statistics',
+            ),
+            success_examples={
+                'application/json': {
+                    'query_settings': {
+                        'aggregate_period': 'quarter',
+                        'date_from': '2024-04-01T00:00:00Z',
+                        'date_to': '2025-02-05T23:59:59Z',
+                    },
+                    'all_tenants': {
+                        'enrollments_count': [
+                            {
+                                'label': '2024-Q2',
+                                'value': 8,
+                            },
+                            {
+                                'label': '2024-Q3',
+                                'value': 2,
+                            },
+                            {
+                                'label': '2024-Q4',
+                                'value': 8,
+                            },
+                            {
+                                'label': '2025-Q1',
+                                'value': 0,
+                            }
+                        ],
+                        'totals': {
+                            'enrollments_count': 18,
+                        }
+                    },
+                    'by_tenant': [
+                        {
+                            'enrollments_count': [
+                                {
+                                    'label': '2024-Q2',
+                                    'value': 5,
+                                },
+                                {
+                                    'label': '2024-Q3',
+                                    'value': 0,
+                                },
+                                {
+                                    'label': '2024-Q4',
+                                    'value': 8,
+                                },
+                                {
+                                    'label': '2025-Q1',
+                                    'value': 0,
+                                }
+                            ],
+                            'totals': {
+                                'enrollments_count': 13,
+                            },
+                            'tenant_id': 1,
+                        },
+                        {
+                            'enrollments_count': [
+                                {
+                                    'label': '2024-Q2',
+                                    'value': 3,
+                                },
+                                {
+                                    'label': '2024-Q3',
+                                    'value': 2,
+                                },
+                                {
+                                    'label': '2024-Q4',
+                                    'value': 0,
+                                },
+                                {
+                                    'label': '2025-Q1',
+                                    'value': 0,
+                                }
+                            ],
+                            'totals': {
+                                'enrollments_count': 5,
+                            },
+                            'tenant_id': 2,
+                        }
+                    ],
+                    'limited_access': False,
+                },
+            },
+            overrides={
+                400: 'Bad request. The response will include a JSON object with the error message.',
+                401: 'Unauthorized. The response will include a JSON object with the error message.',
+                403: 'Forbidden. The response will include a JSON object with the error message.',
+                404: 'Not found. The response will include a JSON object with the error message.',
             },
         ),
     },

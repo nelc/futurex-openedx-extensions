@@ -1,7 +1,9 @@
 """Tests for the helper functions in the helpers module."""
+from datetime import date, datetime
 from unittest.mock import Mock, patch
 
 import pytest
+from django.test import override_settings
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.dashboard.serializers import SerializerOptionalMethodField
@@ -14,12 +16,17 @@ from futurex_openedx_extensions.helpers.extractors import (
     get_available_optional_field_tags_docs_table,
     get_course_id_from_uri,
     get_first_not_empty_item,
+    get_max_valid_date_to,
+    get_min_valid_date_from,
     get_optional_field_class,
     get_orgs_of_courses,
     get_partial_access_course_ids,
+    get_valid_date_duration,
+    get_valid_duration,
     import_from_path,
     verify_course_ids,
 )
+from tests.fixture_helpers import d_t
 
 
 class DummySerializerWithOptionalMethodField:  # pylint: disable=too-few-public-methods
@@ -422,3 +429,148 @@ def test_get_available_optional_field_tags_docs_table(
         '| tag3 | `field__C`, `__fieldD__` |\n'
         '----------------\n'
     )
+
+
+@pytest.mark.parametrize(
+    'period, date_point, target_backward, max_chunks, expected',
+    [
+        ('day', d_t('2024-01-01'), False, 5, d_t('2024-01-05')),
+        ('month', d_t('2024-01-01'), False, 3, d_t('2024-03-31')),
+        ('month', d_t('2024-01-31'), False, 3, d_t('2024-03-31')),
+        ('month', d_t('2024-02-02'), True, 5, d_t('2023-10-01')),
+        ('month', d_t('2024-10-09'), True, 5, d_t('2024-06-01')),
+        ('quarter', d_t('2024-01-01'), False, 1, d_t('2024-03-31')),
+        ('quarter', d_t('2024-01-20'), False, 2, d_t('2024-06-30')),
+        ('quarter', d_t('2024-02-02'), True, 1, d_t('2024-01-01')),
+        ('quarter', d_t('2024-02-02'), True, 2, d_t('2023-10-01')),
+        ('quarter', d_t('2024-02-02'), True, 2, d_t('2023-10-01')),
+        ('year', d_t('2024-01-01'), False, 1, d_t('2024-12-31')),
+        ('year', d_t('2024-01-20'), True, 1, d_t('2024-01-01')),
+        ('year', d_t('2024-01-20'), True, 2, d_t('2023-01-01')),
+        ('day', d_t('2024-01-01'), False, -1, None),
+    ],
+)
+def test_get_valid_date_duration(period, date_point, target_backward, max_chunks, expected):
+    """Verify that get_valid_date_duration returns the expected date."""
+    assert get_valid_date_duration(period, date_point, target_backward, max_chunks) == expected
+
+
+@pytest.mark.parametrize('invalid_period', ['hour', 'minute', 'random'])
+def test_get_valid_date_duration_invalid_period(invalid_period):
+    """Verify that get_valid_date_duration raises an exception for an invalid period."""
+    with pytest.raises(FXCodedException):
+        get_valid_date_duration(invalid_period, date(2024, 1, 1), True, 1)
+
+
+@pytest.mark.parametrize('invalid_date', ['2024-01-01', 20240101, None])
+def test_get_valid_date_duration_invalid_date(invalid_date):
+    """Verify that get_valid_date_duration raises an exception for an invalid date."""
+    with pytest.raises(FXCodedException):
+        get_valid_date_duration('day', invalid_date, True, 1)
+
+
+@override_settings(FX_MAX_PERIOD_CHUNKS_MAP={'day': 10, 'month': 2})
+def test_get_valid_date_duration_default_chunks():
+    """Verify that get_valid_date_duration uses the default max_chunks when not provided."""
+    assert get_valid_date_duration('day', d_t('2024-01-01'), False, 0) == d_t('2024-01-10')
+    assert get_valid_date_duration('month', d_t('2024-01-20'), True, 0) == d_t('2023-12-01')
+
+
+@patch('futurex_openedx_extensions.helpers.extractors.get_valid_date_duration')
+def test_get_max_valid_date_to(mock_get_valid_date_duration):
+    """Verify that get_max_valid_date_to calls get_valid_date_duration with the expected parameters."""
+    mock_get_valid_date_duration.return_value = d_t('2024-12-31')
+    assert get_max_valid_date_to(
+        'a_period', 'a_date_from', 'a_chunk_value',
+    ) == mock_get_valid_date_duration.return_value
+    mock_get_valid_date_duration.assert_called_once_with(
+        period='a_period', date_point='a_date_from', target_backward=False, max_chunks='a_chunk_value'
+    )
+
+
+@patch('futurex_openedx_extensions.helpers.extractors.get_valid_date_duration')
+def test_get_min_valid_date_from(mock_get_valid_date_duration):
+    """Verify that get_min_valid_date_from calls get_valid_date_duration with the expected parameters."""
+    mock_get_valid_date_duration.return_value = d_t('2024-12-01')
+    assert get_min_valid_date_from(
+        'a_period', 'a_date_to', 'a_chunk_value',
+    ) == mock_get_valid_date_duration.return_value
+    mock_get_valid_date_duration.assert_called_once_with(
+        period='a_period', date_point='a_date_to', target_backward=True, max_chunks='a_chunk_value'
+    )
+
+
+@pytest.mark.parametrize(
+    'date_from, date_to, expected_dates',
+    [
+        (None, d_t('2024-01-10'), (d_t('2024-01-06'), d_t('2024-01-10'))),
+        (d_t('2024-01-10'), None, (d_t('2024-01-10'), d_t('2024-01-14'))),
+    ],
+)
+def test_get_valid_duration_favor_backward_no_effect(date_from, date_to, expected_dates):
+    """
+    Verify that get_valid_duration returns the same value regardless of the favors_backward parameter incase one of
+    date_to and date_from is provided, and the other is not.
+    """
+    period = 'day'
+    max_chunks = 5
+    expected_result = (
+        datetime.combine(expected_dates[0], datetime.min.time()) if expected_dates[0] else None,
+        datetime.combine(expected_dates[1], datetime.max.time()) if expected_dates[1] else None,
+    )
+    for favors_backward in [True, False]:
+        assert get_valid_duration(period, date_from, date_to, favors_backward, max_chunks) == expected_result
+
+
+@pytest.mark.parametrize(
+    'date_from, date_to, favors_backward, expected_dates',
+    [
+        (d_t('2024-01-10'), d_t('2024-01-30'), True, (d_t('2024-01-26'), d_t('2024-01-30'))),
+        (d_t('2024-01-10'), d_t('2024-01-30'), False, (d_t('2024-01-10'), d_t('2024-01-14'))),
+        (d_t('2024-01-30'), d_t('2024-01-10'), True, (d_t('2024-01-26'), d_t('2024-01-30'))),
+        (d_t('2024-01-30'), d_t('2024-01-10'), False, (d_t('2024-01-10'), d_t('2024-01-14'))),
+        (None, None, True, (d_t('2024-12-22'), d_t('2024-12-26'))),
+        (None, None, False, (d_t('2024-12-26'), d_t('2024-12-30'))),
+    ],
+)
+def test_get_valid_duration_favor_backward(date_from, date_to, favors_backward, expected_dates):
+    """
+    Verify that get_valid_duration returns the correct value according to favors_backward parameter incase date_from
+    and date_to are both provided, or both not provided.
+    """
+    period = 'day'
+    max_chunks = 5
+    expected_result = (
+        datetime.combine(expected_dates[0], datetime.min.time()) if expected_dates[0] else None,
+        datetime.combine(expected_dates[1], datetime.max.time()) if expected_dates[1] else None,
+    )
+    with patch('futurex_openedx_extensions.helpers.extractors.datetime') as mock_datetime:
+        mock_datetime.now.return_value = datetime(2024, 12, 26)
+        mock_datetime.combine.side_effect = datetime.combine
+        mock_datetime.min.time.side_effect = datetime.min.time
+        mock_datetime.max.time.side_effect = datetime.max.time
+        assert get_valid_duration(period, date_from, date_to, favors_backward, max_chunks) == expected_result
+
+
+@pytest.mark.parametrize(
+    'date_from, date_to, expected_dates',
+    [
+        (None, d_t('2024-01-10'), (None, d_t('2024-01-10'))),
+        (d_t('2024-01-10'), None, (d_t('2024-01-10'), None)),
+        (None, None, (None, None)),
+        (d_t('2024-01-10'), d_t('2024-01-05'), (d_t('2024-01-05'), d_t('2024-01-10'))),
+        (d_t('2024-01-05'), d_t('2024-01-10'), (d_t('2024-01-05'), d_t('2024-01-10'))),
+    ],
+)
+def test_get_valid_duration_negative_max_chunks(date_from, date_to, expected_dates):
+    """
+    Verify that get_valid_duration returns the same value of date_from and date_to regardless if max_chunks is negative.
+    It will only order the dates if date_from is greater than date_to.
+    """
+    period = 'day'
+    max_chunks = -1
+    for favors_backward in [True, False]:
+        assert get_valid_duration(period, date_from, date_to, favors_backward, max_chunks) == (
+            datetime.combine(expected_dates[0], datetime.min.time()) if expected_dates[0] else None,
+            datetime.combine(expected_dates[1], datetime.max.time()) if expected_dates[1] else None,
+        )

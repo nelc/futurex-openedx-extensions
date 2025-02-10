@@ -46,3 +46,15 @@ def plugin_settings(settings: Any) -> None:
         'FX_TASK_MINUTES_LIMIT',
         5,
     )
+
+    # Max Period Chunks
+    settings.FX_MAX_PERIOD_CHUNKS_MAP = getattr(
+        settings,
+        'FX_MAX_PERIOD_CHUNKS_MAP',
+        {
+            'day': 365,
+            'month': 12,
+            'quarter': 4,
+            'year': 1,
+        },
+    )
