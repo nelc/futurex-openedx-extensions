@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Add New Issue to GitHub Project
-        uses: zeit-labs/nelc-support/.github/actions/add-to-project@main
+        uses: zeit-labs/github-actions/.github/actions/add-to-project@main
         with:
           github_token: ${{ secrets.GH_PAT_FOR_PROJECTS }}
           project_id: ${{ vars.NEW_ISSUES_PROJECT_ID }}
