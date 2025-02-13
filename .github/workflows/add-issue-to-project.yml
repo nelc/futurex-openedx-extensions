@@ -1,0 +1,17 @@
+name: Add New Issue to GitHub Project
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add New Issue to GitHub Project
+        uses: zeit-labs/nelc-support/.github/actions/add-to-project@main
+        with:
+          github_token: ${{ secrets.GH_PAT_FOR_PROJECTS }}
+          project_id: ${{ vars.NEW_ISSUES_PROJECT_ID }}
+          status_field_id: ${{ vars.NEW_ISSUES_STATUS_FIELD_ID }}
+          status_option_id: ${{ vars.NEW_ISSUES_BACKLOG_STATUS_OPTION_ID }}
