@@ -905,6 +905,7 @@ def test_user_roles_serializer_parse_query_params_defaults(
         'roles_filter': [],
         'active_filter': None,
         'excluded_role_types': [],
+        'include_hidden_roles': False,
     }
 
 
@@ -928,6 +929,7 @@ def test_user_roles_serializer_parse_query_params_values(excluded_role_types, re
             'only_roles': 'staff,instructor',
             'active_users_filter': '1',
             'excluded_role_types': excluded_role_types,
+            'include_hidden_roles': False,
         }),
         {
             'search_text': 'user99',
@@ -935,6 +937,7 @@ def test_user_roles_serializer_parse_query_params_values(excluded_role_types, re
             'roles_filter': ['staff', 'instructor'],
             'active_filter': True,
             'excluded_role_types': result_excluded_role_types,
+            'include_hidden_roles': False,
         },
         ignore_order=True,
     )

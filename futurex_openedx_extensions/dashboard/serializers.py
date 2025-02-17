@@ -679,6 +679,7 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
                 'only_course_ids'
             ].split(',') if query_params.get('only_course_ids') else [],
             'roles_filter': query_params.get('only_roles', '').split(',') if query_params.get('only_roles') else [],
+            'include_hidden_roles': query_params.get('include_hidden_roles', '0') == '1',
         }
 
         if query_params.get('active_users_filter') is not None:
@@ -751,6 +752,7 @@ class UserRolesSerializer(LearnerBasicDetailsSerializer):
             active_filter=self.query_params['active_filter'],
             course_ids_filter=self.query_params['course_ids_filter'],
             excluded_role_types=self.query_params['excluded_role_types'],
+            excluded_hidden_roles=not self.query_params['include_hidden_roles'],
         )
 
         for record in records or []:
