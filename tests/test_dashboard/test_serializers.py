@@ -6,7 +6,9 @@ from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, SocialLink, UserProfile
 from custom_reg_form.models import ExtraInfo
 from deepdiff import DeepDiff
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
 from django.db.models import Value
 from django.utils.timezone import get_current_timezone, now, timedelta
 from lms.djangoapps.grades.models import PersistentSubsectionGrade
@@ -301,6 +303,44 @@ def test_learner_enrollments_serializer(mock_collect, base_data,):  # pylint: di
     assert data[0]['certificate_available'] is True
     assert data[0]['course_score'] == 0.67
     assert data[0]['active_in_course'] is True
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_nafath_sites')
+def test_learner_enrollments_serializer_for_nafath_id(mocked_get_nafath_sites):
+    """Ensure LearnerEnrollmentSerializer correctly processes nafath_id based on social auth conditions."""
+    site, _ = Site.objects.update_or_create(
+        domain='s2.sample.com',
+        defaults={'name': 's2.sample.com'}
+    )
+    mocked_get_nafath_sites.return_value = [site.domain]
+    queryset = CourseEnrollment.objects.filter(user_id=10, course_id='course-v1:ORG3+1+1').annotate(
+        certificate_available=Value(True),
+        course_score=Value(0.67),
+        active_in_course=Value(True),
+    )
+    context = {
+        'course_id': 'course-v1:ORG3+1+1',
+        'requested_optional_field_tags': ['nafath_id']
+    }
+
+    def assert_nafath_id(expected, msg):
+        """Helper to serialize and assert nafath_id."""
+        serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
+        assert serializer.data[0].get('nafath_id') == expected, msg
+
+    assert_nafath_id('', 'nafath_id should be empty when no social auth exists')
+
+    queryset[0].user.social_auth.create(provider='other_provider', extra_data={'uid': ['12345']})
+    assert_nafath_id('', 'nafath_id should be empty for an incorrect provider')
+
+    queryset[0].user.social_auth.create(provider=settings.FX_NAFATH_AUTH_PROVIDER, extra_data={'uid': ['12345']})
+    assert_nafath_id('12345', 'nafath_id should be returned when the correct provider and single UID exist')
+
+    social_auth = queryset[0].user.social_auth.get(provider=settings.FX_NAFATH_AUTH_PROVIDER)
+    social_auth.extra_data = {'uid': ['12345', 'another-id']}
+    social_auth.save()
+    assert_nafath_id('', 'nafath_id should be empty when multiple UIDs are present')
 
 
 @pytest.mark.django_db

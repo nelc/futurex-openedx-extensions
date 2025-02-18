@@ -3,6 +3,7 @@ import re
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
 from django.db import models
 from django.db.models.fields import AutoField
 from django.db.models.signals import m2m_changed, post_save
@@ -319,3 +320,26 @@ class CourseAccessRoleForm(forms.ModelForm):
 
     COURSE_ACCESS_ROLES = []
     role = forms.ChoiceField(choices=COURSE_ACCESS_ROLES)
+
+
+class SAMLProviderConfig(models.Model):
+    """Mock"""
+    site = models.ForeignKey(Site, default=1, on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    enabled = models.BooleanField(default=False)
+    entity_id = models.CharField(max_length=255)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'third_party_auth_samlproviderconfig'
+
+
+class UserSocialAuth(models.Model):
+    """Mock"""
+    user = models.ForeignKey(get_user_model(), related_name='social_auth', on_delete=models.CASCADE)
+    provider = models.CharField(max_length=32)
+    extra_data = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'social_auth_usersocialauth'
