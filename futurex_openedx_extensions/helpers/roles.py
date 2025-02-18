@@ -613,6 +613,7 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too
     active_filter: bool | None = None,
     course_ids_filter: list[str] | None = None,
     excluded_role_types: list[RoleType | str] | None = None,
+    excluded_hidden_roles: bool = False,
 ) -> QuerySet:
     """
     Get the course access roles queryset.
@@ -634,6 +635,8 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too
     :type course_ids_filter: list
     :param excluded_role_types: The role types to exclude. None of empty list for no exclusion
     :type excluded_role_types: list of RoleType
+    :param excluded_hidden_roles: True to exclude hidden roles, False otherwise (default is True)
+    :type excluded_hidden_roles: bool
     :return: The roles for the users queryset
     :rtype: QuerySet
     """
@@ -688,6 +691,9 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too
         roles_filter = cs.COURSE_ACCESS_ROLES_SUPPORTED_READ
     else:
         roles_filter = list(set(roles_filter).intersection(cs.COURSE_ACCESS_ROLES_SUPPORTED_READ))
+
+    if excluded_hidden_roles:
+        roles_filter = list(set(roles_filter) - set(cs.COURSE_ACCESS_ROLES_SUPPORTED_BUT_HIDDEN))
 
     allowed_roles = get_allowed_roles(roles_filter)
     queryset = queryset.filter(

@@ -1268,6 +1268,23 @@ def test_get_roles_for_users_queryset_exclude_bad_roles():
 
 
 @pytest.mark.django_db
+def test_get_roles_for_users_queryset_excluded_hidden_roles():
+    """Verify that get_roles_for_users_queryset does not include hidden roles when excluded_hidden_roles is True."""
+    user62 = get_user_model().objects.get(username='user62')
+    hidden_role = cs.COURSE_FX_API_ACCESS_ROLE_GLOBAL
+    assert hidden_role in cs.COURSE_ACCESS_ROLES_SUPPORTED_BUT_HIDDEN, 'bad roles used in test!'
+
+    CourseAccessRole.objects.create(user=user62, role=hidden_role)
+    test_orgs = get_all_orgs()
+
+    result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=True)
+    assert result.filter(user=user62).count() == 1
+
+    result = get_course_access_roles_queryset(orgs_filter=test_orgs, remove_redundant=True, excluded_hidden_roles=True)
+    assert result.filter(user=user62).count() == 0
+
+
+@pytest.mark.django_db
 def test_delete_course_access_roles(roles_authorize_caller, base_data):  # pylint: disable=unused-argument
     """Verify that delete_course_access_roles deletes the expected records."""
     user70 = get_user_model().objects.get(username='user70')
