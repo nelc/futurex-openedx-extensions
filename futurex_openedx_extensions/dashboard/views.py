@@ -854,6 +854,7 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
     fx_view_description = 'api/fx/roles/v1/user_roles/: user roles management APIs'
 
     lookup_field = 'username'
+    lookup_value_regex = '[^/]+'
     serializer_class = serializers.UserRolesSerializer
     pagination_class = DefaultPagination
 
