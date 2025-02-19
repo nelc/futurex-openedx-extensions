@@ -1356,4 +1356,40 @@ docs_src = {
             },
         ),
     },
+
+    'ConfigEditableInfoView.get': {
+        'summary': 'Get information about editable settings of the theme config',
+        'description': 'Get information about editable settings of the theme designer config. The caller must have '
+        'staff access. \n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'parameters': [
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant ids to retrieve the configuration for. \n '
+                '**Note:** The caller must provide single tenant id to access the configuration.',
+            ),
+        ],
+        'responses': responses(
+            success_description='The response is a list of editable settings of the config',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'editable_fields': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        description='list of strings where each value represents editable setting key',
+                        items=openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                        ),
+                        example=['platform_name', 'primary_color', 'homepage_sections']
+                    ),
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'editable_fields': ['platform_name', 'primary_color', 'homepage_sections']
+                },
+            },
+            remove=[404]
+        ),
+    },
 }
