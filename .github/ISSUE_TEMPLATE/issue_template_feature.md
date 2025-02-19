@@ -1,7 +1,7 @@
 ---
 name: Feature
 about: request a new feature a change on an existing feature, or a refactor
-title: "bug: set me please"
+title: "feat: set me please"
 ---
 
 ## Description:
