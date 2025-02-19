@@ -16,15 +16,6 @@ from futurex_openedx_extensions.helpers.exceptions import FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
 
 
-def get_nafath_sites() -> List:
-    """Get all nafath sites"""
-    return list(
-        SAMLProviderConfig.objects.filter(
-            entity_id=settings.FX_NAFATH_ENTRY_ID, enabled=True,
-        ).values_list('site__domain', flat=True)
-    )
-
-
 def get_excluded_tenant_ids() -> Dict[int, List[int]]:
     """
     Get dictionary of tenant IDs excluded for bad configuration, along with the reasons of exclusion
@@ -130,6 +121,13 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
         },
         'tenant_by_site': {
             tenant['route__domain']: tenant['id'] for tenant in info
+        },
+        'special_info': {
+            'nafath_sites': list(
+                SAMLProviderConfig.objects.filter(
+                    entity_id=settings.FX_NAFATH_ENTRY_ID, enabled=True,
+                ).values_list('site__domain', flat=True)
+            ),
         },
     }
 
@@ -311,3 +309,8 @@ def get_tenants_sites(tenant_ids: List[int]) -> List[str]:
         if site := get_tenant_site(tenant_id):
             tenant_sites.append(site)
     return tenant_sites
+
+
+def get_nafath_sites() -> List:
+    """Get all nafath sites"""
+    return get_all_tenants_info()['special_info']['nafath_sites']
