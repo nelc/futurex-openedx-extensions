@@ -5,6 +5,7 @@ import re
 from typing import Any, Dict, Tuple
 
 from common.djangoapps.student.models import CourseEnrollment
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
 from lms.djangoapps.courseware.courses import get_course_blocks_completion_summary
@@ -41,7 +42,12 @@ from futurex_openedx_extensions.helpers.roles import (
     get_course_access_roles_queryset,
     get_user_course_access_roles,
 )
-from futurex_openedx_extensions.helpers.tenants import get_tenants_by_org
+from futurex_openedx_extensions.helpers.tenants import (
+    get_all_tenants_info,
+    get_nafath_sites,
+    get_org_to_tenant_map,
+    get_tenants_by_org,
+)
 
 
 class DataExportTaskSerializer(ModelSerializerOptionalFields):
@@ -415,13 +421,14 @@ class LearnerEnrollmentSerializer(
 ):  # pylint: disable=too-many-ancestors
     """Serializer for learner enrollments"""
     course_id = serializers.SerializerMethodField()
+    nafath_id = SerializerOptionalMethodField(field_tags=['nafath_id', 'csv_export'])
 
     class Meta:
         model = CourseEnrollment
         fields = (
             LearnerBasicDetailsSerializer.Meta.fields +
             CourseScoreAndCertificateSerializer.Meta.fields +
-            ['course_id']
+            ['course_id', 'nafath_id']
         )
 
     def _get_course_id(self, obj: Any = None) -> CourseLocator | None:
@@ -438,6 +445,21 @@ class LearnerEnrollmentSerializer(
     def get_course_id(self, obj: Any) -> str:
         """Get course id"""
         return str(self._get_course_id(obj))
+
+    def get_nafath_id(self, obj: Any) -> str:  # pylint: disable=no-self-use
+        """Get Nafath ID from social auth extra_data."""
+        tenant_sites = get_all_tenants_info()['sites']
+        course_tenants = get_org_to_tenant_map().get(obj.course_id.org.lower(), [])
+
+        if not any(tenant_sites[tenant] in get_nafath_sites() for tenant in course_tenants):
+            return ''
+
+        drupal_social_auth = obj.user.social_auth.filter(
+            provider=settings.FX_NAFATH_AUTH_PROVIDER,
+        ).first()
+
+        uid = drupal_social_auth.extra_data.get('uid') if drupal_social_auth else None
+        return uid[0] if isinstance(uid, list) and len(uid) == 1 else ''
 
 
 class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):  # pylint: disable=too-many-ancestors

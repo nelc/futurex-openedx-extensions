@@ -58,3 +58,17 @@ def plugin_settings(settings: Any) -> None:
             'year': 1,
         },
     )
+
+    # Nafath Entry Id
+    settings.FX_NAFATH_ENTRY_ID = getattr(
+        settings,
+        'FX_NAFATH_ENTRY_ID',
+        '',
+    )
+
+    # Nafath Social Auth Provider
+    settings.FX_NAFATH_AUTH_PROVIDER = getattr(
+        settings,
+        'FX_NAFATH_AUTH_PROVIDER',
+        'tpa-saml',
+    )

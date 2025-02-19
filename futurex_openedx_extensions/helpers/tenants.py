@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
+from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from django.conf import settings
 from django.db.models import Count, OuterRef, Subquery
 from django.db.models.query import QuerySet
@@ -13,6 +14,15 @@ from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.exceptions import FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
+
+
+def get_nafath_sites() -> List:
+    """Get all nafath sites"""
+    return list(
+        SAMLProviderConfig.objects.filter(
+            entity_id=settings.FX_NAFATH_ENTRY_ID, enabled=True,
+        ).values_list('site__domain', flat=True)
+    )
 
 
 def get_excluded_tenant_ids() -> Dict[int, List[int]]:
