@@ -57,4 +57,5 @@ urlpatterns = [
         name='clickhouse-query'
     ),
     re_path(r'^api/fx/version/v1/info/$', views.VersionInfoView.as_view(), name='version-info'),
+    re_path(r'^api/fx/config/v1/editable/$', views.ConfigEditableInfoView.as_view(), name='config-editable-info'),
 ]

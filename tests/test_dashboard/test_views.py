@@ -1899,3 +1899,14 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
             status_code=400,
             reason='bad use of arguments'
         )
+
+
+class TestConfigEditableInfoView(BaseTestViewMixin):
+    """Tests for ConfigEditableInfoView"""
+    VIEW_NAME = 'fx_dashboard:config-editable-info'
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)

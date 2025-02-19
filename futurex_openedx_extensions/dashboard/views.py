@@ -1186,3 +1186,20 @@ class ClickhouseQueryView(FXViewRoleInfoMixin, APIView):
             })
 
         return JsonResponse(ch.result_to_json(result), safe=False)
+
+
+@docs('ConfigEditableInfoView.get')
+class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
+    """View to get the list of editable keys of the theme designer config"""
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'fx_config_editable_fields'
+    fx_view_description = '/api/fx/config/v1/editable: Get editable settings of config'
+
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+        """
+        GET /api/fx/config/v1/editable/
+        """
+
+        return JsonResponse({
+            'editable_fields': ['platform_name', 'primary_color', 'home_page_sections']
+        })
