@@ -1910,3 +1910,59 @@ class TestConfigEditableInfoView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+
+class TestThemeConfigDraftView(BaseTestViewMixin):
+    """Tests for ThemeConfigDraftView"""
+    VIEW_NAME = 'fx_dashboard:theme-config-draft'
+
+    def test_draft_config_retrieve(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+    def test_draft_config_update(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.put(self.url, data={}, format='json',)
+        self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+
+    def test_draft_config_delete(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+
+
+class TestThemeConfigPublishView(BaseTestViewMixin):
+    """Tests for ThemeConfigPublishView"""
+    VIEW_NAME = 'fx_dashboard:theme-config-publish'
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={}, format='json',)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+
+class ThemeConfigRetrieveView(BaseTestViewMixin):
+    """Tests for ThemeConfigPublishView"""
+    VIEW_NAME = 'fx_dashboard:theme-config-values'
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+
+class ThemeConfigTenantView(BaseTestViewMixin):
+    """Tests for ThemeConfigPublishView"""
+    VIEW_NAME = 'fx_dashboard:theme-config-tenant'
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={}, format='json',)
+        self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)

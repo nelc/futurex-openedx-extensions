@@ -704,7 +704,7 @@ class AccessibleTenantsInfoViewV2(FXViewRoleInfoMixin, APIView):
     """View to get the list of accessible tenants version 2"""
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'accessible_info'
-    fx_view_description = '/api/fx/accessible/v2/info/: Get accessible tenants'
+    fx_view_description = 'api/fx/accessible/v2/info/: Get accessible tenants'
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
         """
@@ -1193,7 +1193,7 @@ class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
     """View to get the list of editable keys of the theme designer config"""
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'fx_config_editable_fields'
-    fx_view_description = '/api/fx/config/v1/editable: Get editable settings of config'
+    fx_view_description = 'api/fx/config/v1/editable: Get editable settings of config'
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
         """
@@ -1203,3 +1203,105 @@ class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
         return JsonResponse({
             'editable_fields': ['platform_name', 'primary_color', 'home_page_sections']
         })
+
+
+@docs('ThemeConfigDraftView.get')
+@docs('ThemeConfigDraftView.put')
+@docs('ThemeConfigDraftView.delete')
+class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
+    """View to manage draft theme config"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'theme_config_draft'
+    fx_allowed_write_methods = ['PUT', 'DELETE']
+    fx_view_description = 'api/fx/config/v1/draft/: draft theme config APIs'
+
+    def get(self, request: Any) -> Response | JsonResponse:  # pylint: disable=no-self-use
+        """Get draft config"""
+
+        return JsonResponse({
+            'updated_fields': {
+                'platform_name': {
+                    'published_value': 'my platform name',
+                    'draft_value': 'My Awesome Platform'
+                },
+                'primary_color': {
+                    'published_value': '#ff0000',
+                    'draft_value': '#ffff00'
+                },
+            },
+            'draft_hash': 'ajsd90a8su9a8u9a8sdyf0a9sdhy0asdjgasdgkjdsfgj'
+        })
+
+    def put(self, request: Any) -> Response:  # pylint: disable=no-self-use
+        """Update draft config"""
+
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+    def delete(self, request: Any) -> Response:  # pylint: disable=no-self-use
+        """Delete draft config"""
+
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+
+@docs('ThemeConfigPublishView.post')
+class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
+    """View to publish theme config"""
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'theme_config_publish'
+    fx_view_description = 'api/fx/config/v1/publish/: Get editable settings of config'
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+        """
+        POST /api/fx/config/v1/publish/
+        """
+
+        return JsonResponse({
+            'updated_fields': {
+                'platform_name': {
+                    'old_value': 'my platform name',
+                    'new_value': 'My Awesome Platform'
+                },
+                'primary_color': {
+                    'old_value': '#ff0000',
+                    'new_value': '#ffff00'
+                }
+            }
+        })
+
+
+@docs('ThemeConfigRetrieveView.get')
+class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
+    """View to get theme config values"""
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'theme_config_values'
+    fx_view_description = 'api/fx/config/v1/values/: Get theme config values'
+
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+        """
+        GET /api/fx/config/v1/values/
+        """
+
+        return JsonResponse({
+            'values': {
+                'primary_colors': '#ff0000'
+            },
+            'not_permitted': ['platform_name'],
+            'bad_keys': ['something']
+        })
+
+
+@docs('ThemeConfigTenantView.post')
+class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
+    """View to publish theme config"""
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'theme_config_tenant'
+    fx_view_description = 'api/fx/config/v1/tenant/: Create new Tenant'
+    fx_default_read_write_roles = ['staff', 'fx_api_access_global']
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+        """
+        POST /api/fx/config/v1/tenant/
+        """
+
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
