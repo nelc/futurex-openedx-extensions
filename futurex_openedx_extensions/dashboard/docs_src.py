@@ -1359,8 +1359,8 @@ docs_src = {
 
     'ConfigEditableInfoView.get': {
         'summary': 'Get information about editable settings of the theme config',
-        'description': 'Get information about editable settings of the theme designer config. The caller must have '
-        'staff access. \n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'description': 'Get information about editable settings of the theme designer config.'
+        '\n\n**Note:** This API is just mock API with dummy data and not implemented yet.',
         'parameters': [
             query_parameter(
                 'tenant_ids',
@@ -1376,17 +1376,26 @@ docs_src = {
                 properties={
                     'editable_fields': openapi.Schema(
                         type=openapi.TYPE_ARRAY,
-                        description='list of strings where each value represents editable setting key',
+                        description='list of strings where each value represents an editable settings key',
                         items=openapi.Schema(
                             type=openapi.TYPE_STRING,
                         ),
                         example=['platform_name', 'primary_color', 'homepage_sections']
                     ),
+                    'read_only_fields': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        description='list of strings where each value represents a read-only settings key',
+                        items=openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                        ),
+                        example=['lms_base']
+                    ),
                 },
             ),
             success_examples={
                 'application/json': {
-                    'editable_fields': ['platform_name', 'primary_color', 'homepage_sections']
+                    'editable_fields': ['platform_name', 'primary_color', 'homepage_sections'],
+                    'read_only_fields': ['lms_base']
                 },
             },
             overrides={
@@ -1411,7 +1420,7 @@ docs_src = {
     'ThemeConfigDraftView.get': {
         'summary': 'Get current draft theme configuration of given tenant.',
         'description': 'Get the current draft of theme configuration for a given tenant. The caller must have '
-        'staff access. \n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'staff access.\n\n**Note:** This API is just mock API with dummy data and not implemented yet.',
         'parameters': [
             query_parameter(
                 'tenant_ids',
@@ -1422,8 +1431,8 @@ docs_src = {
         ],
         'responses': responses(
             success_description='The response is list of updated fields with published and draft values along with '
-            'draft hash. \n The draft_hash is important and will be required later for publish config API, to prevent '
-            'publishing unreviewed config.',
+            'draft hash. \n The `draft_hash` is important and will be required later for publish config API, to prevent'
+            ' publishing unreviewed config.',
             success_schema=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
                 properties={
@@ -1503,8 +1512,8 @@ docs_src = {
     'ThemeConfigDraftView.put': {
         'summary': 'Update draft theme configuration of given tenant.',
         'description': 'Update draft of theme configuration for a given tenant otherwise create new draft with '
-        'updated values if draft does not exist. The caller must have staff access.\n'
-        '**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'updated values if draft does not exist.\n'
+        '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -1531,7 +1540,7 @@ docs_src = {
                 ),
                 'reset': openapi.Schema(
                     type=openapi.TYPE_BOOLEAN,
-                    description='Reset is optional. If "reset": true is sent, then new_value will be ignored, '
+                    description='Reset is optional. If `"reset": true` is sent, then `new_value` will be ignored, '
                     'and the draft record of this particular key will be deleted/discarded.',
                     example='My new awesome Platform Name',
                 ),
@@ -1574,8 +1583,8 @@ docs_src = {
 
     'ThemeConfigDraftView.delete': {
         'summary': 'Delete draft config (Discard draft changes)',
-        'description': 'Delete/discard draft changes of theme config for a given tenant. The caller must have '
-        'staff access. \n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'description': 'Delete/discard draft changes of theme config for a given tenant.\n'
+        '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
         'parameters': [
             query_parameter(
                 'tenant_ids',
@@ -1608,8 +1617,8 @@ docs_src = {
 
     'ThemeConfigPublishView.post': {
         'summary': 'Publish draft theme configuration of given tenant.',
-        'description': 'Publish draft theme configuration for a given tenant. The caller must have '
-        'staff access. \n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'description': 'Publish draft theme configuration for a given tenant.\n'
+        '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -1701,8 +1710,8 @@ docs_src = {
 
     'ThemeConfigRetrieveView.get': {
         'summary': 'Get the theme config values for a given tenant.',
-        'description': 'Get the values of theme configuration for a given tenant. The caller must have '
-        'staff access.\n**Note:** This API is just a mock API with dummy data and is not implemented yet.',
+        'description': 'Get the values of theme configuration for a given tenant.\n'
+        '\n**Note:** This API is just a mock API with dummy data and is not implemented yet.',
         'parameters': [
             query_parameter(
                 'tenant_ids',
@@ -1723,9 +1732,9 @@ docs_src = {
                 type=openapi.TYPE_STRING,
                 enum=['1', '0'],
                 description=(
-                    '- `only_published=1`: (**default**) The API will look for the draft value first; if not found, '
+                    '- `only_published=0`: (**default**) The API will look for the draft value first; if not found, '
                     'then return the published value.\n'
-                    '- `only_published=0`: The API will ignore drafts and will only return the last published value. '
+                    '- `only_published=1`: The API will ignore drafts and will only return the last published value. '
                     'It will be useful to render live pages.'
                 )
             ),
@@ -1777,9 +1786,8 @@ docs_src = {
 
     'ThemeConfigTenantView.post': {
         'summary': 'Create new tenant along with default theme config.',
-        'description': 'Create new tenant along with default theme config. The caller must have staff or fx '
-        'api global access.\n'
-        '**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'description': 'Create new tenant along with default theme config.\n'
+        '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
