@@ -1540,9 +1540,9 @@ docs_src = {
                 ),
                 'reset': openapi.Schema(
                     type=openapi.TYPE_BOOLEAN,
-                    description='Reset is optional. If `"reset": true` is sent, then `new_value` will be ignored, '
-                    'and the draft record of this particular key will be deleted/discarded.',
-                    example='My new awesome Platform Name',
+                    description='Reset is optional (default is `0`). If `"reset": 1` is sent, then `new_value` will be'
+                    ' ignored, and the draft record of this particular key will be deleted/discarded.',
+                    example=0,
                 ),
             },
             required=['tenant_id', 'key', 'current_value', 'new_value']
@@ -1631,7 +1631,7 @@ docs_src = {
                     type=openapi.TYPE_STRING,
                     description='The draft_hash code is important and required to prevent publishing unreviewed '
                     'config. Caller can get its value using the API: GET /api/fx/config/v1/draft/',
-                    example='platform_name',
+                    example='ajsd90a8su9a8u9a8sdyf0a9sdhy0asdjgasdgkjdsfgj',
                 ),
             },
             required=['tenant_id', 'draft_hash']
