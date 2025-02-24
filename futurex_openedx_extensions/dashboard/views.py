@@ -702,6 +702,7 @@ class AccessibleTenantsInfoView(APIView):
 @docs('AccessibleTenantsInfoViewV2.get')
 class AccessibleTenantsInfoViewV2(FXViewRoleInfoMixin, APIView):
     """View to get the list of accessible tenants version 2"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'accessible_info'
     fx_view_description = 'api/fx/accessible/v2/info/: Get accessible tenants'
