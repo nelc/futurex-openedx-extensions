@@ -1778,8 +1778,7 @@ docs_src = {
     'ThemeConfigTenantView.post': {
         'summary': 'Create new tenant along with default theme config.',
         'description': 'Create new tenant along with default theme config. The caller must have staff or fx '
-        'api global access.\n'
-        '**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'api global access.\n',
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -1788,18 +1787,13 @@ docs_src = {
                     description='Tenant sub domain.',
                     example='hero',
                 ),
-                'platform_name': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description='Tenant platform name',
-                    example='My Platform',
-                ),
                 'owner_user_id': openapi.Schema(
                     type=openapi.TYPE_INTEGER,
                     description='Tenant owner if',
                     example=11,
                 ),
             },
-            required=['sub_domain', 'platform_name', 'owner_user_id']
+            required=['sub_domain', 'owner_user_id']
         ),
         'responses': responses(
             overrides={
