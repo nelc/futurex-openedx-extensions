@@ -1,18 +1,20 @@
 """Tenant management helpers"""
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Count, OuterRef, Subquery
 from django.db.models.query import QuerySet
 from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
-from futurex_openedx_extensions.helpers.exceptions import FXExceptionCodes
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
 
 
@@ -314,3 +316,46 @@ def get_tenants_sites(tenant_ids: List[int]) -> List[str]:
 def get_nafath_sites() -> List:
     """Get all nafath sites"""
     return get_all_tenants_info()['special_info']['nafath_sites']
+
+
+def generate_tenant_config(name: str) -> dict:
+    """
+    Generate a tenant configuration by copying the default config and replacing placeholder PARAM.
+
+    :param name: Name to replace 'PARAM' in the default configuration
+    :type name: str
+    :return: Updated tenant configuration with placeholders replaced
+    :rtype: dict
+    """
+    try:
+        default_config = TenantConfig.objects.get(route__domain=settings.FX_DEFAULT_TENANT_SITE)
+        config_lms_dict = default_config.lms_configs
+        updated_config = json.loads(json.dumps(config_lms_dict).replace('{{platform_name}}', name))
+        return updated_config
+    except TenantConfig.DoesNotExist as exc:
+        raise FXCodedException(
+            code=FXExceptionCodes.TENANT_NOT_FOUND,
+            message='Default TenantConfig not found.',
+        ) from exc
+
+
+def create_new_tenant_config(sub_domain: str) -> TenantConfig:
+    """
+    Creates a new TenantConfig and associated Route with the provided subdomain and domain name.
+
+    :param sub_domain: The subdomain to be used for the tenant
+    :return: The created TenantConfig object
+    """
+    config_data = generate_tenant_config(sub_domain)
+
+    with transaction.atomic():
+        tenant_config = TenantConfig.objects.create(
+            external_key=sub_domain,
+            lms_configs=config_data
+        )
+        Route.objects.create(
+            domain=f'{sub_domain}.local.overhang.io',
+            config=tenant_config
+        )
+
+    return tenant_config
