@@ -1356,4 +1356,458 @@ docs_src = {
             },
         ),
     },
+
+    'ConfigEditableInfoView.get': {
+        'summary': 'Get information about editable settings of the theme config',
+        'description': 'Get information about editable settings of the theme designer config. The caller must have '
+        'staff access. \n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'parameters': [
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant ids to retrieve the configuration for. \n '
+                '**Note:** The caller must provide single tenant id to access the configuration.',
+            ),
+        ],
+        'responses': responses(
+            success_description='The response is a list of editable settings of the config',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'editable_fields': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        description='list of strings where each value represents editable setting key',
+                        items=openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                        ),
+                        example=['platform_name', 'primary_color', 'homepage_sections']
+                    ),
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'editable_fields': ['platform_name', 'primary_color', 'homepage_sections']
+                },
+            },
+            overrides={
+                400: openapi.Response(
+                    description='Bad request. Details in the response body.',
+                    schema=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'detail': openapi.Schema(type=openapi.TYPE_STRING),
+                            'reason': openapi.Schema(type=openapi.TYPE_STRING),
+                        },
+                        example={
+                            'detail': 'API can only be used for single tenant id.',
+                        }
+                    ),
+                ),
+            },
+            remove=[404]
+        ),
+    },
+
+    'ThemeConfigDraftView.get': {
+        'summary': 'Get current draft theme configuration of given tenant.',
+        'description': 'Get the current draft of theme configuration for a given tenant. The caller must have '
+        'staff access. \n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'parameters': [
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant ids to retrieve the configuration for. \n '
+                '**Note:** The caller must provide single tenant id to access the configuration.',
+            ),
+        ],
+        'responses': responses(
+            success_description='The response is list of updated fields with published and draft values along with '
+            'draft hash. \n The draft_hash is important and will be required later for publish config API, to prevent '
+            'publishing unreviewed config.',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'updated_fields': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'key1': openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    'published_value': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Last Published value of the key1.',
+                                    ),
+                                    'draft_value': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Draft value of the key1',
+                                    )
+                                }
+                            ),
+                            'key2': openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    'published_value': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Last Published value of the key2.',
+                                    ),
+                                    'draft_value': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Draft value of the key2',
+                                    )
+                                }
+                            )
+                        }
+                    ),
+                    'draft_hash': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description='Draft hash code, will be used later to publish config.',
+                        example='ajsd90a8su9a8u9a8sdyf0a9sdhy0asdjgasdgkjdsfgj',
+                    ),
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'updated_fields': {
+                        'platform_name': {
+                            'published_value': 'my platform name',
+                            'draft_value': 'My new Platform'
+                        },
+                        'primary_color': {
+                            'published_value': '#ff0000',
+                            'draft_value': '#ffffff'
+                        },
+                    },
+                    'draft_hash': 'ajsd90a8su9a8u9a8sdyf0a9sdhy0asdjgasdgkjdsfgj'
+                },
+            },
+            overrides={
+                400: openapi.Response(
+                    description='Bad request. Details in the response body.',
+                    schema=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'detail': openapi.Schema(type=openapi.TYPE_STRING),
+                            'reason': openapi.Schema(type=openapi.TYPE_STRING),
+                        },
+                        example={
+                            'detail': 'API can only be used for single tenant id.',
+                        }
+                    ),
+                ),
+                403: 'Forbidden access. Details in the response body.',
+                404: 'No Draft found. The response will include a JSON object with the error message.',
+            },
+        ),
+    },
+
+    'ThemeConfigDraftView.put': {
+        'summary': 'Update draft theme configuration of given tenant.',
+        'description': 'Update draft of theme configuration for a given tenant otherwise create new draft with '
+        'updated values if draft does not exist. The caller must have staff access.\n'
+        '**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'tenant_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='The tenant ID to update the config for.',
+                    example=1,
+                ),
+                'key': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Config field name value is updated for.',
+                    example='platform_name',
+                ),
+                'current_value': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Last stored value before making changes. Caller can get it using the '
+                    'API: GET /api/fx/config/v1/values/ without only_published parameter.',
+                    example='My Platform Name',
+                ),
+                'new_value': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Update value.',
+                    example='My new awesome Platform Name',
+                ),
+                'reset': openapi.Schema(
+                    type=openapi.TYPE_BOOLEAN,
+                    description='Reset is optional. If "reset": true is sent, then new_value will be ignored, '
+                    'and the draft record of this particular key will be deleted/discarded.',
+                    example='My new awesome Platform Name',
+                ),
+            },
+            required=['tenant_id', 'key', 'current_value', 'new_value']
+        ),
+        'responses': responses(
+            overrides={
+                204: 'Changes saved successfully.',
+                400: openapi.Response(
+                    description='Bad request. Details in the response body.',
+                    schema=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'detail': openapi.Schema(type=openapi.TYPE_STRING),
+                            'reason': openapi.Schema(type=openapi.TYPE_STRING),
+                        },
+                        example={
+                            'detail': 'API can only be used for single tenant id.',
+                        }
+                    ),
+                ),
+                409: openapi.Response(
+                    description='Unable to save changes due to conflicts.',
+                    schema=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'detail': openapi.Schema(type=openapi.TYPE_STRING),
+                            'reason': openapi.Schema(type=openapi.TYPE_STRING),
+                        },
+                        example={
+                            'detail': 'Current value is outdated.',
+                        }
+                    ),
+                ),
+            },
+            remove=[200, 404],
+        ),
+    },
+
+    'ThemeConfigDraftView.delete': {
+        'summary': 'Delete draft config (Discard draft changes)',
+        'description': 'Delete/discard draft changes of theme config for a given tenant. The caller must have '
+        'staff access. \n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'parameters': [
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant ids to retrieve the configuration for. \n '
+                '**Note:** The caller must provide single tenant id to delete the configuration.',
+            ),
+        ],
+        'responses': responses(
+            overrides={
+                204: 'Draft is deleted successfully.',
+                400: openapi.Response(
+                    description='Bad request. Details in the response body.',
+                    schema=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'detail': openapi.Schema(type=openapi.TYPE_STRING),
+                            'reason': openapi.Schema(type=openapi.TYPE_STRING),
+                        },
+                        example={
+                            'detail': 'API can only be used for single tenant id.',
+                        }
+                    ),
+                ),
+                404: 'No Draft found. The response will include a JSON object with the error message.',
+            },
+            remove=[200],
+        ),
+    },
+
+    'ThemeConfigPublishView.post': {
+        'summary': 'Publish draft theme configuration of given tenant.',
+        'description': 'Publish draft theme configuration for a given tenant. The caller must have '
+        'staff access. \n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'tenant_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='The tenant ID to publish the config for.',
+                    example=1,
+                ),
+                'draft_hash': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='The draft_hash code is important and required to prevent publishing unreviewed '
+                    'config. Caller can get its value using the API: GET /api/fx/config/v1/draft/',
+                    example='platform_name',
+                ),
+            },
+            required=['tenant_id', 'draft_hash']
+        ),
+        'responses': responses(
+            success_description='The response is list of published fields with old and new values.',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'updated_fields': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'key1': openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    'old_value': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Last Published value of the key1.',
+                                    ),
+                                    'new_value': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Draft value of the key1',
+                                    )
+                                }
+                            ),
+                            'key2': openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    'old_value': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Last Published value of the key2.',
+                                    ),
+                                    'new_value': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Draft value of the key2',
+                                    )
+                                }
+                            )
+                        }
+                    ),
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'updated_fields': {
+                        'platform_name': {
+                            'old_value': 'my platform name',
+                            'new_value': 'My new Platform'
+                        },
+                        'primary_color': {
+                            'old_value': '#ff0000',
+                            'new_value': '#ffffff'
+                        },
+                    },
+                },
+            },
+            overrides={
+                400: openapi.Response(
+                    description='Bad request. Details in the response body.',
+                    schema=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'detail': openapi.Schema(type=openapi.TYPE_STRING),
+                            'reason': openapi.Schema(type=openapi.TYPE_STRING),
+                        },
+                        example={
+                            'reason': 'Invalid draft hash.',
+                            'detail': {},
+                        }
+                    ),
+                ),
+            },
+            remove=[404]
+        ),
+    },
+
+    'ThemeConfigRetrieveView.get': {
+        'summary': 'Get the theme config values for a given tenant.',
+        'description': 'Get the values of theme configuration for a given tenant. The caller must have '
+        'staff access.\n**Note:** This API is just a mock API with dummy data and is not implemented yet.',
+        'parameters': [
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant IDs to retrieve the configuration for.\n'
+                '**Note:** The caller must provide a single tenant ID to delete the configuration.',
+            ),
+            query_parameter(
+                'keys',
+                str,
+                'A comma-separated list of keys to get the values for. If not provided, the system will return all '
+                'settings in response that are accessible to the user.',
+            ),
+            openapi.Parameter(
+                'only_published',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=['1', '0'],
+                description=(
+                    '- `only_published=1`: (**default**) The API will look for the draft value first; if not found, '
+                    'then return the published value.\n'
+                    '- `only_published=0`: The API will ignore drafts and will only return the last published value. '
+                    'It will be useful to render live pages.'
+                )
+            ),
+        ],
+        'responses': responses(
+            success_description='The response is a list of values, along with `not_permitted` and `bad_keys` info.'
+            '\n`Not permitted` will contain a list of keys that are not accessible to the user.'
+            '\n`Bad keys` will contain a list of keys that do not exist.',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'values': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'key1': openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description='Value of key1',
+                            ),
+                            'key2': openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description='Value of key2.',
+                            )
+                        }
+                    ),
+                    'not_permitted': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        description='List of keys that the user tried to access but are not permitted.',
+                        items=openapi.Schema(type=openapi.TYPE_STRING),
+                    ),
+                    'bad_keys': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        description='List of keys that the user tried to access but do not exist.',
+                        items=openapi.Schema(type=openapi.TYPE_STRING),
+                    ),
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'values': {
+                        'primary_colors': '#ff00ff'
+                    },
+                    'not_permitted': ['platform_name'],
+                    'bad_keys': ['something']
+                },
+            },
+            remove=[404]
+        ),
+    },
+
+    'ThemeConfigTenantView.post': {
+        'summary': 'Create new tenant along with default theme config.',
+        'description': 'Create new tenant along with default theme config. The caller must have staff or fx '
+        'api global access.\n'
+        '**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'sub_domain': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='Tenant sub domain.',
+                    example='hero',
+                ),
+                'platform_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Tenant platform name',
+                    example='My Platform',
+                ),
+                'owner_user_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='Tenant owner if',
+                    example=11,
+                ),
+            },
+            required=['sub_domain', 'platform_name', 'owner_user_id']
+        ),
+        'responses': responses(
+            overrides={
+                204: 'Changes saved successfully.',
+                400: 'Unable to create tenant. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
 }
