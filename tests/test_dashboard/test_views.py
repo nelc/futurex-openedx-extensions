@@ -1966,12 +1966,88 @@ class ThemeConfigRetrieveView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
 
+@ddt.ddt
 class ThemeConfigTenantView(BaseTestViewMixin):
     """Tests for ThemeConfigPublishView"""
     VIEW_NAME = 'fx_dashboard:theme-config-tenant'
 
-    def test_success(self):
-        """Verify that the view returns the correct response"""
+    @ddt.data(
+        (
+            {'owner_user_id': None},
+            'Subdomain is required.'
+        ),
+        (
+            {'sub_domain': ['non', 'string'], 'owner_user_id': 1},
+            'Subdomain must be a string.'
+        ),
+        (
+            {'sub_domain': 'invalid_domain$', 'owner_user_id': 1},
+            'Subdomain can only contain letters and numbers and cannot start with a number.'
+        ),
+        (
+            {'sub_domain': '-startwithhyphen', 'owner_user_id': 1},
+            'Subdomain can only contain letters and numbers and cannot start with a number.'
+        ),
+        (
+            {'sub_domain': '1startwithnumber', 'owner_user_id': 1},
+            'Subdomain can only contain letters and numbers and cannot start with a number.'
+        ),
+        (
+            {'sub_domain': 'domain space', 'owner_user_id': 1},
+            'Subdomain can only contain letters and numbers and cannot start with a number.'
+        ),
+        (
+            {'sub_domain': '$pecial_chars!', 'owner_user_id': 1},
+            'Subdomain can only contain letters and numbers and cannot start with a number.'
+        ),
+        (
+            {'sub_domain': 'domain@domain', 'owner_user_id': 1},
+            'Subdomain can only contain letters and numbers and cannot start with a number.'
+        ),
+        (
+            {'sub_domain': 'LongString17Chars'},
+            'Subdomain cannot exceed 16 characters.'
+        ),
+        (
+            {'sub_domain': 'validsubdomain'},
+            'Platform name is required.'
+        ),
+        (
+            {'sub_domain': 'validsubdomain', 'platform_name': 11},
+            'Platform name must be a string.'
+        ),
+        (
+            {'sub_domain': 'validsubdomain', 'platform_name': 'Valid name'},
+            'Owner user ID is required.'
+        ),
+        (
+            {'sub_domain': 'validsubdomain', 'platform_name': 'Valid name', 'owner_user_id': 999999},
+            'User with ID 999999 does not exist.'
+        ),
+    )
+    @ddt.unpack
+    def test_payload_validation(self, data, expected_reason):
+        """Verify that different sub_domain cases raise the correct reason"""
         self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={}, format='json',)
-        self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        response = self.client.post(self.url, data=data, format='json')
+        assert response.data['reason'] == expected_reason
+
+    @pytest.mark.django_db
+    @patch('futurex_openedx_extensions.helpers.tenants.generate_tenant_config')
+    @patch('futurex_openedx_extensions.dashboard.views.add_course_access_roles')
+    def test_success(self, mock_add_course_access_roles, mock_generate_config):
+        """Verify that the view returns the correct response"""
+        mock_generate_config.return_value = {
+            'LMS_BASE': 'testplatform.local.overhang.io:8000',
+            'SITE_NAME': 'http://testplatform.local.overhang.io:8000/',
+            'course_org_filter': ['testplatform_org'],
+        }
+        self.login_user(self.staff_user)
+        data = {
+            'sub_domain': 'testplatform',
+            'owner_user_id': self.staff_user,
+            'platform_name': 'Test Platform'
+        }
+        response = self.client.post(self.url, data=data, format='json')
+        mock_add_course_access_roles.assert_called_once()
+        assert response.status_code == http_status.HTTP_204_NO_CONTENT

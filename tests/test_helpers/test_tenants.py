@@ -1,5 +1,5 @@
 """Tests for tenants helpers."""
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
@@ -11,7 +11,7 @@ from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
-from futurex_openedx_extensions.helpers.exceptions import FXExceptionCodes
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 
 
 @pytest.fixture
@@ -351,3 +351,71 @@ def test_fix_lms_base_port(lms_root_port, domain_name, expected_result):
 def test_fix_lms_base_empty_domain_name(domain_name):
     """Verify that fix_lms_base sets the correct port for the result."""
     assert tenants.fix_lms_base(domain_name) == ''
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.tenants.TenantConfig.objects.get')
+def test_generate_tenant_config_success(mock_get):
+    """Test generate_tenant_config replaces placeholders correctly when TenantConfig exists."""
+    mock_default_config = MagicMock()
+    mock_default_config.lms_configs = {
+        'EDNX_USE_SIGNAL': True,
+        'EOX_THEMING_DEFAULT_THEME_NAME': '{{sub_domain}}-edx-theme',
+        'LMS_BASE': '{{sub_domain}}.local.overhang.io',
+        'SITE_NAME': 'http://{{sub_domain}}.local.overhang.io:8000/',
+        'course_org_filter': ['{{sub_domain}}_org'],
+        'PLATFORM_NAME': '{{platform_name}}'
+    }
+    mock_get.return_value = mock_default_config
+    result = tenants.generate_tenant_config('testplatform', 'Test Platform Name')
+    assert result['EOX_THEMING_DEFAULT_THEME_NAME'] == 'testplatform-edx-theme'
+    assert result['SITE_NAME'] == 'http://testplatform.local.overhang.io:8000/'
+    assert result['course_org_filter'] == ['testplatform_org']
+    assert result['PLATFORM_NAME'] == 'Test Platform Name'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.tenants.TenantConfig.objects.get')
+def test_generate_tenant_config_tenant_not_found(mock_get):
+    """Test generate_tenant_config raises an exception when the default TenantConfig is missing."""
+    mock_get.side_effect = TenantConfig.DoesNotExist
+    with pytest.raises(FXCodedException) as excinfo:
+        tenants.generate_tenant_config('testplatform', 'Test Platform Name')
+    assert excinfo.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
+    assert str(excinfo.value) == 'Default TenantConfig not found! default site: (default.example.com)'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.tenants.generate_tenant_config')
+@patch('futurex_openedx_extensions.helpers.tenants.TenantConfig.objects.create')
+@patch('futurex_openedx_extensions.helpers.tenants.Route.objects.create')
+def test_create_new_tenant_config_success(mock_route_create, mock_tenant_create, mock_generate_config):
+    """Test create_new_tenant_config successfully creates a tenant and route."""
+    mock_generate_config.return_value = {
+        'EDNX_USE_SIGNAL': True,
+        'EOX_THEMING_DEFAULT_THEME_NAME': 'testplatform-edx-theme',
+        'SITE_NAME': 'http://testplatform.local.overhang.io:8000/',
+        'LMS_BASE': 'testplatform.local.overhang.io',
+        'course_org_filter': ['testplatform_org'],
+    }
+    mock_tenant = MagicMock()
+    mock_tenant_create.return_value = mock_tenant
+    result = tenants.create_new_tenant_config('testplatform', 'Test Platform Name')
+    mock_generate_config.assert_called_once_with('testplatform', 'Test Platform Name')
+    mock_tenant_create.assert_called_once_with(
+        external_key='testplatform', lms_configs=mock_generate_config.return_value
+    )
+    mock_route_create.assert_called_once_with(domain='testplatform.local.overhang.io', config=mock_tenant)
+    assert result == mock_tenant
+
+
+@pytest.mark.django_db
+def test_create_new_tenant_for_existing_route_and_tenant():
+    """Test create_new_tenant_config raise exception if route already exist for given domain"""
+    tenant_config = TenantConfig.objects.create(external_key='testplatform', lms_configs={'dummy': 'some dummy data'})
+    Route.objects.create(domain='testplatform.local.overhang.io', config=tenant_config)
+
+    with pytest.raises(FXCodedException) as excinfo:
+        tenants.create_new_tenant_config('testplatform', 'Test Platform Name')
+    assert excinfo.value.code == FXExceptionCodes.ROUTE_ALREADY_EXIST.value
+    assert str(excinfo.value) == 'Route already exists with site domain: (testplatform.local.overhang.io).'

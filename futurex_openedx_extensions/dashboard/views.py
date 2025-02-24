@@ -2,6 +2,7 @@
 # pylint: disable=too-many-lines
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
@@ -50,6 +51,7 @@ from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
     CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS,
     CLICKHOUSE_FX_BUILTIN_ORG_IN_TENANTS,
+    COURSE_ACCESS_ROLES_STAFF_EDITOR,
     COURSE_ACCESS_ROLES_SUPPORTED_READ,
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
@@ -77,7 +79,11 @@ from futurex_openedx_extensions.helpers.roles import (
     get_usernames_with_access_roles,
     update_course_access_roles,
 )
-from futurex_openedx_extensions.helpers.tenants import get_excluded_tenant_ids, get_tenants_info
+from futurex_openedx_extensions.helpers.tenants import (
+    create_new_tenant_config,
+    get_excluded_tenant_ids,
+    get_tenants_info,
+)
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
@@ -1296,15 +1302,81 @@ class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
 
 @docs('ThemeConfigTenantView.post')
 class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
-    """View to publish theme config"""
+    """View to create new Tenant and theme config"""
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'theme_config_tenant'
     fx_view_description = 'api/fx/config/v1/tenant/: Create new Tenant'
     fx_default_read_write_roles = ['staff', 'fx_api_access_global']
 
-    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+    @staticmethod
+    def validate_payload(data: dict) -> None:
+        """
+        Validates the payload.
+
+        :param data: The payload data from the request
+        :raises FXCodedException: If the payload data is invalid
+        """
+        sub_domain = data.get('sub_domain')
+        if not sub_domain:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Subdomain is required.'
+            )
+        if not isinstance(sub_domain, str):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Subdomain must be a string.'
+            )
+        if len(sub_domain) > 16:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Subdomain cannot exceed 16 characters.'
+            )
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9]*$', sub_domain):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=(
+                    'Subdomain can only contain letters and numbers and cannot start with a number.'
+                )
+            )
+
+        platform_name = data.get('platform_name')
+        if not platform_name:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Platform name is required.'
+            )
+        if not isinstance(platform_name, str):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Platform name must be a string.'
+            )
+
+        owner_user_id = data.get('owner_user_id')
+        if owner_user_id is None:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Owner user ID is required.'
+            )
+        if not get_user_model().objects.filter(id=owner_user_id).exists():
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'User with ID {owner_user_id} does not exist.'
+            )
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         POST /api/fx/config/v1/tenant/
         """
-
+        data = request.data
+        self.validate_payload(data)
+        tenant_config = create_new_tenant_config(data['sub_domain'], data['platform_name'])
+        add_course_access_roles(
+            caller=self.fx_permission_info['user'],
+            tenant_ids=[tenant_config.id],
+            user_keys=[data['owner_user_id']],
+            role=COURSE_ACCESS_ROLES_STAFF_EDITOR,
+            tenant_wide=True,
+            course_ids=[],
+        )
         return Response(status=http_status.HTTP_204_NO_CONTENT)

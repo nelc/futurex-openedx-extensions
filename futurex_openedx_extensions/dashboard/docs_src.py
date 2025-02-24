@@ -1785,8 +1785,7 @@ docs_src = {
 
     'ThemeConfigTenantView.post': {
         'summary': 'Create new tenant along with default theme config.',
-        'description': 'Create new tenant along with default theme config.\n'
-        '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'description': 'Create new tenant along with default theme config.',
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={

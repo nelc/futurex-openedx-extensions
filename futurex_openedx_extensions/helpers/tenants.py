@@ -1,18 +1,20 @@
 """Tenant management helpers"""
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Count, OuterRef, Subquery
 from django.db.models.query import QuerySet
 from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.caching import cache_dict
-from futurex_openedx_extensions.helpers.exceptions import FXExceptionCodes
+from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
 
 
@@ -314,3 +316,56 @@ def get_tenants_sites(tenant_ids: List[int]) -> List[str]:
 def get_nafath_sites() -> List:
     """Get all nafath sites"""
     return get_all_tenants_info()['special_info']['nafath_sites']
+
+
+def generate_tenant_config(sub_domain: str, platform_name: str) -> dict:
+    """
+    Generate a tenant configuration by copying the default config and replacing placeholders.
+
+    :param sub_domain: The subdomain to be used for the tenant
+    :param platform_name: The platform name to be used for the tenant
+    :return: Updated tenant configuration with placeholders replaced
+    :rtype: dict
+    """
+    try:
+        default_config = TenantConfig.objects.get(route__domain=settings.FX_DEFAULT_TENANT_SITE)
+        config_lms_dict = json.dumps(default_config.lms_configs)
+        config_lms_dict = config_lms_dict.replace('{{platform_name}}', platform_name)
+        config_lms_dict = config_lms_dict.replace('{{sub_domain}}', sub_domain)
+        return json.loads(config_lms_dict)
+    except TenantConfig.DoesNotExist as exc:
+        raise FXCodedException(
+            code=FXExceptionCodes.TENANT_NOT_FOUND,
+            message=f'Default TenantConfig not found! default site: ({settings.FX_DEFAULT_TENANT_SITE})',
+        ) from exc
+
+
+def create_new_tenant_config(sub_domain: str, platform_name: str) -> TenantConfig:
+    """
+    Creates a new TenantConfig and associated Route with the provided subdomain and domain name.
+
+    :param sub_domain: The subdomain to be used for the tenant
+    :param platform_name: The platform name to be used for the tenant
+    :return: The created TenantConfig object
+    """
+    site_domain = f'{sub_domain}.{settings.FX_TENANTS_BASE_DOMAIN}'
+    if Route.objects.filter(domain=site_domain).exists():
+        raise FXCodedException(
+            code=FXExceptionCodes.ROUTE_ALREADY_EXIST,
+            message=f'Route already exists with site domain: ({site_domain}).',
+        )
+
+    config_data = generate_tenant_config(sub_domain, platform_name)
+    config_data.update({'LMS_BASE': site_domain})
+
+    with transaction.atomic():
+        tenant_config = TenantConfig.objects.create(
+            external_key=sub_domain,
+            lms_configs=config_data
+        )
+        Route.objects.create(
+            domain=site_domain,
+            config=tenant_config
+        )
+        invalidate_cache()
+    return tenant_config
