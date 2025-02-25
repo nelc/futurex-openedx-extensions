@@ -5,6 +5,7 @@ import pytest
 from django import forms
 from django.contrib.admin.sites import AdminSite
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponseRedirect
 from django.utils.timezone import now
 from django_mysql.models import QuerySet
@@ -15,6 +16,7 @@ from futurex_openedx_extensions.helpers.admin import (
     CacheInvalidator,
     CacheInvalidatorAdmin,
     ClickhouseQueryAdmin,
+    ConfigAccessControlForm,
     ViewAllowedRolesHistoryAdmin,
     ViewAllowedRolesModelForm,
     ViewUserMappingHistoryAdmin,
@@ -289,3 +291,61 @@ def test_view_user_mapping_model_form_extra_attributes(attribute_name):
     assert attribute_to_test.short_description == attribute_name.replace('_', ' ').title()
     assert attribute_to_test.boolean is True
     assert attribute_to_test.admin_order_field == attribute_name
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'default_config, input_path, expected_error, usecase',
+    [
+        (
+            {'themev2': {'footer': {'linkedin_url': 'https://linkedin.com'}}},
+            'themev2, footer, linkedin_url',
+            None,
+            'Valid path should pass without errors.'
+        ),
+        (
+            {'themev2': {'footer': {}}},
+            'invalid-start, path',
+            'Invalid path: "invalid-start" does not exist in the default config.',
+            'Invalid key should raise a proper error.'
+        ),
+        (
+            {'themev2': {'footer': {}}},
+            'themev2, footer, linkedin_url',
+            'Path "themev2.footer" found in default config but unable to find "linkedin_url" in "themev2.footer"',
+            'Partial path match but missing final key should show accurate error.'
+        ),
+        (
+            {'themev2': {'header': {}}},
+            'themev2, footer',
+            'Path "themev2" found in default config but unable to find "footer" in "themev2"',
+            'Valid parent but invalid child key should provide informative feedback.'
+        ),
+    ]
+)
+@patch('futurex_openedx_extensions.helpers.admin.TenantConfig.objects.get')
+def test_config_access_control_form_clean_path(mock_get, default_config, input_path, expected_error, usecase):
+    """Test clean_path validation with various path inputs and descriptive use cases."""
+    mock_get.return_value = Mock(lms_configs=default_config)
+    form_data = {
+        'path': input_path,
+        'key_name': 'test_key',
+        'writable': True,
+    }
+    form = ConfigAccessControlForm(data=form_data)
+
+    if expected_error:
+        with pytest.raises(ValidationError) as exc_info:
+            form.clean_path()
+        assert str(exc_info.value) == f"[\'{expected_error}\']", usecase
+    else:
+        assert form.is_valid(), usecase
+
+
+@pytest.mark.django_db
+def test_config_access_control_form_clean_path_default_config_not_exist():
+    """Test clean_path validation when default config does not exist."""
+    form = ConfigAccessControlForm(data={'path': 'does.not.matter', 'key_name': 'dummy'})
+    with pytest.raises(ValidationError) as exc_info:
+        form.clean_path()
+    assert str(exc_info.value) == "[\'Unable to update path as default TenantConfig not found.\']"

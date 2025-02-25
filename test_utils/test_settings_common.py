@@ -113,3 +113,5 @@ FX_DEFAULT_COURSE_EFFORT = 20
 
 FX_NAFATH_ENTRY_ID = 'abc.com'
 FX_NAFATH_AUTH_PROVIDER = 'dummy-provider'
+
+FX_DEFAULT_TENANT_SITE = 'default.example.com'

@@ -6,6 +6,7 @@ from typing import Any, List, Tuple
 import yaml  # type: ignore
 from common.djangoapps.student.admin import CourseAccessRoleForm
 from django import forms
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.admin import SimpleListFilter
 from django.core.cache import cache
@@ -14,12 +15,19 @@ from django.urls import path
 from django.utils import timezone
 from django.utils.translation.trans_null import gettext_lazy
 from django_mysql.models import QuerySet
+from eox_tenant.models import TenantConfig
 from openedx.core.lib.api.authentication import BearerAuthentication
 from rest_framework.response import Response
 from simple_history.admin import SimpleHistoryAdmin
 
 from futurex_openedx_extensions.helpers.constants import CACHE_NAMES
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask, ViewAllowedRoles, ViewUserMapping
+from futurex_openedx_extensions.helpers.models import (
+    ClickhouseQuery,
+    ConfigAccessControl,
+    DataExportTask,
+    ViewAllowedRoles,
+    ViewUserMapping,
+)
 from futurex_openedx_extensions.helpers.roles import get_fx_view_with_roles
 
 
@@ -312,6 +320,48 @@ class DataExportTaskAdmin(admin.ModelAdmin):
     search_fields = ('filename', 'user__email', 'user__username', 'notes')
 
 
+class ConfigAccessControlForm(forms.ModelForm):
+    """Admin class of ConfigAccessControl model"""
+
+    class Meta:
+        model = ConfigAccessControl
+        fields = '__all__'
+
+    def clean_path(self) -> str:
+        """Validates path with default tenant config."""
+        key_path = self.data['path']
+
+        try:
+            default_config = TenantConfig.objects.get(route__domain=settings.FX_DEFAULT_TENANT_SITE).lms_configs
+        except TenantConfig.DoesNotExist as exc:
+            raise forms.ValidationError('Unable to update path as default TenantConfig not found.') from exc
+
+        path_parts = [part.strip() for part in key_path.split(',')]
+        data_pointer = default_config
+        found_path = []
+
+        for part in path_parts:
+            try:
+                data_pointer = data_pointer[part]
+                found_path.append(part)
+            except (KeyError, TypeError) as exc:
+                if found_path:
+                    joined_found_path = '.'.join(found_path)
+                    raise forms.ValidationError(
+                        f'Path "{joined_found_path}" found in default config but '
+                        f'unable to find "{part}" in "{joined_found_path}"'
+                    ) from exc
+                raise forms.ValidationError(
+                    f'Invalid path: "{part}" does not exist in the default config.'
+                ) from exc
+        return key_path
+
+
+class ConfigAccessControlAdmin(admin.ModelAdmin):
+    form = ConfigAccessControlForm
+    list_display = ('id', 'key_name', 'path', 'writable',)
+
+
 def register_admins() -> None:
     """Register the admin views."""
     CacheInvalidator._meta.abstract = False  # to be able to register the admin view
@@ -321,6 +371,7 @@ def register_admins() -> None:
     admin.site.register(ViewAllowedRoles, ViewAllowedRolesHistoryAdmin)
     admin.site.register(ViewUserMapping, ViewUserMappingHistoryAdmin)
     admin.site.register(DataExportTask, DataExportTaskAdmin)
+    admin.site.register(ConfigAccessControl, ConfigAccessControlAdmin)
 
 
 register_admins()
