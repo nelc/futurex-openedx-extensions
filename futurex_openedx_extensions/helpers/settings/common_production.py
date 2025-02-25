@@ -72,3 +72,10 @@ def plugin_settings(settings: Any) -> None:
         'FX_NAFATH_AUTH_PROVIDER',
         'tpa-saml',
     )
+
+    # Default Tenant site
+    settings.FX_DEFAULT_TENANT_SITE = getattr(
+        settings,
+        'FX_DEFAULT_TENANT_SITE',
+        'template.futurex.sa',
+    )

@@ -27,7 +27,7 @@ from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.models import DataExportTask, ViewAllowedRoles
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DataExportTask, ViewAllowedRoles
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -1908,8 +1908,17 @@ class TestConfigEditableInfoView(BaseTestViewMixin):
     def test_success(self):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
+
+        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', writable=True)
+        ConfigAccessControl.objects.create(key_name='pages', path='theme_v2,sections,pages', writable=True)
+        ConfigAccessControl.objects.create(key_name='primary_color', path='theme_v2,primary_color', writable=False)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        expected_data = {
+            'editable_fields': ['platform_name', 'pages'],
+            'read_only_fields': ['primary_color']
+        }
+        self.assertEqual(response.json(), expected_data)
 
 
 class TestThemeConfigDraftView(BaseTestViewMixin):

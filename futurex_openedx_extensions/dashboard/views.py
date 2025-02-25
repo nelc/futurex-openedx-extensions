@@ -59,7 +59,7 @@ from futurex_openedx_extensions.helpers.converters import error_details_to_dicti
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ConfigAccessControl, DataExportTask
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -1200,9 +1200,11 @@ class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
         """
         GET /api/fx/config/v1/editable/
         """
-
+        writable_fields = ConfigAccessControl.objects.filter(writable=True).values_list('key_name', flat=True)
+        read_only_fields = ConfigAccessControl.objects.filter(writable=False).values_list('key_name', flat=True)
         return JsonResponse({
-            'editable_fields': ['platform_name', 'primary_color', 'home_page_sections']
+            'editable_fields': list(writable_fields),
+            'read_only_fields': list(read_only_fields)
         })
 
 

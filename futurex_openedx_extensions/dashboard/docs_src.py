@@ -1359,8 +1359,7 @@ docs_src = {
 
     'ConfigEditableInfoView.get': {
         'summary': 'Get information about editable settings of the theme config',
-        'description': 'Get information about editable settings of the theme designer config.'
-        '\n\n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'description': 'Get information about editable settings of the theme designer config.',
         'parameters': [
             query_parameter(
                 'tenant_ids',
