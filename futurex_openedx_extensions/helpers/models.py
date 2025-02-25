@@ -564,3 +564,14 @@ class DataExportTask(models.Model):
             )
         fx_task.progress = progress
         fx_task.save()
+
+
+class ConfigAccessControl(models.Model):
+    """Access control for tenant configurations"""
+    key_name = models.CharField(max_length=255, unique=True, help_text='Key name, e.g., linkedin_url')
+    path = models.CharField(max_length=500, help_text='Comma-separated path, e.g., theme_v2,footer,linkedin_url')
+    writable = models.BooleanField(default=False, help_text='Indicates if the field is writable')
+
+    class Meta:
+        verbose_name = 'Config Access Control'
+        verbose_name_plural = 'Config Access Controls'
