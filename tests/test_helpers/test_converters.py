@@ -68,8 +68,7 @@ def test_relative_url_to_absolute_url_no_site():
 
 def test_relative_url_to_absolute_url_with_site():
     """Verify that relative_url_to_absolute_url return the correct absolute URL."""
-    request = Mock()
-    request.site.domain = 'https://example-converter.com'
+    request = Mock(site=Mock(domain='example-converter.com'), scheme='https')
     assert converters.relative_url_to_absolute_url('/test9', request) == 'https://example-converter.com/test9'
 
 

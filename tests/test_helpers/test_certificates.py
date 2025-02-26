@@ -25,7 +25,7 @@ def test_learner_courses_details_serializer_get_certificate_url(
     mock_get_certificates, certificates_url, expected_url, base_data,
 ):  # pylint: disable=unused-argument
     """Verify that the LearnerCoursesDetailsSerializer.get_certificate_url returns the correct data."""
-    request = Mock(site=Mock(domain='https://test.com'))
+    request = Mock(site=Mock(domain='test.com'), scheme='https')
     course = CourseOverview.objects.get(id='course-v1:ORG1+2+2')
     mock_get_certificates.return_value = {
         course.id: {

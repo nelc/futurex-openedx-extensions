@@ -30,8 +30,8 @@ def error_details_to_dictionary(reason: str, **details: Any) -> dict:
 
 def relative_url_to_absolute_url(relative_url: str, request: Any) -> str | None:
     """Convert a relative URL to an absolute URL"""
-    if request and hasattr(request, 'site') and request.site:
-        return str(urljoin(request.site.domain, relative_url))
+    if request and hasattr(request, 'scheme') and hasattr(request, 'site') and request.site:
+        return str(urljoin(f'{request.scheme}://{request.site.domain}', relative_url))
 
     return None
 
