@@ -572,7 +572,7 @@ def test_learner_details_extended_serializer(base_data):  # pylint: disable=unus
         bio='Test Bio',
         level_of_education='Test Level',
     )
-    request = Mock(site=Mock(domain='https://an-example.com'))
+    request = Mock(site=Mock(domain='an-example.com'), scheme='https')
     data = LearnerDetailsExtendedSerializer(queryset, many=True, context={'request': request}).data
     image_serialized = AccountLegacyProfileSerializer.get_profile_image(profile, queryset.first(), None)
     assert len(data) == 1
@@ -751,7 +751,7 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
         'locked_count': 1,
     }
 
-    request = Mock(site=Mock(domain='https://test.com'))
+    request = Mock(site=Mock(domain='test.com'), scheme='https')
     with patch(
         'futurex_openedx_extensions.dashboard.serializers.get_course_blocks_completion_summary',
         return_value=completion_summary,
