@@ -52,6 +52,8 @@ class FXExceptionCodes(Enum):
     TENANT_DASHBOARD_NOT_ENABLED = 10006
     TENANT_COURSE_ORG_FILTER_NOT_VALID = 10007
 
+    ROUTE_ALREADY_EXIST = 11001
+
 
 class FXCodedException(Exception):
     """Exception with a code."""

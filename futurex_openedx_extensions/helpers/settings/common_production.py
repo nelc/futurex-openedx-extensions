@@ -79,3 +79,10 @@ def plugin_settings(settings: Any) -> None:
         'FX_DEFAULT_TENANT_SITE',
         'template.futurex.sa',
     )
+
+    # Tenant Base Domain
+    settings.FX_TENANTS_BASE_DOMAIN = getattr(
+        settings,
+        'FX_TENANTS_BASE_DOMAIN',
+        'nelp.gov.sa',
+    )

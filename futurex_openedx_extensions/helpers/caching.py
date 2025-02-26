@@ -10,6 +10,8 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
+from futurex_openedx_extensions.helpers import constants as cs
+
 log = logging.getLogger(__name__)
 
 
@@ -71,3 +73,22 @@ def cache_dict(timeout: int | str, key_generator_or_name: str | Callable) -> Cal
 
         return wrapped
     return decorator
+
+
+def invalidate_cache(cache_name: str = None) -> None:
+    """
+    Invalidate a specific cache or all predefined caches.
+
+    - To invalidate a specific cache, provide the cache name.
+    - To reset all predefined caches, pass None as `cache_name`.
+
+    :param cache_name: The name of the cache to invalidate.
+    :raises FXCodedException: If the provided `cache_name` is invalid (and not `"__all__"`).
+    """
+    if not cache_name:
+        cache.delete(cs.CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST)
+        cache.delete(cs.CACHE_NAME_ALL_TENANTS_INFO)
+        cache.delete(cs.CACHE_NAME_ALL_VIEW_ROLES)
+        cache.delete(cs.CACHE_NAME_ORG_TO_TENANT_MAP)
+    else:
+        cache.delete(cache_name)
