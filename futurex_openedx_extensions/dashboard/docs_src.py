@@ -171,6 +171,11 @@ common_path_parameters = {
         str,
         'The username of the staff user to retrieve information for.',
     ),
+    'tenant_id': path_parameter(
+        'tenant_id',
+        int,
+        'The id of the tenant to retrieve or update config for.',
+    ),
 }
 
 repeated_descriptions = {
@@ -1433,12 +1438,7 @@ docs_src = {
         'description': 'Get the current draft of theme configuration for a given tenant. The caller must have '
         'staff access.\n\n**Note:** This API is just mock API with dummy data and not implemented yet.',
         'parameters': [
-            query_parameter(
-                'tenant_ids',
-                str,
-                'Tenant ids to retrieve the configuration for. \n '
-                '**Note:** The caller must provide single tenant id to access the configuration.',
-            ),
+            common_path_parameters['tenant_id']
         ],
         'responses': responses(
             success_description='The response is list of updated fields with published and draft values along with '
@@ -1525,27 +1525,25 @@ docs_src = {
         'description': 'Update draft of theme configuration for a given tenant otherwise create new draft with '
         'updated values if draft does not exist.\n'
         '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'parameters': [
+            common_path_parameters['tenant_id'],
+        ],
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'tenant_id': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description='The tenant ID to update the config for.',
-                    example=1,
-                ),
                 'key': openapi.Schema(
                     type=openapi.TYPE_STRING,
                     description='Config field name value is updated for.',
                     example='platform_name',
                 ),
                 'current_value': openapi.Schema(
-                    type=openapi.TYPE_STRING,
+                    type=openapi.TYPE_OBJECT,
                     description='Last stored value before making changes. Caller can get it using the '
                     'API: GET /api/fx/config/v1/values/ without only_published parameter.',
                     example='My Platform Name',
                 ),
                 'new_value': openapi.Schema(
-                    type=openapi.TYPE_STRING,
+                    type=openapi.TYPE_OBJECT,
                     description='Update value.',
                     example='My new awesome Platform Name',
                 ),
@@ -1556,7 +1554,7 @@ docs_src = {
                     example=0,
                 ),
             },
-            required=['tenant_id', 'key', 'current_value', 'new_value']
+            required=['key', 'current_value']
         ),
         'responses': responses(
             overrides={
@@ -1597,12 +1595,7 @@ docs_src = {
         'description': 'Delete/discard draft changes of theme config for a given tenant.\n'
         '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
         'parameters': [
-            query_parameter(
-                'tenant_ids',
-                str,
-                'Tenant ids to retrieve the configuration for. \n '
-                '**Note:** The caller must provide single tenant id to delete the configuration.',
-            ),
+            common_path_parameters['tenant_id'],
         ],
         'responses': responses(
             overrides={

@@ -8,14 +8,15 @@ from urllib.parse import urlparse
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, OuterRef, Subquery
-from django.db.models.query import QuerySet
+from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl
+from futurex_openedx_extensions.helpers.mysql_functions import annotate_tenant_config_queryset, apply_json_merge_patch
 
 
 def get_excluded_tenant_ids() -> Dict[int, List[int]]:
@@ -375,3 +376,125 @@ def create_new_tenant_config(sub_domain: str, platform_name: str) -> TenantConfi
         )
         invalidate_cache()
     return tenant_config
+
+
+def get_tenant_config_value(config: dict, path: str, published_only: bool = False, draft_only: bool = False) -> Any:
+    """
+    Retrieves a configuration value based on a comma-separated path.
+    - If `published_only` is True, fetches only from the main config.
+    - If `draft_only` is True, fetches only from `config_draft`.
+    - By default, prioritizes draft values but falls back to published values.
+
+    :param config: The configuration dictionary.
+    :param path: The comma-separated path to the desired value.
+    :param published_only: If True, fetches only the published value.
+    :param draft_only: If True, fetches only the draft value.
+    :return: The configuration value or None if not found.
+    """
+    def get_nested_value(config: dict, path: str) -> Any:
+        """
+        Retrieves a value from a nested dictionary based on a comma-separated path.
+        """
+        keys = [key.strip() for key in path.split('.')]
+        for key in keys:
+            if not isinstance(config, dict) or key not in config:
+                return None
+            config = config[key]
+        return config
+
+    if not config:
+        return None
+
+    if published_only:
+        return get_nested_value(config, path)
+
+    if draft_only:
+        return get_nested_value(config.get('config_draft', {}), path)
+
+    return get_nested_value(config.get('config_draft', {}), path) or get_nested_value(config, path)
+
+
+def get_draft_tenant_config(tenant_id: int) -> dict:
+    """
+    Fetches configuration for the specified tenant and returns fields that differ
+    between the published and draft configurations.
+
+    :param tenant_id: The ID of the tenant whose draft configuration is to be retrieved.
+    :type tenant_id: int
+    :return: A dictionary containing updated fields with published and draft values.
+    :rtype: dict
+    """
+    try:
+        tenant = TenantConfig.objects.get(id=tenant_id)
+        updated_fields = {}
+        for field_config in ConfigAccessControl.objects.all():
+            updated_fields[field_config.key_name] = {
+                'published_value': get_tenant_config_value(tenant.lms_configs, field_config.path, published_only=True),
+                'draft_value': get_tenant_config_value(tenant.lms_configs, field_config.path, draft_only=True),
+            }
+        return updated_fields
+    except TenantConfig.DoesNotExist as exc:
+        raise FXCodedException(
+            code=FXExceptionCodes.TENANT_NOT_FOUND,
+            message=f'Unable to find tenant with id: {tenant_id}'
+        ) from exc
+
+
+def delete_draft_tenant_config(tenant_id: int) -> None:
+    """
+    Deletes the draft configuration for the specified tenant.
+
+    :param tenant_id: The ID of the tenant whose draft config needs to be deleted.
+    :type tenant_id: int
+    """
+    try:
+        tenant = TenantConfig.objects.get(id=tenant_id)
+        tenant.lms_configs['config_draft'] = {}
+        tenant.save()
+    except TenantConfig.DoesNotExist as exc:
+        raise FXCodedException(
+            code=FXExceptionCodes.TENANT_NOT_FOUND,
+            message=f'Unable to find tenant with id: {tenant_id}'
+        ) from exc
+
+
+def update_draft_tenant_config(
+    tenant_id: int, key_path: str, current_value: Any, new_value: Any, reset: bool = False
+) -> None:
+    """
+    Updates 'config_draft.<key_path>' inside the JSON field 'lms_configs' in TenantConfig.
+
+    :param tenant_id: ID of the tenant.
+    :param key_path: JSON key path to update.
+    :param current_value: Expected current value for validation.
+    :param new_value: New value to be updated.
+    :param reset: Whether to reset the value to None.
+    :raises FXCodedException: If the tenant does not exist or update fails.
+    """
+
+    if not TenantConfig.objects.filter(id=tenant_id).exists():
+        raise FXCodedException(
+            code=FXExceptionCodes.TENANT_NOT_FOUND,
+            message=f'Tenant with ID {tenant_id} not found.'
+        )
+
+    queryset = TenantConfig.objects.filter(id=tenant_id)
+    queryset = annotate_tenant_config_queryset(queryset, key_path)
+
+    condition = (
+        Q(config_draft_exists=False, root_key_exists=False) |
+        Q(config_draft_exists=True, config_draft_value=current_value) |
+        Q(config_draft_exists=False, root_key_exists=True, root_value=current_value)
+    )
+
+    updated = queryset.filter(condition).update(
+        lms_configs=apply_json_merge_patch(F('lms_configs'), key_path, new_value, reset)
+    )
+
+    if updated == 0:
+        raise FXCodedException(
+            code=FXExceptionCodes.UPDATE_FAILED,
+            message=(
+                f'Failed to update config for tenant {tenant_id}. Key path may not exist or current value mismatch.'
+            )
+        )

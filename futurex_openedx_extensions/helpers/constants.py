@@ -123,3 +123,11 @@ USER_KEY_TYPE_NOT_ID = 'username/email'
 CSV_TASK_LIMIT_PER_USER = 3
 
 FX_VIEW_DEFAULT_AUTH_CLASSES = [SessionAuthentication, BearerAuthentication]
+
+KEY_TYPE_MAP = {
+    'string': str,
+    'integer': int,
+    'boolean': bool,
+    'dict': dict,
+    'list': list,
+}

@@ -299,25 +299,31 @@ def test_view_user_mapping_model_form_extra_attributes(attribute_name):
     [
         (
             {'themev2': {'footer': {'linkedin_url': 'https://linkedin.com'}}},
-            'themev2, footer, linkedin_url',
+            'themev2.footer.linkedin_url',
             None,
             'Valid path should pass without errors.'
         ),
         (
+            {'themev2': {'footer': {'linkedin_url': 'https://linkedin.com'}}},
+            'themev2. footer.linkedin_url',
+            'Key path must not contain spaces.',
+            'key_path should not conatin any spaces.'
+        ),
+        (
             {'themev2': {'footer': {}}},
-            'invalid-start, path',
+            'invalid-start.path',
             'Invalid path: "invalid-start" does not exist in the default config.',
             'Invalid key should raise a proper error.'
         ),
         (
             {'themev2': {'footer': {}}},
-            'themev2, footer, linkedin_url',
+            'themev2.footer.linkedin_url',
             'Path "themev2.footer" found in default config but unable to find "linkedin_url" in "themev2.footer"',
             'Partial path match but missing final key should show accurate error.'
         ),
         (
             {'themev2': {'header': {}}},
-            'themev2, footer',
+            'themev2.footer',
             'Path "themev2" found in default config but unable to find "footer" in "themev2"',
             'Valid parent but invalid child key should provide informative feedback.'
         ),
@@ -331,6 +337,7 @@ def test_config_access_control_form_clean_path(mock_get, default_config, input_p
         'path': input_path,
         'key_name': 'test_key',
         'writable': True,
+        'key_type': 'string'
     }
     form = ConfigAccessControlForm(data=form_data)
 
