@@ -102,6 +102,18 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
     """
     tenant_ids = list(get_all_tenants().values_list('id', flat=True))
     info = TenantConfig.objects.filter(id__in=tenant_ids).values('id', 'route__domain', 'lms_configs')
+    sso_sites: Dict[str, List[Dict[str, str]]] = {}
+    for sso_site in SAMLProviderConfig.objects.current_set().filter(
+        entity_id__in=settings.FX_SSO_INFO, enabled=True,
+    ).values('site__domain', 'slug', 'entity_id'):
+        site_domain = sso_site['site__domain']
+        if site_domain not in sso_sites:
+            sso_sites[site_domain] = []
+        sso_sites[site_domain].append({
+            'slug': sso_site['slug'],
+            'entity_id': sso_site['entity_id'],
+        })
+
     return {
         'tenant_ids': tenant_ids,
         'sites': {
@@ -124,13 +136,7 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
         'tenant_by_site': {
             tenant['route__domain']: tenant['id'] for tenant in info
         },
-        'special_info': {
-            'nafath_sites': list(
-                SAMLProviderConfig.objects.filter(
-                    entity_id=settings.FX_NAFATH_ENTRY_ID, enabled=True,
-                ).values_list('site__domain', flat=True)
-            ),
-        },
+        'sso_sites': sso_sites,
     }
 
 
@@ -313,9 +319,9 @@ def get_tenants_sites(tenant_ids: List[int]) -> List[str]:
     return tenant_sites
 
 
-def get_nafath_sites() -> List:
-    """Get all nafath sites"""
-    return get_all_tenants_info()['special_info']['nafath_sites']
+def get_sso_sites() -> Dict[str, List[Dict[str, int]]]:
+    """Get all SSO sites"""
+    return get_all_tenants_info()['sso_sites']
 
 
 def generate_tenant_config(sub_domain: str, platform_name: str) -> dict:

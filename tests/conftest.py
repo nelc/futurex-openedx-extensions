@@ -7,6 +7,7 @@ from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from custom_reg_form.models import ExtraInfo
 from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
 from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
@@ -265,6 +266,13 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
                     if GeneratedCertificate.objects.count() % 2 == 0:
                         created_date -= datetime.timedelta(days=11)
 
+    def _create_sites():
+        """Create Sites."""
+        for _, tenant_config in _base_data['tenant_config'].items():
+            site_domain = tenant_config['lms_configs'].get('LMS_BASE')
+            if site_domain:
+                Site.objects.get_or_create(domain=site_domain)
+
     with django_db_blocker.unblock():
         _create_users()
         _create_tenants()
@@ -275,3 +283,4 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
         _create_ignored_course_access_roles()
         _create_course_enrollments()
         _create_certificates()
+        _create_sites()

@@ -59,18 +59,16 @@ def plugin_settings(settings: Any) -> None:
         },
     )
 
-    # Nafath Entry Id
-    settings.FX_NAFATH_ENTRY_ID = getattr(
+    # FX SSO Information
+    settings.FX_SSO_INFO = getattr(
         settings,
-        'FX_NAFATH_ENTRY_ID',
-        '',
-    )
-
-    # Nafath Social Auth Provider
-    settings.FX_NAFATH_AUTH_PROVIDER = getattr(
-        settings,
-        'FX_NAFATH_AUTH_PROVIDER',
-        'tpa-saml',
+        'FX_SSO_INFO',
+        {
+            'dummy_entity_id': {
+                'external_id_field': 'uid',
+                'external_id_extractor': None,  # should be a valid function or lambda
+            },
+        },
     )
 
     # Default Tenant site
