@@ -12,6 +12,7 @@ from eox_tenant.models import Route, TenantConfig
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl
 
 
 @pytest.fixture
@@ -419,3 +420,166 @@ def test_create_new_tenant_for_existing_route_and_tenant():
         tenants.create_new_tenant_config('testplatform', 'Test Platform Name')
     assert excinfo.value.code == FXExceptionCodes.ROUTE_ALREADY_EXIST.value
     assert str(excinfo.value) == 'Route already exists with site domain: (testplatform.local.overhang.io).'
+
+
+@pytest.mark.parametrize(
+    'config, path, published_only, draft_only, expected, usecase',
+    [
+        (
+            {'LMS_BASE': 'example.com'},
+            'LMS_BASE', False, False, 'example.com',
+            'Retrieve from published config (default behavior)'
+        ),
+        (
+            {'theme': {'colors': {'primary': 'blue'}}},
+            'theme,colors,primary', False, False, 'blue',
+            'Retrieve from nested published config'
+        ),
+        (
+            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
+            'LMS_BASE', False, False, 'draft.example.com',
+            'Retrieve from draft config when both published and draft exist'
+        ),
+        (
+            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
+            'LMS_BASE', True, False, 'example.com',
+            'Retrieve from published config when published_only=True'
+        ),
+        (
+            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
+            'LMS_BASE', False, True, 'draft.example.com',
+            'Retrieve from draft config when draft_only=True'
+        ),
+        (
+            {'config_draft': {'LMS_BASE': 'draft.example.com'}},
+            'UNKNOWN_KEY', False, False, None,
+            'Key missing in both draft and published config'
+        ),
+        (
+            {'LMS_BASE': 'example.com', 'config_draft': {}},
+            'LMS_BASE', False, False, 'example.com',
+            'Key missing in draft but present in published (fallback works)'
+        ),
+        (
+            {'config_draft': {'LMS_BASE': 'draft.example.com'}},
+            'LMS_BASE', True, False, None,
+            'Key exists only in draft and published_only=True is set'
+        ),
+        (
+            {'LMS_BASE': 'example.com'},
+            'LMS_BASE', False, True, None,
+            'Key exists only in published and draft_only=True is set'
+        ),
+        (
+            None,
+            'LMS_BASE', False, False, None,
+            'Config is None, should return None'
+        ),
+        (
+            {},
+            'LMS_BASE', False, False, None,
+            'Config is an empty dictionary, should return None'
+        ),
+    ]
+)
+def test_get_tenant_config_value(
+    config, path, published_only, draft_only, expected, usecase
+):  # pylint: disable=too-many-arguments
+    """Test get_tenant_config_value"""
+    assert tenants.get_tenant_config_value(
+        config, path, published_only, draft_only
+    ) == expected, f'Failed usecase: {usecase}'
+
+
+@pytest.mark.django_db
+def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
+    """Test get_draft_tenant_config"""
+    ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2,links,facebook')
+    assert tenants.get_draft_tenant_config(1) == {
+        'facebook_link': {
+            'published_value': 'facebook.com',
+            'draft_value': 'draft.facebook.com'
+        }
+    }
+    assert not tenants.get_draft_tenant_config(1000000), 'For invalid tenant_id it will return empty dict'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'current_value, new_value, reset, existing_config, expected_exception, expected_draft, use_case',
+    [
+        (
+            'old_value', 'new_value', False,
+            {},
+            FXCodedException, None,
+            'Tenant config missing'
+        ),
+        (
+            'old_value', 'new_value', False,
+            {'config_draft': {}},
+            FXCodedException, None,
+            'Invalid key path'
+        ),
+        (
+            'wrong old value', 'new value', False,
+            {'config_draft': {}, 'theme_v2': {'footer': {'link': 'old_value'}}},
+            FXCodedException, None,
+            'Current value mismatch'
+        ),
+        (
+            'old_value', 'new_value', False,
+            {'config_draft': {}, 'theme_v2': {'footer': {'link': 'old_value'}}},
+            None, {'theme_v2': {'footer': {'link': 'new_value'}}},
+            'Value only exists in publish config'
+        ),
+        (
+            'old_value', 'new_value', False,
+            {
+                'config_draft': {'theme_v2': {'footer': {'other_key': 'abc'}}},
+                'theme_v2': {'footer': {'link': 'old_value'}}
+            },
+            None, {'theme_v2': {'footer': {'link': 'new_value', 'other_key': 'abc'}}},
+            'Successful update when partial key path exists in draft config'
+        ),
+        (
+            'old_value', '', True,
+            {'config_draft': {'theme_v2': {'footer': {'link': 'old_value'}}}},
+            None, {'theme_v2': {'footer': {}}},
+            'Reset removes the key if it exists'
+        ),
+    ]
+)
+@patch('futurex_openedx_extensions.helpers.tenants.get_all_tenants_info')
+def test_update_draft_tenant_config(
+    mock_get_all_tenants_info,
+    current_value, new_value, reset, existing_config, expected_exception, expected_draft, use_case
+):  # pylint: disable=too-many-arguments
+    """Test update_draft_tenant_config"""
+    key_access_info = ConfigAccessControl.objects.create(key_name='footer_link', path='theme_v2,footer,link')
+    tenant_id = 1
+    mock_get_all_tenants_info.return_value = {'config': {tenant_id: existing_config}}
+
+    if expected_exception:
+        with pytest.raises(FXCodedException):
+            tenants.update_draft_tenant_config(tenant_id, key_access_info, current_value, new_value, reset)
+    else:
+        tenants.update_draft_tenant_config(tenant_id, key_access_info, current_value, new_value, reset)
+        tenant = TenantConfig.objects.get(id=1)
+        assert tenant.lms_configs['config_draft'] == expected_draft, (
+            f'Assertion failed for use case: {use_case}'
+        )
+
+
+@pytest.mark.django_db
+def test_delete_draft_tenant_config():
+    """Test delete_draft_tenant_config"""
+    with pytest.raises(FXCodedException) as exc_info:
+        tenants.delete_draft_tenant_config(10000)
+    assert exc_info.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
+    assert str(exc_info.value) == 'Unable to find tenant with id: 10000'
+
+    tenant = TenantConfig.objects.get(id=1)
+    assert tenant.lms_configs['config_draft'] != {}
+    tenants.delete_draft_tenant_config(1)
+    tenant.refresh_from_db()
+    assert tenant.lms_configs['config_draft'] == {}

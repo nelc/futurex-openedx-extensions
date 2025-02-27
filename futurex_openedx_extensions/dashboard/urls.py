@@ -59,7 +59,11 @@ urlpatterns = [
     re_path(r'^api/fx/version/v1/info/$', views.VersionInfoView.as_view(), name='version-info'),
 
     re_path(r'^api/fx/config/v1/editable/$', views.ConfigEditableInfoView.as_view(), name='config-editable-info'),
-    re_path(r'^api/fx/config/v1/draft/$', views.ThemeConfigDraftView.as_view(), name='theme-config-draft'),
+    re_path(
+        r'^api/fx/config/v1/draft/(?P<tenant_id>\d+)/$',
+        views.ThemeConfigDraftView.as_view(),
+        name='theme-config-draft'
+    ),
     re_path(r'^api/fx/config/v1/publish/$', views.ThemeConfigPublishView.as_view(), name='theme-config-publish'),
     re_path(r'^api/fx/config/v1/values/$', views.ThemeConfigRetrieveView.as_view(), name='theme-config-values'),
     re_path(r'^api/fx/config/v1/tenant/$', views.ThemeConfigTenantView.as_view(), name='theme-config-tenant'),

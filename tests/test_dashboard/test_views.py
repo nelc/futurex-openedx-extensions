@@ -1,5 +1,6 @@
 """Test views for the dashboard app"""
 # pylint: disable=too-many-lines
+import hashlib
 import json
 from datetime import date
 from unittest.mock import Mock, patch
@@ -15,6 +16,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.urls import resolve, reverse
 from django.utils.timezone import now, timedelta
+from eox_tenant.models import Route, TenantConfig
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
@@ -1075,7 +1077,8 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
             '1': {
                 'lms_root_url': 'https://s1.sample.com',
                 'studio_root_url': 'https://studio.example.com',
-                'platform_name': '', 'logo_image_url': ''
+                'platform_name': 's1 platform name',
+                'logo_image_url': '',
             },
             '2': {
                 'lms_root_url': 'https://s2.sample.com',
@@ -1127,7 +1130,8 @@ class TestAccessibleTenantsInfoViewV2(BaseTestViewMixin):
             '1': {
                 'lms_root_url': 'https://s1.sample.com',
                 'studio_root_url': 'https://studio.example.com',
-                'platform_name': '', 'logo_image_url': ''
+                'platform_name': 's1 platform name',
+                'logo_image_url': '',
             },
             '2': {
                 'lms_root_url': 'https://s2.sample.com',
@@ -1921,27 +1925,155 @@ class TestConfigEditableInfoView(BaseTestViewMixin):
         self.assertEqual(response.json(), expected_data)
 
 
+@ddt.ddt
+@pytest.mark.usefixtures('base_data')
 class TestThemeConfigDraftView(BaseTestViewMixin):
     """Tests for ThemeConfigDraftView"""
     VIEW_NAME = 'fx_dashboard:theme-config-draft'
 
     def test_draft_config_retrieve(self):
         """Verify that the view returns the correct response"""
+        tenant_config = TenantConfig.objects.get(id=1)
+        ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2,links,facebook')
         self.login_user(self.staff_user)
+        self.url_args = [tenant_config.id]
+        expected_result = {
+            'facebook_link': {
+                'published_value': 'facebook.com',
+                'draft_value': 'draft.facebook.com'
+            }
+        }
+        expected_hash = hashlib.sha256(
+            json.dumps(expected_result, sort_keys=True, separators=(',', ':')).encode()
+        ).hexdigest()
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert response.json()['updated_fields'] == expected_result
+        assert response.json()['draft_hash'] == expected_hash
+
+    @ddt.data(
+        (
+            {},
+            "Missing required parameter: 'key'"
+        ),
+        (
+            {'key': 'not-exist'},
+            'Invalid key, unable to find key: (not-exist) in config access control'
+        ),
+        (
+            {'key': 'non-writable'},
+            '(4001) Config Key: (non-writable) is not writable.'
+        ),
+        (
+            {'key': 123},
+            '(4001) Key name must be a string.'
+        ),
+        (
+            {'key': 'platform_name'},
+            '(4001) Provide either new_value or reset.'
+        ),
+        (
+            {'key': 'platform_name', 'reset': False},
+            '(4001) Provide either new_value or reset.'
+        ),
+        (
+            {'key': 'platform_name', 'new_value': '', 'reset': False},
+            '(4001) Provide either new_value or reset.'
+        ),
+        (
+            {'key': 'platform_name', 'reset': 'not-boolean'},
+            '(4001) Reset must be a boolean value.'
+        ),
+        (
+            {'key': 'platform_name', 'new_value': 'My new platform name'},
+            "Missing required parameter: 'current_value'"
+        ),
+        (
+            {'key': 'platform_name', 'current_value': 'new platform name', 'new_value': 123},
+            '(4001) New value type must match current value.'
+        ),
+    )
+    @ddt.unpack
+    def test_put_payload_validation(self, data, expected_reason):
+        """Verify that different validation cases return the correct error message."""
+        tenant_config = TenantConfig.objects.create(
+            external_key='test',
+            lms_configs={
+                'platform_name': 'my name',
+                'theme_v2': {'pages': ['home_page']},
+                'config_draft': {},
+                'LMS_BASE': 'example.com',
+                'non-writable': 'some data'
+            }
+        )
+        Route.objects.create(
+            domain='example.com',
+            config=tenant_config
+        )
+        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', writable=True)
+        ConfigAccessControl.objects.create(key_name='pages', path='theme_v2,pages', writable=True)
+        ConfigAccessControl.objects.create(key_name='non-writable', path='non-writable', writable=False)
+
+        self.login_user(self.staff_user)
+        self.url_args = [tenant_config.id]
+        response = self.client.put(self.url, data=data, format='json')
+
+        assert response.status_code == http_status.HTTP_400_BAD_REQUEST
+        assert response.data['reason'] == expected_reason
 
     def test_draft_config_update(self):
         """Verify that the view returns the correct response"""
+        tenant_config = TenantConfig.objects.get(id=1)
+        assert tenant_config.lms_configs['platform_name'] == 's1 platform name'
+        assert tenant_config.lms_configs['theme_v2']['pages'] == ['home_page']
+        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', writable=True)
+        ConfigAccessControl.objects.create(key_name='pages', path='theme_v2,pages', writable=True)
         self.login_user(self.staff_user)
-        response = self.client.put(self.url, data={}, format='json',)
+        self.url_args = [tenant_config.id]
+
+        response = self.client.put(
+            self.url,
+            data={'key': 'platform_name', 'current_value': 's1 platform name', 'new_value': 's1 new name'},
+            format='json'
+        )
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        tenant_config.refresh_from_db()
+        assert tenant_config.lms_configs['config_draft']['platform_name'] == 's1 new name', (
+            'Assertion failed: "platform_name" should contain updated value'
+        )
+
+        response = self.client.put(
+            self.url,
+            data={'key': 'pages', 'current_value': ['home_page'], 'new_value': ['home_page', 'new_page']},
+            format='json'
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        tenant_config.refresh_from_db()
+        assert tenant_config.lms_configs['config_draft']['theme_v2']['pages'] == ['home_page', 'new_page'], (
+            'Assertion failed: "pages" should contain updated value'
+        )
+
+        response = self.client.put(
+            self.url,
+            data={'key': 'pages', 'current_value': ['home_page', 'new_page'], 'reset': True},
+            format='json'
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        tenant_config.refresh_from_db()
+        assert 'pages' not in tenant_config.lms_configs['config_draft']['theme_v2'], (
+            'Assertion failed: "pages" key should not be present in theme_v2 after reset'
+        )
 
     def test_draft_config_delete(self):
         """Verify that the view returns the correct response"""
+        tenant_config = TenantConfig.objects.get(id=1)
+        assert tenant_config.lms_configs['config_draft'] != {}
         self.login_user(self.staff_user)
+        self.url_args = [tenant_config.id]
         response = self.client.delete(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        tenant_config.refresh_from_db()
+        assert tenant_config.lms_configs['config_draft'] == {}
 
 
 class TestThemeConfigPublishView(BaseTestViewMixin):
