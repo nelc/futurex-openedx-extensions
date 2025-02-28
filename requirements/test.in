@@ -18,6 +18,7 @@ eox-tenant
 edx-api-doc-tools
 edx-opaque-keys[django]
 djangorestframework
+django-config-models
 django-filter
 django-mysql
 django-simple-history
