@@ -143,7 +143,8 @@ def get_courses_queryset(
         certificates_count=Coalesce(Subquery(
             GeneratedCertificate.objects.filter(
                 course_id=OuterRef('id'),
-                status='downloadable'
+                status='downloadable',
+                user__is_active=True,
             ).annotate(
                 course__org=Subquery(
                     CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')

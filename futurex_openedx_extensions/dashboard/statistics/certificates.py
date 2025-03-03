@@ -32,6 +32,8 @@ def get_certificates_count(
     :type visible_courses_filter: bool | None
     :param active_courses_filter: Value to filter courses on active status. None means no filter.
     :type active_courses_filter: bool | None
+    :param include_staff: Include staff members in the count
+    :type include_staff: bool | None
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
@@ -50,6 +52,7 @@ def get_certificates_count(
                 visible_filter=visible_courses_filter,
                 active_filter=active_courses_filter,
             ),
+            user__is_active=True,
         )
         .annotate(
             course_org=Subquery(
@@ -129,6 +132,7 @@ def get_learning_hours_count(
             visible_filter=visible_courses_filter,
             active_filter=active_courses_filter,
         ),
+        user__is_active=True,
     )
 
     if not include_staff:

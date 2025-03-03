@@ -87,6 +87,7 @@ def get_certificates_count_for_learner_queryset(
     return Coalesce(Subquery(
         GeneratedCertificate.objects.filter(
             user_id=OuterRef('id'),
+            user__is_active=True,
             course_id__in=Subquery(
                 get_base_queryset_courses(
                     fx_permission_info,
@@ -181,6 +182,7 @@ def get_learners_by_course_queryset(
         certificate_available=Exists(
             GeneratedCertificate.objects.filter(
                 user_id=OuterRef('id'),
+                user__is_active=True,
                 course_id=course_id,
                 status='downloadable'
             )
@@ -307,6 +309,7 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
         certificate_available=Exists(
             GeneratedCertificate.objects.filter(
                 user_id=OuterRef('user_id'),
+                user__is_active=True,
                 course_id=OuterRef('course_id'),
                 status='downloadable'
             )
