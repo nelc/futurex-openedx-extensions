@@ -306,14 +306,16 @@ def test_learner_enrollments_serializer(mock_collect, base_data,):  # pylint: di
 
 
 @pytest.mark.django_db
-@patch('futurex_openedx_extensions.dashboard.serializers.get_nafath_sites')
-def test_learner_enrollments_serializer_for_nafath_id(mocked_get_nafath_sites):
-    """Ensure LearnerEnrollmentSerializer correctly processes nafath_id based on social auth conditions."""
-    site, _ = Site.objects.update_or_create(
-        domain='s2.sample.com',
-        defaults={'name': 's2.sample.com'}
-    )
-    mocked_get_nafath_sites.return_value = [site.domain]
+@patch('futurex_openedx_extensions.dashboard.serializers.get_sso_sites')
+def test_learner_enrollments_serializer_for_sso_external_id(mocked_get_sso_sites):
+    """Ensure LearnerEnrollmentSerializer correctly processes sso_external_id based on social auth conditions."""
+    site = Site.objects.get(domain='s1.sample.com')
+    mocked_get_sso_sites.return_value = {
+        site.domain: [{
+            'slug': 'site_slug',
+            'entity_id': 'testing_entity_id1',
+        }]
+    }
     queryset = CourseEnrollment.objects.filter(user_id=10, course_id='course-v1:ORG3+1+1').annotate(
         certificate_available=Value(True),
         course_score=Value(0.67),
@@ -321,26 +323,34 @@ def test_learner_enrollments_serializer_for_nafath_id(mocked_get_nafath_sites):
     )
     context = {
         'course_id': 'course-v1:ORG3+1+1',
-        'requested_optional_field_tags': ['nafath_id']
+        'requested_optional_field_tags': ['sso_external_id']
     }
 
-    def assert_nafath_id(expected, msg):
-        """Helper to serialize and assert nafath_id."""
+    def assert_sso_external_id(expected, msg):
+        """Helper to serialize and assert sso_external_id."""
         serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
-        assert serializer.data[0].get('nafath_id') == expected, msg
+        assert serializer.data[0].get('sso_external_id') == expected, msg
 
-    assert_nafath_id('', 'nafath_id should be empty when no social auth exists')
+    assert_sso_external_id('', 'sso_external_id should be empty when no social auth exists')
 
-    queryset[0].user.social_auth.create(provider='other_provider', extra_data={'uid': ['12345']})
-    assert_nafath_id('', 'nafath_id should be empty for an incorrect provider')
+    queryset[0].user.social_auth.create(
+        provider='other_provider',
+        uid='testing_entity_id1:whatever',
+        extra_data={'test_uid': ['12345']}
+    )
+    assert_sso_external_id('', 'sso_external_id should be empty for an incorrect provider')
 
-    queryset[0].user.social_auth.create(provider=settings.FX_NAFATH_AUTH_PROVIDER, extra_data={'uid': ['12345']})
-    assert_nafath_id('12345', 'nafath_id should be returned when the correct provider and single UID exist')
+    queryset[0].user.social_auth.create(
+        provider='tpa_saml',
+        uid='testing_entity_id1:whatever',
+        extra_data={'test_uid': ['12345']}
+    )
+    assert_sso_external_id('12345', 'sso_external_id should be returned when the correct provider and single UID exist')
 
-    social_auth = queryset[0].user.social_auth.get(provider=settings.FX_NAFATH_AUTH_PROVIDER)
-    social_auth.extra_data = {'uid': ['12345', 'another-id']}
+    social_auth = queryset[0].user.social_auth.get(provider='tpa_saml')
+    social_auth.extra_data = {'test_uid': ['12345', 'another-id']}
     social_auth.save()
-    assert_nafath_id('', 'nafath_id should be empty when multiple UIDs are present')
+    assert_sso_external_id('', 'sso_external_id should be empty when multiple UIDs are present')
 
 
 @pytest.mark.django_db

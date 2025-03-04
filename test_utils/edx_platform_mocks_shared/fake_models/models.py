@@ -1,6 +1,7 @@
 """edx-platform models mocks for testing purposes."""
 import re
 
+from config_models.models import ConfigurationModel
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
@@ -322,12 +323,15 @@ class CourseAccessRoleForm(forms.ModelForm):
     role = forms.ChoiceField(choices=COURSE_ACCESS_ROLES)
 
 
-class SAMLProviderConfig(models.Model):
+class SAMLProviderConfig(ConfigurationModel):
     """Mock"""
+    KEY_FIELDS = ('slug',)
+
     site = models.ForeignKey(Site, default=1, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     enabled = models.BooleanField(default=False)
     entity_id = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=30, db_index=True, default='default')
 
     class Meta:
         app_label = 'fake_models'
