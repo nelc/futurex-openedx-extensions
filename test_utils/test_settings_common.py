@@ -111,8 +111,18 @@ FX_DASHBOARD_STORAGE_DIR = 'test_dir'
 
 FX_DEFAULT_COURSE_EFFORT = 20
 
-FX_NAFATH_ENTRY_ID = 'abc.com'
-FX_NAFATH_AUTH_PROVIDER = 'dummy-provider'
+FX_SSO_INFO = {
+    'testing_entity_id1': {
+        'external_id_field': 'test_uid',
+        'external_id_extractor': lambda value: (
+            value[0] if isinstance(value, list) and len(value) == 1 else '' if isinstance(value, list) else value
+        )
+    },
+    'testing_entity_id2': {
+        'external_id_field': 'test_uid2',
+        'external_id_extractor': lambda value: value,
+    },
+}
 
 FX_DEFAULT_TENANT_SITE = 'default.example.com'
 FX_TENANTS_BASE_DOMAIN = 'local.overhang.io'
