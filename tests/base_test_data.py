@@ -7,6 +7,20 @@ _base_data = {
                 'LMS_BASE': 's1.sample.com',
                 'course_org_filter': ['ORG1', 'ORG2', 'Org1'],
                 'IS_FX_DASHBOARD_ENABLED': True,
+                'platform_name': 's1 platform name',
+                'theme_v2': {
+                    'pages': ['home_page'],
+                    'links': {
+                        'facebook': 'facebook.com'
+                    }
+                },
+                'config_draft': {
+                    'theme_v2': {
+                        'links': {
+                            'facebook': 'draft.facebook.com'
+                        }
+                    }
+                }
             },
         },
         2: {  # Organisation is duplicated with tenant 7 and 8

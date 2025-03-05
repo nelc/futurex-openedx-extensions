@@ -7,6 +7,8 @@ omit =
     test_settings_sumac.py
     */migrations/*
     */static/*
+    # Ignore mysql fucntions not supported by SQLITE i.e JSON_MERGE_PATCH
+    futurex_openedx_extensions/helpers/mysql_functions.py
     # Ignore the models_switch.py file since it cannot be tested in all environments, so coverage will never be 100%
     futurex_openedx_extensions/upgrade/models_switch.py
     # Version specific code for anything not redwood

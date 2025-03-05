@@ -150,3 +150,17 @@ def test_date_methods_valid_supported_methods():
 def test_dt_to_str(value, expected_result):
     """Verify that dt_to_str return the correct string."""
     assert converters.dt_to_str(value) == expected_result
+
+
+@pytest.mark.parametrize(
+    'path, value, expected_output',
+    [
+        ('key1', 'value1', {'key1': 'value1'}),
+        ('key1.key2.key3', 'value3', {'key1': {'key2': {'key3': 'value3'}}}),
+        ('key1.key2.key3.key4', 'value4', {'key1': {'key2': {'key3': {'key4': 'value4'}}}}),
+    ]
+)
+def test_path_to_json(path, value, expected_output):
+    """Verify that path_to_json returns correct data"""
+    result = converters.path_to_json(path, value)
+    assert result == expected_output, f'Expected {expected_output}, but got {result}'
