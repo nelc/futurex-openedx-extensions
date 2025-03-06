@@ -3,6 +3,7 @@
 import json
 from typing import Any
 
+from django.db import transaction
 from django.db.models import BooleanField, F, Func, JSONField, QuerySet, Value
 from django.db.models.functions import Cast
 
@@ -31,9 +32,9 @@ class JsonPathExists(Func):
         return NotImplemented
 
 
-def annotate_tenant_config_queryset(queryset: QuerySet, key_path: str) -> QuerySet:
+def annotate_queryset_for_update_draft_config(queryset: QuerySet, key_path: str) -> QuerySet:
     """
-    Annotates the TenantConfig queryset with JSON path existence and extracted values.
+    For Draft tenant config update, annotates the queryset with JSON path existence and extracted values.
 
     :param queryset: The queryset to annotate.
     :param key_path: The key path to check in the JSON field.
@@ -54,9 +55,9 @@ def annotate_tenant_config_queryset(queryset: QuerySet, key_path: str) -> QueryS
     )
 
 
-def apply_json_merge_patch(existing_json: F, key_path: str, new_value: Any, reset: bool) -> Func:
+def apply_json_merge_for_update_draft_config(existing_json: F, key_path: str, new_value: Any, reset: bool) -> Func:
     """
-    Applies JSON_MERGE_PATCH to update the JSON field with the new config value.
+    For Draft tenant config update, applies JSON_MERGE_PATCH to update the JSON field with the new config value .
 
     :param existing_json: The existing JSON field (F object).
     :param key_path: JSON key path to update.
@@ -65,10 +66,39 @@ def apply_json_merge_patch(existing_json: F, key_path: str, new_value: Any, rese
     :return: A Func object performing the JSON_MERGE_PATCH operation.
     """
     new_config = {'config_draft': path_to_json(key_path, None if reset else new_value)}
-
     return Func(
         Func(existing_json, Value('{}'), function='IFNULL'),
         Cast(Value(json.dumps(new_config)), JSONField()),
         function='JSON_MERGE_PATCH',
         output_field=JSONField()
     )
+
+
+def apply_json_merge_for_publish_draft_config(queryset: QuerySet) -> int:
+    """
+    For Publish tenant config, applies JSON_MERGE_PATCH that will publish draft config and set draft config empty
+
+    :param existing_json: The existing JSON field (F object).
+    :param key_path: JSON key path to update.
+    :param new_value: New value to merge.
+    :param reset: Whether to reset the value to None.
+    :return: A Func object performing the JSON_MERGE_PATCH operation.
+    """
+    with transaction.atomic():
+        queryset.update(
+            lms_configs=Func(
+                F('lms_configs'),
+                Cast(Value(json.dumps(queryset[0].lms_configs.get('config_draft'))), JSONField()),
+                function='JSON_MERGE_PATCH'
+            )
+        )
+        updated = queryset.update(
+            lms_configs=Func(
+                F('lms_configs'),
+                Value('$.config_draft'),
+                Value('{}'),
+                function='JSON_SET'
+            )
+        )
+        return updated
+    return 0

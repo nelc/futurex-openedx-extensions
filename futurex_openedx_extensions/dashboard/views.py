@@ -87,6 +87,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_excluded_tenant_ids,
     get_tenant_config,
     get_tenants_info,
+    publish_tenant_config,
     update_draft_tenant_config,
 )
 from futurex_openedx_extensions.helpers.users import get_user_by_key
@@ -1318,23 +1319,57 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
     fx_view_name = 'theme_config_publish'
     fx_view_description = 'api/fx/config/v1/publish/: Get editable settings of config'
 
-    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+    @staticmethod
+    def validate_payload(data: dict) -> dict:
+        """
+        Validates the payload.
+
+        :param data: The payload data from the request
+        :raises FXCodedException: If the payload data is invalid
+        """
+        tenant_id = data.get('tenant_id')
+        if not tenant_id or not isinstance(tenant_id, int):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Tenant id is required and must be an int.'
+            )
+
+        draft_hash = data.get('draft_hash')
+        if not draft_hash or not isinstance(draft_hash, str):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Draft hash is reuired and must be a string.'
+            )
+        current_draft = get_draft_tenant_config(tenant_id)
+        current_draft_hash = dict_to_hash(current_draft)
+        if current_draft_hash != draft_hash:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Draft hash mismatched with current draft values hash.'
+            )
+        return current_draft
+
+    @staticmethod
+    def rename_keys(updated_fields: dict) -> dict:
+        """
+        Rename 'published_value' to 'old_value' and 'draft_value' to 'new_value
+        """
+        renamed_data = {}
+        for key, value in updated_fields.items():
+            renamed_data[key] = {
+                'old_value': value.get('published_value', None),
+                'new_value': value.get('draft_value', None)
+            }
+        return renamed_data
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         POST /api/fx/config/v1/publish/
         """
-
-        return JsonResponse({
-            'updated_fields': {
-                'platform_name': {
-                    'old_value': 'my platform name',
-                    'new_value': 'My Awesome Platform'
-                },
-                'primary_color': {
-                    'old_value': '#ff0000',
-                    'new_value': '#ffff00'
-                }
-            }
-        })
+        data = request.data
+        updated_fields = self.validate_payload(data)
+        publish_tenant_config(data['tenant_id'])
+        return JsonResponse({'updated_fields': self.rename_keys(updated_fields)})
 
 
 @docs('ThemeConfigRetrieveView.get')

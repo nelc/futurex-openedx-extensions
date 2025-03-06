@@ -433,72 +433,90 @@ def test_create_new_tenant_for_existing_route_and_tenant():
 
 
 @pytest.mark.parametrize(
-    'config, path, published_only, draft_only, expected, usecase',
+    'config, path, published_only, draft_only, expected_value, expected_path_exist, usecase',
     [
         (
+            {'Other': 'some value'},
+            'LMS_BASE', False, False, None, False,
+            'Key missing in both draft and published config, path exist should be False with value None'
+        ),
+        (
+            {'Other': 'some value', 'LMS_BASE': None},
+            'LMS_BASE', False, False, None, True,
+            'Only root config contains value as None, path exist should be True with value None'
+        ),
+        (
             {'LMS_BASE': 'example.com'},
-            'LMS_BASE', False, False, 'example.com',
-            'Retrieve from published config (default behavior)'
+            'LMS_BASE', False, False, 'example.com', True,
+            'Retrieve from published config, when draft does not exist (default behavior)'
         ),
         (
             {'theme': {'colors': {'primary': 'blue'}}},
-            'theme.colors.primary', False, False, 'blue',
-            'Retrieve from nested published config'
+            'theme.colors.primary', False, False, 'blue', True,
+            'Retrieve from nested published config, when draft does not exist'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', False, False, 'draft.example.com',
+            'LMS_BASE', False, False, 'draft.example.com', True,
             'Retrieve from draft config when both published and draft exist'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', True, False, 'example.com',
+            'LMS_BASE', True, False, 'example.com', True,
             'Retrieve from published config when published_only=True'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', False, True, 'draft.example.com',
-            'Retrieve from draft config when draft_only=True'
+            'LMS_BASE', False, True, 'draft.example.com', True,
+            'Retrieve from draft config when draft_only=True',
         ),
         (
-            {'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'UNKNOWN_KEY', False, False, None,
-            'Key missing in both draft and published config'
+            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': None}},
+            'LMS_BASE', False, True, None, True,
+            'Retrieve from draft config when draft_only=True even if value is None with path_exist should be True'
+        ),
+        (
+            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': ''}},
+            'LMS_BASE', False, True, '', True,
+            'Retrieve from draft config when draft_only=True even if value is empty with path_exist should be True'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {}},
-            'LMS_BASE', False, False, 'example.com',
+            'LMS_BASE', False, True, None, False,
+            'Key exists only in published and draft_only=True, retrieve from the draft config'
+            'with path_exist=False and value=None'
+        ),
+        (
+            {'LMS_BASE': 'example.com', 'config_draft': {}},
+            'LMS_BASE', False, False, 'example.com', True,
             'Key missing in draft but present in published (fallback works)'
         ),
         (
             {'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', True, False, None,
+            'LMS_BASE', True, False, None, False,
             'Key exists only in draft and published_only=True is set'
         ),
         (
-            {'LMS_BASE': 'example.com'},
-            'LMS_BASE', False, True, None,
-            'Key exists only in published and draft_only=True is set'
-        ),
-        (
             None,
-            'LMS_BASE', False, False, None,
+            'LMS_BASE', False, False, None, False,
             'Config is None, should return None'
         ),
         (
             {},
-            'LMS_BASE', False, False, None,
+            'LMS_BASE', False, False, None, False,
             'Config is an empty dictionary, should return None'
         ),
     ]
 )
 def test_get_tenant_config_value(
-    config, path, published_only, draft_only, expected, usecase
+    config, path, published_only, draft_only, expected_value, expected_path_exist, usecase
 ):  # pylint: disable=too-many-arguments
     """Test get_tenant_config_value"""
-    assert tenants.get_tenant_config_value(
+    path_exist, value = tenants.get_tenant_config_value(
         config, path, published_only, draft_only
-    ) == expected, f'Failed usecase: {usecase}'
+    )
+    assert value == expected_value, f'Failed usecase: {usecase}'
+    assert path_exist == expected_path_exist, f'Failed usecase: {usecase}'
 
 
 @pytest.mark.django_db
@@ -612,9 +630,9 @@ def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.tenants.TenantConfig.objects.filter')
-@patch('futurex_openedx_extensions.helpers.tenants.annotate_tenant_config_queryset')
-@patch('futurex_openedx_extensions.helpers.tenants.apply_json_merge_patch')
-def test_update_draft_tenant_config(mock_apply_json_merge_patch, mock_annotate_queryset, mock_filter):
+@patch('futurex_openedx_extensions.helpers.tenants.annotate_queryset_for_update_draft_config')
+@patch('futurex_openedx_extensions.helpers.tenants.apply_json_merge_for_update_draft_config')
+def test_update_draft_tenant_config(mock_update_draft_json_merge, mock_annotate_queryset, mock_filter):
     """Test the update_draft_tenant_config function for both successful and unsuccessful updates."""
     tenant_id = 1
     key_path = 'some_key_path'
@@ -625,10 +643,10 @@ def test_update_draft_tenant_config(mock_apply_json_merge_patch, mock_annotate_q
     mock_filter.return_value.exists.return_value = True
     mock_filter.return_value = TenantConfig.objects.filter(id=tenant_id)
     mock_annotate_queryset.return_value = mock_filter.return_value
-    mock_apply_json_merge_patch.return_value = MagicMock()
+    mock_update_draft_json_merge.return_value = MagicMock()
     tenants.update_draft_tenant_config(1, key_path, current_value, new_value, reset)
     mock_annotate_queryset.assert_called_with(mock_filter.return_value, key_path)
-    mock_apply_json_merge_patch.assert_called_once_with(F('lms_configs'), key_path, new_value, reset)
+    mock_update_draft_json_merge.assert_called_once_with(F('lms_configs'), key_path, new_value, reset)
     mock_filter.return_value.filter.return_value.update.assert_called_once()
 
     mock_filter.return_value.filter.return_value.update.return_value = 0
@@ -663,3 +681,29 @@ def test_delete_draft_tenant_config():
     tenants.delete_draft_tenant_config(1)
     tenant.refresh_from_db()
     assert tenant.lms_configs['config_draft'] == {}
+
+
+@pytest.mark.parametrize('tenant_exists, merge_result, expected_exception, usecase', [
+    (False, None, 'Tenant with ID 123 not found.', 'Tenant does not exist'),
+    (True, 0, 'Failed to publish config for tenant 123.', 'Merge function returns 0 (publish failed)'),
+    (True, 1, None, 'Successful publish'),
+])
+@patch('futurex_openedx_extensions.helpers.tenants.TenantConfig.objects.filter')
+@patch('futurex_openedx_extensions.helpers.tenants.apply_json_merge_for_publish_draft_config')
+def test_publish_tenant_config(
+    mock_json_merge, mock_tenant_filter, tenant_exists, merge_result, expected_exception, usecase
+):  # pylint: disable=too-many-arguments
+    """Test publish_tenant_config"""
+    tenant_id = 123
+    mock_queryset = MagicMock()
+    mock_queryset.exists.return_value = tenant_exists
+    mock_tenant_filter.return_value = mock_queryset
+    mock_json_merge.return_value = merge_result
+
+    if expected_exception:
+        with pytest.raises(FXCodedException) as exc_info:
+            tenants.publish_tenant_config(tenant_id)
+        assert str(exc_info.value) == expected_exception, f'Unexpected exception message for case: {usecase}'
+    else:
+        tenants.publish_tenant_config(tenant_id)
+        mock_json_merge.assert_called_once_with(mock_queryset)

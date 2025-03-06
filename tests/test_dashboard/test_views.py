@@ -27,6 +27,7 @@ from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.converters import dict_to_hash
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DataExportTask, ViewAllowedRoles
@@ -2080,15 +2081,53 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
         assert tenant_config.lms_configs['config_draft'] == {}
 
 
+@ddt.ddt
 class TestThemeConfigPublishView(BaseTestViewMixin):
     """Tests for ThemeConfigPublishView"""
     VIEW_NAME = 'fx_dashboard:theme-config-publish'
 
-    def test_success(self):
+    @patch('futurex_openedx_extensions.dashboard.views.publish_tenant_config')
+    def test_success(self, mocked_publish_config):
+        """Verify that the view returns the correct response"""
+        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', key_type='string')
+        ConfigAccessControl.objects.create(key_name='pages', path='theme_v2.pages', key_type='list')
+        ConfigAccessControl.objects.create(key_name='links', path='theme_v2.links.facebook', key_type='string')
+        updated_fields = {'links': {'published_value': 'facebook.com', 'draft_value': 'draft.facebook.com'}}
+        expected_return_value = {
+            'updated_fields': {
+                'links': {'old_value': 'facebook.com', 'new_value': 'draft.facebook.com'}
+            }
+        }
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'draft_hash': dict_to_hash(updated_fields),
+            'tenant_id': 1
+        }, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        mocked_publish_config.assert_called_once_with(1)
+        self.assertEqual(response.json(), expected_return_value)
+
+    @ddt.data(
+        ('does-not-matter', None, 'Tenant id is required and must be an int.'),
+        ('does-not-matter', [], 'Tenant id is required and must be an int.'),
+        ('does-not-matter', '', 'Tenant id is required and must be an int.'),
+        ('does-not-matter', 'non-int', 'Tenant id is required and must be an int.'),
+        ('does-not-matter', '1', 'Tenant id is required and must be an int.'),
+        (None, 1, 'Draft hash is reuired and must be a string.'),
+        ('', 1, 'Draft hash is reuired and must be a string.'),
+        (['not str'], 1, 'Draft hash is reuired and must be a string.'),
+        ('invalid_hash', 1, 'Draft hash mismatched with current draft values hash.'),
+    )
+    @ddt.unpack
+    def test_validations(self, draft_hash, tenant_id, expected_error):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={}, format='json',)
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        response = self.client.post(self.url, data={
+            'draft_hash': draft_hash,
+            'tenant_id': tenant_id
+        }, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('reason'), expected_error)
 
 
 @ddt.ddt
