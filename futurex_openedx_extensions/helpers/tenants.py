@@ -16,7 +16,11 @@ from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_ca
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl
-from futurex_openedx_extensions.helpers.mysql_functions import annotate_tenant_config_queryset, apply_json_merge_patch
+from futurex_openedx_extensions.helpers.mysql_functions import (
+    annotate_queryset_for_update_draft_config,
+    apply_json_merge_for_publish_draft_config,
+    apply_json_merge_for_update_draft_config,
+)
 
 
 def get_excluded_tenant_ids() -> Dict[int, List[int]]:
@@ -378,7 +382,7 @@ def create_new_tenant_config(sub_domain: str, platform_name: str) -> TenantConfi
     return tenant_config
 
 
-def get_tenant_config_value(config: dict, path: str, published_only: bool = False, draft_only: bool = False) -> Any:
+def get_tenant_config_value(config: dict, path: str, published_only: bool = False, draft_only: bool = False) -> tuple:
     """
     Retrieves a configuration value based on a comma-separated path.
     - If `published_only` is True, fetches only from the main config.
@@ -391,19 +395,19 @@ def get_tenant_config_value(config: dict, path: str, published_only: bool = Fals
     :param draft_only: If True, fetches only the draft value.
     :return: The configuration value or None if not found.
     """
-    def get_nested_value(config: dict, path: str) -> Any:
+    def get_nested_value(config: dict, path: str) -> tuple:
         """
         Retrieves a value from a nested dictionary based on a comma-separated path.
         """
         keys = [key.strip() for key in path.split('.')]
         for key in keys:
             if not isinstance(config, dict) or key not in config:
-                return None
+                return (False, None)
             config = config[key]
-        return config
+        return (True, config)
 
     if not config:
-        return None
+        return (False, None)
 
     if published_only:
         return get_nested_value(config, path)
@@ -411,8 +415,8 @@ def get_tenant_config_value(config: dict, path: str, published_only: bool = Fals
     if draft_only:
         return get_nested_value(config.get('config_draft', {}), path)
 
-    draft_value = get_nested_value(config.get('config_draft', {}), path)
-    return draft_value if draft_value is not None else get_nested_value(config, path)
+    draft_path_exist, draft_value = get_nested_value(config.get('config_draft', {}), path)
+    return (draft_path_exist, draft_value) if draft_path_exist else get_nested_value(config, path)
 
 
 def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = False) -> Dict[str, Any]:
@@ -438,9 +442,10 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Fa
         key = key.strip()
         try:
             key_config = ConfigAccessControl.objects.get(key_name=key)
-            details['values'][key_config.key_name] = get_tenant_config_value(
+            _, publish_value = get_tenant_config_value(
                 tenant.lms_configs, key_config.path, published_only=published_only
             )
+            details['values'][key_config.key_name] = publish_value
         except ConfigAccessControl.DoesNotExist:
             details['bad_keys'].append(key)
     return details
@@ -448,8 +453,7 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Fa
 
 def get_draft_tenant_config(tenant_id: int) -> dict:
     """
-    Fetches configuration for the specified tenant and returns fields that differ
-    between the published and draft configurations.
+    Fetches configuration for the specified tenant and returns all draft fields with publsihed and draft values
 
     :param tenant_id: The ID of the tenant whose draft configuration is to be retrieved.
     :type tenant_id: int
@@ -460,10 +464,17 @@ def get_draft_tenant_config(tenant_id: int) -> dict:
         tenant = TenantConfig.objects.get(id=tenant_id)
         updated_fields = {}
         for field_config in ConfigAccessControl.objects.all():
-            updated_fields[field_config.key_name] = {
-                'published_value': get_tenant_config_value(tenant.lms_configs, field_config.path, published_only=True),
-                'draft_value': get_tenant_config_value(tenant.lms_configs, field_config.path, draft_only=True),
-            }
+            _, published_value = get_tenant_config_value(
+                tenant.lms_configs, field_config.path, published_only=True
+            )
+            draft_path_exist, draft_value = get_tenant_config_value(
+                tenant.lms_configs, field_config.path, draft_only=True
+            )
+            if draft_path_exist:
+                updated_fields[field_config.key_name] = {
+                    'published_value': published_value,
+                    'draft_value': draft_value,
+                }
         return updated_fields
     except TenantConfig.DoesNotExist as exc:
         raise FXCodedException(
@@ -511,7 +522,7 @@ def update_draft_tenant_config(
         )
 
     queryset = TenantConfig.objects.filter(id=tenant_id)
-    queryset = annotate_tenant_config_queryset(queryset, key_path)
+    queryset = annotate_queryset_for_update_draft_config(queryset, key_path)
 
     condition = (
         Q(config_draft_exists=False, root_key_exists=False) |
@@ -520,7 +531,7 @@ def update_draft_tenant_config(
     )
 
     updated = queryset.filter(condition).update(
-        lms_configs=apply_json_merge_patch(F('lms_configs'), key_path, new_value, reset)
+        lms_configs=apply_json_merge_for_update_draft_config(F('lms_configs'), key_path, new_value, reset)
     )
 
     if updated == 0:
@@ -528,5 +539,29 @@ def update_draft_tenant_config(
             code=FXExceptionCodes.UPDATE_FAILED,
             message=(
                 f'Failed to update config for tenant {tenant_id}. Key path may not exist or current value mismatch.'
+            )
+        )
+
+
+def publish_tenant_config(tenant_id: int) -> None:
+    """
+    Publish draft config for given tenant
+
+    :param tenant_id: ID of the tenant.
+    :raises FXCodedException: If publish fails.
+    """
+    queryset = TenantConfig.objects.filter(id=tenant_id)
+    if not queryset.exists():
+        raise FXCodedException(
+            code=FXExceptionCodes.TENANT_NOT_FOUND,
+            message=f'Tenant with ID {tenant_id} not found.'
+        )
+
+    updated = apply_json_merge_for_publish_draft_config(queryset)
+    if updated == 0:
+        raise FXCodedException(
+            code=FXExceptionCodes.UPDATE_FAILED,
+            message=(
+                f'Failed to publish config for tenant {tenant_id}.'
             )
         )
