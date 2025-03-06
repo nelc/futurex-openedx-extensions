@@ -85,6 +85,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     delete_draft_tenant_config,
     get_draft_tenant_config,
     get_excluded_tenant_ids,
+    get_tenant_config,
     get_tenants_info,
     update_draft_tenant_config,
 )
@@ -1343,18 +1344,37 @@ class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
     fx_view_name = 'theme_config_values'
     fx_view_description = 'api/fx/config/v1/values/: Get theme config values'
 
-    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+    def validate_keys(self) -> list:
+        """Validate keys"""
+        keys = self.request.query_params.get('keys', '')
+        if not keys:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Keys are required and must be a string containing "," separated list of key names.'
+            )
+        return keys.split(',')
+
+    def validate_tenant_ids(self) -> int:
+        """Validate tenant id"""
+        tenant_ids = self.request.query_params.get('tenant_ids', '')
+        if not tenant_ids.isdigit():
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Tenant ids is required and should be a valid integer representing single tenant.'
+            )
+        return int(tenant_ids)
+
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/config/v1/values/
         """
-
-        return JsonResponse({
-            'values': {
-                'primary_colors': '#ff0000'
-            },
-            'not_permitted': ['platform_name'],
-            'bad_keys': ['something']
-        })
+        return JsonResponse(
+            get_tenant_config(
+                self.validate_tenant_ids(),
+                self.validate_keys(),
+                request.query_params.get('published_only', '0') == '1'
+            )
+        )
 
 
 @docs('ThemeConfigTenantView.post')

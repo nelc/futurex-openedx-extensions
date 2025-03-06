@@ -2091,15 +2091,64 @@ class TestThemeConfigPublishView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
 
-class ThemeConfigRetrieveView(BaseTestViewMixin):
-    """Tests for ThemeConfigPublishView"""
+@ddt.ddt
+@pytest.mark.usefixtures('base_data')
+class ThemeConfigRetrieveViewTest(BaseTestViewMixin):
+    """Tests for ThemeConfigRetrieveView"""
     VIEW_NAME = 'fx_dashboard:theme-config-values'
 
     def test_success(self):
         """Verify that the view returns the correct response"""
+        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', key_type='string')
+        ConfigAccessControl.objects.create(key_name='pages', path='theme_v2.pages', key_type='list')
+        ConfigAccessControl.objects.create(key_name='links', path='theme_v2.links.facebook', key_type='string')
         self.login_user(self.staff_user)
-        response = self.client.get(self.url)
+        params = {
+            'tenant_ids': '1',
+            'keys': 'platform_name,pages,color,links',
+            'published_only': '0'
+        }
+        response = self.client.get(self.url, data=params)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json()['values'], {
+            'platform_name': 's1 platform name',
+            'pages': ['home_page'],
+            'links': 'draft.facebook.com',
+        })
+
+        params['published_only'] = '1'
+        response = self.client.get(self.url, data=params)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json()['values'], {
+            'platform_name': 's1 platform name',
+            'pages': ['home_page'],
+            'links': 'facebook.com',
+        })
+
+    @ddt.data(
+        (
+            '1,2,3', 'platform_name,theme_v2', '0',
+            'Tenant ids is required and should be a valid integer representing single tenant.'
+        ),
+        (
+            '', 'platform_name,theme_v2', '0',
+            'Tenant ids is required and should be a valid integer representing single tenant.'
+        ),
+        (
+            '1', '', '0', 'Keys are required and must be a string containing "," separated list of key names.'
+        )
+    )
+    @ddt.unpack
+    def test_invalid_params(self, tenant_ids, keys, published_only, expected_error):
+        """Test invalid parameters for ThemeConfigRetrieveView."""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url, data={
+            'tenant_ids': tenant_ids,
+            'keys': keys,
+            'published_only': published_only
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('reason'), expected_error)
 
 
 @ddt.ddt

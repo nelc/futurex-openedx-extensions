@@ -502,6 +502,100 @@ def test_get_tenant_config_value(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    'usecase, config, keys, published_only, expected_values, expected_bad_keys',
+    [
+        (
+            'Draft value should be preffered when published_only is False',
+            {
+                'platform_name': 'published_value',
+                'theme_v2': {'pages': ['published_page']},
+                'config_draft': {'platform_name': 'draft_value'},
+            },
+            ['platform_name', 'pages', 'not-exist'],
+            False,
+            {
+                'platform_name': 'draft_value',
+                'pages': ['published_page'],
+            },
+            ['not-exist'],
+        ),
+        (
+            'Only published values should be retrieved even if it is empty or None, if published_only is True',
+            {
+                'platform_name': '',
+                'theme_v2': {'pages': ['published_page'], 'links': {'facebook': None}},
+                'config_draft': {'platform_name': 'draft_value'},
+            },
+            ['platform_name', 'pages', 'not-exist', 'facebook_link'],
+            True,
+            {
+                'platform_name': '',
+                'pages': ['published_page'],
+                'facebook_link': None
+            },
+            ['not-exist'],
+        ),
+        (
+            'Should return published values when draft does not exist',
+            {
+                'platform_name': 'published_value',
+                'theme_v2': {'pages': ['published_page']},
+                'config_draft': {}
+            },
+            ['platform_name', 'pages'],
+            False,
+            {
+                'platform_name': 'published_value',
+                'pages': ['published_page'],
+            },
+            [],
+        ),
+        (
+            'Duplicate keys should be processed only once',
+            {
+                'platform_name': 'published_value',
+                'theme_v2': {'pages': ['published_page']},
+            },
+            ['platform_name', 'platform_name', 'pages', 'not-exist', 'not-exist'],
+            False,
+            {
+                'platform_name': 'published_value',
+                'pages': ['published_page'],
+            },
+            ['not-exist'],
+        ),
+    ],
+)
+def test_get_tenant_config(
+    usecase, config, keys, published_only, expected_values, expected_bad_keys
+):  # pylint: disable=too-many-arguments
+    """Test the get_tenant_config function under different scenarios."""
+    ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook', key_type='string')
+    ConfigAccessControl.objects.create(key_name='pages', path='theme_v2.pages', key_type='list')
+    ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', key_type='string')
+    tenant = TenantConfig.objects.get(id=1)
+    tenant.lms_configs = config
+    tenant.save()
+
+    result = tenants.get_tenant_config(1, keys, published_only)
+    assert result['values'] == expected_values, \
+        f'FAILED: {usecase} - Expected {expected_values}, got {result["values"]}'
+
+    assert result['bad_keys'] == expected_bad_keys, \
+        f'FAILED: {usecase} - Expected {expected_bad_keys}, got {result["bad_keys"]}'
+
+
+@pytest.mark.django_db
+def test_get_tenant_config_for_non_exist_tenant():
+    """Test the get_tenant_config for non exist tenant_id."""
+    not_exist_tenant_id = 100000
+    with pytest.raises(FXCodedException) as exc_info:
+        tenants.get_tenant_config(not_exist_tenant_id, ['some_key'])
+    assert str(exc_info.value) == 'Unable to find tenant with id: (100000)'
+
+
+@pytest.mark.django_db
 def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
     """Test get_draft_tenant_config"""
     ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook')
