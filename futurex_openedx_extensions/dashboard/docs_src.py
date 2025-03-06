@@ -1539,7 +1539,7 @@ docs_src = {
                 'current_value': openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     description='Last stored value before making changes. Caller can get it using the '
-                    'API: GET /api/fx/config/v1/values/ without only_published parameter.',
+                    'API: GET /api/fx/config/v1/values/ without published_only parameter.',
                     example='My Platform Name',
                 ),
                 'new_value': openapi.Schema(
@@ -1730,15 +1730,15 @@ docs_src = {
                 'settings in response that are accessible to the user.',
             ),
             openapi.Parameter(
-                'only_published',
+                'published_only',
                 ParameterLocation.QUERY,
                 required=False,
                 type=openapi.TYPE_STRING,
                 enum=['1', '0'],
                 description=(
-                    '- `only_published=0`: (**default**) The API will look for the draft value first; if not found, '
+                    '- `published_only=0`: (**default**) The API will look for the draft value first; if not found, '
                     'then return the published value.\n'
-                    '- `only_published=1`: The API will ignore drafts and will only return the last published value. '
+                    '- `published_only=1`: The API will ignore drafts and will only return the last published value. '
                     'It will be useful to render live pages.'
                 )
             ),

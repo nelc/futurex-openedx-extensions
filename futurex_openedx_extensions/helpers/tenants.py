@@ -411,7 +411,39 @@ def get_tenant_config_value(config: dict, path: str, published_only: bool = Fals
     if draft_only:
         return get_nested_value(config.get('config_draft', {}), path)
 
-    return get_nested_value(config.get('config_draft', {}), path) or get_nested_value(config, path)
+    draft_value = get_nested_value(config.get('config_draft', {}), path)
+    return draft_value if draft_value is not None else get_nested_value(config, path)
+
+
+def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = False) -> Dict[str, Any]:
+    """
+    Retrieve tenant configuration details for the given tenant ID.
+
+    :param tenant_id: The ID of the tenant.
+    :param keys: A list of configuration keys to retrieve.
+    :param published_only: Whether to fetch only published configurations. Defaults to False.
+    :return: A dictionary containing key values, not permitted keys, and bad keys.
+    :raises FXCodedException: If the tenant is not found.
+    """
+    try:
+        tenant = TenantConfig.objects.get(id=tenant_id)
+    except TenantConfig.DoesNotExist as exc:
+        raise FXCodedException(
+            code=FXExceptionCodes.TENANT_NOT_FOUND,
+            message=f'Unable to find tenant with id: ({tenant_id})'
+        ) from exc
+
+    details: dict = {'values': {}, 'not_permitted': [], 'bad_keys': []}
+    for key in set(keys):
+        key = key.strip()
+        try:
+            key_config = ConfigAccessControl.objects.get(key_name=key)
+            details['values'][key_config.key_name] = get_tenant_config_value(
+                tenant.lms_configs, key_config.path, published_only=published_only
+            )
+        except ConfigAccessControl.DoesNotExist:
+            details['bad_keys'].append(key)
+    return details
 
 
 def get_draft_tenant_config(tenant_id: int) -> dict:
