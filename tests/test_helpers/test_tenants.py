@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
-from django.conf import settings
 from django.contrib.sites.models import Site
 from django.core.cache import cache
 from django.test import override_settings
@@ -22,25 +21,6 @@ def expected_exclusion():
         5: [FXExceptionCodes.TENANT_COURSE_ORG_FILTER_NOT_VALID.value],
         6: [FXExceptionCodes.TENANT_HAS_NO_SITE.value],
     }
-
-
-@pytest.mark.django_db
-def test_get_nafath_sites():
-    """Test get_nafath_sites returns correct enabled sites for FX_NAFATH_ENTRY_ID."""
-    site1 = Site.objects.create(domain='nafath-site1.com')
-    site2 = Site.objects.create(domain='nafath-site2.com')
-    site3 = Site.objects.create(domain='non-matching-site.com')
-    SAMLProviderConfig.objects.create(site=site1, entity_id=settings.FX_NAFATH_ENTRY_ID, enabled=True)
-    SAMLProviderConfig.objects.create(site=site2, entity_id=settings.FX_NAFATH_ENTRY_ID, enabled=True)
-    SAMLProviderConfig.objects.create(site=site3, entity_id='other-entry-id', enabled=True)
-    SAMLProviderConfig.objects.create(site=site1, entity_id=settings.FX_NAFATH_ENTRY_ID, enabled=False)
-
-    nafath_sites = tenants.get_nafath_sites()
-
-    assert len(nafath_sites) == 2, 'Only enabled sites with the correct entity_id should be returned'
-    assert site1.domain in nafath_sites, 'Expected site1 to be in the list'
-    assert site2.domain in nafath_sites, 'Expected site2 to be in the list'
-    assert site3.domain not in nafath_sites, 'Non-matching entity_id should be ignored'
 
 
 @pytest.mark.django_db
@@ -261,6 +241,35 @@ def test_get_all_tenants_info_is_being_cached(cache_testing):  # pylint: disable
     result = tenants.get_all_tenants_info()
     assert cache.get(cs.CACHE_NAME_ALL_TENANTS_INFO)['data'] == result
     cache.set(cs.CACHE_NAME_ALL_TENANTS_INFO, None)
+
+
+@pytest.mark.django_db
+def test_get_sso_sites(base_data):  # pylint: disable=unused-argument
+    """Verify that get_sso_sites works as expected"""
+    assert not tenants.get_sso_sites(), 'bad test data'
+    assert isinstance(tenants.get_sso_sites(), dict), 'bad test data'
+
+    test_data = [
+        ('testing_entity_id1', 'slug1'),
+        ('testing_entity_id2', 'slug2'),
+        ('other-entry-id', 'slug3'),
+    ]
+    site = Site.objects.get(domain='s1.sample.com')
+    for entity_id, slug in test_data:
+        SAMLProviderConfig.objects.create(site=site, entity_id=entity_id, slug=slug, enabled=True)
+    assert tenants.get_sso_sites() == {
+        's1.sample.com': [
+            {'entity_id': 'testing_entity_id1', 'slug': 'slug1'},
+            {'entity_id': 'testing_entity_id2', 'slug': 'slug2'},
+        ]
+    }
+
+    SAMLProviderConfig.objects.create(site=site, entity_id=test_data[0][0], slug=test_data[0][1], enabled=False)
+    assert tenants.get_sso_sites() == {
+        's1.sample.com': [
+            {'entity_id': 'testing_entity_id2', 'slug': 'slug2'},
+        ]
+    }
 
 
 @pytest.mark.django_db

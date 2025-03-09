@@ -1,8 +1,9 @@
 """Serializers for the dashboard details API."""
 from __future__ import annotations
 
+import logging
 import re
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 from common.djangoapps.student.models import CourseEnrollment
 from django.conf import settings
@@ -19,6 +20,7 @@ from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyP
 from openedx.core.lib.courses import get_course_by_id
 from rest_framework import serializers
 from rest_framework.fields import empty
+from social_django.models import UserSocialAuth
 
 from futurex_openedx_extensions.dashboard.custom_serializers import (
     ModelSerializerOptionalFields,
@@ -44,10 +46,12 @@ from futurex_openedx_extensions.helpers.roles import (
 )
 from futurex_openedx_extensions.helpers.tenants import (
     get_all_tenants_info,
-    get_nafath_sites,
     get_org_to_tenant_map,
+    get_sso_sites,
     get_tenants_by_org,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DataExportTaskSerializer(ModelSerializerOptionalFields):
@@ -421,14 +425,14 @@ class LearnerEnrollmentSerializer(
 ):  # pylint: disable=too-many-ancestors
     """Serializer for learner enrollments"""
     course_id = serializers.SerializerMethodField()
-    nafath_id = SerializerOptionalMethodField(field_tags=['nafath_id', 'csv_export'])
+    sso_external_id = SerializerOptionalMethodField(field_tags=['sso_external_id', 'csv_export'])
 
     class Meta:
         model = CourseEnrollment
         fields = (
             LearnerBasicDetailsSerializer.Meta.fields +
             CourseScoreAndCertificateSerializer.Meta.fields +
-            ['course_id', 'nafath_id']
+            ['course_id', 'sso_external_id']
         )
 
     def _get_course_id(self, obj: Any = None) -> CourseLocator | None:
@@ -446,20 +450,54 @@ class LearnerEnrollmentSerializer(
         """Get course id"""
         return str(self._get_course_id(obj))
 
-    def get_nafath_id(self, obj: Any) -> str:  # pylint: disable=no-self-use
-        """Get Nafath ID from social auth extra_data."""
-        tenant_sites = get_all_tenants_info()['sites']
+    @staticmethod
+    def get_sso_site_info(obj: Any) -> List[Dict[str, Any]]:
+        """Get SSO information of the tenant's site related to the course"""
         course_tenants = get_org_to_tenant_map().get(obj.course_id.org.lower(), [])
+        for tenant_id in course_tenants:
+            sso_site_info = get_sso_sites().get(get_all_tenants_info()['sites'][tenant_id])
+            if sso_site_info:
+                return sso_site_info
 
-        if not any(tenant_sites[tenant] in get_nafath_sites() for tenant in course_tenants):
-            return ''
+        return []
 
-        drupal_social_auth = obj.user.social_auth.filter(
-            provider=settings.FX_NAFATH_AUTH_PROVIDER,
-        ).first()
+    def get_sso_external_id(self, obj: Any) -> str:
+        """Get the SSO external ID from social auth extra_data."""
+        result = ''
 
-        uid = drupal_social_auth.extra_data.get('uid') if drupal_social_auth else None
-        return uid[0] if isinstance(uid, list) and len(uid) == 1 else ''
+        sso_site_info = self.get_sso_site_info(obj)
+        if not sso_site_info:
+            return result
+
+        social_auth_records = UserSocialAuth.objects.filter(user=obj.user, provider='tpa-saml')
+        user_auth_by_slug = {}
+        for record in social_auth_records:
+            if record.uid.count(':') == 1:
+                sso_slug, _ = record.uid.split(':')
+                user_auth_by_slug[sso_slug] = record
+
+        if not user_auth_by_slug:
+            return result
+
+        for entity_id, sso_info in settings.FX_SSO_INFO.items():
+            if not sso_info.get('external_id_field') or not sso_info.get('external_id_extractor'):
+                logger.warning(
+                    'Bad (external_id_field) or (external_id_extractor) settings for Entity ID (%s)', entity_id,
+                )
+                continue
+
+            for sso_links in sso_site_info:
+                if entity_id == sso_links['entity_id']:
+                    user_auth_record = user_auth_by_slug.get(sso_links['slug'])
+                    if not user_auth_record:
+                        continue
+
+                    external_id_value = user_auth_record.extra_data.get(sso_info['external_id_field'])
+                    if external_id_value:
+                        result = str(sso_info['external_id_extractor'](external_id_value) or '')
+                    break
+
+        return result
 
 
 class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):  # pylint: disable=too-many-ancestors

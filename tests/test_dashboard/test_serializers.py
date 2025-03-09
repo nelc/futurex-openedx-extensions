@@ -1,4 +1,6 @@
 """Test serializers for dashboard app"""
+# pylint: disable=too-many-lines
+import copy
 from unittest.mock import Mock, patch
 
 import pytest
@@ -8,13 +10,14 @@ from custom_reg_form.models import ExtraInfo
 from deepdiff import DeepDiff
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.sites.models import Site
 from django.db.models import Value
+from django.test import override_settings
 from django.utils.timezone import get_current_timezone, now, timedelta
 from lms.djangoapps.grades.models import PersistentSubsectionGrade
 from opaque_keys.edx.keys import UsageKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
+from social_django.models import UserSocialAuth
 
 from futurex_openedx_extensions.dashboard.serializers import (
     CourseDetailsBaseSerializer,
@@ -90,6 +93,26 @@ def grading_context():
             }
         }
         yield mock_grading_context
+
+
+@pytest.fixture
+def sso_external_id_context():
+    """Create a context for testing."""
+    queryset = CourseEnrollment.objects.filter(user_id=10, course_id='course-v1:ORG3+1+1').annotate(
+        certificate_available=Value(True),
+        course_score=Value(0.67),
+        active_in_course=Value(True),
+    )
+    queryset[0].user.social_auth.create(
+        provider='tpa-saml',
+        uid='site_slug:whatever',
+        extra_data={'test_uid': ['12345']}
+    )
+    context = {
+        'course_id': 'course-v1:ORG3+1+1',
+        'requested_optional_field_tags': ['sso_external_id']
+    }
+    return queryset, context
 
 
 @pytest.mark.django_db
@@ -306,41 +329,97 @@ def test_learner_enrollments_serializer(mock_collect, base_data,):  # pylint: di
 
 
 @pytest.mark.django_db
-@patch('futurex_openedx_extensions.dashboard.serializers.get_nafath_sites')
-def test_learner_enrollments_serializer_for_nafath_id(mocked_get_nafath_sites):
-    """Ensure LearnerEnrollmentSerializer correctly processes nafath_id based on social auth conditions."""
-    site, _ = Site.objects.update_or_create(
-        domain='s2.sample.com',
-        defaults={'name': 's2.sample.com'}
-    )
-    mocked_get_nafath_sites.return_value = [site.domain]
-    queryset = CourseEnrollment.objects.filter(user_id=10, course_id='course-v1:ORG3+1+1').annotate(
-        certificate_available=Value(True),
-        course_score=Value(0.67),
-        active_in_course=Value(True),
-    )
-    context = {
-        'course_id': 'course-v1:ORG3+1+1',
-        'requested_optional_field_tags': ['nafath_id']
+@patch('futurex_openedx_extensions.dashboard.serializers.get_sso_sites')
+def test_learner_enrollments_serializer_for_sso_external_id(
+    mocked_get_sso_sites, base_data, sso_external_id_context,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Ensure LearnerEnrollmentSerializer correctly processes sso_external_id based on social auth conditions."""
+    mocked_get_sso_sites.return_value = {
+        's2.sample.com': [{
+            'slug': 'site_slug',
+            'entity_id': 'testing_entity_id1',
+        }]
     }
+    queryset = sso_external_id_context[0]
+    context = sso_external_id_context[1]
 
-    def assert_nafath_id(expected, msg):
-        """Helper to serialize and assert nafath_id."""
+    def assert_sso_external_id(expected, msg):
+        """Helper to serialize and assert sso_external_id."""
         serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
-        assert serializer.data[0].get('nafath_id') == expected, msg
+        assert serializer.data[0].get('sso_external_id') == expected, msg
 
-    assert_nafath_id('', 'nafath_id should be empty when no social auth exists')
+    UserSocialAuth.objects.all().delete()
+    assert_sso_external_id('', 'sso_external_id should be empty when no social auth exists')
 
-    queryset[0].user.social_auth.create(provider='other_provider', extra_data={'uid': ['12345']})
-    assert_nafath_id('', 'nafath_id should be empty for an incorrect provider')
+    uid = 'site_slug:whatever'
 
-    queryset[0].user.social_auth.create(provider=settings.FX_NAFATH_AUTH_PROVIDER, extra_data={'uid': ['12345']})
-    assert_nafath_id('12345', 'nafath_id should be returned when the correct provider and single UID exist')
+    queryset[0].user.social_auth.create(
+        provider='other_provider',
+        uid=uid,
+        extra_data={'test_uid': ['12345']}
+    )
+    assert_sso_external_id('', 'sso_external_id should be empty for an incorrect provider')
 
-    social_auth = queryset[0].user.social_auth.get(provider=settings.FX_NAFATH_AUTH_PROVIDER)
-    social_auth.extra_data = {'uid': ['12345', 'another-id']}
+    social_auth = queryset[0].user.social_auth.create(
+        provider='tpa-saml',
+        uid=uid,
+        extra_data={'test_uid': ['12345']}
+    )
+    assert_sso_external_id('12345', 'sso_external_id should be returned when the correct provider exists')
+
+    social_auth.extra_data = {'test_uid': ['12345', 'another-id']}
     social_auth.save()
-    assert_nafath_id('', 'nafath_id should be empty when multiple UIDs are present')
+    assert_sso_external_id('', 'sso_external_id should be empty when multiple UIDs are present')
+
+    social_auth.extra_data = {}
+    social_auth.save()
+    assert_sso_external_id('', 'sso_external_id should empty when the external ID is not present')
+
+    social_auth.extra_data = {'test_uid': '54321'}
+    social_auth.save()
+    assert_sso_external_id('54321', 'sso_external_id should support a single UID')
+
+    queryset[0].user.social_auth.create(
+        provider='tpa-saml',
+        uid='bad_uid',
+        extra_data={'test_uid': ['99999']}
+    )
+    assert_sso_external_id('54321', 'sso_external_id should ignore incorrect UIDs, and return the correct one')
+
+    social_auth.uid = 'other_site_slug:whatever'
+    social_auth.save()
+    assert_sso_external_id('', 'sso_external_id should be empty when no valid social auth exists')
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_sso_sites')
+@pytest.mark.parametrize('key_to_remove, expected_result', [
+    ('', '12345'),
+    ('external_id_field', ''),
+    ('external_id_extractor', ''),
+])
+def test_learner_enrollments_serializer_for_sso_external_id_bad_settings(
+    mocked_get_sso_sites, key_to_remove, expected_result, base_data, sso_external_id_context, caplog,
+):  # pylint: disable=unused-argument, redefined-outer-name, too-many-arguments
+    """Verify that LearnerEnrollmentSerializer detects invalid FX_SSO_INFO settings."""
+    mocked_get_sso_sites.return_value = {
+        's2.sample.com': [{
+            'slug': 'site_slug',
+            'entity_id': 'testing_entity_id1',
+        }]
+    }
+    queryset = sso_external_id_context[0]
+    context = sso_external_id_context[1]
+
+    settings_override = copy.copy(settings.FX_SSO_INFO)
+    if key_to_remove:
+        del settings_override['testing_entity_id1'][key_to_remove]
+    with override_settings(FX_SSO_INFO=settings_override):
+        serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
+    assert serializer.data[0].get('sso_external_id') == expected_result
+    if key_to_remove:
+        assert 'Bad (external_id_field) or (external_id_extractor) settings for Entity ID (testing_entity_id1)' \
+            in caplog.text
 
 
 @pytest.mark.django_db

@@ -21,6 +21,12 @@ helpers_default_settings = [
         'quarter': 4,
         'year': 1,
     }),  # Max Period Chunks
+    ('FX_SSO_INFO', {
+        'dummy_entity_id': {
+            'external_id_field': 'uid',
+            'external_id_extractor': None,
+        },
+    }),
 ]
 
 
