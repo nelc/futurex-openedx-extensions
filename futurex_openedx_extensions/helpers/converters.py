@@ -1,6 +1,8 @@
 """Type conversion helpers"""
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, List
@@ -212,3 +214,30 @@ def get_allowed_roles(roles_filter: List[str] | None) -> Dict[str, List[str]]:
 def dt_to_str(datetime_or_date: datetime | date) -> str | None:
     """Convert a datetime object to a string"""
     return datetime_or_date.strftime(DEFAULT_DATETIME_FORMAT) if datetime_or_date else None
+
+
+def path_to_json(path: str, value: Any) -> dict:
+    """
+    Converts a dot-separated path string into a nested JSON structure.
+
+    :param path:  A dot-separated string representing the hierarchy of keys.
+    :param path:  The value to be placed at the deepest level of the nested structure.
+    :return: A nested dictionary representing the JSON structure.
+    """
+    keys = path.split('.')
+    nested_json = value
+    for key in reversed(keys):
+        nested_json = {key: nested_json}
+    return nested_json
+
+
+def dict_to_hash(data_dict: dict) -> str:
+    """
+    Generates a SHA-256 hash from a dictionary.
+
+    :param data_dict: The dictionary to be hashed.
+    :return: A SHA-256 hash of the dictionary as a hexadecimal string.
+             Returns an empty string if the input dictionary is empty or None.
+    """
+    dict_str = json.dumps(data_dict, sort_keys=True, separators=(',', ':')) if data_dict else ''
+    return hashlib.sha256(dict_str.encode()).hexdigest() if dict_str else ''

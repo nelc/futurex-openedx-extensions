@@ -56,8 +56,9 @@ from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
     FX_VIEW_DEFAULT_AUTH_CLASSES,
+    KEY_TYPE_MAP,
 )
-from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
+from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
@@ -81,8 +82,13 @@ from futurex_openedx_extensions.helpers.roles import (
 )
 from futurex_openedx_extensions.helpers.tenants import (
     create_new_tenant_config,
+    delete_draft_tenant_config,
+    get_draft_tenant_config,
     get_excluded_tenant_ids,
+    get_tenant_config,
     get_tenants_info,
+    publish_tenant_config,
+    update_draft_tenant_config,
 )
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
@@ -1232,33 +1238,77 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'theme_config_draft'
     fx_allowed_write_methods = ['PUT', 'DELETE']
-    fx_view_description = 'api/fx/config/v1/draft/: draft theme config APIs'
+    fx_view_description = 'api/fx/config/v1/draft/<tenant_id>: draft theme config APIs'
 
-    def get(self, request: Any) -> Response | JsonResponse:  # pylint: disable=no-self-use
+    def get(self, request: Any, tenant_id: int) -> Response | JsonResponse:  # pylint: disable=no-self-use
         """Get draft config"""
-
+        updated_fields = get_draft_tenant_config(int(tenant_id))
         return JsonResponse({
-            'updated_fields': {
-                'platform_name': {
-                    'published_value': 'my platform name',
-                    'draft_value': 'My Awesome Platform'
-                },
-                'primary_color': {
-                    'published_value': '#ff0000',
-                    'draft_value': '#ffff00'
-                },
-            },
-            'draft_hash': 'ajsd90a8su9a8u9a8sdyf0a9sdhy0asdjgasdgkjdsfgj'
+            'updated_fields': updated_fields,
+            'draft_hash': dict_to_hash(updated_fields)
         })
 
-    def put(self, request: Any) -> Response:  # pylint: disable=no-self-use
+    def put(self, request: Any, tenant_id: int) -> Response:  # pylint: disable=no-self-use
         """Update draft config"""
+        data = request.data
+        try:
+            if not isinstance(data['key'], str):
+                raise FXCodedException(
+                    code=FXExceptionCodes.INVALID_INPUT, message='Key name must be a string.'
+                )
 
-        return Response(status=http_status.HTTP_204_NO_CONTENT)
+            key_access_info = ConfigAccessControl.objects.get(key_name=data['key'])
+            if not key_access_info.writable:
+                raise FXCodedException(
+                    code=FXExceptionCodes.INVALID_INPUT, message=f'Config Key: ({data["key"]}) is not writable.'
+                )
 
-    def delete(self, request: Any) -> Response:  # pylint: disable=no-self-use
+            if 'reset' not in data and 'new_value' not in data:
+                raise FXCodedException(
+                    code=FXExceptionCodes.INVALID_INPUT, message='Provide either new_value or reset.'
+                )
+
+            new_value = data.get('new_value')
+            reset = data.get('reset', '0') == '1'
+
+            if new_value is not None and not isinstance(new_value, KEY_TYPE_MAP[key_access_info.key_type]):
+                raise FXCodedException(
+                    code=FXExceptionCodes.INVALID_INPUT,
+                    message=f'New value type must be ({KEY_TYPE_MAP[key_access_info.key_type].__name__}) value.'
+                )
+
+            if data['current_value'] is not None and not isinstance(
+                data['current_value'], KEY_TYPE_MAP[key_access_info.key_type]
+            ):
+                raise FXCodedException(
+                    code=FXExceptionCodes.INVALID_INPUT,
+                    message=f'Current value type must be ({KEY_TYPE_MAP[key_access_info.key_type].__name__}) value.'
+                )
+
+            update_draft_tenant_config(int(tenant_id), key_access_info.path, data['current_value'], new_value, reset)
+            return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+        except KeyError as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'Missing required parameter: {exc}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+        except FXCodedException as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+        except ConfigAccessControl.DoesNotExist:
+            return Response(
+                error_details_to_dictionary(
+                    reason=f'Invalid key, unable to find key: ({data["key"]}) in config access control'
+                ),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+    def delete(self, request: Any, tenant_id: int) -> Response:  # pylint: disable=no-self-use
         """Delete draft config"""
-
+        delete_draft_tenant_config(int(tenant_id))
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
@@ -1269,23 +1319,57 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
     fx_view_name = 'theme_config_publish'
     fx_view_description = 'api/fx/config/v1/publish/: Get editable settings of config'
 
-    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+    @staticmethod
+    def validate_payload(data: dict) -> dict:
+        """
+        Validates the payload.
+
+        :param data: The payload data from the request
+        :raises FXCodedException: If the payload data is invalid
+        """
+        tenant_id = data.get('tenant_id')
+        if not tenant_id or not isinstance(tenant_id, int):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Tenant id is required and must be an int.'
+            )
+
+        draft_hash = data.get('draft_hash')
+        if not draft_hash or not isinstance(draft_hash, str):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Draft hash is reuired and must be a string.'
+            )
+        current_draft = get_draft_tenant_config(tenant_id)
+        current_draft_hash = dict_to_hash(current_draft)
+        if current_draft_hash != draft_hash:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Draft hash mismatched with current draft values hash.'
+            )
+        return current_draft
+
+    @staticmethod
+    def rename_keys(updated_fields: dict) -> dict:
+        """
+        Rename 'published_value' to 'old_value' and 'draft_value' to 'new_value
+        """
+        renamed_data = {}
+        for key, value in updated_fields.items():
+            renamed_data[key] = {
+                'old_value': value.get('published_value', None),
+                'new_value': value.get('draft_value', None)
+            }
+        return renamed_data
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         POST /api/fx/config/v1/publish/
         """
-
-        return JsonResponse({
-            'updated_fields': {
-                'platform_name': {
-                    'old_value': 'my platform name',
-                    'new_value': 'My Awesome Platform'
-                },
-                'primary_color': {
-                    'old_value': '#ff0000',
-                    'new_value': '#ffff00'
-                }
-            }
-        })
+        data = request.data
+        updated_fields = self.validate_payload(data)
+        publish_tenant_config(data['tenant_id'])
+        return JsonResponse({'updated_fields': self.rename_keys(updated_fields)})
 
 
 @docs('ThemeConfigRetrieveView.get')
@@ -1295,18 +1379,37 @@ class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
     fx_view_name = 'theme_config_values'
     fx_view_description = 'api/fx/config/v1/values/: Get theme config values'
 
-    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+    def validate_keys(self) -> list:
+        """Validate keys"""
+        keys = self.request.query_params.get('keys', '')
+        if not keys:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Keys are required and must be a string containing "," separated list of key names.'
+            )
+        return keys.split(',')
+
+    def validate_tenant_ids(self) -> int:
+        """Validate tenant id"""
+        tenant_ids = self.request.query_params.get('tenant_ids', '')
+        if not tenant_ids.isdigit():
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Tenant ids is required and should be a valid integer representing single tenant.'
+            )
+        return int(tenant_ids)
+
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/config/v1/values/
         """
-
-        return JsonResponse({
-            'values': {
-                'primary_colors': '#ff0000'
-            },
-            'not_permitted': ['platform_name'],
-            'bad_keys': ['something']
-        })
+        return JsonResponse(
+            get_tenant_config(
+                self.validate_tenant_ids(),
+                self.validate_keys(),
+                request.query_params.get('published_only', '0') == '1'
+            )
+        )
 
 
 @docs('ThemeConfigTenantView.post')

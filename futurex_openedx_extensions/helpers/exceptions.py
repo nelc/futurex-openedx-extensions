@@ -54,6 +54,8 @@ class FXExceptionCodes(Enum):
 
     ROUTE_ALREADY_EXIST = 11001
 
+    UPDATE_FAILED = 12001
+
 
 class FXCodedException(Exception):
     """Exception with a code."""

@@ -1,5 +1,6 @@
 """Test views for the dashboard app"""
 # pylint: disable=too-many-lines
+import hashlib
 import json
 from datetime import date
 from unittest.mock import ANY, Mock, patch
@@ -15,6 +16,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.urls import resolve, reverse
 from django.utils.timezone import now, timedelta
+from eox_tenant.models import Route, TenantConfig
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
@@ -25,6 +27,7 @@ from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.converters import dict_to_hash
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DataExportTask, ViewAllowedRoles
@@ -1106,7 +1109,8 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
             '1': {
                 'lms_root_url': 'https://s1.sample.com',
                 'studio_root_url': 'https://studio.example.com',
-                'platform_name': '', 'logo_image_url': ''
+                'platform_name': 's1 platform name',
+                'logo_image_url': '',
             },
             '2': {
                 'lms_root_url': 'https://s2.sample.com',
@@ -1158,7 +1162,8 @@ class TestAccessibleTenantsInfoViewV2(BaseTestViewMixin):
             '1': {
                 'lms_root_url': 'https://s1.sample.com',
                 'studio_root_url': 'https://studio.example.com',
-                'platform_name': '', 'logo_image_url': ''
+                'platform_name': 's1 platform name',
+                'logo_image_url': '',
             },
             '2': {
                 'lms_root_url': 'https://s2.sample.com',
@@ -1952,49 +1957,237 @@ class TestConfigEditableInfoView(BaseTestViewMixin):
         self.assertEqual(response.json(), expected_data)
 
 
+@ddt.ddt
+@pytest.mark.usefixtures('base_data')
 class TestThemeConfigDraftView(BaseTestViewMixin):
     """Tests for ThemeConfigDraftView"""
     VIEW_NAME = 'fx_dashboard:theme-config-draft'
 
     def test_draft_config_retrieve(self):
         """Verify that the view returns the correct response"""
+        tenant_config = TenantConfig.objects.get(id=1)
+        ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook')
         self.login_user(self.staff_user)
+        self.url_args = [tenant_config.id]
+        expected_result = {
+            'facebook_link': {
+                'published_value': 'facebook.com',
+                'draft_value': 'draft.facebook.com'
+            }
+        }
+        expected_hash = hashlib.sha256(
+            json.dumps(expected_result, sort_keys=True, separators=(',', ':')).encode()
+        ).hexdigest()
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert response.json()['updated_fields'] == expected_result
+        assert response.json()['draft_hash'] == expected_hash
 
-    def test_draft_config_update(self):
-        """Verify that the view returns the correct response"""
+    @ddt.data(
+        (
+            {},
+            "Missing required parameter: 'key'"
+        ),
+        (
+            {'key': 'not-exist'},
+            'Invalid key, unable to find key: (not-exist) in config access control'
+        ),
+        (
+            {'key': 'non-writable'},
+            '(4001) Config Key: (non-writable) is not writable.'
+        ),
+        (
+            {'key': 123},
+            '(4001) Key name must be a string.'
+        ),
+        (
+            {'key': 'platform_name'},
+            '(4001) Provide either new_value or reset.'
+        ),
+        (
+            {'key': 'platform_name', 'new_value': 123},
+            '(4001) New value type must be (str) value.'
+        ),
+        (
+            {'key': 'platform_name', 'new_value': 'new updated name'},
+            "Missing required parameter: 'current_value'"
+        ),
+        (
+            {'key': 'platform_name', 'current_value': ['my name'], 'new_value': 'new updated name'},
+            '(4001) Current value type must be (str) value.'
+        ),
+    )
+    @ddt.unpack
+    def test_put_payload_validation(self, data, expected_reason):
+        """Verify that different validation cases return the correct error message."""
+        tenant_config = TenantConfig.objects.create(
+            external_key='test',
+            lms_configs={
+                'platform_name': 'my name',
+                'theme_v2': {'pages': ['home_page']},
+                'config_draft': {},
+                'LMS_BASE': 'example.com',
+                'non-writable': 'some data'
+            }
+        )
+        Route.objects.create(
+            domain='example.com',
+            config=tenant_config
+        )
+        ConfigAccessControl.objects.create(
+            key_name='platform_name', path='platform_name', writable=True, key_type='string'
+        )
+        ConfigAccessControl.objects.create(
+            key_name='pages', path='theme_v2.pages', writable=True, key_type='list'
+        )
+        ConfigAccessControl.objects.create(
+            key_name='non-writable', path='non-writable', writable=False, key_type='string'
+        )
+
         self.login_user(self.staff_user)
-        response = self.client.put(self.url, data={}, format='json',)
+        self.url_args = [tenant_config.id]
+        response = self.client.put(self.url, data=data, format='json')
+
+        assert response.status_code == http_status.HTTP_400_BAD_REQUEST
+        assert response.data['reason'] == expected_reason
+
+    @patch('futurex_openedx_extensions.dashboard.views.update_draft_tenant_config')
+    def test_draft_config_update(self, mock_update_draft):
+        """Verify that the view returns the correct response"""
+        tenant_id = 1
+        tenant_config = TenantConfig.objects.get(id=tenant_id)
+        assert tenant_config.lms_configs['platform_name'] == 's1 platform name'
+        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', writable=True)
+        self.login_user(self.staff_user)
+        self.url_args = [tenant_config.id]
+
+        response = self.client.put(
+            self.url,
+            data={'key': 'platform_name', 'current_value': 's1 platform name', 'new_value': 's1 new name'},
+            format='json'
+        )
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        mock_update_draft.assert_called_once_with(tenant_id, 'platform_name', 's1 platform name', 's1 new name', False)
 
     def test_draft_config_delete(self):
         """Verify that the view returns the correct response"""
+        tenant_config = TenantConfig.objects.get(id=1)
+        assert tenant_config.lms_configs['config_draft'] != {}
         self.login_user(self.staff_user)
+        self.url_args = [tenant_config.id]
         response = self.client.delete(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        tenant_config.refresh_from_db()
+        assert tenant_config.lms_configs['config_draft'] == {}
 
 
+@ddt.ddt
 class TestThemeConfigPublishView(BaseTestViewMixin):
     """Tests for ThemeConfigPublishView"""
     VIEW_NAME = 'fx_dashboard:theme-config-publish'
 
-    def test_success(self):
+    @patch('futurex_openedx_extensions.dashboard.views.publish_tenant_config')
+    def test_success(self, mocked_publish_config):
+        """Verify that the view returns the correct response"""
+        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', key_type='string')
+        ConfigAccessControl.objects.create(key_name='pages', path='theme_v2.pages', key_type='list')
+        ConfigAccessControl.objects.create(key_name='links', path='theme_v2.links.facebook', key_type='string')
+        updated_fields = {'links': {'published_value': 'facebook.com', 'draft_value': 'draft.facebook.com'}}
+        expected_return_value = {
+            'updated_fields': {
+                'links': {'old_value': 'facebook.com', 'new_value': 'draft.facebook.com'}
+            }
+        }
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'draft_hash': dict_to_hash(updated_fields),
+            'tenant_id': 1
+        }, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        mocked_publish_config.assert_called_once_with(1)
+        self.assertEqual(response.json(), expected_return_value)
+
+    @ddt.data(
+        ('does-not-matter', None, 'Tenant id is required and must be an int.'),
+        ('does-not-matter', [], 'Tenant id is required and must be an int.'),
+        ('does-not-matter', '', 'Tenant id is required and must be an int.'),
+        ('does-not-matter', 'non-int', 'Tenant id is required and must be an int.'),
+        ('does-not-matter', '1', 'Tenant id is required and must be an int.'),
+        (None, 1, 'Draft hash is reuired and must be a string.'),
+        ('', 1, 'Draft hash is reuired and must be a string.'),
+        (['not str'], 1, 'Draft hash is reuired and must be a string.'),
+        ('invalid_hash', 1, 'Draft hash mismatched with current draft values hash.'),
+    )
+    @ddt.unpack
+    def test_validations(self, draft_hash, tenant_id, expected_error):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={}, format='json',)
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        response = self.client.post(self.url, data={
+            'draft_hash': draft_hash,
+            'tenant_id': tenant_id
+        }, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('reason'), expected_error)
 
 
-class ThemeConfigRetrieveView(BaseTestViewMixin):
-    """Tests for ThemeConfigPublishView"""
+@ddt.ddt
+@pytest.mark.usefixtures('base_data')
+class ThemeConfigRetrieveViewTest(BaseTestViewMixin):
+    """Tests for ThemeConfigRetrieveView"""
     VIEW_NAME = 'fx_dashboard:theme-config-values'
 
     def test_success(self):
         """Verify that the view returns the correct response"""
+        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', key_type='string')
+        ConfigAccessControl.objects.create(key_name='pages', path='theme_v2.pages', key_type='list')
+        ConfigAccessControl.objects.create(key_name='links', path='theme_v2.links.facebook', key_type='string')
         self.login_user(self.staff_user)
-        response = self.client.get(self.url)
+        params = {
+            'tenant_ids': '1',
+            'keys': 'platform_name,pages,color,links',
+            'published_only': '0'
+        }
+        response = self.client.get(self.url, data=params)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json()['values'], {
+            'platform_name': 's1 platform name',
+            'pages': ['home_page'],
+            'links': 'draft.facebook.com',
+        })
+
+        params['published_only'] = '1'
+        response = self.client.get(self.url, data=params)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json()['values'], {
+            'platform_name': 's1 platform name',
+            'pages': ['home_page'],
+            'links': 'facebook.com',
+        })
+
+    @ddt.data(
+        (
+            '1,2,3', 'platform_name,theme_v2', '0',
+            'Tenant ids is required and should be a valid integer representing single tenant.'
+        ),
+        (
+            '', 'platform_name,theme_v2', '0',
+            'Tenant ids is required and should be a valid integer representing single tenant.'
+        ),
+        (
+            '1', '', '0', 'Keys are required and must be a string containing "," separated list of key names.'
+        )
+    )
+    @ddt.unpack
+    def test_invalid_params(self, tenant_ids, keys, published_only, expected_error):
+        """Test invalid parameters for ThemeConfigRetrieveView."""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url, data={
+            'tenant_ids': tenant_ids,
+            'keys': keys,
+            'published_only': published_only
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('reason'), expected_error)
 
 
 @ddt.ddt

@@ -331,12 +331,15 @@ class ConfigAccessControlForm(forms.ModelForm):
         """Validates path with default tenant config."""
         key_path = self.data['path']
 
+        if ' ' in key_path:
+            raise forms.ValidationError('Key path must not contain spaces.')
+
         try:
             default_config = TenantConfig.objects.get(route__domain=settings.FX_DEFAULT_TENANT_SITE).lms_configs
         except TenantConfig.DoesNotExist as exc:
             raise forms.ValidationError('Unable to update path as default TenantConfig not found.') from exc
 
-        path_parts = [part.strip() for part in key_path.split(',')]
+        path_parts = key_path.split('.')
         data_pointer = default_config
         found_path = []
 

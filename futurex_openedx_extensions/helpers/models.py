@@ -568,7 +568,18 @@ class DataExportTask(models.Model):
 
 class ConfigAccessControl(models.Model):
     """Access control for tenant configurations"""
+    KEY_TYPE_CHOICES = [
+        ('string', 'String'),
+        ('integer', 'Integer'),
+        ('boolean', 'Boolean'),
+        ('dict', 'Dict'),
+        ('list', 'List'),
+    ]
+
     key_name = models.CharField(max_length=255, unique=True, help_text='Key name, e.g., linkedin_url')
+    key_type = models.CharField(
+        max_length=20, choices=KEY_TYPE_CHOICES, default='string', help_text='Data type of the key'
+    )
     path = models.CharField(max_length=500, help_text='Comma-separated path, e.g., theme_v2,footer,linkedin_url')
     writable = models.BooleanField(default=False, help_text='Indicates if the field is writable')
 
