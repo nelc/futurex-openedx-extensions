@@ -435,3 +435,21 @@ def get_valid_duration(
 
     return datetime.combine(date_from, datetime.min.time()) if date_from else None, \
         datetime.combine(date_to, datetime.max.time()) if date_to else None
+
+
+def external_id_extractor_value(value: Any) -> Any:
+    """external_id_extractor that returns the value as it is"""
+    return value
+
+
+def external_id_extractor_str_or_one_item_string_list(value: Any) -> Any:
+    """external_id_extractor that works with SSO providers similar to Nafath"""
+    if isinstance(value, list):
+        if len(value) == 1 and isinstance(value[0], (str, int)):
+            return str(value[0])
+        return ''
+
+    if isinstance(value, (str, int)):
+        return str(value)
+
+    return ''

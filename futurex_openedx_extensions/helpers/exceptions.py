@@ -56,6 +56,8 @@ class FXExceptionCodes(Enum):
 
     UPDATE_FAILED = 12001
 
+    BAD_CONFIGURATION_EXTERNAL_ID_EXTRACTOR = 13001
+
 
 class FXCodedException(Exception):
     """Exception with a code."""

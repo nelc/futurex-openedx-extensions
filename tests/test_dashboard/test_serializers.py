@@ -35,6 +35,7 @@ from futurex_openedx_extensions.dashboard.serializers import (
 )
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.converters import dt_to_str
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.roles import RoleType
 
@@ -112,7 +113,14 @@ def sso_external_id_context():
         'course_id': 'course-v1:ORG3+1+1',
         'requested_optional_field_tags': ['sso_external_id']
     }
-    return queryset, context
+    with patch('futurex_openedx_extensions.dashboard.serializers.get_sso_sites') as mocked_get_sso_sites:
+        mocked_get_sso_sites.return_value = {
+            's2.sample.com': [{
+                'slug': 'site_slug',
+                'entity_id': 'testing_entity_id1',
+            }]
+        }
+        yield queryset, context, mocked_get_sso_sites
 
 
 @pytest.mark.django_db
@@ -329,17 +337,15 @@ def test_learner_enrollments_serializer(mock_collect, base_data,):  # pylint: di
 
 
 @pytest.mark.django_db
-@patch('futurex_openedx_extensions.dashboard.serializers.get_sso_sites')
+@patch('futurex_openedx_extensions.dashboard.serializers.import_from_path')
 def test_learner_enrollments_serializer_for_sso_external_id(
-    mocked_get_sso_sites, base_data, sso_external_id_context,
+    mocked_import_from_path, base_data, sso_external_id_context,
 ):  # pylint: disable=unused-argument, redefined-outer-name
     """Ensure LearnerEnrollmentSerializer correctly processes sso_external_id based on social auth conditions."""
-    mocked_get_sso_sites.return_value = {
-        's2.sample.com': [{
-            'slug': 'site_slug',
-            'entity_id': 'testing_entity_id1',
-        }]
-    }
+    def _dummy_processing(value):
+        return 'processed_id'
+
+    mocked_import_from_path.return_value = _dummy_processing
     queryset = sso_external_id_context[0]
     context = sso_external_id_context[1]
 
@@ -356,70 +362,109 @@ def test_learner_enrollments_serializer_for_sso_external_id(
     queryset[0].user.social_auth.create(
         provider='other_provider',
         uid=uid,
-        extra_data={'test_uid': ['12345']}
+        extra_data={'test_uid': 'an ID to be processed by external_id_extractor'}
     )
     assert_sso_external_id('', 'sso_external_id should be empty for an incorrect provider')
+    mocked_import_from_path.assert_not_called()
 
     social_auth = queryset[0].user.social_auth.create(
         provider='tpa-saml',
         uid=uid,
-        extra_data={'test_uid': ['12345']}
+        extra_data={'test_uid': 'an ID to be processed by external_id_extractor'}
     )
-    assert_sso_external_id('12345', 'sso_external_id should be returned when the correct provider exists')
+    assert_sso_external_id('processed_id', 'sso_external_id should be returned when the correct provider exists')
 
-    social_auth.extra_data = {'test_uid': ['12345', 'another-id']}
-    social_auth.save()
-    assert_sso_external_id('', 'sso_external_id should be empty when multiple UIDs are present')
-
-    social_auth.extra_data = {}
-    social_auth.save()
-    assert_sso_external_id('', 'sso_external_id should empty when the external ID is not present')
-
-    social_auth.extra_data = {'test_uid': '54321'}
-    social_auth.save()
-    assert_sso_external_id('54321', 'sso_external_id should support a single UID')
-
+    mocked_import_from_path.reset_mock()
+    mocked_import_from_path.return_value = _dummy_processing
     queryset[0].user.social_auth.create(
         provider='tpa-saml',
         uid='bad_uid',
-        extra_data={'test_uid': ['99999']}
+        extra_data={'test_uid': 'this should be ignored because uid is bad'}
     )
-    assert_sso_external_id('54321', 'sso_external_id should ignore incorrect UIDs, and return the correct one')
+    assert_sso_external_id('processed_id', 'sso_external_id should ignore incorrect UIDs, and return the correct one')
+
+    mocked_import_from_path.reset_mock()
+    mocked_import_from_path.return_value = _dummy_processing
+    social_auth.extra_data = {}
+    social_auth.save()
+    assert_sso_external_id('', 'sso_external_id should empty when the external ID is not present')
+    mocked_import_from_path.assert_not_called()
 
     social_auth.uid = 'other_site_slug:whatever'
+    social_auth.extra_data = {'test_uid': 'should be ignored because the site slug is not the one we are looking for'}
     social_auth.save()
     assert_sso_external_id('', 'sso_external_id should be empty when no valid social auth exists')
+    mocked_import_from_path.assert_not_called()
 
 
 @pytest.mark.django_db
-@patch('futurex_openedx_extensions.dashboard.serializers.get_sso_sites')
+@patch('futurex_openedx_extensions.dashboard.serializers.import_from_path')
 @pytest.mark.parametrize('key_to_remove, expected_result', [
     ('', '12345'),
     ('external_id_field', ''),
     ('external_id_extractor', ''),
 ])
 def test_learner_enrollments_serializer_for_sso_external_id_bad_settings(
-    mocked_get_sso_sites, key_to_remove, expected_result, base_data, sso_external_id_context, caplog,
+    mocked_import, key_to_remove, expected_result, base_data, sso_external_id_context, caplog,
 ):  # pylint: disable=unused-argument, redefined-outer-name, too-many-arguments
     """Verify that LearnerEnrollmentSerializer detects invalid FX_SSO_INFO settings."""
-    mocked_get_sso_sites.return_value = {
-        's2.sample.com': [{
-            'slug': 'site_slug',
-            'entity_id': 'testing_entity_id1',
-        }]
-    }
+    def _dummy_processing(value):
+        return '12345'
+
+    mocked_import.return_value = _dummy_processing
     queryset = sso_external_id_context[0]
     context = sso_external_id_context[1]
 
-    settings_override = copy.copy(settings.FX_SSO_INFO)
+    settings_override = copy.deepcopy(settings.FX_SSO_INFO)
     if key_to_remove:
         del settings_override['testing_entity_id1'][key_to_remove]
     with override_settings(FX_SSO_INFO=settings_override):
         serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
-    assert serializer.data[0].get('sso_external_id') == expected_result
+        assert serializer.data[0].get('sso_external_id') == expected_result
     if key_to_remove:
         assert 'Bad (external_id_field) or (external_id_extractor) settings for Entity ID (testing_entity_id1)' \
             in caplog.text
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.import_from_path')
+def test_learner_enrollments_serializer_for_sso_external_id_import_failed(
+    mocked_import, base_data, sso_external_id_context,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that LearnerEnrollmentSerializer handles import failure for external_id_extractor."""
+    mocked_import.side_effect = ImportError('import failed')
+    queryset = sso_external_id_context[0]
+    context = sso_external_id_context[1]
+
+    with pytest.raises(FXCodedException) as exc_info:
+        _ = LearnerEnrollmentSerializer(queryset, context=context, many=True).data
+    assert exc_info.value.code == FXExceptionCodes.BAD_CONFIGURATION_EXTERNAL_ID_EXTRACTOR.value
+    assert str(exc_info.value) == \
+        'Bad configuration: FX_SSO_INFO.testing_entity_id1.external_id_extractor. import failed'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.import_from_path')
+def test_learner_enrollments_serializer_for_sso_external_id_extractor_exception(
+    mocked_import, base_data, sso_external_id_context,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that LearnerEnrollmentSerializer return an empty string when external_id_extractor raises exception."""
+    def none_failing_processing(value):
+        return 'good'
+
+    def _failing_processing(value):
+        raise Exception('failed')
+
+    queryset = sso_external_id_context[0]
+    context = sso_external_id_context[1]
+
+    mocked_import.return_value = none_failing_processing
+    serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
+    assert serializer.data[0].get('sso_external_id') == 'good'
+
+    mocked_import.return_value = _failing_processing
+    serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
+    assert serializer.data[0].get('sso_external_id') == ''
 
 
 @pytest.mark.django_db

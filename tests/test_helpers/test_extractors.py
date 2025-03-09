@@ -12,6 +12,8 @@ from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.extractors import (
     DictHashcode,
     DictHashcodeSet,
+    external_id_extractor_str_or_one_item_string_list,
+    external_id_extractor_value,
     get_available_optional_field_tags,
     get_available_optional_field_tags_docs_table,
     get_course_id_from_uri,
@@ -574,3 +576,31 @@ def test_get_valid_duration_negative_max_chunks(date_from, date_to, expected_dat
             datetime.combine(expected_dates[0], datetime.min.time()) if expected_dates[0] else None,
             datetime.combine(expected_dates[1], datetime.max.time()) if expected_dates[1] else None,
         )
+
+
+@pytest.mark.parametrize('value, expected_result', [
+    ('test_string', 'test_string'),
+    (123, 123),
+    (['single_item'], ['single_item']),
+    ([], []),
+    ({'key': 'value'}, {'key': 'value'}),
+])
+def test_external_id_extractor_value(value, expected_result):
+    """Verify that external_id_extractor_value returns the expected value."""
+    assert external_id_extractor_value(value) == expected_result
+
+
+@pytest.mark.parametrize('value, expected_result', [
+    (123, '123'),
+    (['single_item'], 'single_item'),
+    ([123], '123'),
+    (['item1', 'item2'], ''),
+    ([123, 456], ''),
+    ([], ''),
+    ('normal_string', 'normal_string'),
+    ({'not': 'a string or a string list'}, ''),
+    (None, ''),
+])
+def test_external_id_extractor_str_or_one_item_string_list(value, expected_result):
+    """Verify that external_id_extractor_str_or_one_item_string_list returns the expected value."""
+    assert external_id_extractor_str_or_one_item_string_list(value) == expected_result
