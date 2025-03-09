@@ -169,6 +169,52 @@ def test_get_learners_queryset(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('enrollments_filter, expected_error_message', [
+    ('not tuple or list', 'Enrollments filter must be a tuple or a list.'),
+    ((1, 2, 3), 'Enrollments filter must be a tuple or a list of two integer values.'),
+    ((1.0, 2), 'Enrollments filter must be a tuple or a list of two integer values.'),
+])
+def test_test_get_learners_queryset_enrollments_filter_invalid(
+    base_data, fx_permission_info, enrollments_filter, expected_error_message,
+):  # pylint: disable=unused-argument
+    """Verify that get_learners_queryset raises an exception for an invalid enrollments filter."""
+    with pytest.raises(FXCodedException) as exc_info:
+        get_learners_queryset(
+            fx_permission_info=fx_permission_info,
+            enrollments_filter=enrollments_filter,
+        )
+    assert str(exc_info.value) == expected_error_message
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('enrollments_filter, expected_ids', [
+    ((-1, -1), [5, 15, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 38, 39, 40, 41]),
+    ((2, -1), [5, 15, 21, 22, 23, 24, 25, 40]),
+    ((-1, 2), [5, 15, 22, 23, 24, 25, 28, 29, 30, 31, 32, 38, 39, 40, 41]),
+    ((2, 2), [5, 15, 22, 23, 24, 25, 40]),
+    ((3, 3), [21]),
+    ((3, 100), [21]),
+    ((4, 100), []),
+    ((100, 3), []),
+])
+def test_test_get_learners_queryset_enrollments_filter(
+    base_data, fx_permission_info, enrollments_filter, expected_ids,
+):  # pylint: disable=unused-argument
+    """Verify that get_learners_queryset returns the correct QuerySet when using enrollments filters."""
+    assert list(get_learners_queryset(
+        fx_permission_info=fx_permission_info,
+    ).values_list('id', 'courses_count')) == [
+        (5, 2), (15, 2), (21, 3), (22, 2), (23, 2), (24, 2), (25, 2), (28, 1),
+        (29, 1), (30, 1), (31, 1), (32, 1), (38, 1), (39, 1), (40, 2), (41, 1),
+    ], 'bad test data'
+
+    assert list(get_learners_queryset(
+        fx_permission_info=fx_permission_info,
+        enrollments_filter=enrollments_filter,
+    ).values_list('id', flat=True)) == expected_ids
+
+
+@pytest.mark.django_db
 def test_get_learners_by_course_queryset(base_data):  # pylint: disable=unused-argument
     """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
     PersistentCourseGrade.objects.create(user_id=15, course_id='course-v1:ORG1+5+5', percent_grade=0.67)

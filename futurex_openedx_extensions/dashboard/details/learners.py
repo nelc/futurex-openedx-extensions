@@ -13,6 +13,7 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_base_queryset_courses,
@@ -101,11 +102,12 @@ def get_certificates_count_for_learner_queryset(
     ), 0)
 
 
-def get_learners_queryset(
+def get_learners_queryset(  # pylint: disable=too-many-arguments
     fx_permission_info: dict,
     search_text: str | None = None,
     visible_courses_filter: bool | None = True,
     active_courses_filter: bool | None = None,
+    enrollments_filter: tuple[int, int] = (-1, -1),
     include_staff: bool = False,
 ) -> QuerySet:
     """
@@ -119,11 +121,25 @@ def get_learners_queryset(
     :type visible_courses_filter: bool
     :param active_courses_filter: Value to filter courses on active status. None means no filter
     :type active_courses_filter: bool
+    :param enrollments_filter: Tuple containing the minimum and maximum number of enrollments
+    :type enrollments_filter: tuple[int]
     :param include_staff: flag to include staff users
     :type include_staff: bool
     :return: QuerySet of learners
     :rtype: QuerySet
     """
+    if not isinstance(enrollments_filter, (tuple, list)):
+        raise FXCodedException(
+            code=FXExceptionCodes.INVALID_INPUT,
+            message='Enrollments filter must be a tuple or a list.',
+        )
+
+    if len(enrollments_filter) != 2 or not all(isinstance(x, int) for x in enrollments_filter):
+        raise FXCodedException(
+            code=FXExceptionCodes.INVALID_INPUT,
+            message='Enrollments filter must be a tuple or a list of two integer values.',
+        )
+
     queryset = get_learners_search_queryset(search_text)
 
     queryset = get_permitted_learners_queryset(
@@ -145,9 +161,20 @@ def get_learners_queryset(
             visible_courses_filter=visible_courses_filter,
             active_courses_filter=active_courses_filter,
         )
-    ).select_related('profile', 'extrainfo').order_by('id')
+    )
 
-    update_removable_annotations(queryset, removable=['courses_count', 'certificates_count'])
+    if enrollments_filter[0] >= 0:
+        queryset = queryset.filter(courses_count__gte=enrollments_filter[0])
+
+    if enrollments_filter[1] >= 0:
+        queryset = queryset.filter(courses_count__lte=enrollments_filter[1])
+
+    queryset = queryset.select_related('profile', 'extrainfo').order_by('id')
+
+    if enrollments_filter[0] < 0 and enrollments_filter[1] < 0:
+        update_removable_annotations(queryset, removable=['courses_count'])
+
+    update_removable_annotations(queryset, removable=['certificates_count'])
 
     return queryset
 

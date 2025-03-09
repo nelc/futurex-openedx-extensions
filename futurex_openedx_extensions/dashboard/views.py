@@ -487,11 +487,20 @@ class LearnersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
         """Get the list of learners"""
         search_text = self.request.query_params.get('search_text')
         include_staff = self.request.query_params.get('include_staff', '0') == '1'
+        min_enrollments_count = self.request.query_params.get('min_enrollments_count', -1)
+        max_enrollments_count = self.request.query_params.get('max_enrollments_count', -1)
+
+        try:
+            min_enrollments_count = int(min_enrollments_count)
+            max_enrollments_count = int(max_enrollments_count)
+        except ValueError:
+            pass  # let get_learners_queryset handle the invalid values
 
         return get_learners_queryset(
             fx_permission_info=self.fx_permission_info,
             search_text=search_text,
             include_staff=include_staff,
+            enrollments_filter=(min_enrollments_count, max_enrollments_count),
         )
 
 

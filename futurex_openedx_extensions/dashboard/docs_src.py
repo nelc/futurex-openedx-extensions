@@ -797,6 +797,18 @@ docs_src = {
                 'a search text to filter the results by. The search text will be matched against the user\'s full name,'
                 ' username, national ID, and email address.',
             ),
+            query_parameter(
+                'min_enrollments_count',
+                int,
+                'filter learners to include only those who have at least this number of enrollments. A'
+                ' negative value will disable this filter as if it was not provided.',
+            ),
+            query_parameter(
+                'max_enrollments_count',
+                int,
+                'filter learners to include only those who have at most this number of enrollments. A'
+                ' negative value will disable this filter as if it was not provided.',
+            ),
             common_parameters['include_staff'],
             common_parameters['download'],
         ],

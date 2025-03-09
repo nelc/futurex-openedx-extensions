@@ -2,7 +2,7 @@
 # pylint: disable=too-many-lines
 import json
 from datetime import date
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import ddt
 import pytest
@@ -514,6 +514,37 @@ class TestLearnersView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 37)
         self.assertGreater(len(response.data['results']), 0)
+
+    @patch('futurex_openedx_extensions.dashboard.views.get_learners_queryset')
+    def test_enrollments_filter(self, mock_get_learners_queryset):
+        """Verify that the view filters the learners by enrollments"""
+        self.login_user(self.staff_user)
+
+        self.client.get(self.url)
+        mock_get_learners_queryset.assert_called_once_with(
+            fx_permission_info=ANY,
+            search_text=None,
+            include_staff=False,
+            enrollments_filter=(-1, -1)
+        )
+
+        mock_get_learners_queryset.reset_mock()
+        self.client.get(self.url + '?min_enrollments_count=1&max_enrollments_count=10')
+        mock_get_learners_queryset.assert_called_once_with(
+            fx_permission_info=ANY,
+            search_text=None,
+            include_staff=False,
+            enrollments_filter=(1, 10)
+        )
+
+    def test_enrollments_filter_invalid(self):
+        """Verify that the view returns 400 when the enrollments filter is invalid"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url + '?min_enrollments_count=HELLO')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data['reason'], 'Enrollments filter must be a tuple or a list of two integer values.'
+        )
 
 
 @pytest.mark.usefixtures('base_data')
