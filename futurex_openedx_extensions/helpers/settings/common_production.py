@@ -66,7 +66,7 @@ def plugin_settings(settings: Any) -> None:
         {
             'dummy_entity_id': {
                 'external_id_field': 'uid',
-                'external_id_extractor': None,  # should be a valid function or lambda
+                'external_id_extractor': 'path to function to be extracted using extractors.import_from_path'
             },
         },
     )

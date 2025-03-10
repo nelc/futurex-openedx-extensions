@@ -37,7 +37,9 @@ from futurex_openedx_extensions.helpers.converters import (
     dt_to_str,
     relative_url_to_absolute_url,
 )
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_csv import get_exported_file_url
+from futurex_openedx_extensions.helpers.extractors import import_from_path
 from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.roles import (
     RoleType,
@@ -494,7 +496,20 @@ class LearnerEnrollmentSerializer(
 
                     external_id_value = user_auth_record.extra_data.get(sso_info['external_id_field'])
                     if external_id_value:
-                        result = str(sso_info['external_id_extractor'](external_id_value) or '')
+                        try:
+                            external_id_extractor = import_from_path(sso_info['external_id_extractor'])
+                        except Exception as exc:
+                            raise FXCodedException(
+                                code=FXExceptionCodes.BAD_CONFIGURATION_EXTERNAL_ID_EXTRACTOR,
+                                message=f'Bad configuration: FX_SSO_INFO.{entity_id}.external_id_extractor. {str(exc)}'
+                            ) from exc
+
+                        try:
+                            result = str(external_id_extractor(external_id_value) or '')
+                        except Exception as exc:
+                            logger.warning(
+                                'SSO External ID extraction raised and error for user %s: %s', obj.user.username, exc,
+                            )
                     break
 
         return result
