@@ -10,6 +10,7 @@ from custom_reg_form.models import ExtraInfo
 from deepdiff import DeepDiff
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import Value
 from django.test import override_settings
 from django.utils.timezone import get_current_timezone, now, timedelta
@@ -17,6 +18,7 @@ from lms.djangoapps.grades.models import PersistentSubsectionGrade
 from opaque_keys.edx.keys import UsageKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
+from rest_framework.exceptions import ValidationError
 from social_django.models import UserSocialAuth
 
 from futurex_openedx_extensions.dashboard.serializers import (
@@ -24,6 +26,7 @@ from futurex_openedx_extensions.dashboard.serializers import (
     CourseDetailsSerializer,
     CourseScoreAndCertificateSerializer,
     DataExportTaskSerializer,
+    FileUploadSerializer,
     LearnerBasicDetailsSerializer,
     LearnerCoursesDetailsSerializer,
     LearnerDetailsExtendedSerializer,
@@ -1121,3 +1124,29 @@ def test_read_only_serializer_update():
     with pytest.raises(ValueError) as exc_info:
         serializer.update({}, {})
     assert str(exc_info.value) == 'This serializer is read-only and does not support object updates.'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('tenant_id, allowed_tenants, expected_error', [
+    (1, [1], None),
+    (99, [1], 'Tenant with ID 99 does not exist.'),
+    (1, [4], 'User does not have have required access for teanant (1).'),
+    (1, None, 'Unable to verify tenant access as request object is missing.'),
+])
+def test_file_upload_serializer(tenant_id, allowed_tenants, expected_error):
+    """Test validation of tenant_id in FileUploadSerializer"""
+    request = None
+    if allowed_tenants:
+        request = Mock(fx_permission_info={'view_allowed_tenant_ids_full_access': allowed_tenants})
+
+    file_data = SimpleUploadedFile('test.png', b'file_content', content_type='image/png')
+    serializer = FileUploadSerializer(
+        data={'file': file_data, 'slug': 'test-slug', 'tenant_id': tenant_id}, context={'request': request})
+
+    if expected_error:
+        with pytest.raises(ValidationError):
+            assert not serializer.is_valid(raise_exception=True)
+        assert serializer.errors['tenant_id'][0] == expected_error
+    else:
+        assert serializer.is_valid()
+        assert serializer.validated_data['tenant_id'] == tenant_id

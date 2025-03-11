@@ -2,7 +2,9 @@
 # pylint: disable=too-many-lines
 from __future__ import annotations
 
+import os
 import re
+import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
@@ -49,8 +51,10 @@ from futurex_openedx_extensions.dashboard.statistics.courses import (
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
+    ALLOWED_IMAGE_EXTENSIONS,
     CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS,
     CLICKHOUSE_FX_BUILTIN_ORG_IN_TENANTS,
+    CONFIG_FILES_UPLOAD_DIR,
     COURSE_ACCESS_ROLES_STAFF_EDITOR,
     COURSE_ACCESS_ROLES_SUPPORTED_READ,
     COURSE_STATUS_SELF_PREFIX,
@@ -90,6 +94,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     publish_tenant_config,
     update_draft_tenant_config,
 )
+from futurex_openedx_extensions.helpers.upload import get_storage_dir, upload_file
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
@@ -1492,3 +1497,43 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
             course_ids=[],
         )
         return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+
+@docs('FileUploadView.post')
+class FileUploadView(FXViewRoleInfoMixin, APIView):
+    """View to upload file"""
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    fx_view_name = 'uplaod_file'
+    fx_view_description = 'api/fx/file/v1/upload/: Upload file'
+    fx_default_read_write_roles = ['staff', 'fx_api_access_global']
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """
+        POST /api/fx/file/v1/upload/
+
+        Validates the payload, saves the file, and returns the file URL.
+        """
+        serializer = serializers.FileUploadSerializer(data=request.data, context={'request': self.request})
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+        file = serializer.validated_data['file']
+        slug = serializer.validated_data['slug']
+        tenant_id = serializer.validated_data['tenant_id']
+
+        file_extension = os.path.splitext(file.name)[1]
+        if file_extension.lower() not in ALLOWED_IMAGE_EXTENSIONS:
+            return Response(
+                error_details_to_dictionary(
+                    reason=f'Invalid file type. Allowed types are {ALLOWED_IMAGE_EXTENSIONS}.'
+                ),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+        short_uuid = uuid.uuid4().hex[:8]
+        file_name = f'{slug}-{short_uuid}{file_extension}'
+        storage_path = os.path.join(get_storage_dir(tenant_id, CONFIG_FILES_UPLOAD_DIR), file_name)
+        return Response(
+            {'url': upload_file(storage_path, file), 'uuid': short_uuid},
+            status=http_status.HTTP_201_CREATED
+        )

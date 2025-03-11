@@ -13,13 +13,13 @@ from django.core.files.storage import default_storage
 from django.test import override_settings
 from storages.backends.s3boto3 import S3Boto3Storage
 
+from futurex_openedx_extensions.helpers.constants import CSV_EXPORT_UPLOAD_DIR
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.export_csv import (
     _combine_partial_files,
     _generate_csv_with_tracked_progress,
     _get_mocked_request,
     _get_response_data,
-    _get_storage_dir,
     _get_user,
     _get_view_class_instance,
     _paginated_response_generator,
@@ -221,14 +221,6 @@ def test_paginated_response_generator_for_empty_response_data(
     view_instance.assert_called_once()
 
 
-def test_get_storage_dir():
-    """Return storgae dir"""
-    tenant_id = 1
-    expected = os.path.join(settings.FX_DASHBOARD_STORAGE_DIR, f'{str(tenant_id)}/exported_files')
-    result = _get_storage_dir(str(tenant_id))
-    assert result == expected
-
-
 @pytest.mark.parametrize('partial', [True, False])
 def test_upload_file_to_storage(partial):
     """Test uploading a file to the default storage."""
@@ -256,8 +248,8 @@ def test_upload_file_to_storage(partial):
     os.rmdir(settings.FX_DASHBOARD_STORAGE_DIR)
 
 
-@patch('futurex_openedx_extensions.helpers.export_csv.default_storage')
-@patch('futurex_openedx_extensions.helpers.export_csv._get_storage_dir')
+@patch('futurex_openedx_extensions.helpers.upload.default_storage')
+@patch('futurex_openedx_extensions.helpers.export_csv.get_storage_dir')
 def test_upload_file_to_storage_set_private(mock_get_storage_dir, mock_storage):  # pylint: disable=redefined-outer-name
     """Verify that the uploaded file is set to private when the storage type is S3Boto3Storage."""
     mock_get_storage_dir.return_value = 'fake_exported_files'
@@ -656,7 +648,7 @@ def mock_upload_file_to_storage():
 @pytest.fixture
 def mock_get_storage_dir():
     """Fixture for get storage dir."""
-    with patch('futurex_openedx_extensions.helpers.export_csv._get_storage_dir') as mock_storage_dir:
+    with patch('futurex_openedx_extensions.helpers.export_csv.get_storage_dir') as mock_storage_dir:
         yield mock_storage_dir
 
 
@@ -700,7 +692,7 @@ def test_combine_partial_files_success(
         ) as mock_tmp_file:
             _combine_partial_files(task_id=1, filename='export.csv', tenant_id=123)
 
-            mock_get_storage_dir.assert_called_once_with('123')
+            mock_get_storage_dir.assert_called_once_with(123, CSV_EXPORT_UPLOAD_DIR)
             mock_default_storage.listdir.assert_called_once_with(
                 os.path.join('/mock/storage/dir', 'export.csv_parts')
             )
