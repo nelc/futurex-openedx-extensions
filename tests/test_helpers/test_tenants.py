@@ -1,4 +1,5 @@
 """Tests for tenants helpers."""
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +9,7 @@ from django.core.cache import cache
 from django.db.models import F
 from django.test import override_settings
 from eox_tenant.models import Route, TenantConfig
+from rest_framework.exceptions import PermissionDenied
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
@@ -617,15 +619,19 @@ def test_get_tenant_config_for_non_exist_tenant():
 def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
     """Test get_draft_tenant_config"""
     ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook')
-    assert tenants.get_draft_tenant_config(1) == {
+    assert tenants.get_draft_tenant_config(1, {'view_allowed_tenant_ids_full_access': [1]}) == {
         'facebook_link': {
             'published_value': 'facebook.com',
             'draft_value': 'draft.facebook.com'
         }
     }
     with pytest.raises(FXCodedException) as exc_info:
-        tenants.get_draft_tenant_config(10000)
+        tenants.get_draft_tenant_config(10000, {'view_allowed_tenant_ids_full_access': [10000]})
     assert str(exc_info.value) == 'Unable to find tenant with id: 10000'
+
+    with pytest.raises(PermissionDenied) as exc_info:
+        tenants.get_draft_tenant_config(1, {'view_allowed_tenant_ids_full_access': [2, 3, 4]})
+    assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (1)'
 
 
 @pytest.mark.django_db
@@ -639,19 +645,20 @@ def test_update_draft_tenant_config(mock_update_draft_json_merge, mock_annotate_
     current_value = 'current_value'
     new_value = 'new_value'
     reset = False
+    fake_permission_info = {'view_allowed_tenant_ids_full_access': [1]}
 
     mock_filter.return_value.exists.return_value = True
     mock_filter.return_value = TenantConfig.objects.filter(id=tenant_id)
     mock_annotate_queryset.return_value = mock_filter.return_value
     mock_update_draft_json_merge.return_value = MagicMock()
-    tenants.update_draft_tenant_config(1, key_path, current_value, new_value, reset)
+    tenants.update_draft_tenant_config(1, fake_permission_info, key_path, current_value, new_value, reset)
     mock_annotate_queryset.assert_called_with(mock_filter.return_value, key_path)
     mock_update_draft_json_merge.assert_called_once_with(F('lms_configs'), key_path, new_value, reset)
     mock_filter.return_value.filter.return_value.update.assert_called_once()
 
     mock_filter.return_value.filter.return_value.update.return_value = 0
     with pytest.raises(FXCodedException) as exc_info:
-        tenants.update_draft_tenant_config(tenant_id, key_path, current_value, new_value, reset)
+        tenants.update_draft_tenant_config(tenant_id, fake_permission_info, key_path, current_value, new_value, reset)
     assert str(exc_info.value) == (
         'Failed to update config for tenant 1. '
         'Key path may not exist or current value mismatch.'
@@ -659,26 +666,42 @@ def test_update_draft_tenant_config(mock_update_draft_json_merge, mock_annotate_
 
 
 @pytest.mark.django_db
-def test_update_draft_tenant_config_for_non_exist_tenant():
+def test_update_draft_tenant_config_for_tenant_errors():
     """Test update_draft_tenant_config for tenant that does not exist """
-    not_exist_tenant_id = 100000
     key_access_info = ConfigAccessControl.objects.create(key_name='footer_link', path='theme_v2.footer.link')
+    fx_permission_info = {'view_allowed_tenant_ids_full_access': [1000]}
+
+    not_exist_tenant_id = 100000
     with pytest.raises(FXCodedException) as exc_info:
-        tenants.update_draft_tenant_config(not_exist_tenant_id, key_access_info.path, 'some value', 'new value')
+        tenants.update_draft_tenant_config(
+            not_exist_tenant_id, fx_permission_info, key_access_info.path, 'some value', 'new value'
+        )
     assert str(exc_info.value) == 'Tenant with ID 100000 not found.'
+
+    not_accessible_tenant_id = 4
+    fx_permission_info['view_allowed_tenant_ids_full_access'] = [1, 2, 3, 5]
+    with pytest.raises(PermissionDenied) as exc_info:
+        tenants.update_draft_tenant_config(
+            not_accessible_tenant_id, fx_permission_info, key_access_info.path, 'some value', 'new value'
+        )
+    assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (4)'
 
 
 @pytest.mark.django_db
 def test_delete_draft_tenant_config():
     """Test delete_draft_tenant_config"""
     with pytest.raises(FXCodedException) as exc_info:
-        tenants.delete_draft_tenant_config(10000)
+        tenants.delete_draft_tenant_config(10000, {'view_allowed_tenant_ids_full_access': [10000]})
     assert exc_info.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
     assert str(exc_info.value) == 'Unable to find tenant with id: 10000'
 
+    with pytest.raises(PermissionDenied) as exc_info:
+        tenants.delete_draft_tenant_config(1, {'view_allowed_tenant_ids_full_access': [3, 4]})
+    assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (1)'
+
     tenant = TenantConfig.objects.get(id=1)
     assert tenant.lms_configs['config_draft'] != {}
-    tenants.delete_draft_tenant_config(1)
+    tenants.delete_draft_tenant_config(1, {'view_allowed_tenant_ids_full_access': [1]})
     tenant.refresh_from_db()
     assert tenant.lms_configs['config_draft'] == {}
 

@@ -1966,7 +1966,23 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
     """Tests for ThemeConfigDraftView"""
     VIEW_NAME = 'fx_dashboard:theme-config-draft'
 
-    def test_draft_config_retrieve(self):
+    def test_only_authorized_users_can_retrieve_draft_config(self):
+        """Verify that only authourized users can retrieve draft"""
+        ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook')
+        tenant_config = TenantConfig.objects.get(id=1)
+        self.url_args = [tenant_config.id]
+
+        self.login_user(3)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertIn('updated_fields', response.json())
+
+        self.login_user(10)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['reason'], 'User does not have required access for tenant (1)')
+
+    def test_draft_config_retrieve_success(self):
         """Verify that the view returns the correct response"""
         tenant_config = TenantConfig.objects.get(id=1)
         ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook')
@@ -2070,14 +2086,24 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
             format='json'
         )
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
-        mock_update_draft.assert_called_once_with(tenant_id, 'platform_name', 's1 platform name', 's1 new name', False)
+        mock_update_draft.assert_called_once_with(
+            tenant_id, ANY, 'platform_name', 's1 platform name', 's1 new name', False
+        )
 
     def test_draft_config_delete(self):
         """Verify that the view returns the correct response"""
         tenant_config = TenantConfig.objects.get(id=1)
         assert tenant_config.lms_configs['config_draft'] != {}
-        self.login_user(self.staff_user)
         self.url_args = [tenant_config.id]
+
+        self.login_user(23)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['reason'], 'User does not have required access for tenant (1)')
+        tenant_config.refresh_from_db()
+        assert tenant_config.lms_configs['config_draft'] != {}
+
+        self.login_user(8)
         response = self.client.delete(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
         tenant_config.refresh_from_db()
@@ -2085,6 +2111,7 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
 
 
 @ddt.ddt
+@pytest.mark.usefixtures('base_data')
 class TestThemeConfigPublishView(BaseTestViewMixin):
     """Tests for ThemeConfigPublishView"""
     VIEW_NAME = 'fx_dashboard:theme-config-publish'
@@ -2101,35 +2128,42 @@ class TestThemeConfigPublishView(BaseTestViewMixin):
                 'links': {'old_value': 'facebook.com', 'new_value': 'draft.facebook.com'}
             }
         }
-        self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={
+        payload = {
             'draft_hash': dict_to_hash(updated_fields),
             'tenant_id': 1
-        }, format='json')
+        }
+        self.login_user(10)
+        response = self.client.post(self.url, data=payload, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['reason'], 'User does not have required access for tenant (1)')
+
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data=payload, format='json')
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         mocked_publish_config.assert_called_once_with(1)
         self.assertEqual(response.json(), expected_return_value)
 
     @ddt.data(
-        ('does-not-matter', None, 'Tenant id is required and must be an int.'),
-        ('does-not-matter', [], 'Tenant id is required and must be an int.'),
-        ('does-not-matter', '', 'Tenant id is required and must be an int.'),
-        ('does-not-matter', 'non-int', 'Tenant id is required and must be an int.'),
-        ('does-not-matter', '1', 'Tenant id is required and must be an int.'),
-        (None, 1, 'Draft hash is reuired and must be a string.'),
-        ('', 1, 'Draft hash is reuired and must be a string.'),
-        (['not str'], 1, 'Draft hash is reuired and must be a string.'),
-        ('invalid_hash', 1, 'Draft hash mismatched with current draft values hash.'),
+        ('does-not-matter', None, 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
+        ('does-not-matter', [], 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
+        ('does-not-matter', '', 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
+        ('does-not-matter', 'non-int', 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
+        ('does-not-matter', '1', 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
+        (None, 1, 'Draft hash is reuired and must be a string.', http_status.HTTP_400_BAD_REQUEST),
+        ('', 1, 'Draft hash is reuired and must be a string.', http_status.HTTP_400_BAD_REQUEST),
+        (['not str'], 1, 'Draft hash is reuired and must be a string.', http_status.HTTP_400_BAD_REQUEST),
+        ('invalid_hash', 1, 'Draft hash mismatched with current draft values hash.', http_status.HTTP_400_BAD_REQUEST),
+        ('does-bot-matter', 12, 'User does not have required access for tenant (12)', http_status.HTTP_403_FORBIDDEN),
     )
     @ddt.unpack
-    def test_validations(self, draft_hash, tenant_id, expected_error):
+    def test_validations(self, draft_hash, tenant_id, expected_error, expected_status):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
         response = self.client.post(self.url, data={
             'draft_hash': draft_hash,
             'tenant_id': tenant_id
         }, format='json')
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, expected_status)
         self.assertEqual(response.data.get('reason'), expected_error)
 
 
@@ -2170,32 +2204,46 @@ class ThemeConfigRetrieveViewTest(BaseTestViewMixin):
     @ddt.data(
         (
             '1,2,3', 'platform_name,theme_v2', '0',
-            'Tenant ids is required and should be a valid integer representing single tenant.'
+            'User does not have access to these tenants',
+            http_status.HTTP_403_FORBIDDEN
+        ),
+        (
+            '1,1', 'platform_name,theme_v2', '0',
+            'Tenant ids is required and should be a valid integer representing single tenant.',
+            http_status.HTTP_400_BAD_REQUEST
         ),
         (
             '', 'platform_name,theme_v2', '0',
-            'Tenant ids is required and should be a valid integer representing single tenant.'
+            'Tenant ids is required and should be a valid integer representing single tenant.',
+            http_status.HTTP_400_BAD_REQUEST
         ),
         (
-            '1', '', '0', 'Keys are required and must be a string containing "," separated list of key names.'
+            '1', '', '0', 'Keys are required and must be a string containing "," separated list of key names.',
+            http_status.HTTP_400_BAD_REQUEST
+        ),
+        (
+            '7', 'platform_name', '0', 'User does not have access to these tenants',
+            http_status.HTTP_403_FORBIDDEN
         )
     )
     @ddt.unpack
-    def test_invalid_params(self, tenant_ids, keys, published_only, expected_error):
+    def test_invalid_params(
+        self, tenant_ids, keys, published_only, expected_error, expected_http_status
+    ):   # pylint: disable=too-many-arguments
         """Test invalid parameters for ThemeConfigRetrieveView."""
-        self.login_user(self.staff_user)
+        self.login_user(8)
         response = self.client.get(self.url, data={
             'tenant_ids': tenant_ids,
             'keys': keys,
             'published_only': published_only
         })
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, expected_http_status)
         self.assertEqual(response.data.get('reason'), expected_error)
 
 
 @ddt.ddt
 class ThemeConfigTenantView(BaseTestViewMixin):
-    """Tests for ThemeConfigPublishView"""
+    """Tests for ThemeConfigTenantView"""
     VIEW_NAME = 'fx_dashboard:theme-config-tenant'
 
     @ddt.data(
