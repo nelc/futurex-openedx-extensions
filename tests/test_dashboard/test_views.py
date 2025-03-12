@@ -2149,9 +2149,9 @@ class TestThemeConfigPublishView(BaseTestViewMixin):
         ('does-not-matter', '', 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
         ('does-not-matter', 'non-int', 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
         ('does-not-matter', '1', 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
-        (None, 1, 'Draft hash is reuired and must be a string.', http_status.HTTP_400_BAD_REQUEST),
-        ('', 1, 'Draft hash is reuired and must be a string.', http_status.HTTP_400_BAD_REQUEST),
-        (['not str'], 1, 'Draft hash is reuired and must be a string.', http_status.HTTP_400_BAD_REQUEST),
+        (None, 1, 'Draft hash is required and must be a string.', http_status.HTTP_400_BAD_REQUEST),
+        ('', 1, 'Draft hash is required and must be a string.', http_status.HTTP_400_BAD_REQUEST),
+        (['not str'], 1, 'Draft hash is required and must be a string.', http_status.HTTP_400_BAD_REQUEST),
         ('invalid_hash', 1, 'Draft hash mismatched with current draft values hash.', http_status.HTTP_400_BAD_REQUEST),
         ('does-bot-matter', 12, 'User does not have required access for tenant (12)', http_status.HTTP_403_FORBIDDEN),
     )

@@ -88,6 +88,7 @@ from futurex_openedx_extensions.helpers.roles import (
 from futurex_openedx_extensions.helpers.tenants import (
     create_new_tenant_config,
     delete_draft_tenant_config,
+    get_accessible_config_keys,
     get_draft_tenant_config,
     get_excluded_tenant_ids,
     get_tenant_config,
@@ -1229,11 +1230,19 @@ class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
         """
         GET /api/fx/config/v1/editable/
         """
-        writable_fields = ConfigAccessControl.objects.filter(writable=True).values_list('key_name', flat=True)
-        read_only_fields = ConfigAccessControl.objects.filter(writable=False).values_list('key_name', flat=True)
+        # TODO: get the tenant_id through a mixin
+        tenant_id = request.fx_permission_info['view_allowed_tenant_ids_any_access'][0]
         return JsonResponse({
-            'editable_fields': list(writable_fields),
-            'read_only_fields': list(read_only_fields)
+            'editable_fields': get_accessible_config_keys(
+                user_id=request.user.id,
+                tenant_id=tenant_id,
+                writable_fields_filter=True
+            ),
+            'read_only_fields': get_accessible_config_keys(
+                user_id=request.user.id,
+                tenant_id=tenant_id,
+                writable_fields_filter=False,
+            ),
         })
 
 
@@ -1405,16 +1414,17 @@ class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
 
     def validate_keys(self) -> list:
         """Validate keys"""
+        # TODO: get the tenant_id through a mixin
+        tenant_id = self.request.fx_permission_info['view_allowed_tenant_ids_any_access'][0]
         keys = self.request.query_params.get('keys', '')
-        if not keys:
-            raise FXCodedException(
-                code=FXExceptionCodes.INVALID_INPUT,
-                message='Keys are required and must be a string containing "," separated list of key names.'
-            )
-        return keys.split(',')
+        if keys:
+            return keys.split(',')
+
+        return get_accessible_config_keys(user_id=self.request.user.id, tenant_id=tenant_id)
 
     def validate_tenant_ids(self) -> int:
         """Validate tenant id"""
+        # TODO: get the tenant_id through a mixin
         tenant_ids = self.request.query_params.get('tenant_ids', '')
         if not tenant_ids.isdigit():
             raise FXCodedException(

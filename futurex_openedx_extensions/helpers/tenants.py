@@ -446,7 +446,7 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Fa
             _, publish_value = get_tenant_config_value(
                 tenant.lms_configs, key_config.path, published_only=published_only
             )
-            details['values'][key_config.key_name] = publish_value
+            details['values'][key] = publish_value
         except ConfigAccessControl.DoesNotExist:
             details['bad_keys'].append(key)
     return details
@@ -586,3 +586,28 @@ def publish_tenant_config(tenant_id: int) -> None:
                 f'Failed to publish config for tenant {tenant_id}.'
             )
         )
+
+
+def get_accessible_config_keys(
+    user_id: int,  # pylint: disable=unused-argument
+    tenant_id: int,  # pylint: disable=unused-argument
+    writable_fields_filter: bool | None = None,
+) -> List[str]:
+    """
+    TODO: permissions control is not implemented yet. No use for `user_id` and `tenant` parameters for now.
+
+    Get the list of accessible config keys for the given user and tenant.
+
+    :param user_id: The ID of the user.
+    :type user_id: int
+    :param tenant_id: The ID of the tenant.
+    :type tenant_id: int
+    :param writable_fields_filter: If True, return only writable fields. If False, return only read-only fields.
+        Default is None: return all fields.
+    :return: A list of accessible config keys.
+    """
+    queryset = ConfigAccessControl.objects.all()
+    if writable_fields_filter is not None:
+        queryset = queryset.filter(writable=writable_fields_filter)
+
+    return list(queryset.values_list('key_name', flat=True))

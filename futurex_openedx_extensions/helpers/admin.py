@@ -1,6 +1,7 @@
 """Django admin view for the models."""
 from __future__ import annotations
 
+import re
 from typing import Any, List, Tuple
 
 import yaml  # type: ignore
@@ -331,6 +332,9 @@ class ConfigAccessControlForm(forms.ModelForm):
         """Validates path with default tenant config."""
         key_path = self.data['path']
 
+        if not key_path:
+            raise forms.ValidationError('Key path is required.')
+
         if ' ' in key_path:
             raise forms.ValidationError('Key path must not contain spaces.')
 
@@ -340,9 +344,16 @@ class ConfigAccessControlForm(forms.ModelForm):
             raise forms.ValidationError('Unable to update path as default TenantConfig not found.') from exc
 
         path_parts = key_path.split('.')
+        if any(not part for part in path_parts):
+            raise forms.ValidationError(
+                'Key path must not contain empty parts. It shouldn not have leading, trailing, or double dots.'
+            )
+        invalid_chars_pattern = re.compile(r'[^a-zA-Z0-9_]')
+        if any(invalid_chars_pattern.search(part) for part in path_parts):
+            raise forms.ValidationError('Key path parts must include only alphanumeric characters and underscores.')
+
         data_pointer = default_config
         found_path = []
-
         for part in path_parts:
             try:
                 data_pointer = data_pointer[part]
