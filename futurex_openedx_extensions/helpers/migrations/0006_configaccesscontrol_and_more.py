@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('key_name', models.CharField(help_text='Key name, e.g., linkedin_url', max_length=255, unique=True)),
-                ('path', models.CharField(help_text='Comma-separated path, e.g., theme_v2,footer,linkedin_url', max_length=500)),
+                ('path', models.CharField(help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url', max_length=500)),
                 ('writable', models.BooleanField(default=False, help_text='Indicates if the field is writable')),
             ],
             options={

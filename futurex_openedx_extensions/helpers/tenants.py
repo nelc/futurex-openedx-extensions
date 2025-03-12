@@ -398,7 +398,7 @@ def get_tenant_config_value(config: dict, path: str, published_only: bool = Fals
     """
     def get_nested_value(config: dict, path: str) -> tuple:
         """
-        Retrieves a value from a nested dictionary based on a comma-separated path.
+        Retrieves a value from a nested dictionary based on a dot-separated path.
         """
         keys = [key.strip() for key in path.split('.')]
         for key in keys:

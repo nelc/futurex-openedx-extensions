@@ -52,7 +52,7 @@ from futurex_openedx_extensions.dashboard.statistics.courses import (
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
-    ALLOWED_IMAGE_EXTENSIONS,
+    ALLOWED_FILE_EXTENSIONS,
     CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS,
     CLICKHOUSE_FX_BUILTIN_ORG_IN_TENANTS,
     CONFIG_FILES_UPLOAD_DIR,
@@ -1361,7 +1361,7 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
         if not draft_hash or not isinstance(draft_hash, str):
             raise FXCodedException(
                 code=FXExceptionCodes.INVALID_INPUT,
-                message='Draft hash is reuired and must be a string.'
+                message='Draft hash is required and must be a string.'
             )
         current_draft = get_draft_tenant_config(tenant_id, fx_permission_info)
         current_draft_hash = dict_to_hash(current_draft)
@@ -1522,7 +1522,7 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
 class FileUploadView(FXViewRoleInfoMixin, APIView):
     """View to upload file"""
     permission_classes = [FXHasTenantAllCoursesAccess]
-    fx_view_name = 'uplaod_file'
+    fx_view_name = 'upload_file'
     fx_view_description = 'api/fx/file/v1/upload/: Upload file'
     fx_default_read_write_roles = ['staff', 'fx_api_access_global']
 
@@ -1542,10 +1542,10 @@ class FileUploadView(FXViewRoleInfoMixin, APIView):
         tenant_id = serializer.validated_data['tenant_id']
 
         file_extension = os.path.splitext(file.name)[1]
-        if file_extension.lower() not in ALLOWED_IMAGE_EXTENSIONS:
+        if file_extension.lower() not in ALLOWED_FILE_EXTENSIONS:
             return Response(
                 error_details_to_dictionary(
-                    reason=f'Invalid file type. Allowed types are {ALLOWED_IMAGE_EXTENSIONS}.'
+                    reason=f'Invalid file type. Allowed types are {ALLOWED_FILE_EXTENSIONS}.'
                 ),
                 status=http_status.HTTP_400_BAD_REQUEST
             )

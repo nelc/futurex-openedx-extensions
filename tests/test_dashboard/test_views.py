@@ -29,7 +29,7 @@ from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.constants import ALLOWED_IMAGE_EXTENSIONS
+from futurex_openedx_extensions.helpers.constants import ALLOWED_FILE_EXTENSIONS
 from futurex_openedx_extensions.helpers.converters import dict_to_hash
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
@@ -2396,7 +2396,7 @@ class FileUploadView(BaseTestViewMixin):
             format='multipart'
         )
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['reason'], f'Invalid file type. Allowed types are {ALLOWED_IMAGE_EXTENSIONS}.')
+        self.assertEqual(response.data['reason'], f'Invalid file type. Allowed types are {ALLOWED_FILE_EXTENSIONS}.')
 
     @patch('futurex_openedx_extensions.dashboard.views.uuid.uuid4')
     @patch('futurex_openedx_extensions.dashboard.views.get_storage_dir')
