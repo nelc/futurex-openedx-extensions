@@ -10,6 +10,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
+from rest_framework.exceptions import PermissionDenied
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
@@ -451,15 +452,19 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Fa
     return details
 
 
-def get_draft_tenant_config(tenant_id: int) -> dict:
+def get_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> dict:
     """
     Fetches configuration for the specified tenant and returns all draft fields with publsihed and draft values
 
     :param tenant_id: The ID of the tenant whose draft configuration is to be retrieved.
-    :type tenant_id: int
+    :param fx_permission_info: A dict containing permission related data
     :return: A dictionary containing updated fields with published and draft values.
-    :rtype: dict
     """
+    if tenant_id not in fx_permission_info['view_allowed_tenant_ids_full_access']:
+        raise PermissionDenied(detail=json.dumps(
+            {'reason': f'User does not have required access for tenant ({tenant_id})'}
+        ))
+
     try:
         tenant = TenantConfig.objects.get(id=tenant_id)
         updated_fields = {}
@@ -483,13 +488,19 @@ def get_draft_tenant_config(tenant_id: int) -> dict:
         ) from exc
 
 
-def delete_draft_tenant_config(tenant_id: int) -> None:
+def delete_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> None:
     """
     Deletes the draft configuration for the specified tenant.
 
     :param tenant_id: The ID of the tenant whose draft config needs to be deleted.
+    :param fx_permission_info: A dict containing permission related data
     :type tenant_id: int
     """
+
+    if tenant_id not in fx_permission_info['view_allowed_tenant_ids_full_access']:
+        raise PermissionDenied(detail=json.dumps(
+            {'reason': f'User does not have required access for tenant ({tenant_id})'}
+        ))
     try:
         tenant = TenantConfig.objects.get(id=tenant_id)
         tenant.lms_configs['config_draft'] = {}
@@ -501,8 +512,13 @@ def delete_draft_tenant_config(tenant_id: int) -> None:
         ) from exc
 
 
-def update_draft_tenant_config(
-    tenant_id: int, key_path: str, current_value: Any, new_value: Any, reset: bool = False
+def update_draft_tenant_config(   # pylint: disable=too-many-arguments
+    tenant_id: int,
+    fx_permission_info: dict,
+    key_path: str,
+    current_value: Any,
+    new_value: Any,
+    reset: bool = False
 ) -> None:
     """
     Updates 'config_draft.<key_path>' inside the JSON field 'lms_configs' in TenantConfig.
@@ -520,6 +536,11 @@ def update_draft_tenant_config(
             code=FXExceptionCodes.TENANT_NOT_FOUND,
             message=f'Tenant with ID {tenant_id} not found.'
         )
+
+    if tenant_id not in fx_permission_info['view_allowed_tenant_ids_full_access']:
+        raise PermissionDenied(detail=json.dumps(
+            {'reason': f'User does not have required access for tenant ({tenant_id})'}
+        ))
 
     queryset = TenantConfig.objects.filter(id=tenant_id)
     queryset = annotate_queryset_for_update_draft_config(queryset, key_path)

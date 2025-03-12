@@ -2,6 +2,7 @@
 # pylint: disable=too-many-lines
 from __future__ import annotations
 
+import json
 import os
 import re
 import uuid
@@ -23,7 +24,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from edx_api_doc_tools import exclude_schema_for
 from rest_framework import status as http_status
 from rest_framework import viewsets
-from rest_framework.exceptions import ParseError
+from rest_framework.exceptions import ParseError, PermissionDenied
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -1218,9 +1219,11 @@ class ClickhouseQueryView(FXViewRoleInfoMixin, APIView):
 @docs('ConfigEditableInfoView.get')
 class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
     """View to get the list of editable keys of the theme designer config"""
-    permission_classes = [FXHasTenantCourseAccess]
+    permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'fx_config_editable_fields'
     fx_view_description = 'api/fx/config/v1/editable: Get editable settings of config'
+    fx_default_read_write_roles = ['staff', 'fx_api_access_global']
+    fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
         """
@@ -1240,20 +1243,22 @@ class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
 class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
     """View to manage draft theme config"""
     authentication_classes = default_auth_classes
-    permission_classes = [FXHasTenantCourseAccess]
+    permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_draft'
     fx_allowed_write_methods = ['PUT', 'DELETE']
     fx_view_description = 'api/fx/config/v1/draft/<tenant_id>: draft theme config APIs'
+    fx_default_read_write_roles = ['staff', 'fx_api_access_global']
+    fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
     def get(self, request: Any, tenant_id: int) -> Response | JsonResponse:  # pylint: disable=no-self-use
         """Get draft config"""
-        updated_fields = get_draft_tenant_config(int(tenant_id))
+        updated_fields = get_draft_tenant_config(int(tenant_id), request.fx_permission_info)
         return JsonResponse({
             'updated_fields': updated_fields,
             'draft_hash': dict_to_hash(updated_fields)
         })
 
-    def put(self, request: Any, tenant_id: int) -> Response:  # pylint: disable=no-self-use
+    def put(self, request: Any, tenant_id: int) -> Response:
         """Update draft config"""
         data = request.data
         try:
@@ -1290,7 +1295,13 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
                     message=f'Current value type must be ({KEY_TYPE_MAP[key_access_info.key_type].__name__}) value.'
                 )
 
-            update_draft_tenant_config(int(tenant_id), key_access_info.path, data['current_value'], new_value, reset)
+            update_draft_tenant_config(
+                int(tenant_id),
+                self.request.fx_permission_info,
+                key_access_info.path,
+                data['current_value'],
+                new_value, reset
+            )
             return Response(status=http_status.HTTP_204_NO_CONTENT)
 
         except KeyError as exc:
@@ -1311,21 +1322,23 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
                 status=http_status.HTTP_400_BAD_REQUEST
             )
 
-    def delete(self, request: Any, tenant_id: int) -> Response:  # pylint: disable=no-self-use
+    def delete(self, request: Any, tenant_id: int) -> Response:
         """Delete draft config"""
-        delete_draft_tenant_config(int(tenant_id))
+        delete_draft_tenant_config(int(tenant_id), self.request.fx_permission_info)
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
 @docs('ThemeConfigPublishView.post')
 class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
     """View to publish theme config"""
-    permission_classes = [FXHasTenantCourseAccess]
+    permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_publish'
     fx_view_description = 'api/fx/config/v1/publish/: Get editable settings of config'
+    fx_default_read_write_roles = ['staff', 'fx_api_access_global']
+    fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
     @staticmethod
-    def validate_payload(data: dict) -> dict:
+    def validate_payload(data: dict, fx_permission_info: dict) -> dict:
         """
         Validates the payload.
 
@@ -1339,13 +1352,18 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
                 message='Tenant id is required and must be an int.'
             )
 
+        if tenant_id not in fx_permission_info['view_allowed_tenant_ids_full_access']:
+            raise PermissionDenied(detail=json.dumps(
+                {'reason': f'User does not have required access for tenant ({tenant_id})'}
+            ))
+
         draft_hash = data.get('draft_hash')
         if not draft_hash or not isinstance(draft_hash, str):
             raise FXCodedException(
                 code=FXExceptionCodes.INVALID_INPUT,
                 message='Draft hash is reuired and must be a string.'
             )
-        current_draft = get_draft_tenant_config(tenant_id)
+        current_draft = get_draft_tenant_config(tenant_id, fx_permission_info)
         current_draft_hash = dict_to_hash(current_draft)
         if current_draft_hash != draft_hash:
             raise FXCodedException(
@@ -1372,7 +1390,7 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
         POST /api/fx/config/v1/publish/
         """
         data = request.data
-        updated_fields = self.validate_payload(data)
+        updated_fields = self.validate_payload(data, self.request.fx_permission_info)
         publish_tenant_config(data['tenant_id'])
         return JsonResponse({'updated_fields': self.rename_keys(updated_fields)})
 
@@ -1380,9 +1398,10 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
 @docs('ThemeConfigRetrieveView.get')
 class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
     """View to get theme config values"""
-    permission_classes = [FXHasTenantCourseAccess]
+    permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_values'
     fx_view_description = 'api/fx/config/v1/values/: Get theme config values'
+    fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
     def validate_keys(self) -> list:
         """Validate keys"""
@@ -1420,7 +1439,7 @@ class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
 @docs('ThemeConfigTenantView.post')
 class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
     """View to create new Tenant and theme config"""
-    permission_classes = [FXHasTenantCourseAccess]
+    permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_tenant'
     fx_view_description = 'api/fx/config/v1/tenant/: Create new Tenant'
     fx_default_read_write_roles = ['staff', 'fx_api_access_global']
