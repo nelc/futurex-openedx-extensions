@@ -131,3 +131,8 @@ KEY_TYPE_MAP = {
     'dict': dict,
     'list': list,
 }
+
+ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpeg', '.jpg', '.ico', '.svg']
+
+CSV_EXPORT_UPLOAD_DIR = 'exported_files'
+CONFIG_FILES_UPLOAD_DIR = 'config_files'

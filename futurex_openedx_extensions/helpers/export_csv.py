@@ -13,15 +13,16 @@ import boto3
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
-from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.urls import resolve
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 from storages.backends.s3boto3 import S3Boto3Storage
 
+from futurex_openedx_extensions.helpers.constants import CSV_EXPORT_UPLOAD_DIR
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import DataExportTask
+from futurex_openedx_extensions.helpers.upload import get_storage_dir, upload_file
 
 log = logging.getLogger(__name__)
 User = get_user_model()
@@ -120,11 +121,6 @@ def _paginated_response_generator(
         url = response.data.get('next')
 
 
-def _get_storage_dir(dir_name: str) -> str:
-    """Return storage dir"""
-    return os.path.join(settings.FX_DASHBOARD_STORAGE_DIR, f'{str(dir_name)}/exported_files',)
-
-
 def _upload_file_to_storage(local_file_path: str, filename: str, tenant_id: int, partial_tag: int = 0) -> str:
     """
     Upload a file to the default storage (e.g., S3).
@@ -142,14 +138,8 @@ def _upload_file_to_storage(local_file_path: str, filename: str, tenant_id: int,
     """
     if partial_tag:
         filename = f'{filename}_parts/{filename}_{partial_tag:06d}'
-    storage_path = os.path.join(_get_storage_dir(str(tenant_id)), filename)
-    with open(local_file_path, 'rb') as file:
-        content_file = ContentFile(file.read())
-        default_storage.save(storage_path, content_file)
-
-    if isinstance(default_storage, S3Boto3Storage):
-        default_storage.bucket.Object(storage_path).Acl().put(ACL='private')
-
+    storage_path = os.path.join(get_storage_dir(tenant_id, CSV_EXPORT_UPLOAD_DIR), filename)
+    upload_file(storage_path, local_file_path, is_private=True)
     return storage_path
 
 
@@ -164,7 +154,7 @@ def _combine_partial_files(task_id: int, filename: str, tenant_id: int) -> None:
     :param tenant_id: The tenant ID.
     :type tenant_id: int
     """
-    storage_dir = _get_storage_dir(str(tenant_id))
+    storage_dir = get_storage_dir(tenant_id, CSV_EXPORT_UPLOAD_DIR)
     parts_dir = os.path.join(storage_dir, f'{filename}_parts')
     partial_files = default_storage.listdir(parts_dir)[1]
 
@@ -373,7 +363,7 @@ def generate_file_url(storage_path: str) -> str:
 def get_exported_file_url(fx_task: DataExportTask) -> Optional[str]:
     """Get file URL"""
     if fx_task.status == fx_task.STATUS_COMPLETED:
-        storage_path = os.path.join(_get_storage_dir(str(fx_task.tenant.id)), fx_task.filename)
+        storage_path = os.path.join(get_storage_dir(fx_task.tenant.id, CSV_EXPORT_UPLOAD_DIR), fx_task.filename)
         if default_storage.exists(storage_path):
             return generate_file_url(storage_path)
         log.warning('CSV Export: file not found for completed task %s: %s', fx_task.id, storage_path)

@@ -1820,5 +1820,36 @@ docs_src = {
             remove=[200, 404],
         ),
     },
+    'FileUploadView.post': {
+        'summary': 'Upload file.',
+        'description': 'Upload file.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'file': openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    description='File.',
+                ),
+                'slug': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='File slug',
+                    example='logo',
+                ),
+                'tenant_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='Tenant id',
+                    example=11,
+                ),
+            },
+            required=['file', 'slug', 'tenant_id']
+        ),
+        'responses': responses(
+            overrides={
+                204: 'Changes saved successfully.',
+                400: 'Unable to create tenant. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
 
 }

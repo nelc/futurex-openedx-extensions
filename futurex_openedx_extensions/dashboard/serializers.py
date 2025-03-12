@@ -9,6 +9,7 @@ from common.djangoapps.student.models import CourseEnrollment
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
+from eox_tenant.models import TenantConfig
 from lms.djangoapps.courseware.courses import get_course_blocks_completion_summary
 from lms.djangoapps.grades.api import CourseGradeFactory
 from lms.djangoapps.grades.context import grading_context_for_course
@@ -921,3 +922,31 @@ class AggregatedCountsSerializer(ReadOnlySerializer):
     all_tenants = AggregatedCountsAllTenantsSerializer()
     by_tenant = AggregatedCountsOneTenantSerializer(many=True)
     limited_access = serializers.BooleanField()
+
+
+class FileUploadSerializer(ReadOnlySerializer):
+    """
+    Serializer for handling the file upload request. It validates and serializes the input data.
+    """
+    file = serializers.FileField()
+    slug = serializers.SlugField()
+    tenant_id = serializers.IntegerField()
+
+    def validate_tenant_id(self, value: int) -> int:
+        """
+        Custom validation for tenant_id to ensure that the tenant exists.
+        """
+        try:
+            TenantConfig.objects.get(id=value)
+        except TenantConfig.DoesNotExist as exc:
+            raise serializers.ValidationError(f'Tenant with ID {value} does not exist.') from exc
+
+        request = self.context.get('request')
+
+        if not request or not hasattr(request, 'fx_permission_info'):
+            raise serializers.ValidationError('Unable to verify tenant access as request object is missing.')
+
+        if value not in request.fx_permission_info['view_allowed_tenant_ids_full_access']:
+            raise serializers.ValidationError(f'User does not have have required access for teanant ({value}).')
+
+        return value

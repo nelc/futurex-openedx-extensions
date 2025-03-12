@@ -11,6 +11,8 @@ from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import EmptyPage
 from django.db.models import Q
 from django.http import JsonResponse
@@ -27,6 +29,7 @@ from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.constants import ALLOWED_IMAGE_EXTENSIONS
 from futurex_openedx_extensions.helpers.converters import dict_to_hash
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
@@ -2275,3 +2278,99 @@ class ThemeConfigTenantView(BaseTestViewMixin):
         response = self.client.post(self.url, data=data, format='json')
         mock_add_course_access_roles.assert_called_once()
         assert response.status_code == http_status.HTTP_204_NO_CONTENT
+
+
+@pytest.mark.usefixtures('base_data')
+class FileUploadView(BaseTestViewMixin):
+    """Tests for FileUploadView"""
+    VIEW_NAME = 'fx_dashboard:file-upload'
+
+    @patch('futurex_openedx_extensions.dashboard.views.uuid.uuid4')
+    @patch('futurex_openedx_extensions.dashboard.views.get_storage_dir')
+    def test_success(self, mocked_storage_dir, mocked_uuid4):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        mocked_storage_dir.return_value = 'some-dummy-dir'
+        mocked_uuid4.return_value = Mock(hex='12345678abcdef12')
+        test_file = SimpleUploadedFile('test.png', b'file_content', content_type='image/png')
+        data = {
+            'file': test_file,
+            'slug': 'test-slug',
+            'tenant_id': 1
+        }
+        expected_file_name = 'test-slug-12345678.png'
+        expected_storage_path = f'some-dummy-dir/{expected_file_name}'
+        response = self.client.post('/api/fx/file/v1/upload/', data, format='multipart')
+        assert response.status_code == http_status.HTTP_201_CREATED
+        assert response.json()['uuid'] == '12345678'
+        assert response.json()['url'] == default_storage.url(expected_storage_path)
+        assert default_storage.exists(expected_storage_path)
+        default_storage.delete(expected_storage_path)
+
+    @patch('futurex_openedx_extensions.dashboard.views.get_storage_dir')
+    def test_failure(self, mocked_storage_dir):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.post(
+            '/api/fx/file/v1/upload/',
+            data={
+                'file': SimpleUploadedFile('test.png', b'file_content', content_type='image/png'),
+                'slug': 'test-slug',
+                'tenant_id': 10000000
+            },
+            format='multipart'
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(str(response.data['tenant_id'][0]), 'Tenant with ID 10000000 does not exist.')
+
+        mocked_storage_dir.side_effect = FXCodedException(code=0, message='Some error in file saving.')
+        response = self.client.post(
+            '/api/fx/file/v1/upload/',
+            data={
+                'file': SimpleUploadedFile('test.png', b'file_content', content_type='image/png'),
+                'slug': 'test-slug',
+                'tenant_id': 1
+            },
+            format='multipart'
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['reason'], 'Some error in file saving.')
+
+        response = self.client.post(
+            '/api/fx/file/v1/upload/',
+            data={
+                'file': SimpleUploadedFile(
+                    'file-with-invalid-extension.invalid', b'file_content', content_type='image/png'
+                ),
+                'slug': 'test-slug',
+                'tenant_id': 1
+            },
+            format='multipart'
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['reason'], f'Invalid file type. Allowed types are {ALLOWED_IMAGE_EXTENSIONS}.')
+
+    @patch('futurex_openedx_extensions.dashboard.views.uuid.uuid4')
+    @patch('futurex_openedx_extensions.dashboard.views.get_storage_dir')
+    def test_file_upload_for_tenant_permission(self, mocked_storage_dir, mocked_uuid4):
+        """Verify that the view returns the correct response"""
+        self.login_user(1)
+        mocked_storage_dir.return_value = 'some-dummy-dir'
+        mocked_uuid4.return_value = Mock(hex='12345678abcdef12')
+        test_file = SimpleUploadedFile('test.png', b'this is a test image content', content_type='image/png')
+        expected_storage_path = 'some-dummy-dir/test-slug-12345678.png'
+        data = {
+            'file': test_file,
+            'slug': 'test-slug',
+        }
+
+        data['tenant_id'] = 1
+        response = self.client.post(self.url, data, format='multipart')
+        assert response.status_code == http_status.HTTP_201_CREATED
+        assert response.json()['url'] == default_storage.url(expected_storage_path)
+        default_storage.delete(expected_storage_path)
+
+        data['tenant_id'] = 6
+        response = self.client.post(self.url, data, format='multipart')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(str(response.data['tenant_id'][0]), 'User does not have have required access for teanant (6).')
