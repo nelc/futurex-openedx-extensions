@@ -928,9 +928,9 @@ class FileUploadSerializer(ReadOnlySerializer):
     """
     Serializer for handling the file upload request. It validates and serializes the input data.
     """
-    file = serializers.FileField()
-    slug = serializers.SlugField()
-    tenant_id = serializers.IntegerField()
+    file = serializers.FileField(help_text='File to be uploaded')
+    slug = serializers.SlugField(help_text='File slug. Only alphanumeric characters, and underscores are allowed.')
+    tenant_id = serializers.IntegerField(help_text='Tenant ID')
 
     def validate_tenant_id(self, value: int) -> int:
         """

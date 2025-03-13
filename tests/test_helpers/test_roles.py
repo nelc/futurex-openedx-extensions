@@ -818,6 +818,17 @@ def test_fx_view_role_mixin_get_view_user_roles_mapping_allowed(
     )
 
 
+@pytest.mark.parametrize('tenant_ids', ['', '1,2'])
+def test_fx_view_role_mixin_verify_one_tenant_id_provided_fail(tenant_ids):
+    """Verify that verify_one_tenant_id_provided raises an error if tenant_ids has other than exactly one tenant ID"""
+    mixin = FXViewRoleInfoMixin()
+    request = Mock(query_params={'tenant_ids': tenant_ids})
+    with pytest.raises(FXCodedException) as exc_info:
+        mixin.verify_one_tenant_id_provided(request)
+    assert exc_info.value.code == FXExceptionCodes.EXACTLY_ONE_TENANT_REQUIRED.value
+    assert str(exc_info.value) == 'Exactly one tenant ID is required in the request.'
+
+
 @pytest.mark.django_db
 def test_get_usernames_with_access_roles(base_data):  # pylint: disable=unused-argument
     """Verify that get_usernames_with_access_roles returns the expected value."""

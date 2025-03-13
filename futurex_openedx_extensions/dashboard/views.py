@@ -21,11 +21,13 @@ from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_yasg.utils import swagger_auto_schema
 from edx_api_doc_tools import exclude_schema_for
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.exceptions import ParseError, PermissionDenied
 from rest_framework.generics import ListAPIView
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -1220,18 +1222,19 @@ class ClickhouseQueryView(FXViewRoleInfoMixin, APIView):
 @docs('ConfigEditableInfoView.get')
 class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
     """View to get the list of editable keys of the theme designer config"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'fx_config_editable_fields'
     fx_view_description = 'api/fx/config/v1/editable: Get editable settings of config'
     fx_default_read_write_roles = ['staff', 'fx_api_access_global']
     fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
-    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/config/v1/editable/
         """
-        # TODO: get the tenant_id through a mixin
-        tenant_id = request.fx_permission_info['view_allowed_tenant_ids_any_access'][0]
+        tenant_id = self.verify_one_tenant_id_provided(request)
+
         return JsonResponse({
             'editable_fields': get_accessible_config_keys(
                 user_id=request.user.id,
@@ -1340,6 +1343,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 @docs('ThemeConfigPublishView.post')
 class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
     """View to publish theme config"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_publish'
     fx_view_description = 'api/fx/config/v1/publish/: Get editable settings of config'
@@ -1352,6 +1356,7 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
         Validates the payload.
 
         :param data: The payload data from the request
+        :param fx_permission_info: The permission info
         :raises FXCodedException: If the payload data is invalid
         """
         tenant_id = data.get('tenant_id')
@@ -1407,40 +1412,30 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
 @docs('ThemeConfigRetrieveView.get')
 class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
     """View to get theme config values"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_values'
     fx_view_description = 'api/fx/config/v1/values/: Get theme config values'
     fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
-    def validate_keys(self) -> list:
+    def validate_keys(self, tenant_id: int) -> list:
         """Validate keys"""
-        # TODO: get the tenant_id through a mixin
-        tenant_id = self.request.fx_permission_info['view_allowed_tenant_ids_any_access'][0]
         keys = self.request.query_params.get('keys', '')
         if keys:
             return keys.split(',')
 
         return get_accessible_config_keys(user_id=self.request.user.id, tenant_id=tenant_id)
 
-    def validate_tenant_ids(self) -> int:
-        """Validate tenant id"""
-        # TODO: get the tenant_id through a mixin
-        tenant_ids = self.request.query_params.get('tenant_ids', '')
-        if not tenant_ids.isdigit():
-            raise FXCodedException(
-                code=FXExceptionCodes.INVALID_INPUT,
-                message='Tenant ids is required and should be a valid integer representing single tenant.'
-            )
-        return int(tenant_ids)
-
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/config/v1/values/
         """
+        tenant_id = self.verify_one_tenant_id_provided(request)
+
         return JsonResponse(
             get_tenant_config(
-                self.validate_tenant_ids(),
-                self.validate_keys(),
+                tenant_id,
+                self.validate_keys(tenant_id=tenant_id),
                 request.query_params.get('published_only', '0') == '1'
             )
         )
@@ -1449,10 +1444,10 @@ class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
 @docs('ThemeConfigTenantView.post')
 class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
     """View to create new Tenant and theme config"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_tenant'
     fx_view_description = 'api/fx/config/v1/tenant/: Create new Tenant'
-    fx_default_read_write_roles = ['staff', 'fx_api_access_global']
 
     @staticmethod
     def validate_payload(data: dict) -> None:
@@ -1528,14 +1523,20 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
-@docs('FileUploadView.post')
 class FileUploadView(FXViewRoleInfoMixin, APIView):
     """View to upload file"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'upload_file'
     fx_view_description = 'api/fx/file/v1/upload/: Upload file'
     fx_default_read_write_roles = ['staff', 'fx_api_access_global']
+    fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
+    parser_classes = [MultiPartParser]
+
+    @swagger_auto_schema(
+        request_body=serializers.FileUploadSerializer,
+    )
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """
         POST /api/fx/file/v1/upload/
