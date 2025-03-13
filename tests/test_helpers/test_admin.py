@@ -311,8 +311,8 @@ def test_view_user_mapping_model_form_extra_attributes(attribute_name):
         ),
         (
             {'themev2': {'footer': {}}},
-            'invalid-start.path',
-            'Invalid path: "invalid-start" does not exist in the default config.',
+            'invalid_start.path',
+            'Invalid path: "invalid_start" does not exist in the default config.',
             'Invalid key should raise a proper error.'
         ),
         (
@@ -326,6 +326,36 @@ def test_view_user_mapping_model_form_extra_attributes(attribute_name):
             'themev2.footer',
             'Path "themev2" found in default config but unable to find "footer" in "themev2"',
             'Valid parent but invalid child key should provide informative feedback.'
+        ),
+        (
+            {'themev2': {'header-color': {}}},
+            'themev2.header-color',
+            'Key path parts must include only alphanumeric characters and underscores.',
+            'Only alphanumeric characters and underscores are allowed in the path parts.'
+        ),
+        (
+            {'themev2': {'header': {}}},
+            'themev2.header.',
+            'Key path must not contain empty parts. It shouldn not have leading, trailing, or double dots.',
+            'Leading, trailing, and double dots should not be in the path.'
+        ),
+        (
+            {'themev2': {'header': {}}},
+            '.themev2.header',
+            'Key path must not contain empty parts. It shouldn not have leading, trailing, or double dots.',
+            'Leading, trailing, and double dots should not be in the path.'
+        ),
+        (
+            {'themev2': {'header': {}}},
+            'themev2..header',
+            'Key path must not contain empty parts. It shouldn not have leading, trailing, or double dots.',
+            'Leading, trailing, and double dots should not be in the path.'
+        ),
+        (
+            {'themev2': {'whatever': {}}},
+            None,
+            'Key path is required.',
+            'Key path is required. It cannot be None or empty.'
         ),
     ]
 )

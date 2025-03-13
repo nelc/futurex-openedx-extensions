@@ -570,6 +570,25 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
 
         return view_allowed_roles
 
+    @staticmethod
+    def verify_one_tenant_id_provided(request: Any) -> int:
+        """
+        Verify that one tenant ID is provided in the request.
+
+        :param request: The request
+        :type request: Any
+        :return: The tenant ID
+        :rtype: int
+        """
+        tenant_ids = set(ids_string_to_list(request.query_params.get('tenant_ids', '')))
+        if len(tenant_ids) != 1:
+            raise FXCodedException(
+                code=FXExceptionCodes.EXACTLY_ONE_TENANT_REQUIRED,
+                message='Exactly one tenant ID is required in the request.',
+            )
+
+        return tenant_ids.pop()
+
 
 def get_usernames_with_access_roles(orgs: list[str], active_filter: None | bool = None) -> list[str]:
     """

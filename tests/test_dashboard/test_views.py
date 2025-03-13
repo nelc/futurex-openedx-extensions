@@ -29,7 +29,7 @@ from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.constants import ALLOWED_IMAGE_EXTENSIONS
+from futurex_openedx_extensions.helpers.constants import ALLOWED_FILE_EXTENSIONS
 from futurex_openedx_extensions.helpers.converters import dict_to_hash
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
@@ -1951,13 +1951,24 @@ class TestConfigEditableInfoView(BaseTestViewMixin):
         ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', writable=True)
         ConfigAccessControl.objects.create(key_name='pages', path='theme_v2,sections,pages', writable=True)
         ConfigAccessControl.objects.create(key_name='primary_color', path='theme_v2,primary_color', writable=False)
-        response = self.client.get(self.url)
+        response = self.client.get(self.url, data={'tenant_ids': 1})
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         expected_data = {
             'editable_fields': ['platform_name', 'pages'],
             'read_only_fields': ['primary_color']
         }
         self.assertEqual(response.json(), expected_data)
+
+    def test_one_tenant(self):
+        """Verify that ConfigEditableInfoView calls verify_one_tenant_id_provided."""
+        self.login_user(self.staff_user)
+        with patch(
+            'futurex_openedx_extensions.dashboard.views.ConfigEditableInfoView.verify_one_tenant_id_provided'
+        ) as mock_verify_one_tenant:
+            mock_verify_one_tenant.return_value = 1
+            response = self.client.get(self.url, data={'tenant_ids': '1'})
+            mock_verify_one_tenant.assert_called_once()
+            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
 
 @ddt.ddt
@@ -2149,9 +2160,9 @@ class TestThemeConfigPublishView(BaseTestViewMixin):
         ('does-not-matter', '', 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
         ('does-not-matter', 'non-int', 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
         ('does-not-matter', '1', 'Tenant id is required and must be an int.', http_status.HTTP_400_BAD_REQUEST),
-        (None, 1, 'Draft hash is reuired and must be a string.', http_status.HTTP_400_BAD_REQUEST),
-        ('', 1, 'Draft hash is reuired and must be a string.', http_status.HTTP_400_BAD_REQUEST),
-        (['not str'], 1, 'Draft hash is reuired and must be a string.', http_status.HTTP_400_BAD_REQUEST),
+        (None, 1, 'Draft hash is required and must be a string.', http_status.HTTP_400_BAD_REQUEST),
+        ('', 1, 'Draft hash is required and must be a string.', http_status.HTTP_400_BAD_REQUEST),
+        (['not str'], 1, 'Draft hash is required and must be a string.', http_status.HTTP_400_BAD_REQUEST),
         ('invalid_hash', 1, 'Draft hash mismatched with current draft values hash.', http_status.HTTP_400_BAD_REQUEST),
         ('does-bot-matter', 12, 'User does not have required access for tenant (12)', http_status.HTTP_403_FORBIDDEN),
     )
@@ -2201,44 +2212,19 @@ class ThemeConfigRetrieveViewTest(BaseTestViewMixin):
             'links': 'facebook.com',
         })
 
-    @ddt.data(
-        (
-            '1,2,3', 'platform_name,theme_v2', '0',
-            'User does not have access to these tenants',
-            http_status.HTTP_403_FORBIDDEN
-        ),
-        (
-            '1,1', 'platform_name,theme_v2', '0',
-            'Tenant ids is required and should be a valid integer representing single tenant.',
-            http_status.HTTP_400_BAD_REQUEST
-        ),
-        (
-            '', 'platform_name,theme_v2', '0',
-            'Tenant ids is required and should be a valid integer representing single tenant.',
-            http_status.HTTP_400_BAD_REQUEST
-        ),
-        (
-            '1', '', '0', 'Keys are required and must be a string containing "," separated list of key names.',
-            http_status.HTTP_400_BAD_REQUEST
-        ),
-        (
-            '7', 'platform_name', '0', 'User does not have access to these tenants',
-            http_status.HTTP_403_FORBIDDEN
-        )
-    )
-    @ddt.unpack
-    def test_invalid_params(
-        self, tenant_ids, keys, published_only, expected_error, expected_http_status
-    ):   # pylint: disable=too-many-arguments
-        """Test invalid parameters for ThemeConfigRetrieveView."""
+    def test_one_tenant(self):
+        """Verify that ThemeConfigRetrieveView calls verify_one_tenant_id_provided."""
         self.login_user(8)
-        response = self.client.get(self.url, data={
-            'tenant_ids': tenant_ids,
-            'keys': keys,
-            'published_only': published_only
-        })
-        self.assertEqual(response.status_code, expected_http_status)
-        self.assertEqual(response.data.get('reason'), expected_error)
+        with patch(
+            'futurex_openedx_extensions.dashboard.views.ThemeConfigRetrieveView.verify_one_tenant_id_provided'
+        ) as mock_verify_one_tenant:
+            mock_verify_one_tenant.return_value = 1
+            response = self.client.get(self.url, data={
+                'tenant_ids': '1',
+                'keys': '',
+            })
+            mock_verify_one_tenant.assert_called_once()
+            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
 
 @ddt.ddt
@@ -2396,7 +2382,7 @@ class FileUploadView(BaseTestViewMixin):
             format='multipart'
         )
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['reason'], f'Invalid file type. Allowed types are {ALLOWED_IMAGE_EXTENSIONS}.')
+        self.assertEqual(response.data['reason'], f'Invalid file type. Allowed types are {ALLOWED_FILE_EXTENSIONS}.')
 
     @patch('futurex_openedx_extensions.dashboard.views.uuid.uuid4')
     @patch('futurex_openedx_extensions.dashboard.views.get_storage_dir')

@@ -21,11 +21,13 @@ from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_yasg.utils import swagger_auto_schema
 from edx_api_doc_tools import exclude_schema_for
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.exceptions import ParseError, PermissionDenied
 from rest_framework.generics import ListAPIView
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -52,7 +54,7 @@ from futurex_openedx_extensions.dashboard.statistics.courses import (
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
-    ALLOWED_IMAGE_EXTENSIONS,
+    ALLOWED_FILE_EXTENSIONS,
     CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS,
     CLICKHOUSE_FX_BUILTIN_ORG_IN_TENANTS,
     CONFIG_FILES_UPLOAD_DIR,
@@ -88,6 +90,7 @@ from futurex_openedx_extensions.helpers.roles import (
 from futurex_openedx_extensions.helpers.tenants import (
     create_new_tenant_config,
     delete_draft_tenant_config,
+    get_accessible_config_keys,
     get_draft_tenant_config,
     get_excluded_tenant_ids,
     get_tenant_config,
@@ -1219,21 +1222,30 @@ class ClickhouseQueryView(FXViewRoleInfoMixin, APIView):
 @docs('ConfigEditableInfoView.get')
 class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
     """View to get the list of editable keys of the theme designer config"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'fx_config_editable_fields'
     fx_view_description = 'api/fx/config/v1/editable: Get editable settings of config'
     fx_default_read_write_roles = ['staff', 'fx_api_access_global']
     fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
-    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/config/v1/editable/
         """
-        writable_fields = ConfigAccessControl.objects.filter(writable=True).values_list('key_name', flat=True)
-        read_only_fields = ConfigAccessControl.objects.filter(writable=False).values_list('key_name', flat=True)
+        tenant_id = self.verify_one_tenant_id_provided(request)
+
         return JsonResponse({
-            'editable_fields': list(writable_fields),
-            'read_only_fields': list(read_only_fields)
+            'editable_fields': get_accessible_config_keys(
+                user_id=request.user.id,
+                tenant_id=tenant_id,
+                writable_fields_filter=True
+            ),
+            'read_only_fields': get_accessible_config_keys(
+                user_id=request.user.id,
+                tenant_id=tenant_id,
+                writable_fields_filter=False,
+            ),
         })
 
 
@@ -1331,6 +1343,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 @docs('ThemeConfigPublishView.post')
 class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
     """View to publish theme config"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_publish'
     fx_view_description = 'api/fx/config/v1/publish/: Get editable settings of config'
@@ -1343,6 +1356,7 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
         Validates the payload.
 
         :param data: The payload data from the request
+        :param fx_permission_info: The permission info
         :raises FXCodedException: If the payload data is invalid
         """
         tenant_id = data.get('tenant_id')
@@ -1361,7 +1375,7 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
         if not draft_hash or not isinstance(draft_hash, str):
             raise FXCodedException(
                 code=FXExceptionCodes.INVALID_INPUT,
-                message='Draft hash is reuired and must be a string.'
+                message='Draft hash is required and must be a string.'
             )
         current_draft = get_draft_tenant_config(tenant_id, fx_permission_info)
         current_draft_hash = dict_to_hash(current_draft)
@@ -1398,39 +1412,30 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
 @docs('ThemeConfigRetrieveView.get')
 class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
     """View to get theme config values"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_values'
     fx_view_description = 'api/fx/config/v1/values/: Get theme config values'
     fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
-    def validate_keys(self) -> list:
+    def validate_keys(self, tenant_id: int) -> list:
         """Validate keys"""
         keys = self.request.query_params.get('keys', '')
-        if not keys:
-            raise FXCodedException(
-                code=FXExceptionCodes.INVALID_INPUT,
-                message='Keys are required and must be a string containing "," separated list of key names.'
-            )
-        return keys.split(',')
+        if keys:
+            return keys.split(',')
 
-    def validate_tenant_ids(self) -> int:
-        """Validate tenant id"""
-        tenant_ids = self.request.query_params.get('tenant_ids', '')
-        if not tenant_ids.isdigit():
-            raise FXCodedException(
-                code=FXExceptionCodes.INVALID_INPUT,
-                message='Tenant ids is required and should be a valid integer representing single tenant.'
-            )
-        return int(tenant_ids)
+        return get_accessible_config_keys(user_id=self.request.user.id, tenant_id=tenant_id)
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/config/v1/values/
         """
+        tenant_id = self.verify_one_tenant_id_provided(request)
+
         return JsonResponse(
             get_tenant_config(
-                self.validate_tenant_ids(),
-                self.validate_keys(),
+                tenant_id,
+                self.validate_keys(tenant_id=tenant_id),
                 request.query_params.get('published_only', '0') == '1'
             )
         )
@@ -1439,10 +1444,10 @@ class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
 @docs('ThemeConfigTenantView.post')
 class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
     """View to create new Tenant and theme config"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
     fx_view_name = 'theme_config_tenant'
     fx_view_description = 'api/fx/config/v1/tenant/: Create new Tenant'
-    fx_default_read_write_roles = ['staff', 'fx_api_access_global']
 
     @staticmethod
     def validate_payload(data: dict) -> None:
@@ -1518,14 +1523,20 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
-@docs('FileUploadView.post')
 class FileUploadView(FXViewRoleInfoMixin, APIView):
     """View to upload file"""
+    authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
-    fx_view_name = 'uplaod_file'
+    fx_view_name = 'upload_file'
     fx_view_description = 'api/fx/file/v1/upload/: Upload file'
     fx_default_read_write_roles = ['staff', 'fx_api_access_global']
+    fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
+    parser_classes = [MultiPartParser]
+
+    @swagger_auto_schema(
+        request_body=serializers.FileUploadSerializer,
+    )
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """
         POST /api/fx/file/v1/upload/
@@ -1542,10 +1553,10 @@ class FileUploadView(FXViewRoleInfoMixin, APIView):
         tenant_id = serializer.validated_data['tenant_id']
 
         file_extension = os.path.splitext(file.name)[1]
-        if file_extension.lower() not in ALLOWED_IMAGE_EXTENSIONS:
+        if file_extension.lower() not in ALLOWED_FILE_EXTENSIONS:
             return Response(
                 error_details_to_dictionary(
-                    reason=f'Invalid file type. Allowed types are {ALLOWED_IMAGE_EXTENSIONS}.'
+                    reason=f'Invalid file type. Allowed types are {ALLOWED_FILE_EXTENSIONS}.'
                 ),
                 status=http_status.HTTP_400_BAD_REQUEST
             )

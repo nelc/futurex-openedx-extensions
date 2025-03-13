@@ -301,7 +301,7 @@ docs_src = {
     'AccessibleTenantsInfoView.get': {
         'summary': 'Get information about accessible tenants for a user',
         'description': 'Get information about accessible tenants for a user. The caller must be a staff user or an'
-        ' anonymous user. \n**Note:** This API will be deprecated and removed in verison: v0.11.0.1.\n',
+        ' anonymous user. \n**Note:** This API will be deprecated and removed in version: v0.11.0.1.\n',
         'parameters': [
             query_parameter(
                 'username_or_email',
@@ -1436,7 +1436,7 @@ docs_src = {
     'ThemeConfigDraftView.get': {
         'summary': 'Get current draft theme configuration of given tenant.',
         'description': 'Get the current draft of theme configuration for a given tenant. The caller must have '
-        'staff access.\n\n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'staff access.',
         'parameters': [
             common_path_parameters['tenant_id']
         ],
@@ -1523,8 +1523,7 @@ docs_src = {
     'ThemeConfigDraftView.put': {
         'summary': 'Update draft theme configuration of given tenant.',
         'description': 'Update draft of theme configuration for a given tenant otherwise create new draft with '
-        'updated values if draft does not exist.\n'
-        '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'updated values if draft does not exist.',
         'parameters': [
             common_path_parameters['tenant_id'],
         ],
@@ -1548,10 +1547,11 @@ docs_src = {
                     example='My new awesome Platform Name',
                 ),
                 'reset': openapi.Schema(
-                    type=openapi.TYPE_BOOLEAN,
-                    description='Reset is optional (default is `0`). If `"reset": 1` is sent, then `new_value` will be'
-                    ' ignored, and the draft record of this particular key will be deleted/discarded.',
-                    example=0,
+                    type=openapi.TYPE_STRING,
+                    description='Reset is optional (default is `"0"`). If `"reset": "1"` is sent, then `new_value` will'
+                    ' be ignored, and the draft record of this particular key will be deleted/discarded. Any value'
+                    ' other than `"1"` will be considered as `"0"`.',
+                    example='1',
                 ),
             },
             required=['key', 'current_value']
@@ -1592,8 +1592,7 @@ docs_src = {
 
     'ThemeConfigDraftView.delete': {
         'summary': 'Delete draft config (Discard draft changes)',
-        'description': 'Delete/discard draft changes of theme config for a given tenant.\n'
-        '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'description': 'Delete/discard draft changes of theme config for a given tenant.',
         'parameters': [
             common_path_parameters['tenant_id'],
         ],
@@ -1621,8 +1620,7 @@ docs_src = {
 
     'ThemeConfigPublishView.post': {
         'summary': 'Publish draft theme configuration of given tenant.',
-        'description': 'Publish draft theme configuration for a given tenant.\n'
-        '\n**Note:** This API is just mock API with dummy data and not implemented yet.',
+        'description': 'Publish draft theme configuration for a given tenant.',
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -1714,14 +1712,13 @@ docs_src = {
 
     'ThemeConfigRetrieveView.get': {
         'summary': 'Get the theme config values for a given tenant.',
-        'description': 'Get the values of theme configuration for a given tenant.\n'
-        '\n**Note:** This API is just a mock API with dummy data and is not implemented yet.',
+        'description': 'Get the values of theme configuration for a given tenant.',
         'parameters': [
             query_parameter(
                 'tenant_ids',
                 str,
                 'Tenant IDs to retrieve the configuration for.\n'
-                '**Note:** The caller must provide a single tenant ID to delete the configuration.',
+                '**Note:** The caller must provide a single tenant ID to access the configuration.',
             ),
             query_parameter(
                 'keys',
@@ -1739,7 +1736,8 @@ docs_src = {
                     '- `published_only=0`: (**default**) The API will look for the draft value first; if not found, '
                     'then return the published value.\n'
                     '- `published_only=1`: The API will ignore drafts and will only return the last published value. '
-                    'It will be useful to render live pages.'
+                    'It will be useful to render live pages. Default is `0`. Any value other than `1` will be'
+                    ' considered as `0`.'
                 )
             ),
         ],
@@ -1790,7 +1788,8 @@ docs_src = {
 
     'ThemeConfigTenantView.post': {
         'summary': 'Create new tenant along with default theme config.',
-        'description': 'Create new tenant along with default theme config.',
+        'description': 'Create new tenant along with default theme config. This API is allowed for system staff users'
+        ' only.',
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -1820,36 +1819,4 @@ docs_src = {
             remove=[200, 404],
         ),
     },
-    'FileUploadView.post': {
-        'summary': 'Upload file.',
-        'description': 'Upload file.',
-        'body': openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'file': openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    description='File.',
-                ),
-                'slug': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description='File slug',
-                    example='logo',
-                ),
-                'tenant_id': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description='Tenant id',
-                    example=11,
-                ),
-            },
-            required=['file', 'slug', 'tenant_id']
-        ),
-        'responses': responses(
-            overrides={
-                204: 'Changes saved successfully.',
-                400: 'Unable to create tenant. The response will include a JSON object with the error message.',
-            },
-            remove=[200, 404],
-        ),
-    },
-
 }
