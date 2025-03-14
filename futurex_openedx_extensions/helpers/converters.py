@@ -236,7 +236,7 @@ def dict_to_hash(data_dict: dict) -> str:
     Generates a SHA-256 hash from a dictionary.
 
     :param data_dict: The dictionary to be hashed.
-    :return: A SHA-256 hash of the dictionary as a hexadecimal string.
+    :return: a SHA-256 hash of the dictionary as a hexadecimal string.
              Returns an empty string if the input dictionary is empty or None.
     """
     dict_str = json.dumps(data_dict, sort_keys=True, separators=(',', ':')) if data_dict else ''
@@ -270,3 +270,23 @@ def to_indian_numerals(text: str) -> str:
     :return: The text with Arabic numerals converted to Indian numerals.
     """
     return _text_translate(text, '0123456789', '٠١٢٣٤٥٦٧٨٩')
+
+
+def fill_deleted_keys_with_none(original: Dict[str, Any | None], updated: Dict[str, Any | None]) -> None:
+    """
+    Recursively adds missing keys from `original` into `updated` with value `None`.
+
+    :param original: The reference dictionary containing the expected structure.
+    :type original: Dict[str, Any | None]
+    :param updated: The dictionary to be updated in place. Keys from `updated` that are not in `original` will be
+        added with value `None`.
+    :type updated: Dict[str, Any | None]
+    """
+    if not isinstance(original, dict) or not isinstance(updated, dict):
+        return
+
+    for key in original:
+        if key not in updated:
+            updated[key] = None
+        elif isinstance(original[key], dict) and isinstance(updated[key], dict):
+            fill_deleted_keys_with_none(original[key], updated[key])
