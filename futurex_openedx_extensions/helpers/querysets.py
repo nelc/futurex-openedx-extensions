@@ -12,7 +12,7 @@ from django.utils.timezone import now
 from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
-from futurex_openedx_extensions.helpers.converters import get_allowed_roles
+from futurex_openedx_extensions.helpers.converters import get_allowed_roles, to_indian_numerals
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids, verify_course_ids
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
@@ -209,6 +209,32 @@ def get_base_queryset_courses(
     return q_set
 
 
+def get_search_query(search_fields: List[str], indian_search_fields: List[str], search_text: str) -> Q:
+    """
+    Constructs a Q object for searching with `icontains` and handling Indian numeral conversion.
+
+    :param search_fields: List of fields to apply `icontains` with `search_text`
+    :type search_fields: List[str]
+    :param indian_search_fields: List of fields to apply `icontains` with `to_indian_numerals(search_text)`
+    :type indian_search_fields: List[str]
+    :param search_text: The search term
+    :type search_text: str
+    :return: A Q object for filtering
+    """
+    query = Q()
+
+    for field in search_fields:
+        query |= Q(**{f'{field}__icontains': search_text})
+
+    if indian_search_fields:
+        indian_search_text = to_indian_numerals(search_text)
+        if indian_search_text != search_text:
+            for field in indian_search_fields:
+                query |= Q(**{f'{field}__icontains': indian_search_text})
+
+    return query
+
+
 def get_learners_search_queryset(  # pylint: disable=too-many-arguments
     search_text: str | None = None,
     superuser_filter: bool | None = False,
@@ -228,6 +254,10 @@ def get_learners_search_queryset(  # pylint: disable=too-many-arguments
     :type staff_filter: bool | None
     :param active_filter: Value to filter active users. None means no filter
     :type active_filter: bool | None
+    :param user_ids: List of user IDs to filter the learners by
+    :type user_ids: List[int] | None
+    :param usernames: List of usernames to filter the learners by
+    :type usernames: List[str] | None
     :return: QuerySet of learners
     :rtype: QuerySet
     """
@@ -243,10 +273,15 @@ def get_learners_search_queryset(  # pylint: disable=too-many-arguments
     search_text = (search_text or '').strip()
     if search_text:
         queryset = queryset.filter(
-            Q(username__icontains=search_text) |
-            Q(extrainfo__national_id__icontains=search_text) |
-            Q(email__icontains=search_text) |
-            Q(profile__name__icontains=search_text)
+            get_search_query([
+                'username',
+                'email',
+                'profile__name',
+                'extrainfo__national_id',
+                'extrainfo__arabic_name',
+                'extrainfo__arabic_first_name',
+                'extrainfo__arabic_last_name',
+            ], ['extrainfo__national_id'], search_text)
         )
 
     user_filter = Q()

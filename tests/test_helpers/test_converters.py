@@ -164,3 +164,21 @@ def test_path_to_json(path, value, expected_output):
     """Verify that path_to_json returns correct data"""
     result = converters.path_to_json(path, value)
     assert result == expected_output, f'Expected {expected_output}, but got {result}'
+
+
+@pytest.mark.parametrize(
+    'input_text, expected_output, test_case',
+    [
+        ('123', '١٢٣', 'Basic conversion'),
+        ('0', '٠', 'Single digit'),
+        ('9876543210', '٩٨٧٦٥٤٣٢١٠', 'All numbers reversed'),
+        ('abc123xyz', 'abc١٢٣xyz', 'Mixed text with numbers'),
+        ('No numbers here!', 'No numbers here!', 'No numbers'),
+        ('', '', 'Empty string'),
+        ('١٢٣', '١٢٣', 'Already Indian numerals'),
+        ('Mixed 123 and ٤٥٦', 'Mixed ١٢٣ and ٤٥٦', 'Mixed Arabic & Indian numerals'),
+    ],
+)
+def test_to_indian_numerals(input_text, expected_output, test_case):
+    """Verify that to_indian_numerals returns correct data"""
+    assert converters.to_indian_numerals(input_text) == expected_output, f'Failed: {test_case}'
