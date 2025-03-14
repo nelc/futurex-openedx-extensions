@@ -31,6 +31,7 @@ from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_base_queryset_courses,
     get_one_user_queryset,
+    get_search_query,
     update_removable_annotations,
 )
 
@@ -100,8 +101,7 @@ def get_courses_queryset(
     search_text = (search_text or '').strip()
     if search_text:
         queryset = queryset.filter(
-            Q(display_name__icontains=search_text) |
-            Q(id__icontains=search_text),
+            get_search_query(['display_name', 'id'], [], search_text)
         )
 
     queryset = annotate_courses_rating_queryset(queryset)

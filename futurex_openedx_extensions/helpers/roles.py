@@ -38,7 +38,7 @@ from futurex_openedx_extensions.helpers.extractors import (
     verify_course_ids,
 )
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles, ViewUserMapping
-from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset
+from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_search_query
 from futurex_openedx_extensions.helpers.tenants import (
     get_all_tenant_ids,
     get_course_org_filter_list,
@@ -683,10 +683,19 @@ def get_course_access_roles_queryset(  # pylint: disable=too-many-arguments, too
 
     if search_text:
         queryset = queryset.filter(
-            Q(user__username__icontains=search_text) |
-            Q(user__extrainfo__national_id__icontains=search_text) |
-            Q(user__email__icontains=search_text) |
-            Q(user__profile__name__icontains=search_text),
+            get_search_query(
+                [
+                    'user__username',
+                    'user__email',
+                    'user__profile__name',
+                    'user__extrainfo__national_id',
+                    'user__extrainfo__arabic_name',
+                    'user__extrainfo__arabic_first_name',
+                    'user__extrainfo__arabic_last_name',
+                ],
+                ['user__extrainfo__national_id'],
+                search_text
+            )
         )
 
     if active_filter is not None:

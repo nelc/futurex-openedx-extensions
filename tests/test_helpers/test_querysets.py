@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, UserProfile
 from django.contrib.auth import get_user_model
-from django.db.models import Count, QuerySet
+from django.db.models import Count, Q, QuerySet
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
@@ -440,3 +440,58 @@ def test_annotate_period_invalid_period(period):
 
     assert exc_info.value.code == FXExceptionCodes.INVALID_INPUT.value
     assert f'Invalid aggregate_period ({period})' in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    'search_fields, indian_search_fields, search_text, expected_q, test_case',
+    [
+        (
+            ['username', 'email'],
+            [],
+            'john',
+            Q(username__icontains='john') | Q(email__icontains='john'),
+            'testing only regular search fields',
+        ),
+        (
+            [],
+            ['extrainfo__national_id'],
+            '123',
+            Q(extrainfo__national_id__icontains='١٢٣'),
+            'testing only Indian numeral fields',
+        ),
+        (
+            ['username', 'email'],
+            ['extrainfo__national_id'],
+            '12345',
+            Q(username__icontains='12345') |
+            Q(email__icontains='12345') |
+            Q(extrainfo__national_id__icontains='١٢٣٤٥'),
+            'testing mixed fields with numerals',
+        ),
+        (
+            [],
+            [],
+            'anything',
+            Q(),
+            'testing no search fields provided',
+        ),
+        (
+            ['username'],
+            ['extrainfo__national_id'],
+            'abc',
+            Q(username__icontains='abc'),
+            'testing indian numeral conversion unnecessary (same text after conversion)',
+        ),
+        (
+            ['username'],
+            ['extrainfo__national_id'],
+            '',
+            Q(username__icontains=''),
+            'testing empty search text',
+        ),
+    ],
+)
+def test_get_search_query(search_fields, indian_search_fields, search_text, expected_q, test_case):
+    """Verify get_search_query function."""
+    query = querysets.get_search_query(search_fields, indian_search_fields, search_text)
+    assert query == expected_q, f'Test case ({test_case}) failed. Expected {expected_q}, but got {query}'

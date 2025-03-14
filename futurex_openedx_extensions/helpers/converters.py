@@ -241,3 +241,32 @@ def dict_to_hash(data_dict: dict) -> str:
     """
     dict_str = json.dumps(data_dict, sort_keys=True, separators=(',', ':')) if data_dict else ''
     return hashlib.sha256(dict_str.encode()).hexdigest() if dict_str else ''
+
+
+def _text_translate(text: str, translation_from: str, translation_to: str) -> str:
+    """
+    Translate the text using the translation table.
+
+    :param text: The text to translate.
+    :type text: str
+    :param translation_from: The translation table from.
+    :type translation_from: str
+    :param translation_to: The translation table to.
+    :type translation_to: str
+    :return: The translated text.
+    :rtype: str
+    """
+    if text:
+        return text.translate(str.maketrans(translation_from, translation_to))
+    return text
+
+
+def to_indian_numerals(text: str) -> str:
+    """
+    Convert all Arabic numerals in the text to Indian numerals.
+
+    :param text: The text to convert.
+    :type text: str
+    :return: The text with Arabic numerals converted to Indian numerals.
+    """
+    return _text_translate(text, '0123456789', '٠١٢٣٤٥٦٧٨٩')
