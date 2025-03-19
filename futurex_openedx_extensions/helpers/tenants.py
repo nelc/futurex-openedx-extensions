@@ -39,10 +39,14 @@ def get_excluded_tenant_ids() -> Dict[int, List[int]]:
         if tenant.routes_count > 1:
             reasons.append(FXExceptionCodes.TENANT_HAS_MORE_THAN_ONE_SITE.value)
 
-        if not tenant.lms_configs.get('LMS_BASE'):
+        lms_base = tenant.lms_configs.get('LMS_BASE')
+        if not lms_base:
             reasons.append(FXExceptionCodes.TENANT_HAS_NO_LMS_BASE.value)
-        if not reasons and tenant.lms_configs['LMS_BASE'] != tenant.route_domain:
-            reasons.append(FXExceptionCodes.TENANT_LMS_BASE_SITE_MISMATCH.value)
+
+        if lms_base and not reasons:
+            lms_base = lms_base.split(':')[-2] if ':' in lms_base else lms_base
+            if lms_base != tenant.route_domain:
+                reasons.append(FXExceptionCodes.TENANT_LMS_BASE_SITE_MISMATCH.value)
 
         if not tenant.lms_configs.get('IS_FX_DASHBOARD_ENABLED', True):
             reasons.append(FXExceptionCodes.TENANT_DASHBOARD_NOT_ENABLED.value)

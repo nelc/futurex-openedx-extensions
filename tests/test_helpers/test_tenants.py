@@ -37,6 +37,20 @@ def test_get_excluded_tenant_ids(
 
 
 @pytest.mark.django_db
+def test_get_excluded_tenant_ids_port_number(
+    base_data, expected_exclusion,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify get_excluded_tenant_ids function works correctly when the site-domain has a port number."""
+    for tenant_config in TenantConfig.objects.all():
+        lms_base = tenant_config.lms_configs.get('LMS_BASE')
+        if lms_base:
+            tenant_config.lms_configs['LMS_BASE'] = f'{lms_base}:1234'
+            tenant_config.save()
+
+    assert tenants.get_excluded_tenant_ids() == expected_exclusion
+
+
+@pytest.mark.django_db
 def test_get_excluded_tenant_ids_more_than_one_tenant(
     base_data, expected_exclusion,
 ):  # pylint: disable=unused-argument, redefined-outer-name
