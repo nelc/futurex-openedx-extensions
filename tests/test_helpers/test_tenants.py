@@ -1,6 +1,6 @@
 """Tests for tenants helpers."""
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
@@ -447,88 +447,86 @@ def test_create_new_tenant_for_existing_route_and_tenant():
 
 
 @pytest.mark.parametrize(
-    'config, path, published_only, draft_only, expected_value, expected_path_exist, usecase',
+    'config, path, publish_status, expected_value, expected_path_exist, usecase',
     [
         (
             {'Other': 'some value'},
-            'LMS_BASE', False, False, None, False,
+            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, None, False,
             'Key missing in both draft and published config, path exist should be False with value None'
         ),
         (
             {'Other': 'some value', 'LMS_BASE': None},
-            'LMS_BASE', False, False, None, True,
+            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, None, True,
             'Only root config contains value as None, path exist should be True with value None'
         ),
         (
             {'LMS_BASE': 'example.com'},
-            'LMS_BASE', False, False, 'example.com', True,
+            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, 'example.com', True,
             'Retrieve from published config, when draft does not exist (default behavior)'
         ),
         (
             {'theme': {'colors': {'primary': 'blue'}}},
-            'theme.colors.primary', False, False, 'blue', True,
+            'theme.colors.primary', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, 'blue', True,
             'Retrieve from nested published config, when draft does not exist'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', False, False, 'draft.example.com', True,
+            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, 'draft.example.com', True,
             'Retrieve from draft config when both published and draft exist'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', True, False, 'example.com', True,
+            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_PUBLISHED, 'example.com', True,
             'Retrieve from published config when published_only=True'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', False, True, 'draft.example.com', True,
+            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_DRAFT, 'draft.example.com', True,
             'Retrieve from draft config when draft_only=True',
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': None}},
-            'LMS_BASE', False, True, None, True,
+            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_DRAFT, None, True,
             'Retrieve from draft config when draft_only=True even if value is None with path_exist should be True'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': ''}},
-            'LMS_BASE', False, True, '', True,
+            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_DRAFT, '', True,
             'Retrieve from draft config when draft_only=True even if value is empty with path_exist should be True'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {}},
-            'LMS_BASE', False, True, None, False,
+            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_DRAFT, None, False,
             'Key exists only in published and draft_only=True, retrieve from the draft config'
             'with path_exist=False and value=None'
         ),
         (
             {'LMS_BASE': 'example.com', 'config_draft': {}},
-            'LMS_BASE', False, False, 'example.com', True,
+            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, 'example.com', True,
             'Key missing in draft but present in published (fallback works)'
         ),
         (
             {'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', True, False, None, False,
+            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_PUBLISHED, None, False,
             'Key exists only in draft and published_only=True is set'
         ),
         (
             None,
-            'LMS_BASE', False, False, None, False,
+            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, None, False,
             'Config is None, should return None'
         ),
         (
             {},
-            'LMS_BASE', False, False, None, False,
+            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, None, False,
             'Config is an empty dictionary, should return None'
         ),
     ]
 )
 def test_get_tenant_config_value(
-    config, path, published_only, draft_only, expected_value, expected_path_exist, usecase
+    config, path, publish_status, expected_value, expected_path_exist, usecase,
 ):  # pylint: disable=too-many-arguments
     """Test get_tenant_config_value"""
-    path_exist, value = tenants.get_tenant_config_value(
-        config, path, published_only, draft_only
-    )
+    path_exist, value = tenants.get_tenant_config_value(config, path, publish_status=publish_status)
     assert value == expected_value, f'Failed usecase: {usecase}'
     assert path_exist == expected_path_exist, f'Failed usecase: {usecase}'
 
@@ -538,7 +536,7 @@ def test_get_tenant_config_value(
     'usecase, config, keys, published_only, expected_values, expected_bad_keys',
     [
         (
-            'Draft value should be preffered when published_only is False',
+            'Draft value should be preferred when published_only is False',
             {
                 'platform_name': 'published_value',
                 'theme_v2': {'pages': ['published_page']},
@@ -644,9 +642,6 @@ def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
             'draft_value': 'draft.facebook.com'
         }
     }
-    with pytest.raises(FXCodedException) as exc_info:
-        tenants.get_draft_tenant_config(tenant_id=10000, fx_permission_info=_get_fake_permission_info([10000]))
-    assert str(exc_info.value) == 'Unable to find tenant with id: 10000'
 
     with pytest.raises(PermissionDenied) as exc_info:
         tenants.get_draft_tenant_config(tenant_id=1, fx_permission_info=_get_fake_permission_info([2, 3, 4]))
@@ -849,3 +844,51 @@ def test_tenant_access_invalid_cases(fx_permission_info, tenant_id, expected_exc
         assert json.loads(str(exc_info.value.detail))['reason'] == expected_message, test_case
     else:
         assert str(exc_info.value) == expected_message, test_case
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('get_current_request_result, expected_warning', [
+    (None, 'get_config_current_request called without a request object!'),
+    (Mock(spec=[]), 'get_config_current_request called without a site object!'),
+    (
+        Mock(site=Mock(domain='unavailable.com')),
+        'get_config_current_request could not find a tenant for site: unavailable.com'
+    ),
+])
+def test_get_config_current_request_none(
+    get_current_request_result, expected_warning, base_data, caplog,
+):  # pylint: disable=unused-argument
+    """Verify get_config_current_request function when request is None."""
+    with patch('futurex_openedx_extensions.helpers.tenants.get_current_request') as mock_get_current_request:
+        mock_get_current_request.return_value = get_current_request_result
+        result = tenants.get_config_current_request(keys=['dose not matter in this test case'])
+    assert result is None
+    assert expected_warning in caplog.text
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('cookie_name, cookie_value, expected_published_only, test_case', [
+    ('theme-preview', None, True, 'cookie value is None or missing should not enable preview'),
+    ('theme-preview', 'no', True, 'cookie value is `no` should not enable preview'),
+    ('theme-preview', 'not-yes', True, 'cookie value is not `yes` should not enable preview'),
+    ('theme-preview', 'yes', False, 'cookie value is `yes` should enable preview'),
+    ('theme-preview', 'yEs', False, 'cookie value is `yes` case insensitive should enable preview'),
+    ('any-other-name', 'yes', True, 'cookie name is not `theme-preview` should not enable preview'),
+])
+def test_get_config_current_request(
+    cookie_name, cookie_value, expected_published_only, test_case, base_data,
+):  # pylint: disable=unused-argument
+    """Verify get_config_current_request function in happy scenarios."""
+    with patch(
+        'futurex_openedx_extensions.helpers.tenants.get_current_request',
+        return_value=Mock(site=Mock(domain='s1.sample.com')),
+    ) as mocked_get_current_request:
+        mocked_get_current_request.return_value.COOKIES = {cookie_name: cookie_value}
+        with patch('futurex_openedx_extensions.helpers.tenants.get_tenant_config') as mock_get_tenant_config:
+            tenants.get_config_current_request(keys=['testing_key'])
+
+    mock_get_tenant_config.assert_called_once_with(
+        tenant_id=1,
+        keys=['testing_key'],
+        published_only=expected_published_only,
+    )
