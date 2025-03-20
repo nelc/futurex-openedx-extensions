@@ -7,10 +7,12 @@ from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
+from crum import get_current_request
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
+from numpy.core.defchararray import lower
 from rest_framework.exceptions import PermissionDenied
 
 from futurex_openedx_extensions.helpers import constants as cs
@@ -361,6 +363,19 @@ def get_sso_sites() -> Dict[str, List[Dict[str, int]]]:
     return get_all_tenants_info()['sso_sites']
 
 
+def get_tenant_by_site(site: str) -> int:
+    """
+    Get the tenant ID by site
+
+    :param site: The site to check
+    :type site: str
+    :return: The tenant ID
+    :rtype: int
+    """
+    site = site.split(':')[0]
+    return get_all_tenants_info()['tenant_by_site'].get(site)
+
+
 def generate_tenant_config(sub_domain: str, platform_name: str) -> dict:
     """
     Generate a tenant configuration by copying the default config and replacing placeholders.
@@ -414,7 +429,16 @@ def create_new_tenant_config(sub_domain: str, platform_name: str) -> TenantConfi
     return tenant_config
 
 
-def get_tenant_config_value(config: dict, path: str, published_only: bool = False, draft_only: bool = False) -> tuple:
+from enum import Enum
+class ConfigPublishStatus(Enum):
+    ONLY_PUBLISHED = 'only_published'
+    ONLY_DRAFT = 'only_draft'
+    DRAFT_THEN_PUBLISHED = 'draft_then_published'
+
+
+def get_tenant_config_value(
+    config: dict, path: str, publish_status: ConfigPublishStatus = ConfigPublishStatus.ONLY_PUBLISHED,
+) -> tuple:
     """
     Retrieves a configuration value based on a comma-separated path.
     - If `published_only` is True, fetches only from the main config.
@@ -423,41 +447,48 @@ def get_tenant_config_value(config: dict, path: str, published_only: bool = Fals
 
     :param config: The configuration dictionary.
     :param path: The comma-separated path to the desired value.
-    :param published_only: If True, fetches only the published value.
-    :param draft_only: If True, fetches only the draft value.
+    :param publish_status: The status of the value to fetch.
     :return: The configuration value or None if not found.
     """
-    def get_nested_value(config: dict, path: str) -> tuple:
+    def get_nested_value(_config: dict, _path: str) -> tuple:
         """
         Retrieves a value from a nested dictionary based on a dot-separated path.
         """
-        keys = [key.strip() for key in path.split('.')]
+        keys = [key.strip() for key in _path.split('.')]
         for key in keys:
-            if not isinstance(config, dict) or key not in config:
-                return (False, None)
-            config = config[key]
-        return (True, config)
+            if not isinstance(_config, dict) or key not in _config:
+                return False, None
+            _config = _config[key]
+        return True, _config
 
     if not config:
-        return (False, None)
+        return False, None
 
-    if published_only:
-        return get_nested_value(config, path)
+    match publish_status:
+        case ConfigPublishStatus.ONLY_PUBLISHED:
+            print('ConfigPublishStatus.ONLY_PUBLISHED')
+            result = get_nested_value(config, path)
 
-    if draft_only:
-        return get_nested_value(config.get('config_draft', {}), path)
+        case ConfigPublishStatus.ONLY_DRAFT:
+            print('ConfigPublishStatus.ONLY_DRAFT')
+            result = get_nested_value(config.get('config_draft', {}), path)
 
-    draft_path_exist, draft_value = get_nested_value(config.get('config_draft', {}), path)
-    return (draft_path_exist, draft_value) if draft_path_exist else get_nested_value(config, path)
+        case _:
+            print('ConfigPublishStatus.___________')
+            draft_path_exist, draft_value = get_nested_value(config.get('config_draft', {}), path)
+            result = (draft_path_exist, draft_value) if draft_path_exist else get_nested_value(config, path)
+
+    print('result =---> ', result)
+    return result
 
 
-def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = False) -> Dict[str, Any]:
+def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = True) -> Dict[str, Any]:
     """
     Retrieve tenant configuration details for the given tenant ID.
 
     :param tenant_id: The ID of the tenant.
     :param keys: A list of configuration keys to retrieve.
-    :param published_only: Whether to fetch only published configurations. Defaults to False.
+    :param published_only: Whether to fetch only published configurations. Defaults to True.
     :return: A dictionary containing key values, not permitted keys, and bad keys.
     :raises FXCodedException: If the tenant is not found.
     """
@@ -475,12 +506,38 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Fa
         try:
             key_config = ConfigAccessControl.objects.get(key_name=key)
             _, publish_value = get_tenant_config_value(
-                tenant.lms_configs, key_config.path, published_only=published_only
-            )
+                tenant.lms_configs, key_config.path,
+                publish_status=ConfigPublishStatus.ONLY_PUBLISHED if published_only else ConfigPublishStatus.DRAFT_THEN_PUBLISHED,)
             details['values'][key] = publish_value
         except ConfigAccessControl.DoesNotExist:
             details['bad_keys'].append(key)
     return details
+
+
+def get_config_current_request(keys: List[str]):
+    """
+    Retrieve tenant configuration details for the given request.
+
+    :param keys: A list of configuration keys to retrieve.
+    :type keys: List[str]
+    :return: A dictionary containing key values, not permitted keys, and bad keys.
+    """
+    print('*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*')
+    request = get_current_request()
+    if not request or not hasattr(request, 'site'):
+        return None
+
+    tenant_id = get_tenant_by_site(request.site.domain)
+    if not tenant_id:
+        return None
+
+    theme_preview = request.COOKIES.get('theme-preview', None) or 'no'
+    print('theme_preview', theme_preview)
+    return get_tenant_config(
+        tenant_id=tenant_id,
+        keys=keys,
+        published_only=lower(theme_preview) != 'yes',
+    )
 
 
 @tenant_access_required()
@@ -498,11 +555,10 @@ def get_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> dict:  
         tenant = TenantConfig.objects.get(id=tenant_id)
         updated_fields = {}
         for field_config in ConfigAccessControl.objects.all():
-            _, published_value = get_tenant_config_value(
-                tenant.lms_configs, field_config.path, published_only=True
-            )
+            # TODO: optimize this
+            _, published_value = get_tenant_config_value(tenant.lms_configs, field_config.path)
             draft_path_exist, draft_value = get_tenant_config_value(
-                tenant.lms_configs, field_config.path, draft_only=True
+                tenant.lms_configs, field_config.path, publish_status=ConfigPublishStatus.ONLY_DRAFT,
             )
             if draft_path_exist:
                 updated_fields[field_config.key_name] = {

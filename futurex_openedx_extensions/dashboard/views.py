@@ -19,7 +19,7 @@ from django.core.paginator import EmptyPage
 from django.db import transaction
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect, render
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg.utils import swagger_auto_schema
 from edx_api_doc_tools import exclude_schema_for
@@ -1570,3 +1570,14 @@ class FileUploadView(FXViewRoleInfoMixin, APIView):
             {'url': upload_file(storage_path, file), 'uuid': short_uuid},
             status=http_status.HTTP_201_CREATED
         )
+
+
+class SetThemePreviewCookieView(APIView):
+    """View to set theme preview cookie"""
+    def get(self, request: Any) -> Any:  # pylint: disable=no-self-use
+        """Set theme preview cookie"""
+        next_url = request.GET.get('next', request.build_absolute_uri())
+        if request.COOKIES.get('theme-preview') == 'yes':
+            return redirect(next_url)
+
+        return render(request, template_name='set_theme_preview.html', context={'next_url': next_url})
