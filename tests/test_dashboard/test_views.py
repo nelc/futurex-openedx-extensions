@@ -2098,7 +2098,12 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
         )
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
         mock_update_draft.assert_called_once_with(
-            tenant_id, ANY, 'platform_name', 's1 platform name', 's1 new name', False
+            tenant_id=tenant_id,
+            fx_permission_info=ANY,
+            key_path='platform_name',
+            current_value='s1 platform name',
+            new_value='s1 new name',
+            reset=False,
         )
 
     def test_draft_config_delete(self):

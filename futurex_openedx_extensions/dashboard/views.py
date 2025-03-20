@@ -1264,7 +1264,9 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 
     def get(self, request: Any, tenant_id: int) -> Response | JsonResponse:  # pylint: disable=no-self-use
         """Get draft config"""
-        updated_fields = get_draft_tenant_config(int(tenant_id), request.fx_permission_info)
+        updated_fields = get_draft_tenant_config(
+            tenant_id=int(tenant_id), fx_permission_info=request.fx_permission_info
+        )
         return JsonResponse({
             'updated_fields': updated_fields,
             'draft_hash': dict_to_hash(updated_fields)
@@ -1308,11 +1310,12 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
                 )
 
             update_draft_tenant_config(
-                int(tenant_id),
-                self.request.fx_permission_info,
-                key_access_info.path,
-                data['current_value'],
-                new_value, reset
+                tenant_id=int(tenant_id),
+                fx_permission_info=self.request.fx_permission_info,
+                key_path=key_access_info.path,
+                current_value=data['current_value'],
+                new_value=new_value,
+                reset=reset,
             )
             return Response(status=http_status.HTTP_204_NO_CONTENT)
 
@@ -1336,7 +1339,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 
     def delete(self, request: Any, tenant_id: int) -> Response:
         """Delete draft config"""
-        delete_draft_tenant_config(int(tenant_id), self.request.fx_permission_info)
+        delete_draft_tenant_config(tenant_id=int(tenant_id), fx_permission_info=self.request.fx_permission_info)
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
@@ -1377,7 +1380,7 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
                 code=FXExceptionCodes.INVALID_INPUT,
                 message='Draft hash is required and must be a string.'
             )
-        current_draft = get_draft_tenant_config(tenant_id, fx_permission_info)
+        current_draft = get_draft_tenant_config(tenant_id=tenant_id, fx_permission_info=fx_permission_info)
         current_draft_hash = dict_to_hash(current_draft)
         if current_draft_hash != draft_hash:
             raise FXCodedException(
@@ -1505,7 +1508,7 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
                 message=f'User with ID {owner_user_id} does not exist.'
             )
 
-    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """
         POST /api/fx/config/v1/tenant/
         """
