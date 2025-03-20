@@ -68,4 +68,10 @@ urlpatterns = [
     re_path(r'^api/fx/config/v1/values/$', views.ThemeConfigRetrieveView.as_view(), name='theme-config-values'),
     re_path(r'^api/fx/config/v1/tenant/$', views.ThemeConfigTenantView.as_view(), name='theme-config-tenant'),
     re_path(r'^api/fx/file/v1/upload/$', views.FileUploadView.as_view(), name='file-upload'),
+
+    re_path(
+        r'^api/fx/redirect/set_theme_preview/$',
+        views.SetThemePreviewCookieView.as_view(),
+        name='set-theme-preview',
+    ),
 ]
