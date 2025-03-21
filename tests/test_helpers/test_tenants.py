@@ -629,22 +629,29 @@ def test_get_tenant_config_for_non_exist_tenant():
     assert str(exc_info.value) == 'Unable to find tenant with id: (100000)'
 
 
+def _get_fake_permission_info(tenant_ids):
+    return {
+        'is_system_staff_user': False,
+        'view_allowed_tenant_ids_full_access': tenant_ids,
+    }
+
+
 @pytest.mark.django_db
 def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
     """Test get_draft_tenant_config"""
     ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook')
-    assert tenants.get_draft_tenant_config(1, {'view_allowed_tenant_ids_full_access': [1]}) == {
+    assert tenants.get_draft_tenant_config(tenant_id=1, fx_permission_info=_get_fake_permission_info([1])) == {
         'facebook_link': {
             'published_value': 'facebook.com',
             'draft_value': 'draft.facebook.com'
         }
     }
     with pytest.raises(FXCodedException) as exc_info:
-        tenants.get_draft_tenant_config(10000, {'view_allowed_tenant_ids_full_access': [10000]})
+        tenants.get_draft_tenant_config(tenant_id=10000, fx_permission_info=_get_fake_permission_info([10000]))
     assert str(exc_info.value) == 'Unable to find tenant with id: 10000'
 
     with pytest.raises(PermissionDenied) as exc_info:
-        tenants.get_draft_tenant_config(1, {'view_allowed_tenant_ids_full_access': [2, 3, 4]})
+        tenants.get_draft_tenant_config(tenant_id=1, fx_permission_info=_get_fake_permission_info([2, 3, 4]))
     assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (1)'
 
 
@@ -659,20 +666,34 @@ def test_update_draft_tenant_config(mock_update_draft_json_merge, mock_annotate_
     current_value = 'current_value'
     new_value = 'new_value'
     reset = False
-    fake_permission_info = {'view_allowed_tenant_ids_full_access': [1]}
+    fake_permission_info = _get_fake_permission_info([1])
 
     mock_filter.return_value.exists.return_value = True
     mock_filter.return_value = TenantConfig.objects.filter(id=tenant_id)
     mock_annotate_queryset.return_value = mock_filter.return_value
     mock_update_draft_json_merge.return_value = MagicMock()
-    tenants.update_draft_tenant_config(1, fake_permission_info, key_path, current_value, new_value, reset)
+    tenants.update_draft_tenant_config(
+        tenant_id=1,
+        fx_permission_info=fake_permission_info,
+        key_path=key_path,
+        current_value=current_value,
+        new_value=new_value,
+        reset=reset,
+    )
     mock_annotate_queryset.assert_called_with(mock_filter.return_value, key_path)
     mock_update_draft_json_merge.assert_called_once_with(F('lms_configs'), key_path, new_value, reset)
     mock_filter.return_value.filter.return_value.update.assert_called_once()
 
     mock_filter.return_value.filter.return_value.update.return_value = 0
     with pytest.raises(FXCodedException) as exc_info:
-        tenants.update_draft_tenant_config(tenant_id, fake_permission_info, key_path, current_value, new_value, reset)
+        tenants.update_draft_tenant_config(
+            tenant_id=tenant_id,
+            fx_permission_info=fake_permission_info,
+            key_path=key_path,
+            current_value=current_value,
+            new_value=new_value,
+            reset=reset,
+        )
     assert str(exc_info.value) == (
         'Failed to update config for tenant 1. '
         'Key path may not exist or current value mismatch.'
@@ -683,39 +704,54 @@ def test_update_draft_tenant_config(mock_update_draft_json_merge, mock_annotate_
 def test_update_draft_tenant_config_for_tenant_errors():
     """Test update_draft_tenant_config for tenant that does not exist """
     key_access_info = ConfigAccessControl.objects.create(key_name='footer_link', path='theme_v2.footer.link')
-    fx_permission_info = {'view_allowed_tenant_ids_full_access': [1000]}
+    fx_permission_info = _get_fake_permission_info([100])
 
-    not_exist_tenant_id = 100000
-    with pytest.raises(FXCodedException) as exc_info:
-        tenants.update_draft_tenant_config(
-            not_exist_tenant_id, fx_permission_info, key_access_info.path, 'some value', 'new value'
-        )
-    assert str(exc_info.value) == 'Tenant with ID 100000 not found.'
-
-    not_accessible_tenant_id = 4
-    fx_permission_info['view_allowed_tenant_ids_full_access'] = [1, 2, 3, 5]
+    not_exist_tenant_id = 1000
+    assert TenantConfig.objects.filter(id=not_exist_tenant_id).count() == 0
     with pytest.raises(PermissionDenied) as exc_info:
         tenants.update_draft_tenant_config(
-            not_accessible_tenant_id, fx_permission_info, key_access_info.path, 'some value', 'new value'
+            tenant_id=not_exist_tenant_id,
+            fx_permission_info=fx_permission_info,
+            key_path=key_access_info.path,
+            current_value='some value',
+            new_value='new value',
         )
-    assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (4)'
+    assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (1000)'
+
+    not_accessible_tenant_id = 2
+    assert TenantConfig.objects.filter(id=not_accessible_tenant_id).count() == 1
+    fx_permission_info = _get_fake_permission_info([1, 3, 8])
+    with pytest.raises(PermissionDenied) as exc_info:
+        tenants.update_draft_tenant_config(
+            tenant_id=not_accessible_tenant_id,
+            fx_permission_info=fx_permission_info,
+            key_path=key_access_info.path,
+            current_value='some value',
+            new_value='new value',
+        )
+    assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (2)'
 
 
 @pytest.mark.django_db
 def test_delete_draft_tenant_config():
     """Test delete_draft_tenant_config"""
-    with pytest.raises(FXCodedException) as exc_info:
-        tenants.delete_draft_tenant_config(10000, {'view_allowed_tenant_ids_full_access': [10000]})
-    assert exc_info.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
-    assert str(exc_info.value) == 'Unable to find tenant with id: 10000'
-
+    invalid_tenant = 1000
+    assert TenantConfig.objects.filter(id=invalid_tenant).count() == 0
     with pytest.raises(PermissionDenied) as exc_info:
-        tenants.delete_draft_tenant_config(1, {'view_allowed_tenant_ids_full_access': [3, 4]})
-    assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (1)'
+        tenants.delete_draft_tenant_config(tenant_id=invalid_tenant, fx_permission_info=_get_fake_permission_info([1]))
+    assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (1000)'
+
+    inaccessible_tenant = 2
+    assert TenantConfig.objects.filter(id=inaccessible_tenant).count() == 1
+    with pytest.raises(PermissionDenied) as exc_info:
+        tenants.delete_draft_tenant_config(
+            tenant_id=inaccessible_tenant, fx_permission_info=_get_fake_permission_info([3, 4]),
+        )
+    assert json.loads(str(exc_info.value.detail))['reason'] == 'User does not have required access for tenant (2)'
 
     tenant = TenantConfig.objects.get(id=1)
     assert tenant.lms_configs['config_draft'] != {}
-    tenants.delete_draft_tenant_config(1, {'view_allowed_tenant_ids_full_access': [1]})
+    tenants.delete_draft_tenant_config(tenant_id=1, fx_permission_info=_get_fake_permission_info([1]))
     tenant.refresh_from_db()
     assert tenant.lms_configs['config_draft'] == {}
 
@@ -744,3 +780,74 @@ def test_publish_tenant_config(
     else:
         tenants.publish_tenant_config(tenant_id)
         mock_json_merge.assert_called_once_with(mock_queryset)
+
+
+@tenants.tenant_access_required()
+def sample_function(tenant_id, fx_permission_info):  # pylint: disable=unused-argument
+    """Sample function to test tenant_access_required decorator."""
+    return {'status': 'success', 'tenant_id': tenant_id}
+
+
+@pytest.mark.parametrize(
+    'fx_permission_info, tenant_id, expected_result, test_case',
+    [
+        (
+            {'view_allowed_tenant_ids_full_access': [1, 2, 3], 'is_system_staff_user': False},
+            1,
+            {'status': 'success', 'tenant_id': 1},
+            'User has required access to tenant',
+        ),
+        (
+            {'view_allowed_tenant_ids_full_access': [], 'is_system_staff_user': True},
+            5,
+            {'status': 'success', 'tenant_id': 5},
+            'System staff user bypasses tenant check',
+        ),
+    ]
+)
+def test_tenant_access_valid_cases(fx_permission_info, tenant_id, expected_result, test_case):
+    """Verify that users with access can successfully execute the function."""
+    assert sample_function(tenant_id=tenant_id, fx_permission_info=fx_permission_info) == expected_result, test_case
+
+
+@pytest.mark.parametrize(
+    'fx_permission_info, tenant_id, expected_exception, expected_message, test_case',
+    [
+        (
+            {'view_allowed_tenant_ids_full_access': [1, 2, 3], 'is_system_staff_user': False},
+            None,
+            ValueError,
+            'Missing required parameters: tenant_id and fx_permission_info',
+            'Missing tenant_id should raise ValueError',
+        ),
+        (
+            None,
+            1,
+            ValueError,
+            'Missing required parameters: tenant_id and fx_permission_info',
+            'Missing fx_permission_info should raise ValueError',
+        ),
+        (
+            {'view_allowed_tenant_ids_full_access': [2, 3], 'is_system_staff_user': False},
+            1,
+            PermissionDenied,
+            'User does not have required access for tenant (1)',
+            'User without access should raise PermissionDenied',
+        ),
+        (
+            {'invalid_key': [1, 2, 3], 'is_system_staff_user': False},
+            1,
+            ValueError,
+            'Invalid view_allowed_key provided: view_allowed_tenant_ids_full_access',
+            'Missing expected permission key should raise ValueError',
+        ),
+    ]
+)
+def test_tenant_access_invalid_cases(fx_permission_info, tenant_id, expected_exception, expected_message, test_case):
+    """Verify that invalid inputs raise appropriate exceptions."""
+    with pytest.raises(expected_exception) as exc_info:
+        sample_function(tenant_id=tenant_id, fx_permission_info=fx_permission_info)
+    if expected_exception == PermissionDenied:
+        assert json.loads(str(exc_info.value.detail))['reason'] == expected_message, test_case
+    else:
+        assert str(exc_info.value) == expected_message, test_case

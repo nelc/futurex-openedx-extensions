@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from functools import wraps
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
@@ -22,6 +23,32 @@ from futurex_openedx_extensions.helpers.mysql_functions import (
     apply_json_merge_for_publish_draft_config,
     apply_json_merge_for_update_draft_config,
 )
+
+
+def tenant_access_required(view_allowed_key: str = 'view_allowed_tenant_ids_full_access') -> Any:
+    """Decorator to check if the user has access to the tenant."""
+    def decorator(func: Any) -> Any:
+        """Decorator function"""
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            """Wrapper function"""
+            tenant_id = kwargs.get('tenant_id')
+            fx_permission_info = kwargs.get('fx_permission_info')
+
+            if tenant_id is None or fx_permission_info is None:
+                raise ValueError('Missing required parameters: tenant_id and fx_permission_info')
+
+            if view_allowed_key not in fx_permission_info:
+                raise ValueError(f'Invalid view_allowed_key provided: {view_allowed_key}')
+
+            if not fx_permission_info['is_system_staff_user'] and tenant_id not in fx_permission_info[view_allowed_key]:
+                raise PermissionDenied(detail=json.dumps(
+                    {'reason': f'User does not have required access for tenant ({tenant_id})'}
+                ))
+
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 def get_excluded_tenant_ids() -> Dict[int, List[int]]:
@@ -456,19 +483,17 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Fa
     return details
 
 
-def get_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> dict:
+@tenant_access_required()
+def get_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> dict:  # pylint: disable=unused-argument
     """
     Fetches configuration for the specified tenant and returns all draft fields with publsihed and draft values
 
     :param tenant_id: The ID of the tenant whose draft configuration is to be retrieved.
+    :type tenant_id: int
     :param fx_permission_info: A dict containing permission related data
+    :type fx_permission_info: dict
     :return: A dictionary containing updated fields with published and draft values.
     """
-    if tenant_id not in fx_permission_info['view_allowed_tenant_ids_full_access']:
-        raise PermissionDenied(detail=json.dumps(
-            {'reason': f'User does not have required access for tenant ({tenant_id})'}
-        ))
-
     try:
         tenant = TenantConfig.objects.get(id=tenant_id)
         updated_fields = {}
@@ -492,31 +517,23 @@ def get_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> dict:
         ) from exc
 
 
-def delete_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> None:
+@tenant_access_required()
+def delete_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> None:  # pylint: disable=unused-argument
     """
     Deletes the draft configuration for the specified tenant.
 
     :param tenant_id: The ID of the tenant whose draft config needs to be deleted.
-    :param fx_permission_info: A dict containing permission related data
     :type tenant_id: int
+    :param fx_permission_info: A dict containing permission related data
+    :type fx_permission_info: dict
     """
-
-    if tenant_id not in fx_permission_info['view_allowed_tenant_ids_full_access']:
-        raise PermissionDenied(detail=json.dumps(
-            {'reason': f'User does not have required access for tenant ({tenant_id})'}
-        ))
-    try:
-        tenant = TenantConfig.objects.get(id=tenant_id)
-        tenant.lms_configs['config_draft'] = {}
-        tenant.save()
-    except TenantConfig.DoesNotExist as exc:
-        raise FXCodedException(
-            code=FXExceptionCodes.TENANT_NOT_FOUND,
-            message=f'Unable to find tenant with id: {tenant_id}'
-        ) from exc
+    tenant = TenantConfig.objects.get(id=tenant_id)
+    tenant.lms_configs['config_draft'] = {}
+    tenant.save()
 
 
-def update_draft_tenant_config(   # pylint: disable=too-many-arguments
+@tenant_access_required()
+def update_draft_tenant_config(   # pylint: disable=too-many-arguments, unused-argument
     tenant_id: int,
     fx_permission_info: dict,
     key_path: str,
@@ -528,24 +545,19 @@ def update_draft_tenant_config(   # pylint: disable=too-many-arguments
     Updates 'config_draft.<key_path>' inside the JSON field 'lms_configs' in TenantConfig.
 
     :param tenant_id: ID of the tenant.
+    :type tenant_id: int
+    :param fx_permission_info: A dict containing permission related data
+    :type fx_permission_info: dict
     :param key_path: JSON key path to update.
+    :type key_path: str
     :param current_value: Expected current value for validation.
+    :type current_value: Any
     :param new_value: New value to be updated.
+    :type new_value: Any
     :param reset: Whether to reset the value to None.
+    :type reset: bool
     :raises FXCodedException: If the tenant does not exist or update fails.
     """
-
-    if not TenantConfig.objects.filter(id=tenant_id).exists():
-        raise FXCodedException(
-            code=FXExceptionCodes.TENANT_NOT_FOUND,
-            message=f'Tenant with ID {tenant_id} not found.'
-        )
-
-    if tenant_id not in fx_permission_info['view_allowed_tenant_ids_full_access']:
-        raise PermissionDenied(detail=json.dumps(
-            {'reason': f'User does not have required access for tenant ({tenant_id})'}
-        ))
-
     queryset = TenantConfig.objects.filter(id=tenant_id)
     queryset = annotate_queryset_for_update_draft_config(queryset, key_path)
 
