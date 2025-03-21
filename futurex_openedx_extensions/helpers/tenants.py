@@ -14,6 +14,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
+from futurex_openedx_extensions.helpers.converters import fill_deleted_keys_with_none
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl
@@ -528,13 +529,19 @@ def update_draft_tenant_config(   # pylint: disable=too-many-arguments
     Updates 'config_draft.<key_path>' inside the JSON field 'lms_configs' in TenantConfig.
 
     :param tenant_id: ID of the tenant.
+    :type tenant_id: int
+    :param fx_permission_info: A dict containing permission related data
+    :type fx_permission_info: dict
     :param key_path: JSON key path to update.
+    :type key_path: str
     :param current_value: Expected current value for validation.
+    :type current_value: Any
     :param new_value: New value to be updated.
+    :type new_value: Any
     :param reset: Whether to reset the value to None.
+    :type reset: bool
     :raises FXCodedException: If the tenant does not exist or update fails.
     """
-
     if not TenantConfig.objects.filter(id=tenant_id).exists():
         raise FXCodedException(
             code=FXExceptionCodes.TENANT_NOT_FOUND,
@@ -554,6 +561,8 @@ def update_draft_tenant_config(   # pylint: disable=too-many-arguments
         Q(config_draft_exists=True, config_draft_value=current_value) |
         Q(config_draft_exists=False, root_key_exists=True, root_value=current_value)
     )
+
+    fill_deleted_keys_with_none(current_value, new_value)
 
     updated = queryset.filter(condition).update(
         lms_configs=apply_json_merge_for_update_draft_config(F('lms_configs'), key_path, new_value, reset)
