@@ -1,16 +1,15 @@
-all = {
+theme_v2 = {
     "pages": {
         "home": {  # API key: pages_home  GET values key=pages_home
-            "title": {
-                "ar": "الرئيسية",
-                "en": "home"
-            },
+            "slug": "unique-custom-slug",
+
             # //{atom name}_{section}_{index}
             "sections": [
                 {
                     "key": "hero_home_1",
                     #-- the key is mandatory
-                    "type": "hero",
+                    "type": "hero_v1",
+                    "visible": True,
                     "title": {
                         "ar": "المعهد العقاري",
                         "en": "SREI excellence"
@@ -19,15 +18,13 @@ all = {
                         "ar": "المعهد العقاري",
                         "en": "SREI excellence"
                     },
-                    "image": {
-                        "ar":"url",
-                        "en":"url"
-                    }
+                    "image": "url"
                 },
                 {
                     "key": "two_columns_home_1",
                     #-- the key is mandatory
-                    "type": "two_columns",
+                    "type": "two_columns_v1",
+                    "visible": True,
                     "title": {
                         "ar": "المعهد العقاري",
                         "en": "SREI excellence"
@@ -36,7 +33,7 @@ all = {
                         "ar": "المعهد العقاري",
                         "en": "SREI excellence"
                     },
-                    "columns_Section": [
+                    "columns_section": [
                          #--first column
                          {
                              "key": "first_column",#-- the key is mandatory
@@ -49,8 +46,8 @@ all = {
                                  "en": "Our Vision description"
                              },
                              "content_alignment": "start",
-                             #-- 'start'|'end',
-                             "icon": "checkmark",
+                             #-- 'start'| 'center' | 'end',
+                             "icon": "fa-check",
                              #--#-- other icon names might be set here
                          },
                          #--second column
@@ -65,15 +62,16 @@ all = {
                                  "en": "Our mission description"
                              },
                              "content_alignment": "start",
-                             #-- 'start'|'end',
-                             "icon": "checkmark",
+                             #-- 'start'| 'center' | 'end',
+                             "icon": "fa-check",
                              #--#-- other icon names might be set here
                          }
                     ],
                 },
                 {
                     "key": "featured_courses_home_1",
-                    "type": "featured_courses",
+                    "type": "featured_courses_v1",
+                    "visible": True,
                     "title": {
                         "ar": "المعهد العقاري",
                         "en": "SREI excellence"
@@ -82,11 +80,12 @@ all = {
                         "ar": "المعهد العقاري",
                         "en": "SREI excellence"
                     },
-                    "grid_type": "9" #-- accept 3 | 6 | 9 | all
+                    "grid_type": "max-9" #-- accept max-3 | max-6 | max-9 | all | categorised
                 },
                 {
                     "key": "static_metrics_section_home_1",
-                    "type": "static_metrics_section",
+                    "type": "static_metrics_section_v1",
+                    "visible": True,
                     "title": {
                         "ar": "المعهد العقاري",
                         "en": "SREI excellence"
@@ -135,16 +134,13 @@ all = {
                 },
                 {
                     "key": "live_metrics_section_home_1",
-                    "type": "live_metrics_section",
+                    "type": "live_metrics_section_v1",
+                    "visible": True,
                     "options": [
                         {
                             "key": "courses",
                             "is_checked": True,
-                            #-- the value is boolen
-                            "title": {
-                                "ar": "المعهد العقاري",
-                                "en": "SREI excellence"
-                            },
+                            #-- the value is boolean
                             "description": {
                                 "ar": "المعهد العقاري",
                                 "en": "SREI excellence"
@@ -153,11 +149,7 @@ all = {
                         {
                             "key": "learners",
                             "is_checked": True,
-                            #-- the value is boolen
-                            "title": {
-                                "ar": "المعهد العقاري",
-                                "en": "SREI excellence"
-                            },
+                            #-- the value is boolean
                             "description": {
                                 "ar": "المعهد العقاري",
                                 "en": "SREI excellence"
@@ -166,11 +158,7 @@ all = {
                         {
                             "key": "instructors",
                             "is_checked": True,
-                            #-- the value is boolen
-                            "title": {
-                                "ar": "المعهد العقاري",
-                                "en": "SREI excellence"
-                            },
+                            #-- the value is boolean
                             "description": {
                                 "ar": "المعهد العقاري",
                                 "en": "SREI excellence"
@@ -194,48 +182,53 @@ all = {
         },
         "pages_custom_page_1": {
             #--#--  API key: pages_custom_page_1
-            "title": {
-                "ar": "المعهد العقاري",
-                "en": "SREI excellence"
-            }, # .... the rest of the properties
+            "sections": [
+                # .... the rest of the properties
+            ],
             #--#-- other details similar to home
         },
         "pages_custom_page_2": {
             #--#--  API key: pages_custom_page_2
-            "title": {
-                "ar": "عربي2",
-                "en": "something2"
-            }, # .... the rest of the properties
+            "slug": "unique-custom-slug",
+
+            "sections": [
+                # .... the rest of the properties
+            ],
+            #--#-- other details similar to home
         },
         "pages_custom_page_3": {  #--  API key: pages_custom_page_3
-            "title": {
-                "ar": "عربي3",
-                "en": "something3"
-            }, # .... the rest of the properties
+            "slug": "unique-custom-slug",
+
+            "sections": [
+                # .... the rest of the properties
+            ],
+            #--#-- other details similar to home
         },
 
         "pages_custom_page_4": {},  #--  API key: pages_custom_page_4
 
         "pages_custom_page_5": {},  #--  API key: pages_custom_page_5
 
-        "pages_custom_page_6": {},   #--  API key: pages_custom_page_6
-        # ....... to pages_custom_page_50
+        "pages_custom_page_6": {},  # --  API key: pages_custom_page_6
+
+        "pages_custom_page_7": {},  #--  API key: pages_custom_page_7
+
+        "pages_custom_page_8": {},  #--  API key: pages_custom_page_8
     },
 
-    "custom_pages": [  #--#--  API key: custom_pages
+    "custom_pages": [  #--#--  API key: custom_pages, maximum 8 pages
         "pages_custom_page_1",
         "pages_custom_page_2",
         "pages_custom_page_5"
     ],
 
-
     "visual_identity": {
         "colors": {
             "primary_color: "#00ff00",  #--  API key: colors_primary_color
-            "secondery_color: "#00ff00",  #--  API key: colors_secondery_color
+            "secondary_color: "#00ff00",  #--  API key: colors_secondary_color
         },
         "fonts": {
-            "headind": {  #--  API key: fonts_heading
+            "heading": {  #--  API key: fonts_heading
                 "ar":"",
                 "en":""
             },
@@ -247,6 +240,12 @@ all = {
     },
 
     "platform_settings": {  #--  API key: platform_settings
+        "language": {  #--  API key: platform_settings_language
+            "languages": [
+                "ar", "en", "fr"
+            ],
+            "default_language": "ar",
+        },
         "site_name": {
             "ar": "المعهد العقاري",
             "en": "SREI excellence"
@@ -255,9 +254,9 @@ all = {
             "ar": "المعهد العقاري",
             "en": "SREI excellence"
         },
-        "favicon": ' url',
-        "thumbnail": ' url',
-        "social_media_image": ' url',
+        "favicon": "url",
+        "thumbnail": "url",
+        "social_media_image": "url",
         "meta_description": {
             "ar": "المعهد العقاري",
             "en": "SREI excellence"
@@ -342,10 +341,11 @@ all = {
                 "new_tab": True,
             },
         ],
-        "logo": {  #--  API key: header_logo
-            "ar": "url",
-            "en": "url"
-        },
         "combined_login": True,  #--  API key: header_combined_login
     },
+}
+
+root_settings = {
+    "logo_image_url": "url",  #--  API key: logo_url
+    "PLATFORM_NAME": "",  #--  API key: platform_name
 }
