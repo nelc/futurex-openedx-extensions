@@ -69,7 +69,7 @@ from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_de
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ConfigAccessControl, DataExportTask
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ConfigAccessControl, DataExportTask, TenantAsset
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -1569,4 +1569,32 @@ class FileUploadView(FXViewRoleInfoMixin, APIView):
         return Response(
             {'url': upload_file(storage_path, file), 'uuid': short_uuid},
             status=http_status.HTTP_201_CREATED
+        )
+
+
+@docs('CourseAssetsManagementView.create')
+@docs('CourseAssetsManagementView.list')
+@exclude_schema_for('retrieve', 'update', 'partial_update', 'destroy')
+class CourseAssetsManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
+    """View to list and retrieve course assets."""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    serializer_class = serializers.TenantAssetSerializer
+    pagination_class = DefaultPagination
+    fx_view_name = 'tenant_assets'
+    fx_default_read_write_roles = ['staff', 'fx_api_access_global']
+    fx_default_read_only_roles = ['staff', 'fx_api_access_global']
+    fx_allowed_write_methods = ['POST']
+    fx_view_description = 'api/fx/tenant/v1/assets/: Tenant Assets Management APIs.'
+    filter_backends = [DefaultOrderingFilter, DjangoFilterBackend, DefaultSearchFilter]
+    filterset_fields = ['tenant_id', 'updated_by']
+    ordering = ['-id']
+    search_fields = ['slug']
+
+    parser_classes = [MultiPartParser]
+
+    def get_queryset(self) -> QuerySet:
+        """Get the list of user uploaded files."""
+        return TenantAsset.objects.filter(
+            tenant__id__in=self.request.fx_permission_info['view_allowed_tenant_ids_full_access']
         )

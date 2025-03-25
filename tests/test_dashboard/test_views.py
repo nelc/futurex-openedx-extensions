@@ -2,6 +2,7 @@
 # pylint: disable=too-many-lines
 import hashlib
 import json
+import os
 from datetime import date
 from unittest.mock import ANY, Mock, patch
 
@@ -33,7 +34,7 @@ from futurex_openedx_extensions.helpers.constants import ALLOWED_FILE_EXTENSIONS
 from futurex_openedx_extensions.helpers.converters import dict_to_hash
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DataExportTask, ViewAllowedRoles
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DataExportTask, TenantAsset, ViewAllowedRoles
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -2412,4 +2413,155 @@ class FileUploadView(BaseTestViewMixin):
         data['tenant_id'] = 6
         response = self.client.post(self.url, data, format='multipart')
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(str(response.data['tenant_id'][0]), 'User does not have have required access for teanant (6).')
+        self.assertEqual(str(response.data['tenant_id'][0]), 'User does not have have required access for tenant (6).')
+
+
+@pytest.mark.usefixtures('base_data')
+class TestTenantAssetsManagementView(BaseTestViewMixin):
+    """Tests for TenantAssetsManagementView"""
+    view_actions = ['list']
+    fake_storage_dir = 'some-dummy-dir'
+
+    def set_action(self, action):
+        """Set the viewname and client method"""
+        self.view_name = f'fx_dashboard:tenant-assets-{action}'
+        self.url_args = []
+
+    def test_permission_classes(self):
+        """Verify that the view has the correct permission classes"""
+        registry = {}
+        for _, viewset, basename in urls.tenant_assets_router.registry:
+            registry[basename] = viewset
+
+        for action in self.view_actions:
+            self.set_action(action)
+            view_class = registry['tenant-assets']
+            self.assertEqual(view_class.permission_classes, [FXHasTenantAllCoursesAccess])
+
+    @patch('futurex_openedx_extensions.helpers.upload.uuid.uuid4')
+    @patch('futurex_openedx_extensions.helpers.upload.get_storage_dir')
+    def test_create_success(self, mocked_storage_dir, mocked_uuid4):
+        """Verify that the view returns the correct response"""
+        self.set_action('list')
+        self.login_user(3)
+        mocked_storage_dir.return_value = self.fake_storage_dir
+        mocked_uuid4.return_value = Mock(hex='12345678abcdef12')
+        test_file = SimpleUploadedFile('test.png', b'file_content', content_type='image/png')
+        data = {
+            'file': test_file,
+            'slug': 'test-slug',
+            'tenant_id': 1
+        }
+        expected_storage_path = f'{self.fake_storage_dir}/test-slug-12345678.png'
+        response = self.client.post(self.url, data, format='multipart')
+        created_asset = TenantAsset.objects.get(slug='test-slug', tenant=1)
+        self.assertEqual(response.status_code, http_status.HTTP_201_CREATED)
+        self.assertEqual(response.data['file_url'], default_storage.url(expected_storage_path))
+        self.assertEqual(response.data['slug'], 'test-slug')
+        self.assertEqual(response.data['updated_by'], 3)
+        self.assertEqual(response.data['tenant_id'], 1)
+        self.assertEqual(response.data['id'], created_asset.id)
+        self.assertTrue(default_storage.exists(expected_storage_path))
+
+        another_file = SimpleUploadedFile('testanother.png', b'file_another_content', content_type='image/png')
+        data = {
+            'file': another_file,
+            'slug': 'test-slug',
+            'tenant_id': 1
+        }
+        mocked_uuid4.return_value = Mock(hex='11223344abcdef12')
+        storage_path_file2 = f'{self.fake_storage_dir}/test-slug-11223344.png'
+        response = self.client.post(self.url, data, format='multipart')
+        self.assertEqual(
+            response.data['id'],
+            1,
+            'Failed, adding another file with existing slug should not create a new db record.'
+        )
+        self.assertEqual(response.data['file_url'], default_storage.url(storage_path_file2))
+        self.assertTrue(default_storage.exists(storage_path_file2))
+
+    def test_create_failure(self):
+        """Verify that the view returns 400 for user without access and for invlaid file"""
+        self.set_action('list')
+        self.login_user(3)
+        response = self.client.post(
+            self.url,
+            data={
+                'file': SimpleUploadedFile(
+                    'file-with-invalid-extension.invalid', b'file_content', content_type='image/png'
+                ),
+                'slug': 'does-not-matter',
+                'tenant': 1
+            },
+            format='multipart'
+        )
+        self.assertEqual(
+            response.status_code,
+            http_status.HTTP_400_BAD_REQUEST,
+            'Failed, 400 response is expected as file type is invalid.'
+        )
+        self.assertEqual(
+            str(response.data['file'][0]),
+            f'Invalid file type. Allowed types are {ALLOWED_FILE_EXTENSIONS}.'
+        )
+
+        data = {
+            'file': SimpleUploadedFile('abcd.png', b'does not matter', content_type='image/png'),
+            'slug': 'does-not-matter',
+            'tenant_id': 3
+        }
+        response = self.client.post(self.url, data, format='multipart')
+        self.assertEqual(
+            response.status_code,
+            http_status.HTTP_400_BAD_REQUEST,
+            'Failed, 400 response is expected as user does not have tenant access'
+        )
+        self.assertEqual(str(response.data['tenant_id'][0]), 'User does not have have required access for tenant (3).')
+
+    @patch('futurex_openedx_extensions.helpers.upload.get_storage_dir')
+    def test_list_success(self, mocked_storage_dir):
+        """Verify that user can only view accessible tenant assets"""
+        self.set_action('list')
+        mocked_storage_dir.return_value = self.fake_storage_dir
+        tenant1_sample1 = TenantAsset.objects.create(
+            slug='tenant1-sample1',
+            tenant_id=1,
+            file=SimpleUploadedFile('sample11.png', b'dumy11', content_type='image/png'),
+            updated_by_id=3
+        )
+        tenant1_sample2 = TenantAsset.objects.create(
+            slug='tenant1-sample2',
+            tenant_id=1,
+            file=SimpleUploadedFile('sample12.png', b'dummy12', content_type='image/png'),
+            updated_by_id=3
+        )
+        tenant1_sample3 = TenantAsset.objects.create(
+            slug='tenant1-sample3-by-another-user',
+            tenant_id=1,
+            file=SimpleUploadedFile('sample13.png', b'dummy13', content_type='image/png'),
+            updated_by_id=1
+        )
+        TenantAsset.objects.create(
+            slug='tenant4-sample1',
+            tenant_id=4,
+            file=SimpleUploadedFile('sample41.png', b'dummy41', content_type='image/png'),
+            updated_by_id=3
+        )
+        self.login_user(3)
+        response = self.client.get(self.url)
+        self.assertEqual(
+            len(response.data['results']),
+            3,
+            'Failed, user should only have accesss to accessible tenants.',
+        )
+        self.assertEqual(response.data['results'][0]['id'], tenant1_sample3.id)
+        self.assertEqual(response.data['results'][1]['id'], tenant1_sample2.id)
+        self.assertEqual(response.data['results'][2]['id'], tenant1_sample1.id)
+
+    def tearDown(self):
+        """Delete created files"""
+        if default_storage.exists(self.fake_storage_dir):
+            _, files = default_storage.listdir(self.fake_storage_dir)
+            for file_name in files:
+                default_storage.delete(os.path.join(self.fake_storage_dir, file_name))
+            os.rmdir(self.fake_storage_dir)

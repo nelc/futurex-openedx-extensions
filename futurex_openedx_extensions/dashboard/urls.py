@@ -17,6 +17,8 @@ roles_router = DefaultRouter()
 roles_router.register(r'user_roles', views.UserRolesManagementView, basename='user-roles')
 export_router = DefaultRouter()
 export_router.register(r'tasks', views.DataExportManagementView, basename='data-export-tasks')
+tenant_assets_router = DefaultRouter()
+tenant_assets_router.register(r'tenant_assets', views.CourseAssetsManagementView, basename='tenant-assets')
 
 urlpatterns = [
     re_path(r'^api/fx/accessible/v1/info/$', views.AccessibleTenantsInfoView.as_view(), name='accessible-info'),
@@ -68,4 +70,5 @@ urlpatterns = [
     re_path(r'^api/fx/config/v1/values/$', views.ThemeConfigRetrieveView.as_view(), name='theme-config-values'),
     re_path(r'^api/fx/config/v1/tenant/$', views.ThemeConfigTenantView.as_view(), name='theme-config-tenant'),
     re_path(r'^api/fx/file/v1/upload/$', views.FileUploadView.as_view(), name='file-upload'),
+    re_path(r'^api/fx/assets/v1/', include(tenant_assets_router.urls)),
 ]
