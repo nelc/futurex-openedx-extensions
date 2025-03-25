@@ -1819,4 +1819,59 @@ docs_src = {
             remove=[200, 404],
         ),
     },
+
+    'CourseAssetsManagementView.create': {
+        'summary': 'Add new asset to the tenant',
+        'description': 'Add new asset to the tenant. \n `Note:` If an asset with the same slug already exists, the '
+        'existing record will be updated with the new file instead of creating a duplicate entry. The old file will '
+        '**not** be deleted from the storage.',
+        'body': serializers.TenantAssetSerializer(),
+        'responses': responses(
+            overrides={
+                200: serializers.TenantAssetSerializer(include_write_only=False),
+            },
+            remove=[400]
+        ),
+    },
+
+    'CourseAssetsManagementView.list': {
+        'summary': 'List all asset',
+        'description': 'Retrieve a list of all assets. System admins can view all assets, while other users can only '
+        'view assets associated with their accessible tenant. Use the Tenant ID filter to narrow down the results to a '
+        'specific tenant.',
+        'parameters': [
+            query_parameter(
+                'tenant_id',
+                int,
+                'The tenant id to filter the results by.',
+            ),
+            query_parameter(
+                'updated_by',
+                int,
+                'The id of user to filter the results by.',
+            ),
+            openapi.Parameter(
+                'sort',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=['-id'],
+                description=(
+                    'Which field to use when ordering the results according to any of the result fields. The default is'
+                    ' `-id` (sorting descending by the ID).'
+                )
+            ),
+            query_parameter(
+                'search_text',
+                str,
+                'a search text to filter the results by. The search text will be matched against the `slug`',
+            ),
+        ],
+        'responses': responses(
+            overrides={
+                200: serializers.TenantAssetSerializer(include_write_only=False),
+            },
+            remove=[400, 404]
+        ),
+    },
 }

@@ -1,11 +1,15 @@
 """Upload helpers"""
 import os
+import uuid
+from typing import Any
 
 from django.conf import settings
 from django.core.files import File
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from storages.backends.s3boto3 import S3Boto3Storage
+
+from futurex_openedx_extensions.helpers.constants import CONFIG_FILES_UPLOAD_DIR
 
 
 def get_storage_dir(tenant_id: int, dir_name: str) -> str:
@@ -41,3 +45,11 @@ def upload_file(storage_path: str, file: str | File, is_private: bool = False) -
         default_storage.bucket.Object(storage_path).Acl().put(ACL='private')
 
     return default_storage.url(storage_path)
+
+
+def get_tenant_asset_dir(tenant_asset: Any, filename: str) -> str:
+    """Custom upload path for tenant asset files"""
+    file_extension = os.path.splitext(filename)[1]
+    short_uuid = uuid.uuid4().hex[:8]
+    file_name = f'{tenant_asset.slug}-{short_uuid}{file_extension}'
+    return os.path.join(get_storage_dir(tenant_asset.tenant_id, CONFIG_FILES_UPLOAD_DIR), file_name)

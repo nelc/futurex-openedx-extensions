@@ -26,6 +26,7 @@ from futurex_openedx_extensions.helpers.models import (
     ClickhouseQuery,
     ConfigAccessControl,
     DataExportTask,
+    TenantAsset,
     ViewAllowedRoles,
     ViewUserMapping,
 )
@@ -376,6 +377,11 @@ class ConfigAccessControlAdmin(admin.ModelAdmin):
     list_display = ('id', 'key_name', 'path', 'writable',)
 
 
+class TenantAssetAdmin(SimpleHistoryAdmin):
+    raw_id_fields = ('updated_by', 'tenant')
+    list_display = ('id', 'tenant', 'slug', 'updated_by', 'updated_at', 'file')
+
+
 def register_admins() -> None:
     """Register the admin views."""
     CacheInvalidator._meta.abstract = False  # to be able to register the admin view
@@ -386,6 +392,7 @@ def register_admins() -> None:
     admin.site.register(ViewUserMapping, ViewUserMappingHistoryAdmin)
     admin.site.register(DataExportTask, DataExportTaskAdmin)
     admin.site.register(ConfigAccessControl, ConfigAccessControlAdmin)
+    admin.site.register(TenantAsset, TenantAssetAdmin)
 
 
 register_admins()
