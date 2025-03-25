@@ -6,7 +6,7 @@ theme_v2 = {
             # //{atom name}_{section}_{index}
             "sections": [
                 {
-                    "key": "hero_home_1",
+                    "key": "hero_v1_home_1",
                     #-- the key is mandatory
                     "type": "hero_v1",
                     "visible": True,
@@ -21,7 +21,7 @@ theme_v2 = {
                     "image": "url"
                 },
                 {
-                    "key": "two_columns_home_1",
+                    "key": "two_columns_v1_home_1",
                     #-- the key is mandatory
                     "type": "two_columns_v1",
                     "visible": True,
@@ -69,7 +69,22 @@ theme_v2 = {
                     ],
                 },
                 {
-                    "key": "featured_courses_home_1",
+                    "key": "side_image_v1_home_1",
+                    "type": "side_image_v1",
+                    "visible": True,
+                    "title": {
+                        "ar": "المعهد العقاري",
+                        "en": "SREI excellence"
+                    },
+                    "description": {
+                        "ar": "المعهد العقاري",
+                        "en": "SREI excellence"
+                    },
+                    "image": "url",
+                    "reversed": False,  #--  False: flex: row | True: flex: row-reverse
+                },
+                {
+                    "key": "featured_courses_v1_home_1",
                     "type": "featured_courses_v1",
                     "visible": True,
                     "title": {
@@ -83,7 +98,7 @@ theme_v2 = {
                     "grid_type": "max-9" #-- accept max-3 | max-6 | max-9 | all | categorised
                 },
                 {
-                    "key": "static_metrics_section_home_1",
+                    "key": "static_metrics_section_v1_home_1",
                     "type": "static_metrics_section_v1",
                     "visible": True,
                     "title": {
@@ -133,7 +148,7 @@ theme_v2 = {
                     ]
                 },
                 {
-                    "key": "live_metrics_section_home_1",
+                    "key": "live_metrics_section_v1_home_1",
                     "type": "live_metrics_section_v1",
                     "visible": True,
                     "options": [
