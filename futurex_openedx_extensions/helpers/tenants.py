@@ -138,7 +138,7 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
     :rtype: Dict[str, Any]
     """
     tenant_ids = list(get_all_tenants().values_list('id', flat=True))
-    info = TenantConfig.objects.filter(id__in=tenant_ids).values('id', 'route__domain', 'lms_configs')
+    info = TenantConfig.objects.filter(id__in=tenant_ids).values('id', 'lms_configs')
     sso_sites: Dict[str, List[Dict[str, str]]] = {}
     for sso_site in SAMLProviderConfig.objects.current_set().filter(
         entity_id__in=settings.FX_SSO_INFO, enabled=True,
@@ -154,13 +154,13 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
     return {
         'tenant_ids': tenant_ids,
         'sites': {
-            tenant['id']: tenant['route__domain'] for tenant in info
+            tenant['id']: tenant['lms_configs']['LMS_BASE'] for tenant in info
         },
         'info': {
             tenant['id']: {
                 'lms_root_url': get_first_not_empty_item([
                     (tenant['lms_configs'].get('LMS_ROOT_URL') or '').strip(),
-                    fix_lms_base((tenant['lms_configs'].get('LMS_BASE') or '').strip()),
+                    fix_lms_base((tenant['lms_configs']['LMS_BASE']).strip()),
                 ], default=''),
                 'studio_root_url': settings.CMS_ROOT_URL,
                 'platform_name': get_first_not_empty_item([
@@ -171,7 +171,7 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
             } for tenant in info
         },
         'tenant_by_site': {
-            tenant['route__domain']: tenant['id'] for tenant in info
+            tenant['lms_configs']['LMS_BASE']: tenant['id'] for tenant in info
         },
         'sso_sites': sso_sites,
     }
