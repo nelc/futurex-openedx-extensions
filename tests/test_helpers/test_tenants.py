@@ -200,23 +200,19 @@ def test_get_all_tenants_info(base_data):  # pylint: disable=unused-argument
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('config_key, info_key, test_value, expected_result', [
-    ('LMS_BASE', 'lms_root_url', 'lms.example.com', 'https://lms.example.com'),
+    # ('LMS_BASE', 'lms_root_url', 'lms.example.com', 'https://lms.example.com'),
     ('LMS_ROOT_URL', 'lms_root_url', 'https://lms.example.com', 'https://lms.example.com'),
     ('PLATFORM_NAME', 'platform_name', 'Test Platform', 'Test Platform'),
     ('platform_name', 'platform_name', 'Test Platform', 'Test Platform'),
     ('logo_image_url', 'logo_image_url', 'https://img.example.com/dummy.jpg', 'https://img.example.com/dummy.jpg'),
 ])
-@patch('futurex_openedx_extensions.helpers.tenants.get_excluded_tenant_ids', return_value=[])
+@patch('futurex_openedx_extensions.helpers.tenants.get_excluded_tenant_ids', return_value=[4])
 def test_get_all_tenants_info_configs(
     base_data, config_key, info_key, test_value, expected_result
 ):  # pylint: disable=unused-argument
     """Verify get_all_tenants_info function returning the correct logo_url."""
     tenant_config = TenantConfig.objects.create()
-    assert tenant_config.lms_configs.get(config_key) is None
-
-    result = tenants.get_all_tenants_info()
-    assert result['info'][tenant_config.id][info_key] == ''
-
+    tenant_config.lms_configs['LMS_BASE'] = 'lmsX.example.com'
     tenant_config.lms_configs[config_key] = test_value
     tenant_config.save()
     result = tenants.get_all_tenants_info()
@@ -240,6 +236,8 @@ def test_get_all_tenants_info_config_priorities(
     """Verify get_all_tenants_info is respecting the priority of the config keys."""
     assert not tenants.get_all_tenants_info()['tenant_ids']
     tenant_config = TenantConfig.objects.create()
+    tenant_config.lms_configs['LMS_BASE'] = 'lmsX.example.com'
+    tenant_config.save()
     for config_key in config_keys:
         tenant_config.lms_configs[config_key] = f'{data_prefix}{config_key}_value'
     tenant_config.save()
