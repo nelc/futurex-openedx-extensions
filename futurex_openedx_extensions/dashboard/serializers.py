@@ -1,7 +1,9 @@
 """Serializers for the dashboard details API."""
+# pylint: disable=too-many-lines
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any, Dict, List, Tuple
 
@@ -29,6 +31,7 @@ from futurex_openedx_extensions.dashboard.custom_serializers import (
 )
 from futurex_openedx_extensions.helpers.certificates import get_certificate_url
 from futurex_openedx_extensions.helpers.constants import (
+    ALLOWED_FILE_EXTENSIONS,
     COURSE_ACCESS_ROLES_GLOBAL,
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
@@ -41,7 +44,7 @@ from futurex_openedx_extensions.helpers.converters import (
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_csv import get_exported_file_url
 from futurex_openedx_extensions.helpers.extractors import import_from_path
-from futurex_openedx_extensions.helpers.models import DataExportTask
+from futurex_openedx_extensions.helpers.models import DataExportTask, TenantAsset
 from futurex_openedx_extensions.helpers.roles import (
     RoleType,
     get_course_access_roles_queryset,
@@ -947,6 +950,79 @@ class FileUploadSerializer(ReadOnlySerializer):
             raise serializers.ValidationError('Unable to verify tenant access as request object is missing.')
 
         if value not in request.fx_permission_info['view_allowed_tenant_ids_full_access']:
-            raise serializers.ValidationError(f'User does not have have required access for teanant ({value}).')
+            raise serializers.ValidationError(f'User does not have have required access for tenant ({value}).')
 
         return value
+
+
+class TenantAssetSerializer(serializers.ModelSerializer):
+    """Serializer for Data Export Task"""
+    file_url = serializers.SerializerMethodField()
+    file = serializers.FileField(write_only=True)
+    tenant_id = serializers.PrimaryKeyRelatedField(queryset=TenantConfig.objects.all(), source='tenant')
+
+    class Meta:
+        model = TenantAsset
+        fields = ['id', 'tenant_id', 'slug', 'file', 'file_url', 'updated_by', 'updated_at']
+        read_only_fields = ['id', 'updated_at', 'file_url', 'updated_by']
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        """Override init to dynamically change fields. This change is only for swagger docs"""
+        include_write_only = kwargs.pop('include_write_only', True)
+        super().__init__(*args, **kwargs)
+        if include_write_only is False:
+            self.fields.pop('file')
+
+    def get_unique_together_validators(self) -> list:
+        """
+        Overriding this method to bypass the unique_together constraint on 'tenant' and 'slug'.
+        This prevents an error from being raised before reaching the create or update logic.
+        """
+        return []
+
+    def validate_file(self, file: Any) -> Any:  # pylint: disable=no-self-use
+        """
+        Custom validation for file to ensure file extension.
+        """
+        file_extension = os.path.splitext(file.name)[1]
+        if file_extension.lower() not in ALLOWED_FILE_EXTENSIONS:
+            raise serializers.ValidationError(f'Invalid file type. Allowed types are {ALLOWED_FILE_EXTENSIONS}.')
+        return file
+
+    def validate_tenant_id(self, tenant: TenantConfig) -> int:
+        """
+        Custom validation for tenant to ensure that the tenant permissions.
+        """
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'fx_permission_info'):
+            raise serializers.ValidationError(
+                'Unable to verify tenant access as request or fx_permission_info is missing.'
+            )
+        if (
+            not request.fx_permission_info['is_system_staff_user'] and
+            tenant.id not in request.fx_permission_info['view_allowed_tenant_ids_full_access']
+        ):
+            raise serializers.ValidationError(
+                f'User does not have have required access for tenant ({tenant.id}).'
+            )
+        return tenant
+
+    def get_file_url(self, obj: TenantAsset) -> Any:  # pylint: disable=no-self-use
+        """Return file url."""
+        return obj.file.url
+
+    def create(self, validated_data: dict) -> TenantAsset:
+        """
+        Override the create method to handle scenarios where a user tries to upload a new asset with the same slug
+        for the same tenant. Instead of creating a new asset, the existing asset will be updated with the new file.
+        """
+        request = self.context.get('request')
+        asset, _ = TenantAsset.objects.update_or_create(
+            tenant=validated_data['tenant'], slug=validated_data['slug'],
+            defaults={
+                'file': validated_data['file'],
+                'updated_by': request.user,
+                'updated_at': now()
+            }
+        )
+        return asset
