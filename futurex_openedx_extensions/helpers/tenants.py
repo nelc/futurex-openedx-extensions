@@ -15,6 +15,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
+from futurex_openedx_extensions.helpers.converters import fill_deleted_keys_with_none
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl
@@ -566,6 +567,8 @@ def update_draft_tenant_config(   # pylint: disable=too-many-arguments, unused-a
         Q(config_draft_exists=True, config_draft_value=current_value) |
         Q(config_draft_exists=False, root_key_exists=True, root_value=current_value)
     )
+
+    fill_deleted_keys_with_none(current_value, new_value)
 
     updated = queryset.filter(condition).update(
         lms_configs=apply_json_merge_for_update_draft_config(F('lms_configs'), key_path, new_value, reset)
