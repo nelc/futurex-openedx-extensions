@@ -599,6 +599,77 @@ class TestCoursesView(BaseTestViewMixin):
 
 
 @pytest.mark.usefixtures('base_data')
+class TestLibrariesView(BaseTestViewMixin):
+    """Tests for CoursesView"""
+    VIEW_NAME = 'fx_dashboard:libraries'
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        normal_user_id = 16
+        normal_user = get_user_model().objects.get(id=normal_user_id)
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 3)
+        self.assertEqual(
+            len(response.data['results']),
+            3,
+            'Unexpected result, as global staff user should have access to all libraries'
+        )
+
+        self.login_user(normal_user_id)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+        CourseAccessRole.objects.create(org='org1', user=normal_user, role='staff')
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(
+            response.data['count'],
+            2,
+            'Unexpected result, as user with allowed org wide role should have access to all libraries of that org'
+        )
+        CourseAccessRole.objects.create(
+            org='org5', user=normal_user, role='library_user', course_id='library-v1:org5+11'
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(
+            response.data['count'],
+            3,
+            'Unexpected result, as user with allowed role for specific library should have access to that library'
+        )
+
+    def test_search(self):
+        """Verify that serach is returning right response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(f'{self.url}?search_text=org5')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+
+    def test_tenant_ids_filter(self):
+        """Verify tenant_ids filter is working correctly"""
+        self.login_user(self.staff_user)
+        response = self.client.get(f'{self.url}?tenant_ids=1')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+
+    def test_pagination(self):
+        """Verify pagination is working correctly"""
+        self.login_user(self.staff_user)
+        response = self.client.get(f'{self.url}?page_size=1')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 3)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertIsNone(response.data['previous'])
+        self.assertIn('page=2', response.data['next'], msg="Expected 'page=2' in next URL.")
+
+
+@pytest.mark.usefixtures('base_data')
 class TestCourseCourseStatusesView(BaseTestViewMixin):
     """Tests for CourseStatusesView"""
     VIEW_NAME = 'fx_dashboard:course-statuses'

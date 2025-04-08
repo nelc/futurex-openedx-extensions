@@ -69,7 +69,13 @@ from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_de
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ConfigAccessControl, DataExportTask, TenantAsset
+from futurex_openedx_extensions.helpers.library import get_accessible_libraries
+from futurex_openedx_extensions.helpers.models import (
+    ClickhouseQuery,
+    ConfigAccessControl,
+    DataExportTask,
+    TenantAsset,
+)
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -547,6 +553,30 @@ class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             visible_filter=None,
             include_staff=include_staff,
         )
+
+
+@docs('LibraryView.get')
+class LibraryView(ExportCSVMixin, FXViewRoleInfoMixin, APIView):
+    """View to get the list of libraries"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantCourseAccess]
+    pagination_class = DefaultPagination
+    fx_view_name = 'libraries_list'
+    fx_default_read_only_roles = ['staff', 'instructor', 'library_user', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = 'api/fx/libraries/v1/libraries/: Get the list of libraries'
+
+    def get(self, request: Any) -> Response:
+        """
+        GET /api/fx/libraries/v1/libraries/?tenant_ids=<tenantIds>
+
+        <tenantIds> (optional): a comma-separated list of the tenant IDs to get the information for. If not provided,
+            the API will assume the list of all accessible tenants by the user
+        """
+        libraries = get_accessible_libraries(self.fx_permission_info, self.request.query_params.get('search_text'))
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(libraries, request)
+        serializer = serializers.LibrarySerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 @docs('CourseStatusesView.get')

@@ -517,6 +517,27 @@ docs_src = {
         ),
     },
 
+    'LibraryView.get': {
+        'summary': 'Get the list of libraries in the tenants',
+        'description': 'Get the list of libraries in the tenants.',
+        'parameters': [
+            common_parameters['tenant_ids'],
+            query_parameter(
+                'search_text',
+                str,
+                'a search text to filter the results by. The search text will be matched against the course\'s ID and'
+                ' display name.',
+            )
+        ],
+        'responses': responses(
+            overrides={
+                200: serializers.LibrarySerializer(read_only=True, required=False),
+
+            },
+            remove=[400]
+        ),
+    },
+
     'DataExportManagementView.list': {
         'summary': 'Get the list of data export tasks for the caller',
         'description': 'Get the list of data export tasks for the caller.',

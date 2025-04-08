@@ -895,6 +895,20 @@ class ReadOnlySerializer(serializers.Serializer):
         raise ValueError('This serializer is read-only and does not support object updates.')
 
 
+class LibrarySerializer(ReadOnlySerializer):
+    """Serializer for library."""
+    library_key = serializers.CharField(source='location.library_key')
+    display_name = serializers.CharField()
+    edited_by = serializers.IntegerField(source='_edited_by')
+    edited_on = serializers.DateTimeField(source='_edited_on')
+    org = serializers.CharField(source='location.library_key.org')
+    tenant_ids = serializers.SerializerMethodField()
+
+    def get_tenant_ids(self, obj: Any) -> Any:  # pylint: disable=no-self-use
+        """Return the tenant IDs."""
+        return get_tenants_by_org(obj.location.library_key.org)
+
+
 class AggregatedCountsQuerySettingsSerializer(ReadOnlySerializer):
     """Serializer for aggregated counts settings."""
     aggregate_period = serializers.CharField()
