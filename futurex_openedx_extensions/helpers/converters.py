@@ -261,6 +261,17 @@ def _text_translate(text: str, translation_from: str, translation_to: str) -> st
     return text
 
 
+def to_arabic_numerals(text: str) -> str:
+    """
+    Convert all Indian numerals in the text to Arabic numerals.
+
+    :param text: The text to convert.
+    :type text: str
+    :return: The text with Indian numerals converted to Arabic numerals.
+    """
+    return _text_translate(text, '٠١٢٣٤٥٦٧٨٩', '0123456789')
+
+
 def to_indian_numerals(text: str) -> str:
     """
     Convert all Arabic numerals in the text to Indian numerals.

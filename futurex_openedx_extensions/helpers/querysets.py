@@ -12,7 +12,7 @@ from django.utils.timezone import now
 from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
-from futurex_openedx_extensions.helpers.converters import get_allowed_roles, to_indian_numerals
+from futurex_openedx_extensions.helpers.converters import get_allowed_roles, to_arabic_numerals, to_indian_numerals
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids, verify_course_ids
 from futurex_openedx_extensions.helpers.tenants import get_tenants_sites
@@ -209,14 +209,14 @@ def get_base_queryset_courses(
     return q_set
 
 
-def get_search_query(search_fields: List[str], indian_search_fields: List[str], search_text: str) -> Q:
+def get_search_query(search_fields: List[str], numeral_search_fields: List[str], search_text: str) -> Q:
     """
     Constructs a Q object for searching with `icontains` and handling Indian numeral conversion.
 
     :param search_fields: List of fields to apply `icontains` with `search_text`
     :type search_fields: List[str]
-    :param indian_search_fields: List of fields to apply `icontains` with `to_indian_numerals(search_text)`
-    :type indian_search_fields: List[str]
+    :param numeral_search_fields: List of fields to apply `icontains` with arabic/indian numeral conversion
+    :type numeral_search_fields: List[str]
     :param search_text: The search term
     :type search_text: str
     :return: A Q object for filtering
@@ -226,11 +226,10 @@ def get_search_query(search_fields: List[str], indian_search_fields: List[str], 
     for field in search_fields:
         query |= Q(**{f'{field}__icontains': search_text})
 
-    if indian_search_fields:
-        indian_search_text = to_indian_numerals(search_text)
-        if indian_search_text != search_text:
-            for field in indian_search_fields:
-                query |= Q(**{f'{field}__icontains': indian_search_text})
+    for field in numeral_search_fields:
+        for extra_search_text in [to_indian_numerals(search_text), to_arabic_numerals(search_text)]:
+            if extra_search_text != search_text:
+                query |= Q(**{f'{field}__icontains': extra_search_text})
 
     return query
 

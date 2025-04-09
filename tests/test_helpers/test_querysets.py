@@ -443,7 +443,7 @@ def test_annotate_period_invalid_period(period):
 
 
 @pytest.mark.parametrize(
-    'search_fields, indian_search_fields, search_text, expected_q, test_case',
+    'search_fields, numeral_search_fields, search_text, expected_q, test_case',
     [
         (
             ['username', 'email'],
@@ -491,7 +491,7 @@ def test_annotate_period_invalid_period(period):
         ),
     ],
 )
-def test_get_search_query(search_fields, indian_search_fields, search_text, expected_q, test_case):
+def test_get_search_query(search_fields, numeral_search_fields, search_text, expected_q, test_case):
     """Verify get_search_query function."""
-    query = querysets.get_search_query(search_fields, indian_search_fields, search_text)
+    query = querysets.get_search_query(search_fields, numeral_search_fields, search_text)
     assert query == expected_q, f'Test case ({test_case}) failed. Expected {expected_q}, but got {query}'

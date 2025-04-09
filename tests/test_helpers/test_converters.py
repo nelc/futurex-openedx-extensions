@@ -169,6 +169,24 @@ def test_path_to_json(path, value, expected_output):
 @pytest.mark.parametrize(
     'input_text, expected_output, test_case',
     [
+        ('١٢٣', '123', 'Basic conversion'),
+        ('٠', '0', 'Single digit'),
+        ('٩٨٧٦٥٤٣٢١٠', '9876543210', 'All numbers reversed'),
+        ('abc١٢٣xyz', 'abc123xyz', 'Mixed text with numbers'),
+        ('No numbers here!', 'No numbers here!', 'No numbers'),
+        ('', '', 'Empty string'),
+        ('123', '123', 'Already Arabic numerals'),
+        ('Mixed 123 and ٤٥٦', 'Mixed 123 and 456', 'Mixed Arabic & Indian numerals'),
+    ],
+)
+def test_to_arabic_numerals(input_text, expected_output, test_case):
+    """Verify that to_arabic_numerals returns correct data"""
+    assert converters.to_arabic_numerals(input_text) == expected_output, f'Failed: {test_case}'
+
+
+@pytest.mark.parametrize(
+    'input_text, expected_output, test_case',
+    [
         ('123', '١٢٣', 'Basic conversion'),
         ('0', '٠', 'Single digit'),
         ('9876543210', '٩٨٧٦٥٤٣٢١٠', 'All numbers reversed'),
