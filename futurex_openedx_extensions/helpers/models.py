@@ -18,6 +18,7 @@ from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.converters import DateMethods, get_allowed_roles
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.upload import get_tenant_asset_dir
 
 User = get_user_model()
 
@@ -586,3 +587,20 @@ class ConfigAccessControl(models.Model):
     class Meta:
         verbose_name = 'Config Access Control'
         verbose_name_plural = 'Config Access Controls'
+
+
+class TenantAsset(models.Model):
+    """Tenant assets and files"""
+    tenant = models.ForeignKey(TenantConfig, on_delete=models.CASCADE)
+    slug = models.SlugField()
+    file = models.FileField(upload_to=get_tenant_asset_dir)
+    updated_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    updated_at = models.DateTimeField(auto_now_add=True)
+
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = 'Tenant Asset'
+        verbose_name_plural = 'Tenant Assets'
+
+        unique_together = ('tenant', 'slug')

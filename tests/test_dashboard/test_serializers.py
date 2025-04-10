@@ -1,6 +1,7 @@
 """Test serializers for dashboard app"""
 # pylint: disable=too-many-lines
 import copy
+import os
 from unittest.mock import Mock, patch
 
 import pytest
@@ -10,6 +11,7 @@ from custom_reg_form.models import ExtraInfo
 from deepdiff import DeepDiff
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import Value
 from django.test import override_settings
@@ -21,21 +23,7 @@ from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyP
 from rest_framework.exceptions import ValidationError
 from social_django.models import UserSocialAuth
 
-from futurex_openedx_extensions.dashboard.serializers import (
-    CourseDetailsBaseSerializer,
-    CourseDetailsSerializer,
-    CourseScoreAndCertificateSerializer,
-    DataExportTaskSerializer,
-    FileUploadSerializer,
-    LearnerBasicDetailsSerializer,
-    LearnerCoursesDetailsSerializer,
-    LearnerDetailsExtendedSerializer,
-    LearnerDetailsForCourseSerializer,
-    LearnerDetailsSerializer,
-    LearnerEnrollmentSerializer,
-    ReadOnlySerializer,
-    UserRolesSerializer,
-)
+from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.converters import dt_to_str
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -132,7 +120,7 @@ def test_data_export_task_serializer_for_notes_max_len_limit(base_data):  # pyli
     user = get_user_model().objects.get(id=10)
     task = DataExportTask.objects.create(filename='test.csv', view_name='test', user=user, tenant_id=1)
     data = {'notes': 'A' * 256}
-    serializer = DataExportTaskSerializer(instance=task, data=data)
+    serializer = serializers.DataExportTaskSerializer(instance=task, data=data)
     assert serializer.is_valid() is False
     assert 'notes' in serializer.errors
     assert serializer.errors['notes'] == ['Ensure this field has no more than 255 characters.']
@@ -145,7 +133,7 @@ def test_data_export_task_serializer_for_notes_validation(base_data):  # pylint:
     task = DataExportTask.objects.create(filename='test.csv', view_name='test', user=user, tenant_id=1)
     text = 'hello'
     text_with_html_tags = f'<h1>{text}</h1>'
-    serializer = DataExportTaskSerializer(instance=task, data={'notes': text_with_html_tags})
+    serializer = serializers.DataExportTaskSerializer(instance=task, data={'notes': text_with_html_tags})
     assert serializer.is_valid() is True
     assert serializer.validated_data['notes'] == '&lt;h1&gt;hello&lt;/h1&gt;'
 
@@ -165,7 +153,7 @@ def test_data_export_task_serializer_for_download_url(
         progress=1.1,
         status=DataExportTask.STATUS_COMPLETED
     )
-    serializer = DataExportTaskSerializer(
+    serializer = serializers.DataExportTaskSerializer(
         instance=task, context={'requested_optional_field_tags': ['download_url']}
     )
     assert serializer.data['download_url'] == 'fake_download_url'
@@ -175,7 +163,7 @@ def test_data_export_task_serializer_for_download_url(
 def test_learner_basic_details_serializer_no_profile(base_data):  # pylint: disable=unused-argument
     """Verify that the LearnerBasicDetailsSerializer is correctly defined."""
     queryset = get_dummy_queryset()
-    data = LearnerBasicDetailsSerializer(queryset, many=True).data
+    data = serializers.LearnerBasicDetailsSerializer(queryset, many=True).data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
     assert data[0]['full_name'] == ''
@@ -195,7 +183,7 @@ def test_learner_basic_details_serializer_with_profile(base_data):  # pylint: di
         year_of_birth=1988,
     )
     queryset = get_dummy_queryset()
-    data = LearnerBasicDetailsSerializer(queryset, many=True).data
+    data = serializers.LearnerBasicDetailsSerializer(queryset, many=True).data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
     assert data[0]['full_name'] == 'Test User'
@@ -212,7 +200,7 @@ def test_learner_basic_details_serializer_with_extra_info(base_data):  # pylint:
         national_id='1234567890',
     )
     queryset = get_dummy_queryset()
-    data = LearnerBasicDetailsSerializer(queryset, many=True).data
+    data = serializers.LearnerBasicDetailsSerializer(queryset, many=True).data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
     assert data[0]['national_id'] == '1234567890'
@@ -244,7 +232,7 @@ def test_learner_basic_details_serializer_full_name_alt_name(
     user.last_name = last_name
     user.save()
 
-    serializer = LearnerBasicDetailsSerializer(queryset, many=True)
+    serializer = serializers.LearnerBasicDetailsSerializer(queryset, many=True)
     data = serializer.data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
@@ -275,7 +263,7 @@ def test_learner_basic_details_serializer_arabic_name_as_alt_name(
         arabic_last_name=arabic_last_name,
         arabic_name=arabic_name
     )
-    serializer = LearnerBasicDetailsSerializer(queryset, many=True)
+    serializer = serializers.LearnerBasicDetailsSerializer(queryset, many=True)
     data = serializer.data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
@@ -286,7 +274,7 @@ def test_learner_basic_details_serializer_arabic_name_as_alt_name(
 def test_learner_details_serializer(base_data):  # pylint: disable=unused-argument
     """Verify that the LearnerDetailsSerializer returns the needed fields"""
     queryset = get_dummy_queryset()
-    data = LearnerDetailsSerializer(queryset, many=True).data
+    data = serializers.LearnerDetailsSerializer(queryset, many=True).data
     assert len(data) == 1
     assert data[0]['enrolled_courses_count'] == 6
     assert data[0]['certificates_count'] == 2
@@ -295,11 +283,11 @@ def test_learner_details_serializer(base_data):  # pylint: disable=unused-argume
 @pytest.mark.django_db
 def test_course_score_and_certificate_serializer_for_required_child_methods():
     """Verify that the CourseScoreAndCertificateSerializer for required child methods"""
-    class TestSerializer(CourseScoreAndCertificateSerializer):
+    class TestSerializer(serializers.CourseScoreAndCertificateSerializer):
         """Serializer for learner details for a course."""
         class Meta:
             model = get_user_model()
-            fields = CourseScoreAndCertificateSerializer.Meta.fields
+            fields = serializers.CourseScoreAndCertificateSerializer.Meta.fields
 
     context = {'requested_optional_field_tags': ['certificate_url']}
     qs = get_dummy_queryset()
@@ -328,7 +316,7 @@ def test_learner_enrollments_serializer(mock_collect, base_data,):  # pylint: di
         course_score=Value(0.67),
         active_in_course=Value(True),
     )
-    serializer = LearnerEnrollmentSerializer(queryset, context={
+    serializer = serializers.LearnerEnrollmentSerializer(queryset, context={
         'course_id': 'course-v1:ORG3+1+1'
     }, many=True)
     mock_collect.assert_called_once()
@@ -354,7 +342,7 @@ def test_learner_enrollments_serializer_for_sso_external_id(
 
     def assert_sso_external_id(expected, msg):
         """Helper to serialize and assert sso_external_id."""
-        serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
+        serializer = serializers.LearnerEnrollmentSerializer(queryset, context=context, many=True)
         assert serializer.data[0].get('sso_external_id') == expected, msg
 
     UserSocialAuth.objects.all().delete()
@@ -422,7 +410,7 @@ def test_learner_enrollments_serializer_for_sso_external_id_bad_settings(
     if key_to_remove:
         del settings_override['testing_entity_id1'][key_to_remove]
     with override_settings(FX_SSO_INFO=settings_override):
-        serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
+        serializer = serializers.LearnerEnrollmentSerializer(queryset, context=context, many=True)
         assert serializer.data[0].get('sso_external_id') == expected_result
     if key_to_remove:
         assert 'Bad (external_id_field) or (external_id_extractor) settings for Entity ID (testing_entity_id1)' \
@@ -440,7 +428,7 @@ def test_learner_enrollments_serializer_for_sso_external_id_import_failed(
     context = sso_external_id_context[1]
 
     with pytest.raises(FXCodedException) as exc_info:
-        _ = LearnerEnrollmentSerializer(queryset, context=context, many=True).data
+        _ = serializers.LearnerEnrollmentSerializer(queryset, context=context, many=True).data
     assert exc_info.value.code == FXExceptionCodes.BAD_CONFIGURATION_EXTERNAL_ID_EXTRACTOR.value
     assert str(exc_info.value) == \
         'Bad configuration: FX_SSO_INFO.testing_entity_id1.external_id_extractor. import failed'
@@ -462,11 +450,11 @@ def test_learner_enrollments_serializer_for_sso_external_id_extractor_exception(
     context = sso_external_id_context[1]
 
     mocked_import.return_value = none_failing_processing
-    serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
+    serializer = serializers.LearnerEnrollmentSerializer(queryset, context=context, many=True)
     assert serializer.data[0].get('sso_external_id') == 'good'
 
     mocked_import.return_value = _failing_processing
-    serializer = LearnerEnrollmentSerializer(queryset, context=context, many=True)
+    serializer = serializers.LearnerEnrollmentSerializer(queryset, context=context, many=True)
     assert serializer.data[0].get('sso_external_id') == ''
 
 
@@ -517,7 +505,7 @@ def test_learner_enrollment_serializer_exam_scores(
     if is_course_id_in_context:
         context.update({'course_id': 'course-v1:ORG2+1+1'})
 
-    serializer = LearnerEnrollmentSerializer(queryset[0], context=context)
+    serializer = serializers.LearnerEnrollmentSerializer(queryset[0], context=context)
     data = serializer.data
 
     if is_course_id_in_context:
@@ -530,7 +518,7 @@ def test_learner_enrollment_serializer_exam_scores(
 
 def test_learner_details_for_course_serializer_optional_fields():
     """Verify that the LearnerDetailsForCourseSerializer returns the correct optional fields."""
-    serializer = LearnerDetailsForCourseSerializer(context={'course_id': 'course-v1:ORG2+1+1'})
+    serializer = serializers.LearnerDetailsForCourseSerializer(context={'course_id': 'course-v1:ORG2+1+1'})
     assert serializer.optional_field_names == ['progress', 'certificate_url', 'exam_scores']
 
 
@@ -551,7 +539,7 @@ def test_learner_details_for_course_serializer_collect_grading_info(
     }
     if omit_subsection_name != 'absent':
         context['omit_subsection_name'] = omit_subsection_name
-    serializer = LearnerDetailsForCourseSerializer(
+    serializer = serializers.LearnerDetailsForCourseSerializer(
         queryset,
         context=context,
     )
@@ -590,7 +578,7 @@ def test_learner_details_for_course_serializer_collect_grading_info_not_used(
     is not requested.
     """
     queryset = get_dummy_queryset()
-    serializer = LearnerDetailsForCourseSerializer(queryset, context={'course_id': 'course-v1:ORG2+1+1'})
+    serializer = serializers.LearnerDetailsForCourseSerializer(queryset, context={'course_id': 'course-v1:ORG2+1+1'})
 
     assert not serializer.grading_info
     assert not serializer.subsection_locations
@@ -607,7 +595,7 @@ def test_learner_details_for_course_serializer_certificate_url(
     """Verify that the LearnerDetailsForCourseSerializer returns the correct certificate_url."""
     queryset = get_dummy_queryset()
     mock_get_certificate_url.return_value = 'https://example.com/courses/course-v1:ORG2+1+1/certificate/'
-    serializer = LearnerDetailsForCourseSerializer(
+    serializer = serializers.LearnerDetailsForCourseSerializer(
         queryset,
         context={
             'course_id': 'course-v1:ORG2+1+1',
@@ -636,7 +624,7 @@ def test_learner_details_for_course_serializer_progress(
         'incomplete_count': progress_values[1],
         'locked_count': progress_values[2],
     }
-    serializer = LearnerDetailsForCourseSerializer(
+    serializer = serializers.LearnerDetailsForCourseSerializer(
         queryset,
         context={
             'course_id': 'course-v1:ORG2+1+1',
@@ -674,7 +662,7 @@ def test_learner_details_for_course_serializer_exam_scores(
         first_attempted=now() - timedelta(days=1),
     )
 
-    serializer = LearnerDetailsForCourseSerializer(
+    serializer = serializers.LearnerDetailsForCourseSerializer(
         queryset if many else queryset.first(),
         context={
             'course_id': 'course-v1:ORG2+1+1',
@@ -700,7 +688,7 @@ def test_learner_details_extended_serializer(base_data):  # pylint: disable=unus
         level_of_education='Test Level',
     )
     request = Mock(site=Mock(domain='an-example.com'), scheme='https')
-    data = LearnerDetailsExtendedSerializer(queryset, many=True, context={'request': request}).data
+    data = serializers.LearnerDetailsExtendedSerializer(queryset, many=True, context={'request': request}).data
     image_serialized = AccountLegacyProfileSerializer.get_profile_image(profile, queryset.first(), None)
     assert len(data) == 1
     assert data[0]['user_id'] == 10
@@ -717,7 +705,7 @@ def test_learner_details_extended_serializer(base_data):  # pylint: disable=unus
 def test_learner_details_extended_serializer_no_profile(base_data):  # pylint: disable=unused-argument
     """Verify that the LearnerDetailsExtendedSerializer returns the correct data when there is no profile."""
     queryset = get_dummy_queryset()
-    data = LearnerDetailsExtendedSerializer(queryset, many=True).data
+    data = serializers.LearnerDetailsExtendedSerializer(queryset, many=True).data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
     assert data[0]['city'] is None
@@ -738,7 +726,7 @@ def test_learner_details_extended_serializer_social_links(base_data):  # pylint:
         platform='facebook',
         social_link='https://facebook.com/test',
     )
-    data = LearnerDetailsExtendedSerializer(queryset, many=True).data
+    data = serializers.LearnerDetailsExtendedSerializer(queryset, many=True).data
     assert len(data) == 1
     assert data[0]['user_id'] == 10
     assert data[0]['social_links'] == {'facebook': 'https://facebook.com/test'}
@@ -749,7 +737,7 @@ def test_learner_details_extended_serializer_image(base_data):  # pylint: disabl
     """Verify that the LearnerDetailsExtendedSerializer returns the profile image."""
     queryset = get_dummy_queryset([1])
     profile = UserProfile.objects.create(user_id=1)
-    data = LearnerDetailsExtendedSerializer(queryset, many=True).data
+    data = serializers.LearnerDetailsExtendedSerializer(queryset, many=True).data
     image_serialized = AccountLegacyProfileSerializer.get_profile_image(profile, queryset.first(), None)
     assert len(data) == 1
     assert data[0]['user_id'] == 1
@@ -771,7 +759,7 @@ def test_course_details_base_serializer(base_data):  # pylint: disable=unused-ar
 
     with patch('futurex_openedx_extensions.dashboard.serializers.get_tenants_by_org') as mock_get_tenants_by_org:
         mock_get_tenants_by_org.return_value = [1, 2]
-        data = CourseDetailsBaseSerializer(course).data
+        data = serializers.CourseDetailsBaseSerializer(course).data
 
     assert data['id'] == str(course.id)
     assert data['self_paced'] == course.self_paced
@@ -805,12 +793,12 @@ def test_course_details_base_serializer_status(
     course.end = end_date
     course.save()
 
-    data = CourseDetailsBaseSerializer(course).data
+    data = serializers.CourseDetailsBaseSerializer(course).data
     assert data['status'] == expected_status
 
     course.self_paced = True
     course.save()
-    data = CourseDetailsBaseSerializer(course).data
+    data = serializers.CourseDetailsBaseSerializer(course).data
     assert data['status'] == f'{cs.COURSE_STATUS_SELF_PREFIX}{expected_status}'
 
 
@@ -825,7 +813,7 @@ def test_course_details_serializer(base_data):  # pylint: disable=unused-argumen
     course.certificates_count = 3
     course.completion_rate = 0.3
     course.save()
-    data = CourseDetailsSerializer(course).data
+    data = serializers.CourseDetailsSerializer(course).data
     assert data['id'] == str(course.id)
     assert data['enrolled_count'] == course.enrolled_count
     assert data['active_count'] == course.active_count
@@ -857,7 +845,7 @@ def test_course_details_serializer_rating(
     course.certificates_count = 1
     course.completion_rate = 1
     course.save()
-    data = CourseDetailsSerializer(course).data
+    data = serializers.CourseDetailsSerializer(course).data
     assert data['rating'] == expected_rating
 
 
@@ -887,7 +875,7 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
             'futurex_openedx_extensions.dashboard.serializers.LearnerCoursesDetailsSerializer.get_certificate_url',
             return_value='https://test.com/courses/course-v1:dummy+key/certificate/'
         ):
-            data = LearnerCoursesDetailsSerializer(course, context={'request': request}).data
+            data = serializers.LearnerCoursesDetailsSerializer(course, context={'request': request}).data
 
     assert data['id'] == str(course.id)
     assert data['enrollment_date'] == dt_to_str(enrollment_date)
@@ -914,7 +902,7 @@ def test_user_roles_serializer_init(
         'futurex_openedx_extensions.dashboard.serializers.UserRolesSerializer.construct_roles_data'
     ) as mock_construct_roles_data:
         mock_construct_roles_data.return_value = {3: {}}
-        serializer = UserRolesSerializer(user3, context=serializer_context)
+        serializer = serializers.UserRolesSerializer(user3, context=serializer_context)
 
     assert mock_construct_roles_data.called
     assert mock_construct_roles_data.call_args[0][0] == [user3]
@@ -946,7 +934,7 @@ def test_user_roles_serializer_init_no_construct_call(
     with patch(
         'futurex_openedx_extensions.dashboard.serializers.UserRolesSerializer.construct_roles_data'
     ) as mock_construct_roles_data:
-        UserRolesSerializer(instance, context=serializer_context, many=many)
+        serializers.UserRolesSerializer(instance, context=serializer_context, many=many)
 
     mock_construct_roles_data.assert_not_called()
 
@@ -970,7 +958,7 @@ def test_user_roles_serializer_get_org_tenants(
                 },
             },
         }
-        serializer = UserRolesSerializer(user3, context=serializer_context)
+        serializer = serializers.UserRolesSerializer(user3, context=serializer_context)
 
         mock_get_tenants_by_org.return_value = [1, 2]
         assert isinstance(serializer._org_tenant, dict)  # pylint: disable=protected-access
@@ -1000,7 +988,7 @@ def test_user_roles_serializer_for_global_roles(
         user_id=user3.id,
         role=role
     )
-    serializer = UserRolesSerializer(user3, context=serializer_context)
+    serializer = serializers.UserRolesSerializer(user3, context=serializer_context)
     assert serializer.data.get('global_roles', []) == ([role] if is_valid_global_role else [])
 
 
@@ -1013,18 +1001,18 @@ def test_user_roles_serializer_for_global_roles_creator(
     data are correctly filled.
     """
     user = get_user_model().objects.get(id=empty_course_creator.user_id)
-    serializer = UserRolesSerializer(user, context=serializer_context)
+    serializer = serializers.UserRolesSerializer(user, context=serializer_context)
     assert serializer.data.get('global_roles', []) == []
 
     CourseAccessRole.objects.create(
         user_id=user.id,
         role=cs.COURSE_CREATOR_ROLE_GLOBAL,
     )
-    serializer = UserRolesSerializer(user, context=serializer_context)
+    serializer = serializers.UserRolesSerializer(user, context=serializer_context)
     assert serializer.data.get('global_roles', []) == []
 
     CourseCreator.objects.filter(user_id=user.id).update(all_organizations=True)
-    serializer = UserRolesSerializer(user, context=serializer_context)
+    serializer = serializers.UserRolesSerializer(user, context=serializer_context)
     assert serializer.data.get('global_roles', []) == [cs.COURSE_CREATOR_ROLE_GLOBAL]
 
 
@@ -1036,7 +1024,7 @@ def test_user_roles_serializer_construct_roles_data(
     user3 = get_user_model().objects.get(id=3)
     user4 = get_user_model().objects.get(id=4)
 
-    serializer = UserRolesSerializer(context=serializer_context)
+    serializer = serializers.UserRolesSerializer(context=serializer_context)
     assert not serializer.roles_data
 
     serializer.construct_roles_data([user3, user4])
@@ -1066,7 +1054,7 @@ def test_user_roles_serializer_parse_query_params_defaults(
     base_data, serializer_context
 ):  # pylint: disable=unused-argument, redefined-outer-name
     """Verify that the parse_query_params method correctly parses the query parameters."""
-    assert UserRolesSerializer.parse_query_params({}) == {
+    assert serializers.UserRolesSerializer.parse_query_params({}) == {
         'search_text': '',
         'course_ids_filter': [],
         'roles_filter': [],
@@ -1090,7 +1078,7 @@ def test_user_roles_serializer_parse_query_params_defaults(
 def test_user_roles_serializer_parse_query_params_values(excluded_role_types, result_excluded_role_types):
     """Verify that the parse_query_params method correctly parses the query parameters."""
     assert not DeepDiff(
-        UserRolesSerializer.parse_query_params({
+        serializers.UserRolesSerializer.parse_query_params({
             'search_text': 'user99',
             'only_course_ids': 'course-v1:ORG99+88+88,another-course',
             'only_roles': 'staff,instructor',
@@ -1112,7 +1100,7 @@ def test_user_roles_serializer_parse_query_params_values(excluded_role_types, re
 
 def test_read_only_serializer_create():
     """Verify that the ReadOnlySerializer does not allow creating objects."""
-    serializer = ReadOnlySerializer(data={})
+    serializer = serializers.ReadOnlySerializer(data={})
     with pytest.raises(ValueError) as exc_info:
         serializer.create({})
     assert str(exc_info.value) == 'This serializer is read-only and does not support object creation.'
@@ -1120,7 +1108,7 @@ def test_read_only_serializer_create():
 
 def test_read_only_serializer_update():
     """Verify that the ReadOnlySerializer does not allow updating objects."""
-    serializer = ReadOnlySerializer(data={})
+    serializer = serializers.ReadOnlySerializer(data={})
     with pytest.raises(ValueError) as exc_info:
         serializer.update({}, {})
     assert str(exc_info.value) == 'This serializer is read-only and does not support object updates.'
@@ -1130,7 +1118,7 @@ def test_read_only_serializer_update():
 @pytest.mark.parametrize('tenant_id, allowed_tenants, expected_error', [
     (1, [1], None),
     (99, [1], 'Tenant with ID 99 does not exist.'),
-    (1, [4], 'User does not have have required access for teanant (1).'),
+    (1, [4], 'User does not have have required access for tenant (1).'),
     (1, None, 'Unable to verify tenant access as request object is missing.'),
 ])
 def test_file_upload_serializer(tenant_id, allowed_tenants, expected_error):
@@ -1140,7 +1128,7 @@ def test_file_upload_serializer(tenant_id, allowed_tenants, expected_error):
         request = Mock(fx_permission_info={'view_allowed_tenant_ids_full_access': allowed_tenants})
 
     file_data = SimpleUploadedFile('test.png', b'file_content', content_type='image/png')
-    serializer = FileUploadSerializer(
+    serializer = serializers.FileUploadSerializer(
         data={'file': file_data, 'slug': 'test-slug', 'tenant_id': tenant_id}, context={'request': request})
 
     if expected_error:
@@ -1150,3 +1138,80 @@ def test_file_upload_serializer(tenant_id, allowed_tenants, expected_error):
     else:
         assert serializer.is_valid()
         assert serializer.validated_data['tenant_id'] == tenant_id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('tenant_id, allowed_tenants, payload_file, expected_error, error_key', [
+    (1, [1], 'test.png', None, None),
+    (1, [1], 'test.invalid', f'Invalid file type. Allowed types are {cs.ALLOWED_FILE_EXTENSIONS}.', 'file'),
+    (1, [4], 'test.png', 'User does not have have required access for tenant (1).', 'tenant_id'),
+    (1, None, 'test.png', 'Unable to verify tenant access as request or fx_permission_info is missing.', 'tenant_id'),
+])
+def test_tenant_asset_serializer(
+    tenant_id, allowed_tenants, payload_file, expected_error, error_key, base_data
+):  # pylint: disable=unused-argument, too-many-arguments
+    """Test validation of tenant_id in FileUploadSerializer"""
+    request = None
+    if allowed_tenants:
+        request = Mock(
+            fx_permission_info={
+                'view_allowed_tenant_ids_full_access': allowed_tenants,
+                'is_system_staff_user': False,
+            }
+        )
+
+    file_data = SimpleUploadedFile(payload_file, b'file_content', content_type='image/png')
+    serializer = serializers.TenantAssetSerializer(
+        data={'file': file_data, 'slug': 'test-slug', 'tenant_id': tenant_id}, context={'request': request}
+    )
+
+    if expected_error:
+        with pytest.raises(ValidationError):
+            assert not serializer.is_valid(raise_exception=True)
+        assert serializer.errors[error_key][0] == expected_error
+    else:
+        assert serializer.is_valid()
+        assert serializer.validated_data['tenant'].id == tenant_id
+
+
+@pytest.mark.django_db
+def test_tenant_asset_serializer_for_create_or_update():
+    """Test create or update of serializer - when user tries to recreate existing tenant-slug asset."""
+    fake_perm_info = {
+        'view_allowed_tenant_ids_full_access': [1],
+        'is_system_staff_user': False,
+    }
+    user1 = get_user_model().objects.get(id=1)
+    user2 = get_user_model().objects.get(id=2)
+
+    file1 = SimpleUploadedFile('file1.png', b'file content 1', content_type='image/png')
+    file2 = SimpleUploadedFile('file2.png', b'file content 2', content_type='image/png')
+
+    request = Mock(fx_permission_info=fake_perm_info, user=user1)
+    serializer = serializers.TenantAssetSerializer(
+        data={'file': file1, 'slug': 'test-slug', 'tenant_id': 1}, context={'request': request}
+    )
+    assert serializer.is_valid()
+    returned_asset1 = serializer.save()
+    assert returned_asset1.updated_by == user1
+
+    request = Mock(fx_permission_info=fake_perm_info, user=user2)
+    serializer = serializers.TenantAssetSerializer(
+        data={'file': file2, 'slug': 'test-slug', 'tenant_id': 1}, context={'request': request}
+    )
+    assert serializer.is_valid()
+    returned_asset2 = serializer.save()
+    assert returned_asset2.updated_by == user2
+
+    assert returned_asset1.id == returned_asset2.id
+    assert returned_asset1.tenant.id == returned_asset2.tenant.id
+    assert returned_asset1.slug == returned_asset2.slug
+
+    assert returned_asset1.updated_by != returned_asset2.updated_by
+    assert returned_asset1.updated_at != returned_asset2.updated_at
+    assert returned_asset1.file.url != returned_asset2.file.url
+    assert returned_asset1.file.name != returned_asset2.file.name
+
+    default_storage.delete(returned_asset1.file.name)
+    default_storage.delete(returned_asset2.file.name)
+    os.rmdir('test_dir/1/config_files')
