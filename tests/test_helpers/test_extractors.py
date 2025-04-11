@@ -356,7 +356,7 @@ def test_get_partial_access_course_ids_found(base_data, fx_permission_info):  # 
 
 @pytest.mark.django_db
 def test_get_partial_access_for_library_ids(base_data, fx_permission_info):  # pylint: disable=unused-argument
-    """Verify that get_partial_access_library_ids returns the expected library IDs for a user."""
+    """Verify that get_partial_access_course_ids returns the expected library IDs for a user."""
     roles = _get_user_roles()
     roles['library_user'] = {'course_limited_access': ['library-v1:org5+11']}
     fx_permission_info.update({

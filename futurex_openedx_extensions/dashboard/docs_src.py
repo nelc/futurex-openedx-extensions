@@ -525,16 +525,56 @@ docs_src = {
             query_parameter(
                 'search_text',
                 str,
-                'a search text to filter the results by. The search text will be matched against the course\'s ID and'
+                'a search text to filter the results by. The search text will be matched against the library\'s'
                 ' display name.',
             )
         ],
         'responses': responses(
             overrides={
                 200: serializers.LibrarySerializer(read_only=True, required=False),
-
             },
             remove=[400]
+        ),
+    },
+
+    'LibraryView.post': {
+        'summary': 'Create a new library',
+        'description': 'Create new library.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'org': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Org',
+                    example='dummy',
+                ),
+                'number': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Number',
+                    example='class_1',
+                ),
+                'display_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Name to be used for library',
+                    example='my test library',
+                ),
+            },
+            required=['org', 'number', 'display_name']
+        ),
+        'responses': responses(
+            overrides={
+                201: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'library_key': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='Created library id',
+                        ),
+                    },
+                ),
+                400: 'Unable to create library. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
         ),
     },
 
