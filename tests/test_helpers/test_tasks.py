@@ -35,6 +35,7 @@ def test_export_data_to_csv_task(
 
     caplog.set_level(logging.INFO)
     mocked_export_data_to_csv.side_effect = export_data_to_csv_side_effect
+    view_data['site_domain'] = 'example.com'
     with patch('futurex_openedx_extensions.helpers.tasks.export_data_to_csv_task.delay') as mock_delay:
         export_data_to_csv_task(fx_task.id, url, view_data, fx_permission_info, filename)
 
@@ -46,6 +47,7 @@ def test_export_data_to_csv_task(
     else:
         mock_delay.assert_called_once_with(fx_task.id, url, {
             'query_params': {}, 'kwargs': {}, 'path': '/', 'start_page': 1, 'end_page': None,
+            'site_domain': 'example.com',
         }, fx_permission_info, filename)
         assert 'CSV Export: initiating a continue job starting from page' in caplog.text
         assert fx_task.status == DataExportTask.STATUS_PROCESSING
