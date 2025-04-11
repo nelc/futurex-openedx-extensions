@@ -31,7 +31,9 @@ def export_data_to_csv_task(
                 fx_task_id,
             )
             next_view_data = {
-                key: view_data[key] for key in ['query_params', 'kwargs', 'path', 'start_page', 'end_page']
+                key: view_data[key] for key in [
+                    'query_params', 'kwargs', 'path', 'start_page', 'end_page', 'site_domain'
+                ]
             }
             export_data_to_csv_task.delay(fx_task_id, url, next_view_data, fx_permission_info, filename)
 
