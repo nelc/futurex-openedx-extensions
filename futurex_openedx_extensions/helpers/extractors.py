@@ -172,7 +172,7 @@ def get_orgs_of_courses(course_ids: List[str]) -> Dict[str, Any]:
     return result
 
 
-def get_partial_access_course_ids(fx_permission_info: dict) -> List[str]:
+def get_partial_access_course_ids(fx_permission_info: dict, include_libraries: bool = False) -> List[str]:
     """
     Get the course IDs that the user has partial access to according to the permission information.
 
@@ -200,7 +200,13 @@ def get_partial_access_course_ids(fx_permission_info: dict) -> List[str]:
         org__in=fx_permission_info['view_allowed_course_access_orgs'],
     ).values_list('id', flat=True)
 
-    return [str(course_id) for course_id in only_limited_access]
+    only_limited_access_libraries = []
+    if include_libraries:
+        only_limited_access_libraries = [
+            str(lib_key) for lib_key in modulestore().get_library_keys() if str(lib_key) in course_ids_to_check
+        ]
+
+    return [str(course_id) for course_id in only_limited_access] + only_limited_access_libraries
 
 
 def import_from_path(import_path: str) -> Any:

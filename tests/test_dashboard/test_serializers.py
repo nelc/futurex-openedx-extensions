@@ -1215,3 +1215,10 @@ def test_tenant_asset_serializer_for_create_or_update():
     default_storage.delete(returned_asset1.file.name)
     default_storage.delete(returned_asset2.file.name)
     os.rmdir('test_dir/1/config_files')
+
+
+def test_library_serializer_update_raises_error():
+    """test library serializer for update """
+    serializer = serializers.LibrarySerializer()
+    with pytest.raises(ValueError, match='This serializer does not support update.'):
+        serializer.update(instance=object(), validated_data={})
