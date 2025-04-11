@@ -70,12 +70,7 @@ from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXEx
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
 from futurex_openedx_extensions.helpers.library import get_accessible_libraries
-from futurex_openedx_extensions.helpers.models import (
-    ClickhouseQuery,
-    ConfigAccessControl,
-    DataExportTask,
-    TenantAsset,
-)
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ConfigAccessControl, DataExportTask, TenantAsset
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -556,6 +551,7 @@ class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
 
 
 @docs('LibraryView.get')
+@docs('LibraryView.post')
 class LibraryView(ExportCSVMixin, FXViewRoleInfoMixin, APIView):
     """View to get the list of libraries"""
     authentication_classes = default_auth_classes
@@ -577,6 +573,22 @@ class LibraryView(ExportCSVMixin, FXViewRoleInfoMixin, APIView):
         page = paginator.paginate_queryset(libraries, request)
         serializer = serializers.LibrarySerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request: Any) -> Response:  # pylint: disable=no-self-use
+        """
+        POST /api/fx/libraries/v1/libraries/
+        """
+        serializer = serializers.LibrarySerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            created_library = serializer.save()
+            return JsonResponse(
+                {'library': str(created_library.location.library_key)},
+                status=http_status.HTTP_201_CREATED,
+            )
+        return Response(
+            {'errors': serializer.errors},
+            status=http_status.HTTP_400_BAD_REQUEST
+        )
 
 
 @docs('CourseStatusesView.get')

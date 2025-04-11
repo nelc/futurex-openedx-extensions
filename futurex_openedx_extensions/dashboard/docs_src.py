@@ -538,6 +538,47 @@ docs_src = {
         ),
     },
 
+    'LibraryView.post': {
+        'summary': 'Create a new library',
+        'description': 'Create new library.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'org': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Org',
+                    example='dummy',
+                ),
+                'number': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Number',
+                    example='class_1',
+                ),
+                'display_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Name to be used for library',
+                    example='my test library',
+                ),
+            },
+            required=['org', 'number', 'display_name']
+        ),
+        'responses': responses(
+            overrides={
+                201: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'library_key': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='Created library id',
+                        ),
+                    },
+                ),
+                400: 'Unable to create library. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
     'DataExportManagementView.list': {
         'summary': 'Get the list of data export tasks for the caller',
         'description': 'Get the list of data export tasks for the caller.',

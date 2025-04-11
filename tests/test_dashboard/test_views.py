@@ -25,6 +25,7 @@ from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, APITestCase
+from xmodule.modulestore.exceptions import DuplicateCourseError
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
@@ -608,7 +609,7 @@ class TestLibrariesView(BaseTestViewMixin):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
-    def test_success(self):
+    def test_library_list_success(self):
         """Verify that the view returns the correct response"""
         normal_user_id = 16
         normal_user = get_user_model().objects.get(id=normal_user_id)
@@ -644,21 +645,21 @@ class TestLibrariesView(BaseTestViewMixin):
             'Unexpected result, as user with allowed role for specific library should have access to that library'
         )
 
-    def test_search(self):
+    def test_library_list_search(self):
         """Verify that serach is returning right response"""
         self.login_user(self.staff_user)
         response = self.client.get(f'{self.url}?search_text=org5')
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 1)
 
-    def test_tenant_ids_filter(self):
+    def test_library_list_tenant_ids_filter(self):
         """Verify tenant_ids filter is working correctly"""
         self.login_user(self.staff_user)
         response = self.client.get(f'{self.url}?tenant_ids=1')
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 2)
 
-    def test_pagination(self):
+    def test_library_list_pagination(self):
         """Verify pagination is working correctly"""
         self.login_user(self.staff_user)
         response = self.client.get(f'{self.url}?page_size=1')
@@ -667,6 +668,41 @@ class TestLibrariesView(BaseTestViewMixin):
         self.assertEqual(len(response.data['results']), 1)
         self.assertIsNone(response.data['previous'])
         self.assertIn('page=2', response.data['next'], msg="Expected 'page=2' in next URL.")
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.CourseInstructorRole')
+    @patch('futurex_openedx_extensions.dashboard.serializers.add_users')
+    def test_library_create_success(self, mock_add_users, mock_instructor_role):
+        """Verify that the view returns the correct response for library creation"""
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'org': 'org1', 'number': '33', 'display_name': 'Test Library Three org1'
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_201_CREATED)
+        self.assertEqual(response.json()['library'], 'library-v1:org1+33')
+        mock_add_users.assert_called_once()
+        mock_instructor_role.assert_called_once()
+
+    def test_library_create_for_failure(self):
+        """Verify that the view returns the correct response for library creation api failure"""
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'org': 'org1'
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()['errors']['number'][0], 'This field is required.')
+        self.assertEqual(response.json()['errors']['display_name'][0], 'This field is required.')
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.CourseInstructorRole')
+    def test_library_create_with_duplicate_key_error(self, mock_instructor_role):
+        """Verify that the view returns the correct response for library creation"""
+        mock_instructor_role.side_effect = DuplicateCourseError('some error')
+
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'org': 'does-not-matter', 'number': 'whatever', 'display_name': 'whatever'
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()[0], 'Library with org: does-not-matter and number: whatever already exists.')
 
 
 @pytest.mark.usefixtures('base_data')

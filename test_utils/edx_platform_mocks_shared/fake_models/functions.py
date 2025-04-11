@@ -52,3 +52,10 @@ def get_course_by_id(course_key, depth=0):
         raise ValueError(f'Mock error: depth argument supports zero value only, got "{depth}"')
     # return a CourseOverview object for testing
     return CourseOverview.objects.get(id=course_key)
+
+
+def add_users(caller, role, *users):  # pylint: disable=unused-argument
+    """
+    add_user Mock
+    """
+    return None

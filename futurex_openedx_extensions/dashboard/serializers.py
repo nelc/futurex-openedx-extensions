@@ -7,7 +7,9 @@ import os
 import re
 from typing import Any, Dict, List, Tuple
 
+from common.djangoapps.student.auth import add_users
 from common.djangoapps.student.models import CourseEnrollment
+from common.djangoapps.student.roles import CourseInstructorRole, CourseStaffRole
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
@@ -24,6 +26,9 @@ from openedx.core.lib.courses import get_course_by_id
 from rest_framework import serializers
 from rest_framework.fields import empty
 from social_django.models import UserSocialAuth
+from xmodule.modulestore import ModuleStoreEnum
+from xmodule.modulestore.django import modulestore
+from xmodule.modulestore.exceptions import DuplicateCourseError
 
 from futurex_openedx_extensions.dashboard.custom_serializers import (
     ModelSerializerOptionalFields,
@@ -895,18 +900,52 @@ class ReadOnlySerializer(serializers.Serializer):
         raise ValueError('This serializer is read-only and does not support object updates.')
 
 
-class LibrarySerializer(ReadOnlySerializer):
+class LibrarySerializer(serializers.Serializer):
     """Serializer for library."""
-    library_key = serializers.CharField(source='location.library_key')
+    library_key = serializers.CharField(source='location.library_key', read_only=True)
+    edited_by = serializers.IntegerField(source='_edited_by', read_only=True)
+    edited_on = serializers.DateTimeField(source='_edited_on', read_only=True)
+    tenant_ids = serializers.SerializerMethodField(read_only=True)
     display_name = serializers.CharField()
-    edited_by = serializers.IntegerField(source='_edited_by')
-    edited_on = serializers.DateTimeField(source='_edited_on')
-    org = serializers.CharField(source='location.library_key.org')
-    tenant_ids = serializers.SerializerMethodField()
+    org = serializers.CharField()
+    number = serializers.CharField(write_only=True)
 
     def get_tenant_ids(self, obj: Any) -> Any:  # pylint: disable=no-self-use
         """Return the tenant IDs."""
         return get_tenants_by_org(obj.location.library_key.org)
+
+    def create(self, validated_data: Any) -> Any:
+        """Create new library object."""
+        user = self.context['request'].user
+        try:
+            store = modulestore()
+            with store.default_store(ModuleStoreEnum.Type.split):
+                library = store.create_library(
+                    org=validated_data['org'],
+                    library=validated_data['number'],
+                    user_id=user.id,
+                    fields={
+                        'display_name': validated_data['display_name']
+                    },
+                )
+            # can't use auth.add_users here b/c it requires user to already have Instructor perms in this course
+            CourseInstructorRole(library.location.library_key).add_users(user)
+            add_users(user, CourseStaffRole(library.location.library_key), user)
+            return library
+        except DuplicateCourseError as exc:
+            raise serializers.ValidationError(
+                f'Library with org: {validated_data["org"]} and number: {validated_data["number"]} already exists.'
+            ) from exc
+
+    def update(self, instance: Any, validated_data: Any) -> Any:
+        """Not implemented: Update an existing object."""
+        raise ValueError('This serializer does not support update.')
+
+    def to_representation(self, instance: Any) -> dict:
+        """Return representation."""
+        instance.org = instance.location.library_key.org
+        rep = super().to_representation(instance)
+        return rep
 
 
 class AggregatedCountsQuerySettingsSerializer(ReadOnlySerializer):
