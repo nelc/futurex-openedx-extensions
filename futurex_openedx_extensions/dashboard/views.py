@@ -836,6 +836,7 @@ class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIV
 @docs('LearnersEnrollmentView.get')
 class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of learners for a course"""
+    authentication_classes = default_auth_classes
     serializer_class = serializers.LearnerEnrollmentSerializer
     permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
