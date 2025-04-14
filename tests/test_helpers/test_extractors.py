@@ -354,6 +354,24 @@ def test_get_partial_access_course_ids_found(base_data, fx_permission_info):  # 
     assert result == ['course-v1:ORG3+1+1']
 
 
+@pytest.mark.django_db
+def test_get_partial_access_for_library_ids(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify that get_partial_access_course_ids returns the expected library IDs for a user."""
+    roles = _get_user_roles()
+    roles['library_user'] = {'course_limited_access': ['library-v1:org5+11']}
+    fx_permission_info.update({
+        'is_system_staff_user': False,
+        'user_roles': roles,
+        'view_allowed_roles': cs.COURSE_ACCESS_ROLES_TENANT_OR_COURSE + cs.COURSE_ACCESS_ROLES_COURSE_ONLY,
+        'view_allowed_course_access_orgs': ['org3', 'org5'],
+    })
+    result = get_partial_access_course_ids(fx_permission_info, include_libraries=True)
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert 'library-v1:org5+11' in result
+    assert 'course-v1:ORG3+1+1' in result
+
+
 @pytest.mark.parametrize(
     'import_path, expected_call, expected_result',
     [

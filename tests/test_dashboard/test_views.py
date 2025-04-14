@@ -18,13 +18,16 @@ from django.core.paginator import EmptyPage
 from django.db.models import Q
 from django.http import JsonResponse
 from django.urls import resolve, reverse
+from django.utils.functional import SimpleLazyObject
 from django.utils.timezone import now, timedelta
 from eox_tenant.models import Route, TenantConfig
+from opaque_keys.edx.locator import LibraryLocator
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, APITestCase
+from xmodule.modulestore.exceptions import DuplicateCourseError
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
@@ -596,6 +599,118 @@ class TestCoursesView(BaseTestViewMixin):
         view_func, _, _ = resolve(self.url)
         view_class = view_func.view_class
         self.assertEqual(view_class.filter_backends, [DefaultOrderingFilter])
+
+
+@pytest.mark.usefixtures('base_data')
+class TestLibrariesView(BaseTestViewMixin):
+    """Tests for CoursesView"""
+    VIEW_NAME = 'fx_dashboard:libraries'
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_library_list_success(self):
+        """Verify that the view returns the correct response"""
+        normal_user_id = 16
+        normal_user = get_user_model().objects.get(id=normal_user_id)
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 3)
+        self.assertEqual(
+            len(response.data['results']),
+            3,
+            'Unexpected result, as global staff user should have access to all libraries'
+        )
+
+        self.login_user(normal_user_id)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+        CourseAccessRole.objects.create(org='org1', user=normal_user, role='staff')
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(
+            response.data['count'],
+            2,
+            'Unexpected result, as user with allowed org wide role should have access to all libraries of that org'
+        )
+        CourseAccessRole.objects.create(
+            org='org5', user=normal_user, role='library_user', course_id='library-v1:org5+11'
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(
+            response.data['count'],
+            3,
+            'Unexpected result, as user with allowed role for specific library should have access to that library'
+        )
+
+    def test_library_list_search(self):
+        """Verify that search is returning right response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(f'{self.url}?search_text=org5')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+
+    def test_library_list_tenant_ids_filter(self):
+        """Verify tenant_ids filter is working correctly"""
+        self.login_user(self.staff_user)
+        response = self.client.get(f'{self.url}?tenant_ids=1')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+
+    def test_library_list_pagination(self):
+        """Verify pagination is working correctly"""
+        self.login_user(self.staff_user)
+        response = self.client.get(f'{self.url}?page_size=1')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 3)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertIsNone(response.data['previous'])
+        self.assertIn('page=2', response.data['next'], msg="Expected 'page=2' in next URL.")
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.CourseInstructorRole')
+    @patch('futurex_openedx_extensions.dashboard.serializers.CourseStaffRole')
+    @patch('futurex_openedx_extensions.dashboard.serializers.add_users')
+    def test_library_create_success(self, mock_add_users, mock_staff_role, mock_instructor_role):
+        """Verify that the view returns the correct response for library creation"""
+        staff_user = get_user_model().objects.get(id=self.staff_user)
+        staff_user_lazy_obj = SimpleLazyObject(lambda: staff_user)
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'org': 'org1', 'number': '33', 'display_name': 'Test Library Three org1'
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_201_CREATED)
+        self.assertEqual(response.json()['library'], 'library-v1:org1+33')
+
+        expected_lib_locator = LibraryLocator.from_string('library-v1:org1+33')
+        mock_add_users.assert_called_once_with(staff_user_lazy_obj, mock_staff_role.return_value, staff_user_lazy_obj)
+        mock_instructor_role.assert_called_once_with(expected_lib_locator)
+        mock_staff_role.assert_called_once_with(expected_lib_locator)
+
+    def test_library_create_for_failure(self):
+        """Verify that the view returns the correct response for library creation api failure"""
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'org': 'org1'
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()['errors']['number'][0], 'This field is required.')
+        self.assertEqual(response.json()['errors']['display_name'][0], 'This field is required.')
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.CourseInstructorRole')
+    def test_library_create_with_duplicate_key_error(self, mock_instructor_role):
+        """Verify that the view returns the correct response for library creation"""
+        mock_instructor_role.side_effect = DuplicateCourseError('some error')
+
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'org': 'does-not-matter', 'number': 'whatever', 'display_name': 'whatever'
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()[0], 'Library with org: does-not-matter and number: whatever already exists.')
 
 
 @pytest.mark.usefixtures('base_data')
