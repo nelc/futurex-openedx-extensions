@@ -3,6 +3,7 @@ from datetime import datetime
 from unittest.mock import Mock
 
 from opaque_keys.edx.locator import LibraryLocator
+from xmodule.modulestore.exceptions import DuplicateCourseError
 
 
 class MockLibrary:  # pylint: disable=too-few-public-methods
@@ -19,7 +20,6 @@ class MockLibrary:  # pylint: disable=too-few-public-methods
 class DummyModuleStore:
     """DUmmy module store class"""
     def __init__(self):
-        self.ids = ['library-v1:org1+11', 'library-v1:org1+22', 'library-v1:org5+11']
         self.data = [
             MockLibrary(
                 key=LibraryLocator.from_string('library-v1:org1+11'),
@@ -43,7 +43,7 @@ class DummyModuleStore:
 
     def get_library_keys(self):
         """mock modulestore library keys method"""
-        return [LibraryLocator.from_string(id) for id in self.ids]
+        return [fake_lib.location.library_key for fake_lib in self.data]
 
     def get_libraries(self):
         """mock modulestore library keys method"""
@@ -51,9 +51,13 @@ class DummyModuleStore:
 
     def create_library(self, org, library, user_id, fields):
         """Mock method to simulate creating a library"""
-        # Simulate creating a new MockLibrary
+        lib_key = LibraryLocator.from_string(f'library-v1:{org}+{library}')
+
+        if lib_key in self.get_library_keys():
+            raise DuplicateCourseError('Duplicate course.')
+
         new_library = MockLibrary(
-            key=LibraryLocator.from_string(f'library-v1:{org}+{library}'),
+            key=lib_key,
             display_name=fields.get('display_name'),
             edited_by=user_id,
             edited_on=datetime.now(),

@@ -907,21 +907,41 @@ class LibrarySerializer(serializers.Serializer):
     edited_on = serializers.DateTimeField(source='_edited_on', read_only=True)
     tenant_ids = serializers.SerializerMethodField(read_only=True)
     display_name = serializers.CharField()
-    org = serializers.CharField()
+    tenant_id = serializers.IntegerField(write_only=True)
     number = serializers.CharField(write_only=True)
 
     def get_tenant_ids(self, obj: Any) -> Any:  # pylint: disable=no-self-use
         """Return the tenant IDs."""
         return get_tenants_by_org(obj.location.library_key.org)
 
+    def validate_tenant_id(self, tenant_id: Any) -> Any:  # pylint: disable=no-self-use
+        """Validate the tenant ID."""
+        default_orgs = get_all_tenants_info().get('default_org_per_tenant', {})
+        if tenant_id not in default_orgs:
+            raise serializers.ValidationError(
+                f'Invalid tenant_id: "{tenant_id}". This tenant does not exist or is not configured properly.'
+            )
+        if not default_orgs[tenant_id]:
+            raise serializers.ValidationError(
+                f'No default organization configured for tenant_id: "{tenant_id}".'
+            )
+        if tenant_id not in get_org_to_tenant_map().get(default_orgs[tenant_id], []):
+            raise serializers.ValidationError(
+                f'Invalid default organization "{default_orgs[tenant_id]}" configured for tenant ID "{tenant_id}". '
+                'This organization is not associated with the tenant.'
+            )
+        return tenant_id
+
     def create(self, validated_data: Any) -> Any:
         """Create new library object."""
         user = self.context['request'].user
+        tenant_id = validated_data['tenant_id']
+        org = get_all_tenants_info()['default_org_per_tenant'][tenant_id]
         try:
             store = modulestore()
             with store.default_store(ModuleStoreEnum.Type.split):
                 library = store.create_library(
-                    org=validated_data['org'],
+                    org=org,
                     library=validated_data['number'],
                     user_id=user.id,
                     fields={
@@ -934,7 +954,7 @@ class LibrarySerializer(serializers.Serializer):
             return library
         except DuplicateCourseError as exc:
             raise serializers.ValidationError(
-                f'Library with org: {validated_data["org"]} and number: {validated_data["number"]} already exists.'
+                f'Library with org: {org} and number: {validated_data["number"]} already exists.'
             ) from exc
 
     def update(self, instance: Any, validated_data: Any) -> Any:

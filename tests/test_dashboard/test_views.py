@@ -27,7 +27,6 @@ from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, APITestCase
-from xmodule.modulestore.exceptions import DuplicateCourseError
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
@@ -601,6 +600,7 @@ class TestCoursesView(BaseTestViewMixin):
         self.assertEqual(view_class.filter_backends, [DefaultOrderingFilter])
 
 
+@ddt.ddt
 @pytest.mark.usefixtures('base_data')
 class TestLibrariesView(BaseTestViewMixin):
     """Tests for CoursesView"""
@@ -680,7 +680,7 @@ class TestLibrariesView(BaseTestViewMixin):
         staff_user_lazy_obj = SimpleLazyObject(lambda: staff_user)
         self.login_user(self.staff_user)
         response = self.client.post(self.url, data={
-            'org': 'org1', 'number': '33', 'display_name': 'Test Library Three org1'
+            'tenant_id': 1, 'number': '33', 'display_name': 'Test Library Three org1'
         })
         self.assertEqual(response.status_code, http_status.HTTP_201_CREATED)
         self.assertEqual(response.json()['library'], 'library-v1:org1+33')
@@ -691,26 +691,53 @@ class TestLibrariesView(BaseTestViewMixin):
         mock_staff_role.assert_called_once_with(expected_lib_locator)
 
     def test_library_create_for_failure(self):
-        """Verify that the view returns the correct response for library creation api failure"""
+        """Verify that the view returns the correct response for library creation api failure general errors"""
         self.login_user(self.staff_user)
         response = self.client.post(self.url, data={
-            'org': 'org1'
+            'tenant_id': 1
         })
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.json()['errors']['number'][0], 'This field is required.')
         self.assertEqual(response.json()['errors']['display_name'][0], 'This field is required.')
 
-    @patch('futurex_openedx_extensions.dashboard.serializers.CourseInstructorRole')
-    def test_library_create_with_duplicate_key_error(self, mock_instructor_role):
-        """Verify that the view returns the correct response for library creation"""
-        mock_instructor_role.side_effect = DuplicateCourseError('some error')
-
+    @ddt.data(
+        (
+            4,
+            'Invalid tenant_id: "4". This tenant does not exist or is not configured properly.',
+            'invalid tenant as LMS_BASE not set'
+        ),
+        (
+            3,
+            'No default organization configured for tenant_id: "3".',
+            'default org is not set'
+        ),
+        (
+            7,
+            'Invalid default organization "invalid" configured for tenant ID "7". '
+            'This organization is not associated with the tenant.',
+            'default org is not valid',
+        ),
+    )
+    @ddt.unpack
+    def test_library_create_for_failure_for_tenant_id_errors(self, tenant_id, expected_error, case):
+        """Verify the view returns the correct error for various invalid tenant_id configurations."""
         self.login_user(self.staff_user)
         response = self.client.post(self.url, data={
-            'org': 'does-not-matter', 'number': 'whatever', 'display_name': 'whatever'
+            'tenant_id': tenant_id,
+            'number': '33',
+            'display_name': f'Test Library - {case}',
         })
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.json()[0], 'Library with org: does-not-matter and number: whatever already exists.')
+        self.assertEqual(response.json()['errors']['tenant_id'][0], expected_error, f'Failed for usecase: {case}')
+
+    def test_library_create_with_duplicate_key_error(self):
+        """Verify that the view returns the correct response for library creation"""
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'tenant_id': 1, 'number': '11', 'display_name': 'whatever'
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()[0], 'Library with org: org1 and number: 11 already exists.')
 
 
 @pytest.mark.usefixtures('base_data')
