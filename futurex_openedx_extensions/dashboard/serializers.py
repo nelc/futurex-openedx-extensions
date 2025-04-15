@@ -21,11 +21,16 @@ from lms.djangoapps.grades.models import PersistentSubsectionGrade
 from opaque_keys.edx.locator import CourseLocator
 from openedx.core.djangoapps.content.block_structure.api import get_block_structure_manager
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration
+from openedx.core.djangoapps.django_comment_common.models import assign_default_role
+from openedx.core.djangoapps.django_comment_common.utils import seed_permissions_roles
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
 from openedx.core.lib.courses import get_course_by_id
+from organizations.api import add_organization_course, ensure_organization
 from rest_framework import serializers
 from rest_framework.fields import empty
 from social_django.models import UserSocialAuth
+from xmodule.course_block import CourseFields
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.exceptions import DuplicateCourseError
@@ -666,6 +671,114 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
     def get_rating(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the course rating."""
         return round(obj.rating_total / obj.rating_count if obj.rating_count else 0, 1)
+
+
+class CourseCreateSerializer(serializers.Serializer):
+    """Serializer for course create."""
+    number = serializers.CharField()
+    run = serializers.CharField()
+    display_name = serializers.CharField(required=False, allow_blank=True)
+    start = serializers.DateTimeField(required=False)
+    tenant_id = serializers.IntegerField(write_only=True)
+
+    def validate_tenant_id(self, tenant_id: Any) -> Any:  # pylint: disable=no-self-use
+        """Validate the tenant ID."""
+        default_orgs = get_all_tenants_info().get('default_org_per_tenant', {})
+        if tenant_id not in default_orgs:
+            raise serializers.ValidationError(
+                f'Invalid tenant_id: "{tenant_id}". This tenant does not exist or is not configured properly.'
+            )
+        if not default_orgs[tenant_id]:
+            raise serializers.ValidationError(
+                f'No default organization configured for tenant_id: "{tenant_id}".'
+            )
+        if tenant_id not in get_org_to_tenant_map().get(default_orgs[tenant_id], []):
+            raise serializers.ValidationError(
+                f'Invalid default organization "{default_orgs[tenant_id]}" configured for tenant ID "{tenant_id}". '
+                'This organization is not associated with the tenant.'
+            )
+        return tenant_id
+
+    @staticmethod
+    def update_course_discussions_settings(course: Any) -> None:
+        """
+        Add course discussion settings to the course.
+        CMS References: cms.djangoapps.contentstore.utils.update_course_discussions_settings
+        """
+        provider = DiscussionsConfiguration.get(context_key=course.id).provider_type
+        course.discussions_settings['provider_type'] = provider
+        modulestore().update_item(course, course.published_by)
+
+    @staticmethod
+    def initialize_permissions(course: Any, user: get_user_model) -> None:
+        """
+        seeds permissions, enrolls the user, and assigns the default role for the course.
+
+        CMS Reference: cms.djangoapps.contentstore.utils.initialize_permissions
+        """
+        seed_permissions_roles(course.id)
+        CourseEnrollment.enroll(user, course.id)
+        assign_default_role(course.id, user)
+
+    @staticmethod
+    def add_roles_and_permissions(course: Any, user: get_user_model) -> None:
+        """
+        Assigns instructor and staff roles and required permissions
+        """
+        CourseInstructorRole(course.id).add_users(user)
+        add_users(user, CourseStaffRole(course.id), user)
+        CourseCreateSerializer.initialize_permissions(course, user)
+
+    def create(self, validated_data: dict) -> Any:
+        """
+        Create new course.
+
+        TODO: Update code to create rerun.
+        """
+        user = self.context['request'].user
+        tenant_id = validated_data['tenant_id']
+        org = get_all_tenants_info()['default_org_per_tenant'][tenant_id]
+        number = validated_data.get('number')
+        run = validated_data['run']
+        display_name = validated_data.get('display_name')
+        fields = {
+            'start': validated_data.get('start', CourseFields.start.default),
+            'language': 'en',
+            'cert_html_view_enabled': True,
+            'wiki_slug': f'{org}.{number}.{run}',
+        }
+        if display_name is not None:
+            fields['display_name'] = display_name
+
+        try:
+            org_data = ensure_organization(org)
+        except Exception as exc:
+            raise serializers.ValidationError(
+                'Organization does not exist. Please add the organization before proceeding.'
+            ) from exc
+
+        try:
+            store = modulestore().default_modulestore.get_modulestore_type()
+            with modulestore().default_store(store):
+                new_course = modulestore().create_course(
+                    org,
+                    number,
+                    run,
+                    user.id,
+                    fields=fields,
+                )
+                self.add_roles_and_permissions(new_course, user)
+            add_organization_course(org_data, new_course.id)
+            self.update_course_discussions_settings(new_course)
+            return new_course
+        except DuplicateCourseError as exc:
+            raise serializers.ValidationError(
+                f'Course with org: "{org}", number: "{number}", run: "{run}" already exists.'
+            ) from exc
+
+    def update(self, instance: Any, validated_data: Any) -> Any:
+        """Not implemented: Update an existing object."""
+        raise ValueError('This serializer does not support update.')
 
 
 class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
