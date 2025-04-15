@@ -56,9 +56,31 @@ def get_course_by_id(course_key, depth=0):
 
 
 def add_users(caller, role, *users):  # pylint: disable=unused-argument
-    """
-    add_user Mock
-    """
+    """add_user Mock"""
+    return None
+
+
+def assign_default_role(course_id, user):  # pylint: disable=unused-argument
+    """assign_default_role Mock"""
+    return None
+
+
+def seed_permissions_roles(course_id):  # pylint: disable=unused-argument
+    """seed_permissions_roles Mock"""
+    return None
+
+
+def ensure_organization(org):
+    """ensure_organization Mock"""
+    return {
+        'id': org,
+        'name': org,
+        'short_name': org
+    }
+
+
+def add_organization_course(org_data, course_id):  # pylint: disable=unused-argument
+    """add_organization_course, Mock"""
     return None
 
 

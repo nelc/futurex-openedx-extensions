@@ -23,13 +23,14 @@ from django.urls import resolve, reverse
 from django.utils.functional import SimpleLazyObject
 from django.utils.timezone import now, timedelta
 from eox_tenant.models import Route, TenantConfig
-from opaque_keys.edx.locator import LibraryLocator
+from opaque_keys.edx.locator import CourseLocator, LibraryLocator
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.test import APIRequestFactory, APITestCase
+from xmodule.modulestore.exceptions import DuplicateCourseError
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import ThemeConfigDraftView, UserRolesManagementView
@@ -565,17 +566,18 @@ class TestLearnersView(BaseTestViewMixin):
         )
 
 
+@ddt.ddt
 @pytest.mark.usefixtures('base_data')
 class TestCoursesView(BaseTestViewMixin):
     """Tests for CoursesView"""
     VIEW_NAME = 'fx_dashboard:courses'
 
-    def test_unauthorized(self):
+    def test_list_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
-    def test_no_tenants(self):
+    def test_list_no_tenants(self):
         """Verify that the view returns the result for all accessible tenants when no tenant IDs are provided"""
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
@@ -585,7 +587,7 @@ class TestCoursesView(BaseTestViewMixin):
             assert mock_queryset.call_args_list[0][1]['search_text'] is None
             assert mock_queryset.call_args_list[0][1]['visible_filter'] is None
 
-    def test_search(self):
+    def test_list_search(self):
         """Verify that the view filters the courses by search text"""
         self.login_user(self.staff_user)
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_queryset') as mock_queryset:
@@ -594,7 +596,7 @@ class TestCoursesView(BaseTestViewMixin):
             assert mock_queryset.call_args_list[0][1]['search_text'] == 'course'
             assert mock_queryset.call_args_list[0][1]['visible_filter'] is None
 
-    def test_success(self):
+    def test_list_success(self):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
@@ -602,11 +604,113 @@ class TestCoursesView(BaseTestViewMixin):
         self.assertEqual(response.data['count'], 18)
         self.assertEqual(len(response.data['results']), 18)
 
-    def test_sorting(self):
-        """Verify that the view soring filter is set correctly"""
+    def test_list_sorting(self):
+        """Verify that the view sorting filter is set correctly"""
         view_func, _, _ = resolve(self.url)
         view_class = view_func.view_class
         self.assertEqual(view_class.filter_backends, [DefaultOrderingFilter])
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
+    @patch('futurex_openedx_extensions.dashboard.serializers.CourseInstructorRole')
+    @patch('futurex_openedx_extensions.dashboard.serializers.CourseStaffRole')
+    @patch('futurex_openedx_extensions.dashboard.serializers.add_users')
+    @patch('futurex_openedx_extensions.dashboard.serializers.seed_permissions_roles')
+    @patch('futurex_openedx_extensions.dashboard.serializers.CourseEnrollment.enroll')
+    @patch('futurex_openedx_extensions.dashboard.serializers.assign_default_role')
+    @patch('futurex_openedx_extensions.dashboard.serializers.add_organization_course')
+    @patch('futurex_openedx_extensions.dashboard.serializers.DiscussionsConfiguration.get')
+    def test_create_success(
+        self, mock_discussions_config_get, mock_add_org_course, mock_assign_default_role,
+        mock_course_enrollment_enroll, mock_seed_permissions_roles, mock_add_users,
+        mock_staff_role, mock_instructor_role, mock_ensure_org
+    ):  # pylint: disable=too-many-arguments
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        staff_user_obj = get_user_model().objects.get(id=self.staff_user)
+        staff_user_lazy_obj = SimpleLazyObject(lambda: staff_user_obj)
+        mock_ensure_org.return_value = {'id': 'org1', 'name': 'org1', 'short_name': 'org1'}
+
+        response = self.client.post(
+            self.url, data={'tenant_id': 1, 'display_name': 'test 1', 'number': '11', 'run': '111'}
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json()['course_key'], 'course-v1:org1+11+111')
+
+        expected_course_locator = CourseLocator.from_string('course-v1:org1+11+111')
+        mock_ensure_org.assert_called_once_with('org1')
+        mock_staff_role.assert_called_once_with(expected_course_locator)
+        mock_instructor_role.assert_called_once_with(expected_course_locator)
+        mock_add_users.assert_called_once_with(
+            staff_user_lazy_obj, mock_staff_role.return_value, staff_user_lazy_obj
+        )
+        mock_seed_permissions_roles.assert_called_once_with(expected_course_locator)
+        mock_course_enrollment_enroll.assert_called_once_with(staff_user_obj, expected_course_locator)
+        mock_assign_default_role.assert_called_once_with(expected_course_locator, staff_user_obj)
+        mock_add_org_course.assert_called_once_with(mock_ensure_org.return_value, expected_course_locator)
+        mock_discussions_config_get.assert_called_once_with(context_key=expected_course_locator)
+
+    def test_create_success_without_display_name(self):
+        """Verify that the view allow course creation without display name"""
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={'tenant_id': 1, 'number': '11', 'run': '111'})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json()['course_key'], 'course-v1:org1+11+111')
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
+    def test_create_failure_for_organization_error(self, mock_ensure_org):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        mock_ensure_org.side_effect = Exception('some error')
+        response = self.client.post(self.url, data={'tenant_id': 1, 'number': '11', 'run': '111'})
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.json()[0], 'Organization does not exist. Please add the organization before proceeding.'
+        )
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.modulestore')
+    def test_create_failure_duplicate_course(self, mock_modulestore):
+        """Verify that the view returns the correct response"""
+        mock_modulestore.return_value.create_course.side_effect = DuplicateCourseError('Course already exist')
+
+        self.login_user(self.staff_user)
+        response = self.client.post(
+            self.url, data={'tenant_id': 1, 'number': 'does-not-matter', 'run': 'does-not-matter'}
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.json()[0],
+            'Course with org: "org1", number: "does-not-matter", run: "does-not-matter" already exists.'
+        )
+
+    @ddt.data(
+        (
+            4,
+            'Invalid tenant_id: "4". This tenant does not exist or is not configured properly.',
+            'invalid tenant as LMS_BASE not set'
+        ),
+        (
+            3,
+            'No default organization configured for tenant_id: "3".',
+            'default org is not set'
+        ),
+        (
+            7,
+            'Invalid default organization "invalid" configured for tenant ID "7". '
+            'This organization is not associated with the tenant.',
+            'default org is not valid',
+        ),
+    )
+    @ddt.unpack
+    def test_course_create_for_failure_for_tenant_id_errors(self, tenant_id, expected_error, case):
+        """Verify the view returns the correct error for various invalid tenant_id configurations."""
+        self.login_user(self.staff_user)
+        response = self.client.post(self.url, data={
+            'tenant_id': tenant_id,
+            'number': '11',
+            'run': '111',
+        })
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()['errors']['tenant_id'][0], expected_error, f'Failed for usecase: {case}')
 
 
 @ddt.ddt

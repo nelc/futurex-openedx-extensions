@@ -65,6 +65,11 @@ class CourseEnrollment(models.Model):
         app_label = 'fake_models'
         db_table = 'student_courseenrollment'
 
+    @classmethod
+    def enroll(cls, user, course_id):  # pylint: disable=unused-argument
+        """Mock"""
+        return None
+
 
 class UserSignupSource(models.Model):
     """Mock"""

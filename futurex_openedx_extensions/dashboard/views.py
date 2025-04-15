@@ -528,6 +528,7 @@ class LearnersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
 
 
 @docs('CoursesView.get')
+@docs('CoursesView.post')
 class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to get the list of courses"""
     authentication_classes = default_auth_classes
@@ -554,6 +555,21 @@ class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             search_text=search_text,
             visible_filter=None,
             include_staff=include_staff,
+        )
+
+    def post(self, request: Any) -> Response:  # pylint: disable=no-self-use
+        """
+        POST /api/fx/courses/v1/courses/
+        """
+        serializer = serializers.CourseCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            created_course = serializer.save()
+            return JsonResponse({
+                'course_key': str(created_course.id),
+            })
+        return Response(
+            {'errors': serializer.errors},
+            status=http_status.HTTP_400_BAD_REQUEST
         )
 
 

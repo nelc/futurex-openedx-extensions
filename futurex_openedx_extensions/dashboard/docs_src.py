@@ -517,6 +517,58 @@ docs_src = {
         ),
     },
 
+    'CoursesView.post': {
+        'summary': 'Create a new course',
+        'description': 'Create new Course. This API will use default org of given tenant as library org '
+        'and will raise errors if default org is invalid or unset',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'tenant_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='Tenant id',
+                    example=1,
+                ),
+                'number': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Number',
+                    example='class1',
+                ),
+                'run': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Run',
+                    example='summer2025',
+                ),
+                'display_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Optional - Name of the course',
+                    example='my test course',
+                ),
+                'start': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Optional - Course start date',
+                    example='2025-02-05T23:59:59Z',
+                ),
+            },
+            required=['tenant_id', 'number', 'run']
+        ),
+        'responses': responses(
+            overrides={
+                201: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'course_key': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='Created course id',
+                        ),
+                    },
+                ),
+                400: 'Unable to create course. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
     'LibraryView.get': {
         'summary': 'Get the list of libraries in the tenants',
         'description': 'Get the list of libraries in the tenants.',
