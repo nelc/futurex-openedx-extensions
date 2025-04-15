@@ -2680,3 +2680,35 @@ class TestTenantAssetsManagementView(BaseTestViewMixin):
             for file_name in files:
                 default_storage.delete(os.path.join(self.fake_storage_dir, file_name))
             os.rmdir(self.fake_storage_dir)
+
+
+@ddt.ddt
+class TestSetThemePreviewCookieView(APITestCase):
+    """Tests for SetThemePreviewCookieView"""
+    def setUp(self):
+        """Initialize the test case"""
+        self.url = reverse('fx_dashboard:set-theme-preview')
+
+    def test_redirect_when_cookie_present(self):
+        """Verify that the view redirects if the theme-preview cookie is set to 'yes'."""
+        self.client.cookies['theme-preview'] = 'yes'
+        response = self.client.get(self.url)
+        assert response.status_code == 302, 'Expected redirect when theme-preview cookie is set'
+
+    def test_render_template_when_cookie_absent(self):
+        """Verify that the view renders the set_theme_preview.html template if no theme-preview cookie is set."""
+        response = self.client.get(self.url)
+        assert response.status_code == 200, 'Expected status 200 when theme-preview cookie is not set'
+        assert 'set_theme_preview.html' in [t.name for t in response.templates], 'Expected template to be rendered'
+
+    @ddt.data(
+        ('/custom-next-url/', '/custom-next-url/'),
+        (None, f'http://testserver{reverse("fx_dashboard:set-theme-preview")}')
+    )
+    @ddt.unpack
+    def test_redirect_url_resolves_correctly(self, next_param, expected_redirect):
+        """Verify that the view correctly resolves the next URL parameter for redirection."""
+        params = {'next': next_param} if next_param else {}
+        self.client.cookies['theme-preview'] = 'yes'
+        response = self.client.get(self.url, params)
+        assert response.url == expected_redirect, f'Expected redirect to {expected_redirect}'

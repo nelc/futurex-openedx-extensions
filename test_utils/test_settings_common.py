@@ -12,7 +12,7 @@ def root(*args):
     """
     Get the absolute path of the given path relative to the project root.
     """
-    return join(abspath(dirname(__file__)), *args)
+    return join(abspath(dirname(dirname(__file__))), *args)
 
 
 DATABASES = {
@@ -60,7 +60,10 @@ MIDDLEWARE = (
 
 TEMPLATES = [{
     'BACKEND': 'django.template.backends.django.DjangoTemplates',
-    'APP_DIRS': False,
+    'DIRS': [
+        root('futurex_openedx_extensions', 'dashboard', 'templates'),
+    ],
+    'APP_DIRS': True,
     'OPTIONS': {
         'context_processors': [
             'django.contrib.auth.context_processors.auth',  # this is required for admin
