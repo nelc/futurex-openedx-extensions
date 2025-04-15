@@ -539,14 +539,15 @@ docs_src = {
 
     'LibraryView.post': {
         'summary': 'Create a new library',
-        'description': 'Create new library.',
+        'description': 'Create new library. This API will use default org of given tenant as library org '
+        'and will raise errors if default org is invalid or unset',
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'org': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description='Org',
-                    example='dummy',
+                'tenant_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='Tenant id',
+                    example=1,
                 ),
                 'number': openapi.Schema(
                     type=openapi.TYPE_STRING,
