@@ -8,6 +8,7 @@ from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.permissions import BasePermission, IsAuthenticated
 
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.roles import (
     check_tenant_access,
     get_accessible_tenant_ids,
@@ -114,6 +115,27 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
             tenant_ids = details['tenant_ids']
         else:
             tenant_ids = get_accessible_tenant_ids(user=request.user, roles_filter=view_allowed_roles)
+
+        if view.fx_tenant_id_url_arg_name:
+            if not view.kwargs.get(view.fx_tenant_id_url_arg_name):
+                raise FXCodedException(
+                    code=FXExceptionCodes.TENANT_ID_REQUIRED_AS_URL_ARG,
+                    message=f'Tenant id ({view.fx_tenant_id_url_arg_name}) is required as a URL argument'
+                            ', but not found!',
+                )
+
+            try:
+                _tenant_id = int(view.kwargs[view.fx_tenant_id_url_arg_name])
+            except ValueError as exc:
+                raise FXCodedException(
+                    code=FXExceptionCodes.TENANT_NOT_FOUND,
+                    message=f'Invalid tenant ID ({view.kwargs[view.fx_tenant_id_url_arg_name]}), expected int!',
+                ) from exc
+            else:
+                if _tenant_id not in tenant_ids:
+                    raise PermissionDenied(detail=json.dumps({
+                        'reason': f'User does not have access to the tenant ({_tenant_id})',
+                    }))
 
         system_staff_user_flag = is_system_staff_user(request.user)
         user_roles: dict = get_user_course_access_roles(request.user.id)['roles']

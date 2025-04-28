@@ -1304,18 +1304,17 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
     fx_view_description = 'api/fx/config/v1/draft/<tenant_id>: draft theme config APIs'
     fx_default_read_write_roles = ['staff', 'fx_api_access_global']
     fx_default_read_only_roles = ['staff', 'fx_api_access_global']
+    fx_tenant_id_url_arg_name: str = 'tenant_id'
 
     def get(self, request: Any, tenant_id: int) -> Response | JsonResponse:  # pylint: disable=no-self-use
         """Get draft config"""
-        updated_fields = get_draft_tenant_config(
-            tenant_id=int(tenant_id), fx_permission_info=request.fx_permission_info
-        )
+        updated_fields = get_draft_tenant_config(tenant_id=int(tenant_id))
         return JsonResponse({
             'updated_fields': updated_fields,
             'draft_hash': dict_to_hash(updated_fields)
         })
 
-    def put(self, request: Any, tenant_id: int) -> Response:
+    def put(self, request: Any, tenant_id: int) -> Response:  # pylint: disable=no-self-use
         """Update draft config"""
         data = request.data
         try:
@@ -1354,7 +1353,6 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 
             update_draft_tenant_config(
                 tenant_id=int(tenant_id),
-                fx_permission_info=self.request.fx_permission_info,
                 key_path=key_access_info.path,
                 current_value=data['current_value'],
                 new_value=new_value,
@@ -1380,9 +1378,9 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
                 status=http_status.HTTP_400_BAD_REQUEST
             )
 
-    def delete(self, request: Any, tenant_id: int) -> Response:
+    def delete(self, request: Any, tenant_id: int) -> Response:  # pylint: disable=no-self-use
         """Delete draft config"""
-        delete_draft_tenant_config(tenant_id=int(tenant_id), fx_permission_info=self.request.fx_permission_info)
+        delete_draft_tenant_config(tenant_id=int(tenant_id))
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
@@ -1423,7 +1421,7 @@ class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
                 code=FXExceptionCodes.INVALID_INPUT,
                 message='Draft hash is required and must be a string.'
             )
-        current_draft = get_draft_tenant_config(tenant_id=tenant_id, fx_permission_info=fx_permission_info)
+        current_draft = get_draft_tenant_config(tenant_id=tenant_id)
         current_draft_hash = dict_to_hash(current_draft)
         if current_draft_hash != draft_hash:
             raise FXCodedException(

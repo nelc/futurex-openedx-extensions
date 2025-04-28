@@ -2134,7 +2134,7 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
         self.login_user(10)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data['reason'], 'User does not have required access for tenant (1)')
+        self.assertEqual(response.data['reason'], 'User does not have access to the tenant (1)')
 
     def test_draft_config_retrieve_success(self):
         """Verify that the view returns the correct response"""
@@ -2200,7 +2200,8 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
                 'theme_v2': {'pages': ['home_page']},
                 'config_draft': {},
                 'LMS_BASE': 'example.com',
-                'non-writable': 'some data'
+                'non-writable': 'some data',
+                'course_org_filter': 'example',
             }
         )
         Route.objects.create(
@@ -2242,7 +2243,6 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
         mock_update_draft.assert_called_once_with(
             tenant_id=tenant_id,
-            fx_permission_info=ANY,
             key_path='platform_name',
             current_value='s1 platform name',
             new_value='s1 new name',
@@ -2258,7 +2258,7 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
         self.login_user(23)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data['reason'], 'User does not have required access for tenant (1)')
+        self.assertEqual(response.data['reason'], 'User does not have access to the tenant (1)')
         tenant_config.refresh_from_db()
         assert tenant_config.lms_configs['config_draft'] != {}
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import logging
 from enum import Enum
-from functools import wraps
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
@@ -14,7 +13,6 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
-from rest_framework.exceptions import PermissionDenied
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
@@ -29,32 +27,6 @@ from futurex_openedx_extensions.helpers.mysql_functions import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def tenant_access_required(view_allowed_key: str = 'view_allowed_tenant_ids_full_access') -> Any:
-    """Decorator to check if the user has access to the tenant."""
-    def decorator(func: Any) -> Any:
-        """Decorator function"""
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            """Wrapper function"""
-            tenant_id = kwargs.get('tenant_id')
-            fx_permission_info = kwargs.get('fx_permission_info')
-
-            if tenant_id is None or fx_permission_info is None:
-                raise ValueError('Missing required parameters: tenant_id and fx_permission_info')
-
-            if view_allowed_key not in fx_permission_info:
-                raise ValueError(f'Invalid view_allowed_key provided: {view_allowed_key}')
-
-            if not fx_permission_info['is_system_staff_user'] and tenant_id not in fx_permission_info[view_allowed_key]:
-                raise PermissionDenied(detail=json.dumps(
-                    {'reason': f'User does not have required access for tenant ({tenant_id})'}
-                ))
-
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
 
 
 def get_excluded_tenant_ids() -> Dict[int, List[int]]:
@@ -540,15 +512,12 @@ def get_config_current_request(keys: List[str]) -> dict | None:
     )
 
 
-@tenant_access_required()
-def get_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> dict:  # pylint: disable=unused-argument
+def get_draft_tenant_config(tenant_id: int) -> dict:
     """
     Fetches configuration for the specified tenant and returns all draft fields with published and draft values
 
     :param tenant_id: The ID of the tenant whose draft configuration is to be retrieved.
     :type tenant_id: int
-    :param fx_permission_info: A dict containing permission related data
-    :type fx_permission_info: dict
     :return: A dictionary containing updated fields with published and draft values.
     """
     tenant = TenantConfig.objects.get(id=tenant_id)
@@ -566,25 +535,20 @@ def get_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> dict:  
     return updated_fields
 
 
-@tenant_access_required()
-def delete_draft_tenant_config(tenant_id: int, fx_permission_info: dict) -> None:  # pylint: disable=unused-argument
+def delete_draft_tenant_config(tenant_id: int) -> None:
     """
     Deletes the draft configuration for the specified tenant.
 
     :param tenant_id: The ID of the tenant whose draft config needs to be deleted.
     :type tenant_id: int
-    :param fx_permission_info: A dict containing permission related data
-    :type fx_permission_info: dict
     """
     tenant = TenantConfig.objects.get(id=tenant_id)
     tenant.lms_configs['config_draft'] = {}
     tenant.save()
 
 
-@tenant_access_required()
-def update_draft_tenant_config(   # pylint: disable=too-many-arguments, unused-argument
+def update_draft_tenant_config(
     tenant_id: int,
-    fx_permission_info: dict,
     key_path: str,
     current_value: Any,
     new_value: Any,
@@ -595,8 +559,6 @@ def update_draft_tenant_config(   # pylint: disable=too-many-arguments, unused-a
 
     :param tenant_id: ID of the tenant.
     :type tenant_id: int
-    :param fx_permission_info: A dict containing permission related data
-    :type fx_permission_info: dict
     :param key_path: JSON key path to update.
     :type key_path: str
     :param current_value: Expected current value for validation.

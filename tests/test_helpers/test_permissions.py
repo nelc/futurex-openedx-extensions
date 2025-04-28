@@ -8,6 +8,7 @@ from deepdiff import DeepDiff
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 from rest_framework.test import APIRequestFactory
 
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.permissions import (
     FXBaseAuthenticatedPermission,
     FXHasTenantAllCoursesAccess,
@@ -25,6 +26,7 @@ def dummy_view():
     class DummyView:
         """Dummy view class"""
         fx_view_name = 'dummyView'
+        fx_tenant_id_url_arg_name = None
 
         def __init__(self):
             self.result_of_method = {
@@ -267,6 +269,47 @@ def test_fx_base_authenticated_permission_selected_tenants(
     assert str(exc.value) == json.dumps({
         'reason': 'User does not have access to these tenants', 'details': {'tenant_ids': [3]}
     })
+
+
+@pytest.mark.django_db
+def test_fx_base_authenticated_permission_tenant_id_in_url(
+    base_data, dummy_view, permission,
+):  # pylint: disable=redefined-outer-name, unused-argument
+    """Verify that FXBaseAuthenticatedPermission checks for the tenant_id in the URL correctly."""
+    staff_user_id = 2
+    dummy_view.fx_tenant_id_url_arg_name = ''
+    dummy_view.kwargs = {}
+    request = APIRequestFactory().generic('GET', '/dummy/')
+    set_user(request, staff_user_id)
+    assert permission.has_permission(request, dummy_view) is True
+
+    dummy_view.fx_tenant_id_url_arg_name = 'tenant_id_test'
+    with pytest.raises(FXCodedException) as exc:
+        permission.has_permission(request, dummy_view)
+    assert str(exc.value) == 'Tenant id (tenant_id_test) is required as a URL argument, but not found!'
+
+    dummy_view.kwargs = {'not_tenant_id_test': 1}
+    with pytest.raises(FXCodedException) as exc:
+        permission.has_permission(request, dummy_view)
+    assert str(exc.value) == 'Tenant id (tenant_id_test) is required as a URL argument, but not found!'
+
+    dummy_view.kwargs = {'tenant_id_test': 1}
+    assert permission.has_permission(request, dummy_view) is True
+
+
+@pytest.mark.django_db
+def test_fx_base_authenticated_permission_tenant_id_in_url_not_int(
+    base_data, dummy_view, permission,
+):  # pylint: disable=redefined-outer-name, unused-argument
+    """Verify that FXBaseAuthenticatedPermission checks for the tenant_id in the URL correctly."""
+    staff_user_id = 2
+    request = APIRequestFactory().generic('GET', '/dummy/')
+    set_user(request, staff_user_id)
+    dummy_view.fx_tenant_id_url_arg_name = 'tenant_id'
+    dummy_view.kwargs = {'tenant_id': 'not integer'}
+    with pytest.raises(FXCodedException) as exc:
+        permission.has_permission(request, dummy_view)
+    assert str(exc.value) == 'Invalid tenant ID (not integer), expected int!'
 
 
 def test_fx_has_tenant_all_courses_access_correct_base():
