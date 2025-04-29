@@ -477,6 +477,7 @@ def is_view_support_write(view_name: str) -> bool:
 
 class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
     """View mixin to provide role information to the view."""
+    fx_tenant_id_url_arg_name: str = ''
 
     def handle_exception(self, exc: Exception) -> Any:
         """Override to handle fx exception"""
