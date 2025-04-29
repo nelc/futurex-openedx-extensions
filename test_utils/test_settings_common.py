@@ -130,3 +130,5 @@ FX_SSO_INFO = {
 
 FX_DEFAULT_TENANT_SITE = 'default.example.com'
 FX_TENANTS_BASE_DOMAIN = 'local.overhang.io'
+
+FX_DISABLE_CONFIG_VALIDATIONS = False

@@ -17,6 +17,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import EmptyPage
 from django.db.models import Q
 from django.http import JsonResponse
+from django.test import override_settings
 from django.urls import resolve, reverse
 from django.utils.functional import SimpleLazyObject
 from django.utils.timezone import now, timedelta
@@ -29,7 +30,7 @@ from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
-from futurex_openedx_extensions.dashboard.views import UserRolesManagementView
+from futurex_openedx_extensions.dashboard.views import ThemeConfigDraftView, UserRolesManagementView
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.constants import ALLOWED_FILE_EXTENSIONS
@@ -2120,6 +2121,11 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
     """Tests for ThemeConfigDraftView"""
     VIEW_NAME = 'fx_dashboard:theme-config-draft'
 
+    validation_test_data = [
+        ('string', 3, 'whatever', 'New value type must be (str) value.'),
+        ('string', 'whatever', 3, 'Current value type must be (str) value.')
+    ]
+
     def test_only_authorized_users_can_retrieve_draft_config(self):
         """Verify that only authourized users can retrieve draft"""
         ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook')
@@ -2225,8 +2231,9 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
         assert response.status_code == http_status.HTTP_400_BAD_REQUEST
         assert response.data['reason'] == expected_reason
 
+    @patch('futurex_openedx_extensions.dashboard.views.ThemeConfigDraftView.validate_input')
     @patch('futurex_openedx_extensions.dashboard.views.update_draft_tenant_config')
-    def test_draft_config_update(self, mock_update_draft):
+    def test_draft_config_update(self, mock_update_draft, mocked_validate_input):
         """Verify that the view returns the correct response"""
         tenant_id = 1
         tenant_config = TenantConfig.objects.get(id=tenant_id)
@@ -2248,6 +2255,27 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
             new_value='s1 new name',
             reset=False,
         )
+        mocked_validate_input.assert_called_once_with('string', 's1 new name', 's1 platform name')
+
+    @ddt.data(
+        *validation_test_data,
+    )
+    @ddt.unpack
+    def test_validate_input_enabled(self, key_type, new_value, current_value, error_message):
+        """Verify the sad scenario when the validation is enabled."""
+        with pytest.raises(FXCodedException) as exc_info:
+            ThemeConfigDraftView.validate_input(key_type, new_value, current_value)
+        self.assertEqual(exc_info.value.code, FXExceptionCodes.INVALID_INPUT.value)
+        self.assertEqual(str(exc_info.value), error_message)
+
+    @ddt.data(
+        *validation_test_data,
+    )
+    @ddt.unpack
+    def test_validate_input_disabled(self, key_type, new_value, current_value, _):  # pylint: disable=no-self-use
+        """Verify the sad scenario when the validation is disabled."""
+        with override_settings(FX_DISABLE_CONFIG_VALIDATIONS=True):
+            ThemeConfigDraftView.validate_input(key_type, new_value, current_value)
 
     def test_draft_config_delete(self):
         """Verify that the view returns the correct response"""
