@@ -3,6 +3,7 @@ URLs for dashboard.
 """
 from django.conf import settings
 from django.urls import include, re_path
+from lms.djangoapps.static_template_view import views as static_template_views_views
 from rest_framework.routers import DefaultRouter
 
 from futurex_openedx_extensions.dashboard import views
@@ -78,4 +79,11 @@ urlpatterns = [
         views.SetThemePreviewCookieView.as_view(),
         name='set-theme-preview',
     ),
+
+    re_path(
+        r'^p/[\w-]+/$',
+        static_template_views_views.render,
+        {'template': 'fx_custom_page.html'},
+        name='fx-custom-page',
+    )
 ]

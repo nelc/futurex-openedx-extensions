@@ -1,6 +1,7 @@
 """Mocks"""
 
 from django.contrib.auth import get_user_model
+from django.http import HttpResponse
 from opaque_keys.edx.django.models import CourseKeyField
 from opaque_keys.edx.locator import CourseLocator
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
@@ -59,3 +60,8 @@ def add_users(caller, role, *users):  # pylint: disable=unused-argument
     add_user Mock
     """
     return None
+
+
+def render(request, template):  # pylint: disable=unused-argument
+    """render Mock"""
+    return HttpResponse()
