@@ -15,6 +15,7 @@ from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantCourseAccess,
     IsAnonymousOrSystemStaff,
     IsSystemStaff,
+    build_fx_permission_info,
     get_tenant_limited_fx_permission_info,
 )
 from tests.fixture_helpers import get_all_orgs, set_user
@@ -423,3 +424,23 @@ def test_get_tenant_limited_fx_permission_info():
             'view_allowed_tenant_ids_full_access': [1],
             'view_allowed_tenant_ids_partial_access': [],
         }, ignore_order=True)
+
+
+@patch(
+    'futurex_openedx_extensions.helpers.permissions.get_course_org_filter_list',
+    return_value={'course_org_filter_list': ['org1', 'org2']},
+)
+def test_build_fx_permission_info(_):
+    """Verify that build_fx_permission_info works as expected."""
+    assert build_fx_permission_info(1) == {
+        'user': None,
+        'user_roles': [],
+        'is_system_staff_user': True,
+        'view_allowed_roles': [],
+        'view_allowed_full_access_orgs': ['org1', 'org2'],
+        'view_allowed_course_access_orgs': [],
+        'view_allowed_any_access_orgs': ['org1', 'org2'],
+        'view_allowed_tenant_ids_any_access': [1],
+        'view_allowed_tenant_ids_full_access': [1],
+        'view_allowed_tenant_ids_partial_access': [],
+    }
