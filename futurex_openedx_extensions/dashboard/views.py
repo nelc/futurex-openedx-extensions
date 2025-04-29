@@ -1314,7 +1314,25 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
             'draft_hash': dict_to_hash(updated_fields)
         })
 
-    def put(self, request: Any, tenant_id: int) -> Response:  # pylint: disable=no-self-use
+    @staticmethod
+    def validate_input(key_type: str, new_value: Any, current_value: Any) -> None:
+        """Validate the input"""
+        if settings.FX_DISABLE_CONFIG_VALIDATIONS:
+            return
+
+        if new_value is not None and not isinstance(new_value, KEY_TYPE_MAP[key_type]):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'New value type must be ({KEY_TYPE_MAP[key_type].__name__}) value.'
+            )
+
+        if current_value is not None and not isinstance(current_value, KEY_TYPE_MAP[key_type]):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'Current value type must be ({KEY_TYPE_MAP[key_type].__name__}) value.'
+            )
+
+    def put(self, request: Any, tenant_id: int) -> Response:
         """Update draft config"""
         data = request.data
         try:
@@ -1337,19 +1355,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
             new_value = data.get('new_value')
             reset = data.get('reset', '0') == '1'
 
-            if new_value is not None and not isinstance(new_value, KEY_TYPE_MAP[key_access_info.key_type]):
-                raise FXCodedException(
-                    code=FXExceptionCodes.INVALID_INPUT,
-                    message=f'New value type must be ({KEY_TYPE_MAP[key_access_info.key_type].__name__}) value.'
-                )
-
-            if data['current_value'] is not None and not isinstance(
-                data['current_value'], KEY_TYPE_MAP[key_access_info.key_type]
-            ):
-                raise FXCodedException(
-                    code=FXExceptionCodes.INVALID_INPUT,
-                    message=f'Current value type must be ({KEY_TYPE_MAP[key_access_info.key_type].__name__}) value.'
-                )
+            self.validate_input(key_access_info.key_type, new_value, data.get('current_value'))
 
             update_draft_tenant_config(
                 tenant_id=int(tenant_id),
