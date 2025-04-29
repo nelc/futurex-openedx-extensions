@@ -18,6 +18,25 @@ from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_lis
 from futurex_openedx_extensions.helpers.users import is_system_staff_user
 
 
+def build_fx_permission_info(tenant_id: int) -> dict:
+    """
+    Return fx_permission_info for the given tenant as a staff user
+    """
+    filtered_orgs = get_course_org_filter_list([tenant_id], ignore_invalid_tenant_ids=True)['course_org_filter_list']
+    return {
+        'user': None,
+        'user_roles': [],
+        'is_system_staff_user': True,
+        'view_allowed_roles': [],
+        'view_allowed_full_access_orgs': filtered_orgs,
+        'view_allowed_course_access_orgs': [],
+        'view_allowed_any_access_orgs': filtered_orgs,
+        'view_allowed_tenant_ids_any_access': [tenant_id],
+        'view_allowed_tenant_ids_full_access': [tenant_id],
+        'view_allowed_tenant_ids_partial_access': [],
+    }
+
+
 def get_tenant_limited_fx_permission_info(fx_permission_info: dict, tenant_id: int) -> dict:
     """
     Get a copy of the permission info limited to a single tenant.

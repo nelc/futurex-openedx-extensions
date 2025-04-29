@@ -7,6 +7,7 @@ CACHE_NAME_ALL_TENANTS_INFO = 'fx_tenants_info_v2'
 CACHE_NAME_ALL_VIEW_ROLES = 'fx_view_roles'
 CACHE_NAME_ORG_TO_TENANT_MAP = 'fx_org_to_tenant_mapping'
 CACHE_NAME_USER_COURSE_ACCESS_ROLES = 'fx_user_course_access_roles'
+CACHE_NAME_LIVE_STATISTICS_PER_TENANT = 'fx_live_statistics_per_tenant'
 
 CACHE_NAMES = {
     CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST: {
