@@ -1544,12 +1544,7 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
             )
 
         owner_user_id = data.get('owner_user_id')
-        if owner_user_id is None:
-            raise FXCodedException(
-                code=FXExceptionCodes.INVALID_INPUT,
-                message='Owner user ID is required.'
-            )
-        if not get_user_model().objects.filter(id=owner_user_id).exists():
+        if owner_user_id and not get_user_model().objects.filter(id=owner_user_id).exists():
             raise FXCodedException(
                 code=FXExceptionCodes.INVALID_INPUT,
                 message=f'User with ID {owner_user_id} does not exist.'
@@ -1562,14 +1557,16 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
         data = request.data
         self.validate_payload(data)
         tenant_config = create_new_tenant_config(data['sub_domain'], data['platform_name'])
-        add_course_access_roles(
-            caller=self.fx_permission_info['user'],
-            tenant_ids=[tenant_config.id],
-            user_keys=[data['owner_user_id']],
-            role=COURSE_ACCESS_ROLES_STAFF_EDITOR,
-            tenant_wide=True,
-            course_ids=[],
-        )
+        owner_user_id = data.get('owner_user_id')
+        if owner_user_id:
+            add_course_access_roles(
+                caller=self.fx_permission_info['user'],
+                tenant_ids=[tenant_config.id],
+                user_keys=[data['owner_user_id']],
+                role=COURSE_ACCESS_ROLES_STAFF_EDITOR,
+                tenant_wide=True,
+                course_ids=[],
+            )
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
