@@ -27,6 +27,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
+from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
@@ -2404,6 +2405,7 @@ class ThemeConfigRetrieveViewTest(BaseTestViewMixin):
 
 
 @ddt.ddt
+@pytest.mark.usefixtures('base_data')
 class ThemeConfigTenantView(BaseTestViewMixin):
     """Tests for ThemeConfigTenantView"""
     VIEW_NAME = 'fx_dashboard:theme-config-tenant'
@@ -2454,10 +2456,6 @@ class ThemeConfigTenantView(BaseTestViewMixin):
             'Platform name must be a string.'
         ),
         (
-            {'sub_domain': 'validsubdomain', 'platform_name': 'Valid name'},
-            'Owner user ID is required.'
-        ),
-        (
             {'sub_domain': 'validsubdomain', 'platform_name': 'Valid name', 'owner_user_id': 999999},
             'User with ID 999999 does not exist.'
         ),
@@ -2467,12 +2465,14 @@ class ThemeConfigTenantView(BaseTestViewMixin):
         """Verify that different sub_domain cases raise the correct reason"""
         self.login_user(self.staff_user)
         response = self.client.post(self.url, data=data, format='json')
+        self.assertEqual(response.status_code, HTTP_400_BAD_REQUEST)
         assert response.data['reason'] == expected_reason
 
     @pytest.mark.django_db
     @patch('futurex_openedx_extensions.helpers.tenants.generate_tenant_config')
     @patch('futurex_openedx_extensions.dashboard.views.add_course_access_roles')
-    def test_success(self, mock_add_course_access_roles, mock_generate_config):
+    @ddt.data(True, False)
+    def test_success(self, owner_id_passed, mock_add_course_access_roles, mock_generate_config):
         """Verify that the view returns the correct response"""
         mock_generate_config.return_value = {
             'LMS_BASE': 'testplatform.local.overhang.io:8000',
@@ -2482,11 +2482,15 @@ class ThemeConfigTenantView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         data = {
             'sub_domain': 'testplatform',
-            'owner_user_id': self.staff_user,
             'platform_name': 'Test Platform'
         }
+        if owner_id_passed:
+            data['owner_user_id'] = self.staff_user
         response = self.client.post(self.url, data=data, format='json')
-        mock_add_course_access_roles.assert_called_once()
+        if owner_id_passed:
+            mock_add_course_access_roles.assert_called_once()
+        else:
+            mock_add_course_access_roles.assert_not_called()
         assert response.status_code == http_status.HTTP_204_NO_CONTENT
 
 
