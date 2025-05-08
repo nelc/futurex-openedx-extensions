@@ -1222,3 +1222,10 @@ def test_library_serializer_update_raises_error():
     serializer = serializers.LibrarySerializer()
     with pytest.raises(ValueError, match='This serializer does not support update.'):
         serializer.update(instance=object(), validated_data={})
+
+
+def test_course_serializer_update_raises_error():
+    """test CourseCreate serializer for update """
+    serializer = serializers.CourseCreateSerializer()
+    with pytest.raises(ValueError, match='This serializer does not support update.'):
+        serializer.update(instance=object(), validated_data={})
