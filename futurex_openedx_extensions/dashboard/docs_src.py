@@ -1871,7 +1871,7 @@ docs_src = {
                     example=11,
                 ),
             },
-            required=['sub_domain', 'platform_name', 'owner_user_id']
+            required=['sub_domain', 'platform_name']
         ),
         'responses': responses(
             overrides={
