@@ -29,5 +29,8 @@ jobs:
       - name: Install Dependencies
         run: pip install -r requirements/ci.in
 
+      - name: List test utils
+        run: echo $PYTHONPATH
+
       - name: Run Tests
         run: tox -e ${{ matrix.tox-env }}
