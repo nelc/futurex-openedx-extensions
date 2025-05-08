@@ -583,6 +583,12 @@ class ConfigAccessControl(models.Model):
     )
     path = models.CharField(max_length=500, help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url')
     writable = models.BooleanField(default=False, help_text='Indicates if the field is writable')
+    mirror_path = models.CharField(
+        max_length=500, null=True, blank=True, help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url'
+    )
+    extra_mirror_path = models.CharField(
+        max_length=500, null=True, blank=True, help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url'
+    )
 
     class Meta:
         verbose_name = 'Config Access Control'

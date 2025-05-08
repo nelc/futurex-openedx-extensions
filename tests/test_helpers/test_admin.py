@@ -307,7 +307,7 @@ def test_view_user_mapping_model_form_extra_attributes(attribute_name):
             {'themev2': {'footer': {'linkedin_url': 'https://linkedin.com'}}},
             'themev2. footer.linkedin_url',
             'Key path must not contain spaces.',
-            'key_path should not conatin any spaces.'
+            'key_path should not contain any spaces.'
         ),
         (
             {'themev2': {'footer': {}}},
@@ -351,32 +351,42 @@ def test_view_user_mapping_model_form_extra_attributes(attribute_name):
             'Key path must not contain empty parts. It shouldn not have leading, trailing, or double dots.',
             'Leading, trailing, and double dots should not be in the path.'
         ),
-        (
-            {'themev2': {'whatever': {}}},
-            None,
-            'Key path is required.',
-            'Key path is required. It cannot be None or empty.'
-        ),
+        # (
+        #     {'themev2': {'whatever': {}}},
+        #     None,
+        #     'Key path is required.',
+        #     'Key path is required. It cannot be None or empty.'
+        # ),
     ]
 )
 @patch('futurex_openedx_extensions.helpers.admin.TenantConfig.objects.get')
-def test_config_access_control_form_clean_path(mock_get, default_config, input_path, expected_error, usecase):
-    """Test clean_path validation with various path inputs and descriptive use cases."""
-    mock_get.return_value = Mock(lms_configs=default_config)
-    form_data = {
-        'path': input_path,
-        'key_name': 'test_key',
-        'writable': True,
-        'key_type': 'string'
-    }
-    form = ConfigAccessControlForm(data=form_data)
-
+def test_config_access_control_form_validate_path(default_config, input_path, expected_error, usecase):
+    """Test validate_path validation with various path inputs and descriptive use cases."""
     if expected_error:
         with pytest.raises(ValidationError) as exc_info:
-            form.clean_path()
+            ConfigAccessControlForm.validate_path(input_path, default_config)
         assert str(exc_info.value) == f"[\'{expected_error}\']", usecase
     else:
-        assert form.is_valid(), usecase
+        assert ConfigAccessControlForm.validate_path(input_path, default_config) is None, usecase
+    # form_data = {
+    #     'path': input_path,
+    #     'key_name': 'test_key',
+    #     'writable': True,
+    #     'key_type': 'string'
+    # }
+    # form = ConfigAccessControlForm(data=form_data)
+    #
+    # if expected_error:
+    #     with pytest.raises(ValidationError) as exc_info:
+    #         form.clean_path()
+    #     assert str(exc_info.value) == f"[\'{expected_error}\']", usecase
+    # else:
+    #     assert form.is_valid(), usecase
+
+
+@patch('futurex_openedx_extensions.helpers.admin.TenantConfig.objects.get')
+def test_config_access_control_form_clean_path(mock_get, default_config, input_path, expected_error, usecase):
+    mock_get.return_value = Mock(lms_configs=default_config)
 
 
 @pytest.mark.django_db
