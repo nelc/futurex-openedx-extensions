@@ -412,7 +412,10 @@ def test_generate_tenant_config_tenant_not_found(mock_get):
 @patch('futurex_openedx_extensions.helpers.tenants.generate_tenant_config')
 @patch('futurex_openedx_extensions.helpers.tenants.TenantConfig.objects.create')
 @patch('futurex_openedx_extensions.helpers.tenants.Route.objects.create')
-def test_create_new_tenant_config_success(mock_route_create, mock_tenant_create, mock_generate_config):
+@patch('futurex_openedx_extensions.helpers.tenants.Site.objects.create')
+def test_create_new_tenant_config_success(
+    mock_site_create, mock_route_create, mock_tenant_create, mock_generate_config
+):
     """Test create_new_tenant_config successfully creates a tenant and route."""
     mock_generate_config.return_value = {
         'EDNX_USE_SIGNAL': True,
@@ -429,19 +432,39 @@ def test_create_new_tenant_config_success(mock_route_create, mock_tenant_create,
         external_key='testplatform', lms_configs=mock_generate_config.return_value
     )
     mock_route_create.assert_called_once_with(domain='testplatform.local.overhang.io', config=mock_tenant)
+    mock_site_create.assert_called_once_with(
+        domain='testplatform.local.overhang.io', name='testplatform.local.overhang.io'
+    )
     assert result == mock_tenant
 
 
 @pytest.mark.django_db
-def test_create_new_tenant_for_existing_route_and_tenant():
-    """Test create_new_tenant_config raise exception if route already exist for given domain"""
-    tenant_config = TenantConfig.objects.create(external_key='testplatform', lms_configs={'dummy': 'some dummy data'})
-    Route.objects.create(domain='testplatform.local.overhang.io', config=tenant_config)
+@pytest.mark.parametrize(
+    'test_usecase, expected_error_value',
+    [
+        ('Site', FXExceptionCodes.SITE_ALREADY_EXIST.value),
+        ('Route', FXExceptionCodes.ROUTE_ALREADY_EXIST.value),
+    ]
+)
+def test_create_new_tenant_for_existing_route_and_tenant(test_usecase, expected_error_value):
+    """Test create_new_tenant_config raises exception if route/site already exists for the given domain."""
+    tenant_config = TenantConfig.objects.create(
+        external_key='testplatform',
+        lms_configs={'dummy': 'some dummy data'}
+    )
+
+    domain = 'testplatform.local.overhang.io'
+
+    if test_usecase == 'Route':
+        Route.objects.create(domain=domain, config=tenant_config)
+    if test_usecase == 'Site':
+        Site.objects.create(domain=domain, name=domain)
 
     with pytest.raises(FXCodedException) as excinfo:
         tenants.create_new_tenant_config('testplatform', 'Test Platform Name')
-    assert excinfo.value.code == FXExceptionCodes.ROUTE_ALREADY_EXIST.value
-    assert str(excinfo.value) == 'Route already exists with site domain: (testplatform.local.overhang.io).'
+
+    assert excinfo.value.code == expected_error_value
+    assert str(excinfo.value) == f'{test_usecase} already exists with domain: ({domain}).'
 
 
 @pytest.mark.parametrize(

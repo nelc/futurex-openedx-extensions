@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from crum import get_current_request
 from django.conf import settings
+from django.contrib.sites.models import Site
 from django.db import transaction
 from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
@@ -378,11 +379,15 @@ def create_new_tenant_config(sub_domain: str, platform_name: str) -> TenantConfi
     :return: The created TenantConfig object
     """
     site_domain = f'{sub_domain}.{settings.FX_TENANTS_BASE_DOMAIN}'
-    if Route.objects.filter(domain=site_domain).exists():
-        raise FXCodedException(
-            code=FXExceptionCodes.ROUTE_ALREADY_EXIST,
-            message=f'Route already exists with site domain: ({site_domain}).',
-        )
+    for model, code, label in [
+        (Route, FXExceptionCodes.ROUTE_ALREADY_EXIST, 'Route'),
+        (Site, FXExceptionCodes.SITE_ALREADY_EXIST, 'Site'),
+    ]:
+        if model.objects.filter(domain=site_domain).exists():
+            raise FXCodedException(
+                code=code,
+                message=f'{label} already exists with domain: ({site_domain}).',
+            )
 
     config_data = generate_tenant_config(sub_domain, platform_name)
     config_data.update({'LMS_BASE': site_domain})
@@ -396,6 +401,7 @@ def create_new_tenant_config(sub_domain: str, platform_name: str) -> TenantConfi
             domain=site_domain,
             config=tenant_config
         )
+        Site.objects.create(domain=site_domain, name=site_domain)
         invalidate_cache()
     return tenant_config
 
