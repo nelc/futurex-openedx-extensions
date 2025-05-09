@@ -1,6 +1,7 @@
 
 """Functions that use db functions not supported by SQLITE."""
 import json
+import logging
 from typing import Any
 
 from django.db import transaction
@@ -8,6 +9,8 @@ from django.db.models import BooleanField, F, Func, JSONField, QuerySet, Value
 from django.db.models.functions import Cast
 
 from futurex_openedx_extensions.helpers.converters import path_to_json
+
+logger = logging.getLogger(__name__)
 
 
 class JsonPathExists(Func):
@@ -55,7 +58,7 @@ def annotate_queryset_for_update_draft_config(queryset: QuerySet, key_path: str)
     )
 
 
-def apply_json_merge_for_update_draft_config(existing_json: F, key_path: str, new_value: Any, reset: bool) -> Func:
+def apply_json_merge_for_update_draft_config(existing_json: F, key_info: Any, new_value: Any, reset: bool) -> Func:
     """
     For Draft tenant config update, applies JSON_MERGE_PATCH to update the JSON field with the new config value .
 
@@ -65,7 +68,18 @@ def apply_json_merge_for_update_draft_config(existing_json: F, key_path: str, ne
     :param reset: Whether to reset the value to None.
     :return: A Func object performing the JSON_MERGE_PATCH operation.
     """
-    new_config = {'config_draft': path_to_json(key_path, None if reset else new_value)}
+
+    updated_config = path_to_json(key_info.path, None if reset else new_value)
+
+    if key_info.mirror_path:
+        updated_config.update(path_to_json(key_info.mirror_path, None if reset else new_value))
+
+    if key_info.extra_mirror_path:
+        updated_config.update(path_to_json(key_info.extra_mirror_path, None if reset else new_value))
+
+    logger.info('Update draft config with {updated_config}')
+
+    new_config = {'config_draft': updated_config}
     return Func(
         Func(existing_json, Value('{}'), function='IFNULL'),
         Cast(Value(json.dumps(new_config)), JSONField()),
