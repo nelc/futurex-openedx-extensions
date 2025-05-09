@@ -665,10 +665,10 @@ def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
 def test_update_draft_tenant_config(mock_update_draft_json_merge, mock_annotate_queryset, mock_filter):
     """Test the update_draft_tenant_config function for both successful and unsuccessful updates."""
     tenant_id = 1
-    key_path = 'some_key_path'
     current_value = 'current_value'
     new_value = 'new_value'
     reset = False
+    key_config = ConfigAccessControl.objects.create(key_name='some_name', path='some_key_path')
 
     mock_filter.return_value.exists.return_value = True
     mock_filter.return_value = TenantConfig.objects.filter(id=tenant_id)
@@ -676,20 +676,20 @@ def test_update_draft_tenant_config(mock_update_draft_json_merge, mock_annotate_
     mock_update_draft_json_merge.return_value = MagicMock()
     tenants.update_draft_tenant_config(
         tenant_id=1,
-        key_path=key_path,
+        key_access_info=key_config,
         current_value=current_value,
         new_value=new_value,
         reset=reset,
     )
-    mock_annotate_queryset.assert_called_with(mock_filter.return_value, key_path)
-    mock_update_draft_json_merge.assert_called_once_with(F('lms_configs'), key_path, new_value, reset)
+    mock_annotate_queryset.assert_called_with(mock_filter.return_value, key_config.path)
+    mock_update_draft_json_merge.assert_called_once_with(F('lms_configs'), key_config, new_value, reset)
     mock_filter.return_value.filter.return_value.update.assert_called_once()
 
     mock_filter.return_value.filter.return_value.update.return_value = 0
     with pytest.raises(FXCodedException) as exc_info:
         tenants.update_draft_tenant_config(
             tenant_id=tenant_id,
-            key_path=key_path,
+            key_access_info=key_config,
             current_value=current_value,
             new_value=new_value,
             reset=reset,

@@ -307,7 +307,7 @@ def test_view_user_mapping_model_form_extra_attributes(attribute_name):
             {'themev2': {'footer': {'linkedin_url': 'https://linkedin.com'}}},
             'themev2. footer.linkedin_url',
             'Key path must not contain spaces.',
-            'key_path should not conatin any spaces.'
+            'key_path should not contain any spaces.'
         ),
         (
             {'themev2': {'footer': {}}},
@@ -336,31 +336,31 @@ def test_view_user_mapping_model_form_extra_attributes(attribute_name):
         (
             {'themev2': {'header': {}}},
             'themev2.header.',
-            'Key path must not contain empty parts. It shouldn not have leading, trailing, or double dots.',
+            'Key path must not contain empty parts. It should not have leading, trailing, or double dots.',
             'Leading, trailing, and double dots should not be in the path.'
         ),
         (
             {'themev2': {'header': {}}},
             '.themev2.header',
-            'Key path must not contain empty parts. It shouldn not have leading, trailing, or double dots.',
+            'Key path must not contain empty parts. It should not have leading, trailing, or double dots.',
             'Leading, trailing, and double dots should not be in the path.'
         ),
         (
             {'themev2': {'header': {}}},
             'themev2..header',
-            'Key path must not contain empty parts. It shouldn not have leading, trailing, or double dots.',
+            'Key path must not contain empty parts. It should not have leading, trailing, or double dots.',
             'Leading, trailing, and double dots should not be in the path.'
         ),
         (
             {'themev2': {'whatever': {}}},
             None,
-            'Key path is required.',
+            'This field is required.',
             'Key path is required. It cannot be None or empty.'
         ),
     ]
 )
 @patch('futurex_openedx_extensions.helpers.admin.TenantConfig.objects.get')
-def test_config_access_control_form_clean_path(mock_get, default_config, input_path, expected_error, usecase):
+def test_validate_path(mock_get, default_config, input_path, expected_error, usecase):
     """Test clean_path validation with various path inputs and descriptive use cases."""
     mock_get.return_value = Mock(lms_configs=default_config)
     form_data = {
@@ -370,13 +370,70 @@ def test_config_access_control_form_clean_path(mock_get, default_config, input_p
         'key_type': 'string'
     }
     form = ConfigAccessControlForm(data=form_data)
+    form.is_valid()
 
     if expected_error:
-        with pytest.raises(ValidationError) as exc_info:
-            form.clean_path()
-        assert str(exc_info.value) == f"[\'{expected_error}\']", usecase
+        assert expected_error in form.errors.get('path', []), usecase
     else:
-        assert form.is_valid(), usecase
+        assert form.errors == {}, usecase
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'path, mirror_path, extra_mirror_path, expected_error_field, usecase',
+    [
+        ('a.b.c', 'a.b.c', None, 'mirror_path', 'invalid: mirror_path is exactly same as path'),
+        ('a.b.c', 'a.b', None, 'mirror_path', 'invalid: mirror_path is a prefix (ancestor) of path'),
+        ('a.b.c', 'a', None, 'mirror_path', 'invalid: mirror_path is a prefix (ancestor) of path'),
+        ('a.b', 'a.b.c', None, 'mirror_path', 'invalid: mirror_path is a descendant of path'),
+        ('a.b.c', None, 'a.b.c.d', 'extra_mirror_path', 'invalid: extra_mirror_path is a descendant of path'),
+        ('a.b', None, 'a', 'extra_mirror_path', 'invalid: extra_mirror_path is a prefix (ancestor) of path'),
+        ('a.b.c', None, 'a.z', None, 'valid: extra_mirror_path is unrelated to path'),
+        ('a.b.c', None, 'a.c', None, 'valid: extra_mirror_path is unrelated to path'),
+        ('a.b.c', None, 'a.b.x', None, 'valid: extra_mirror_path is unrelated to path'),
+    ]
+)
+@patch('futurex_openedx_extensions.helpers.admin.TenantConfig.objects.get')
+def test_config_access_control_path_overlap(
+    mock_get, path, mirror_path, extra_mirror_path, expected_error_field, usecase
+):  # pylint: disable=too-many-arguments
+    """
+    Tests overlapping logic in ConfigAccessControlForm.
+
+    Validates that `mirror_path` and `extra_mirror_path` do not overlap with `path` in ways that would
+    violate configuration structure. Covers:
+      - Exact match
+      - Prefix (ancestor/descendant)
+      - Unrelated (valid)
+    """
+    mock_get.return_value.lms_configs = {
+        'a': {
+            'b': {
+                'c': {
+                    'd': 'some_value'
+                },
+                'x': 'value'
+            },
+            'z': 'value',
+            'c': 'value'
+        }
+    }
+
+    data = {'path': path, 'key_name': 'something', 'key_type': 'dict'}
+    if mirror_path is not None:
+        data['mirror_path'] = mirror_path
+    if extra_mirror_path is not None:
+        data['extra_mirror_path'] = extra_mirror_path
+
+    form = ConfigAccessControlForm(data=data)
+    is_valid = form.is_valid()
+
+    if expected_error_field:
+        assert not is_valid, f'Expected form to be invalid for: {usecase}'
+        assert expected_error_field in form.errors, f'Expected error in: {expected_error_field} for: {usecase}'
+        assert 'should not overlap' in form.errors[expected_error_field][0]
+    else:
+        assert is_valid, f'Expected form to be valid for: {usecase}'
 
 
 @pytest.mark.django_db
@@ -384,5 +441,19 @@ def test_config_access_control_form_clean_path_default_config_not_exist():
     """Test clean_path validation when default config does not exist."""
     form = ConfigAccessControlForm(data={'path': 'does.not.matter', 'key_name': 'dummy'})
     with pytest.raises(ValidationError) as exc_info:
-        form.clean_path()
+        form.full_clean()
     assert str(exc_info.value) == "[\'Unable to update path as default TenantConfig not found.\']"
+
+
+def test_validate_path_raises_value_error_if_default_config_none():
+    """
+    Ensure that validate_path raises a ValueError if default_config is not set.
+
+    This simulates a scenario where full_clean was not called successfully
+    and default_config remains None.
+    """
+    form = ConfigAccessControlForm(data={'path': 'a.b.c'})
+    form.default_config = None
+
+    with pytest.raises(ValueError, match='default_config must be set before using it.'):
+        form.validate_path('a.b.c')

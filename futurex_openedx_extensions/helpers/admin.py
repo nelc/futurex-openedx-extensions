@@ -323,37 +323,70 @@ class DataExportTaskAdmin(admin.ModelAdmin):
 
 
 class ConfigAccessControlForm(forms.ModelForm):
-    """Admin class of ConfigAccessControl model"""
+    """Admin class for the ConfigAccessControl model, providing validation for path-related fields."""
 
     class Meta:
         model = ConfigAccessControl
         fields = '__all__'
 
-    def clean_path(self) -> str:
-        """Validates path with default tenant config."""
-        key_path = self.data['path']
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.default_config = None
 
-        if not key_path:
-            raise forms.ValidationError('Key path is required.')
+    @staticmethod
+    def is_overlap(main_path: str, other_path: str) -> bool:
+        """
+        Checks if the `other_path` overlaps with the `main_path`. Overlap occurs if:
+        1. `other_path` is an exact match of `main_path`.
+        - Example: `main_path = 'a.b.c'`, `other_path = 'a.b.c'` → Overlap (exact match).
+        2. `other_path` is a prefix of `main_path` (i.e., `main_path` is a descendant of `other_path`).
+        - Example: `main_path = 'a.b.c'`, `other_path = 'a.b'` → Overlap (main_path is a descendant of other_path).
+        3. `main_path` is a prefix of `other_path` (i.e., `main_path` is an ancestor of `other_path`).
+        - Example: `main_path = 'a.b'`, `other_path = 'a.b.c'` → Overlap (main_path is an ancestor of other_path).
 
+        :param main_path: The primary path to compare against.
+        :type main_path: str
+        :param other_path: The other path that may overlap with `main_path`.
+        :type other_path: str
+        :return: True if the paths overlap, otherwise False.
+        :rtype: bool
+        """
+        main_parts = main_path.split('.')
+        other_parts = other_path.split('.')
+
+        return (
+            other_parts == main_parts or
+            other_parts[:len(main_parts)] == main_parts or
+            main_parts[:len(other_parts)] == other_parts
+        )
+
+    def validate_path(self, key_path: str) -> None:
+        """
+        Validates the provided path by checking for common issues like invalid characters, spaces,
+        empty parts, and ensuring that it exists within the default configuration.
+
+        :param key_path: The path to validate.
+        :type key_path: str
+        :raises forms.ValidationError: If the path contains spaces, empty parts, invalid characters,
+                                       or if it doesn't exist in the default configuration.
+        :return: None
+        """
         if ' ' in key_path:
             raise forms.ValidationError('Key path must not contain spaces.')
-
-        try:
-            default_config = TenantConfig.objects.get(route__domain=settings.FX_DEFAULT_TENANT_SITE).lms_configs
-        except TenantConfig.DoesNotExist as exc:
-            raise forms.ValidationError('Unable to update path as default TenantConfig not found.') from exc
 
         path_parts = key_path.split('.')
         if any(not part for part in path_parts):
             raise forms.ValidationError(
-                'Key path must not contain empty parts. It shouldn not have leading, trailing, or double dots.'
+                'Key path must not contain empty parts. It should not have leading, trailing, or double dots.'
             )
         invalid_chars_pattern = re.compile(r'[^a-zA-Z0-9_]')
         if any(invalid_chars_pattern.search(part) for part in path_parts):
             raise forms.ValidationError('Key path parts must include only alphanumeric characters and underscores.')
 
-        data_pointer = default_config
+        if self.default_config is None:
+            raise ValueError('default_config must be set before using it.')
+
+        data_pointer = self.default_config
         found_path = []
         for part in path_parts:
             try:
@@ -369,7 +402,66 @@ class ConfigAccessControlForm(forms.ModelForm):
                 raise forms.ValidationError(
                     f'Invalid path: "{part}" does not exist in the default config.'
                 ) from exc
-        return key_path
+
+    def full_clean(self) -> None:
+        """
+        Fetches the default tenant configuration and prepares the form for validation.
+
+        :raises forms.ValidationError: If the default TenantConfig is not found.
+        :return: None
+        """
+        try:
+            self.default_config = TenantConfig.objects.get(
+                route__domain=settings.FX_DEFAULT_TENANT_SITE
+            ).lms_configs
+        except TenantConfig.DoesNotExist as exc:
+            raise forms.ValidationError('Unable to update path as default TenantConfig not found.') from exc
+        super().full_clean()
+
+    def clean(self) -> dict:
+        """
+        Validates the provided paths: 'path', 'mirror_path', and 'extra_mirror_path' against the default configuration.
+        Ensures that there are no overlaps between the paths, and applies the path validation logic for each.
+
+        :param cleaned_data: The form's cleaned data after basic validation.
+        :type cleaned_data: dict
+        :return: The cleaned data after applying all path validation logic.
+        :rtype: dict
+        :raises forms.ValidationError: If any of the paths are invalid or overlap.
+        """
+        cleaned_data = super().clean()
+
+        if not cleaned_data.get('path'):
+            return cleaned_data
+
+        keys_to_check = {'path': cleaned_data['path']}
+
+        if cleaned_data.get('mirror_path'):
+            keys_to_check['mirror_path'] = cleaned_data['mirror_path']
+        if cleaned_data.get('extra_mirror_path'):
+            keys_to_check['extra_mirror_path'] = cleaned_data['extra_mirror_path']
+
+        is_first_iter_done = False
+        for path_field_name, path_field_value in keys_to_check.items():
+            try:
+                self.validate_path(path_field_value)
+            except forms.ValidationError as exc:
+                self.add_error(path_field_name, exc.message)
+
+            if not is_first_iter_done:
+                is_first_iter_done = True
+                continue
+
+            if self.is_overlap(keys_to_check['path'], path_field_value):
+                self.add_error(
+                    path_field_name,
+                    (
+                        f'"{path_field_name}" should not overlap with "path". '
+                        f'Got: "{keys_to_check["path"]}" and "{path_field_value}"'
+                    )
+                )
+
+        return cleaned_data
 
 
 class ConfigAccessControlAdmin(admin.ModelAdmin):

@@ -1359,7 +1359,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 
             update_draft_tenant_config(
                 tenant_id=int(tenant_id),
-                key_path=key_access_info.path,
+                key_access_info=key_access_info,
                 current_value=data['current_value'],
                 new_value=new_value,
                 reset=reset,
