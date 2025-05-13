@@ -1,6 +1,8 @@
 """Courses details collectors"""
 from __future__ import annotations
 
+from typing import List
+
 from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
 from django.contrib.auth import get_user_model
@@ -30,6 +32,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_base_queryset_courses,
+    get_course_search_queryset,
     get_one_user_queryset,
     get_search_query,
     update_removable_annotations,
@@ -240,4 +243,54 @@ def get_learner_courses_info_queryset(
 
     update_removable_annotations(queryset, removable=['related_user_id', 'enrollment_date', 'last_activity'])
 
+    return queryset
+
+
+def get_courses_feedback_queryset(  # pylint: disable=too-many-arguments
+    fx_permission_info: dict,
+    course_ids: List[str] | None = None,
+    public_only: bool = False,
+    recommended_only: bool = False,
+    feedback_search: str | None = None,
+    rating_content_filter: List[int] | None = None,
+    rating_instructors_filter: List[int] | None = None,
+) -> QuerySet:
+    """
+    Returns a filtered queryset of FeedbackCourse based on provided criteria.
+
+    :param fx_permission_info: Dictionary containing tenant or user permission info used to filter accessible courses.
+    :param course_ids: Optional list of course ID strings to filter feedback by specific courses.
+    :param public_only: If True, only include feedback marked as public.
+    :param recommended_only: If True, only include feedback marked as recommended.
+    :param feedback_search: Optional string to search within the feedback text (case-insensitive, partial match).
+    :param rating_content_filter: Optional list of integers (1–5) to filter by content rating values.
+    :param rating_instructors_filter: Optional list of integers (1–5) to filter by instructor rating values.
+    :return: A Django QuerySet of FeedbackCourse objects matching the specified filters.
+    """
+    course_qs = get_course_search_queryset(
+        fx_permission_info=fx_permission_info,
+        search_text=None,
+        course_ids=course_ids,
+    )
+
+    queryset = FeedbackCourse.objects.filter(
+        course_id__in=Subquery(course_qs.values('id'))
+    )
+
+    if public_only:
+        queryset = queryset.filter(public=True)
+
+    if recommended_only:
+        queryset = queryset.filter(recommended=True)
+
+    if rating_content_filter:
+        queryset = queryset.filter(rating_content__in=rating_content_filter)
+
+    if rating_instructors_filter:
+        queryset = queryset.filter(rating_instructors__in=rating_instructors_filter)
+
+    if feedback_search := (feedback_search or '').strip():
+        queryset = queryset.filter(feedback__icontains=feedback_search)
+
+    queryset = queryset.select_related('author__profile')
     return queryset
