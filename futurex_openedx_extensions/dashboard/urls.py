@@ -26,6 +26,8 @@ urlpatterns = [
     re_path(r'^api/fx/accessible/v2/info/$', views.AccessibleTenantsInfoViewV2.as_view(), name='accessible-info-v2'),
     re_path(r'^api/fx/courses/v1/courses/$', views.CoursesView.as_view(), name='courses'),
     re_path(r'^api/fx/libraries/v1/libraries/$', views.LibraryView.as_view(), name='libraries'),
+    re_path(r'^api/fx/courses/v1/feedback/$', views.CoursesFeedbackView.as_view(), name='courses-feedback'),
+
     re_path(r'^api/fx/export/v1/', include(export_router.urls)),
     re_path(r'^api/fx/learners/v1/learners/$', views.LearnersView.as_view(), name='learners'),
     re_path(

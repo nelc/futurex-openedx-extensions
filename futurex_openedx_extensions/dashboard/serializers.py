@@ -13,6 +13,7 @@ from common.djangoapps.student.roles import CourseInstructorRole, CourseStaffRol
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
+from eox_nelp.course_experience.models import FeedbackCourse
 from eox_tenant.models import TenantConfig
 from lms.djangoapps.courseware.courses import get_course_blocks_completion_summary
 from lms.djangoapps.grades.api import CourseGradeFactory
@@ -53,7 +54,11 @@ from futurex_openedx_extensions.helpers.converters import (
 )
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_csv import get_exported_file_url
-from futurex_openedx_extensions.helpers.extractors import import_from_path
+from futurex_openedx_extensions.helpers.extractors import (
+    extract_arabic_name_from_user,
+    extract_full_name_from_user,
+    import_from_path,
+)
 from futurex_openedx_extensions.helpers.models import DataExportTask, TenantAsset
 from futurex_openedx_extensions.helpers.roles import (
     RoleType,
@@ -141,15 +146,6 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
             'last_login',
         ]
 
-    @staticmethod
-    def _is_english(text: str) -> bool:
-        """
-        Checks if a string consists only of characters in the ASCII range (a-z, A-Z, 0-9, and common symbols).
-
-        This method is very basic and may miss valid English text with non-ASCII characters.
-        """
-        return all(ord(char) < 128 for char in text)
-
     def _get_user(self, obj: Any = None) -> get_user_model | None:  # pylint: disable=no-self-use
         """
         Retrieve the associated user for the given object.
@@ -159,55 +155,6 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
         related to the object (e.g., `obj.user`, `obj.profile.user`, etc.).
         """
         return obj
-
-    def _get_name(self, obj: Any, alternative: bool = False) -> str:
-        """
-        Calculate the full name and alternative full name. We have two issues in the data:
-        1. The first and last names in auth.user contain many records with identical values (redundant data).
-        2. The name field in the profile sometimes contains data while the first and last names are empty.
-
-        :param obj: The user object.
-        :type obj: Any
-        :param alternative: Whether to return the alternative full name.
-        :type alternative: bool
-        :return: The full name or alternative full name.
-        """
-        first_name = self._get_user(obj).first_name.strip()  # type: ignore
-        last_name = self._get_user(obj).last_name.strip()  # type: ignore
-
-        full_name = first_name or last_name
-        if first_name and last_name and not (first_name == last_name and ' ' in first_name):
-            full_name = ' '.join(filter(None, (first_name, last_name)))
-
-        profile_name = self._get_profile_field(obj, 'name')
-        alt_name = profile_name.strip() if profile_name else ''
-
-        if not full_name:
-            full_name, alt_name = alt_name, ''
-
-        if alt_name and not self._is_english(alt_name):
-            full_name, alt_name = alt_name, full_name
-
-        return alt_name if alternative else full_name
-
-    def _get_arabic_name(self, obj: Any) -> str:
-        """
-        Get arabic name of user
-
-        :param obj: The user object.
-        :type obj: Any
-        :return: The arabic name of user.
-        """
-        arabic_name = (self._get_extra_field(obj, 'arabic_name') or '').strip()
-        if arabic_name:
-            return arabic_name
-
-        arabic_first_name = self._get_extra_field(obj, 'arabic_first_name')
-        arabic_last_name = self._get_extra_field(obj, 'arabic_last_name')
-        arabic_full_name = arabic_first_name or arabic_last_name
-        if arabic_first_name and arabic_last_name and not arabic_first_name == arabic_last_name:
-            arabic_full_name = ' '.join(filter(None, (arabic_first_name, arabic_last_name)))
-        return (arabic_full_name or '').strip()
 
     def _get_profile_field(self: Any, obj: get_user_model, field_name: str) -> Any:
         """Get the profile field value."""
@@ -245,11 +192,14 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
 
     def get_full_name(self, obj: get_user_model) -> Any:
         """Return full name."""
-        return self._get_name(obj)
+        return extract_full_name_from_user(self._get_user(obj))
 
     def get_alternative_full_name(self, obj: get_user_model) -> Any:
         """Return alternative full name."""
-        return self._get_arabic_name(obj) or self._get_name(obj, alternative=True)
+        return (
+            extract_arabic_name_from_user(self._get_user(obj)) or
+            extract_full_name_from_user(self._get_user(obj), alternative=True)
+        )
 
     def get_mobile_no(self, obj: get_user_model) -> Any:
         """Return mobile number."""
@@ -1079,6 +1029,50 @@ class LibrarySerializer(serializers.Serializer):
         instance.org = instance.location.library_key.org
         rep = super().to_representation(instance)
         return rep
+
+
+class CoursesFeedbackSerializer(serializers.ModelSerializer):
+    """Serializer for courses feedback."""
+    course_id = serializers.SerializerMethodField()
+    course_name = serializers.SerializerMethodField()
+    author_username = serializers.SerializerMethodField()
+    author_full_name = serializers.SerializerMethodField()
+    author_altternative_full_name = serializers.SerializerMethodField()
+    author_email = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FeedbackCourse
+        fields = (
+            'id', 'course_id', 'course_name', 'author_username', 'author_full_name', 'author_altternative_full_name',
+            'author_email', 'rating_content', 'feedback', 'public', 'rating_instructors', 'recommended'
+        )
+
+    def get_course_id(self, obj: FeedbackCourse) -> str:  # pylint: disable=no-self-use
+        """Get course id"""
+        return str(obj.course_id.id)
+
+    def get_course_name(self, obj: FeedbackCourse) -> str:  # pylint: disable=no-self-use
+        """Get course id"""
+        return obj.course_id.display_name
+
+    def get_author_username(self, obj: FeedbackCourse) -> str:  # pylint: disable=no-self-use
+        """Get course id"""
+        return str(obj.author.username)
+
+    def get_author_email(self, obj: FeedbackCourse) -> str:  # pylint: disable=no-self-use
+        """Get course id"""
+        return str(obj.author.email)
+
+    def get_author_full_name(self, obj: FeedbackCourse) -> str:  # pylint: disable=no-self-use
+        """Return full name."""
+        return extract_full_name_from_user(obj.author)
+
+    def get_author_altternative_full_name(self, obj: FeedbackCourse) -> str:  # pylint: disable=no-self-use
+        """Return alternative full name."""
+        return (
+            extract_arabic_name_from_user(obj.author) or
+            extract_full_name_from_user(obj.author, alternative=True)
+        )
 
 
 class AggregatedCountsQuerySettingsSerializer(ReadOnlySerializer):

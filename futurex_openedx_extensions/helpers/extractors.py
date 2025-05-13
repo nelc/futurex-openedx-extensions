@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from xmodule.modulestore.django import modulestore
 
@@ -542,3 +543,43 @@ def dot_separated_path_get_value(
         current = current[part]
 
     return True, current
+
+
+def extract_full_name_from_user(user: get_user_model, alternative: bool = False) -> str:
+    """Returns the user's full name or alternative name (if applicable)."""
+    first_name = (user.first_name or '').strip()
+    last_name = (user.last_name or '').strip()
+
+    full_name = first_name or last_name
+    if first_name and last_name and not (first_name == last_name and ' ' in first_name):
+        full_name = ' '.join(filter(None, (first_name, last_name)))
+
+    profile_name = getattr(user.profile, 'name', '') if hasattr(user, 'profile') and user.profile else ''
+    alt_name = profile_name.strip() if profile_name else ''
+
+    if not full_name:
+        full_name, alt_name = alt_name, ''
+
+    # Inline ASCII (English) check
+    if alt_name and not all(ord(char) < 128 for char in alt_name):
+        full_name, alt_name = alt_name, full_name
+
+    return alt_name if alternative else full_name
+
+
+def extract_arabic_name_from_user(user: get_user_model) -> str:
+    """Returns the Arabic name if available."""
+    extrainfo = getattr(user, 'extrainfo', None)
+    if not extrainfo:
+        return ''
+
+    arabic_name = getattr(extrainfo, 'arabic_name', '') or ''
+    if arabic_name:
+        return arabic_name.strip()
+
+    arabic_first = getattr(extrainfo, 'arabic_first_name', '') or ''
+    arabic_last = getattr(extrainfo, 'arabic_last_name', '') or ''
+    if arabic_first and arabic_last and arabic_first != arabic_last:
+        return f'{arabic_first.strip()} {arabic_last.strip()}'
+
+    return (arabic_first or arabic_last).strip()

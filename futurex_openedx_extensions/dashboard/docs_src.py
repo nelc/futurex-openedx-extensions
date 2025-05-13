@@ -631,6 +631,63 @@ docs_src = {
         ),
     },
 
+    'CoursesFeedbackView.get': {
+        'summary': 'Get the list of feedback of courses in the tenants',
+        'description': 'Get the list of feedbacks for accessible courses.',
+        'parameters': [
+            common_parameters['tenant_ids'],
+            query_parameter(
+                'search_text',
+                str,
+                'A search text to filter the results by. The search text will be matched against the feedback comment.',
+            ),
+            query_parameter(
+                'course_ids',
+                str,
+                'A comma-separated list of course IDs to filter the results by. If not provided, the system will '
+                'assume all courses that are accessible to the caller.',
+            ),
+            query_parameter(
+                'rating_instructors',
+                str,
+                'A comma-separated list of integers (in range 1 to 5), e.g., `2,3`, to filter the results by.',
+            ),
+            query_parameter(
+                'rating_content',
+                str,
+                'A comma-separated list of integers (in range 1 to 5), e.g., `2,3`, to filter the results by.',
+            ),
+            openapi.Parameter(
+                'public_only',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_INTEGER,
+                enum=[1, 0],
+                description=(
+                    'When set to `1`, returns only public feedbacks. Defaults to `0`. '
+                    'Any value other than `1` is treated as `0`.'
+                )
+            ),
+            openapi.Parameter(
+                'recommended_only',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_INTEGER,
+                enum=[1, 0],
+                description=(
+                    'When set to `1`, returns only feedbacks where the user recommended the course. Defaults to `0`. '
+                    'Any value other than `1` is treated as `0`.'
+                )
+            ),
+            common_parameters['download'],
+        ],
+        'responses': responses(
+            overrides={
+                200: serializers.CoursesFeedbackSerializer(read_only=True, required=False),
+            },
+        ),
+    },
+
     'DataExportManagementView.list': {
         'summary': 'Get the list of data export tasks for the caller',
         'description': 'Get the list of data export tasks for the caller.',

@@ -32,7 +32,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
-from futurex_openedx_extensions.dashboard.details.courses import get_courses_queryset, get_learner_courses_info_queryset
+from futurex_openedx_extensions.dashboard.details.courses import (
+    get_courses_feedback_queryset,
+    get_courses_queryset,
+    get_learner_courses_info_queryset,
+)
 from futurex_openedx_extensions.dashboard.details.learners import (
     get_learner_info_queryset,
     get_learners_by_course_queryset,
@@ -854,6 +858,64 @@ class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIV
         context['course_id'] = self.kwargs.get('course_id')
         context['omit_subsection_name'] = self.request.query_params.get('omit_subsection_name', '0')
         return context
+
+
+@docs('CoursesFeedbackView.get')
+class CoursesFeedbackView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
+    """View to get the list of courses feedbacks"""
+    authentication_classes = default_auth_classes
+    serializer_class = serializers.CoursesFeedbackSerializer
+    permission_classes = [FXHasTenantCourseAccess]
+    pagination_class = DefaultPagination
+    fx_view_name = 'courses_feedback'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = 'api/fx/courses/v1/feedback: Get the list of feedbacks'
+
+    def validate_rating_list(self, param_key: str) -> list[int] | None:
+        """
+        Validates that the input string from query parameters is a comma-separated list
+        of integers between 1 and 5. Returns the parsed list if valid.
+
+        :param param_key: The key in query params to validate (e.g. 'rating_content')
+        :return: List of integers if valid, or None if not provided
+        :raises: FXCodedException if validation fails
+        """
+        value = self.request.query_params.get(param_key)
+        if not value:
+            return None
+
+        try:
+            ratings = [int(r.strip()) for r in value.split(',')]
+        except ValueError as exc:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f"'{param_key}' must be a comma-separated list of valid integers."
+            ) from exc
+
+        if any(r < 1 or r > 5 for r in ratings):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f"Each value in '{param_key}' must be between 1 and 5."
+            )
+
+        return ratings
+
+    def get_queryset(self, *args: Any, **kwargs: Any) -> QuerySet:
+        """Get the list of course feedbacks"""
+        course_ids = self.request.query_params.get('course_ids', '')
+        course_ids_list = [
+            course.strip() for course in course_ids.split(',')
+        ] if course_ids else None
+
+        return get_courses_feedback_queryset(
+            fx_permission_info=self.request.fx_permission_info,
+            course_ids=course_ids_list,
+            public_only=self.request.query_params.get('public_only', '0') == '1',
+            recommended_only=self.request.query_params.get('recommended_only', '0') == '1',
+            feedback_search=self.request.query_params.get('search_text'),
+            rating_content_filter=self.validate_rating_list('rating_content'),
+            rating_instructors_filter=self.validate_rating_list('rating_instructors')
+        )
 
 
 @docs('LearnersEnrollmentView.get')
