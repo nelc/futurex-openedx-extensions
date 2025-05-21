@@ -582,6 +582,12 @@ class ConfigAccessControl(models.Model):
         max_length=20, choices=KEY_TYPE_CHOICES, default='string', help_text='Data type of the key'
     )
     path = models.CharField(max_length=500, help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url')
+    mirror_path = models.CharField(
+        max_length=500, null=True, blank=True, help_text='Dot-separated path, e.g., theme_v2.footer.profile_url'
+    )
+    extra_mirror_path = models.CharField(
+        max_length=500, null=True, blank=True, help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url'
+    )
     writable = models.BooleanField(default=False, help_text='Indicates if the field is writable')
 
     class Meta:

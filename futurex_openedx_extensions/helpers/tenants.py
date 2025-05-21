@@ -555,7 +555,7 @@ def delete_draft_tenant_config(tenant_id: int) -> None:
 
 def update_draft_tenant_config(
     tenant_id: int,
-    key_path: str,
+    key_access_info: ConfigAccessControl,
     current_value: Any,
     new_value: Any,
     reset: bool = False
@@ -576,7 +576,7 @@ def update_draft_tenant_config(
     :raises FXCodedException: If the tenant does not exist or update fails.
     """
     queryset = TenantConfig.objects.filter(id=tenant_id)
-    queryset = annotate_queryset_for_update_draft_config(queryset, key_path)
+    queryset = annotate_queryset_for_update_draft_config(queryset, key_access_info.path)
 
     condition = (
         Q(config_draft_exists=False, root_key_exists=False) |
@@ -587,7 +587,7 @@ def update_draft_tenant_config(
     fill_deleted_keys_with_none(current_value, new_value)
 
     updated = queryset.filter(condition).update(
-        lms_configs=apply_json_merge_for_update_draft_config(F('lms_configs'), key_path, new_value, reset)
+        lms_configs=apply_json_merge_for_update_draft_config(F('lms_configs'), key_access_info, new_value, reset)
     )
 
     if updated == 0:

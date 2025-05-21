@@ -2239,7 +2239,9 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
         tenant_id = 1
         tenant_config = TenantConfig.objects.get(id=tenant_id)
         assert tenant_config.lms_configs['platform_name'] == 's1 platform name'
-        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', writable=True)
+        key_acces_info = ConfigAccessControl.objects.create(
+            key_name='platform_name', path='platform_name', writable=True
+        )
         self.login_user(self.staff_user)
         self.url_args = [tenant_config.id]
 
@@ -2251,7 +2253,7 @@ class TestThemeConfigDraftView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
         mock_update_draft.assert_called_once_with(
             tenant_id=tenant_id,
-            key_path='platform_name',
+            key_access_info=key_acces_info,
             current_value='s1 platform name',
             new_value='s1 new name',
             reset=False,
