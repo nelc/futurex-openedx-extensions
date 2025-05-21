@@ -211,3 +211,15 @@ def test_invalidate_all_caches(mock_cache):  # pylint: disable=redefined-outer-n
     for name in all_cache_names:
         mock_delete.assert_any_call(name)
     assert mock_delete.call_count == len(all_cache_names)
+
+
+def test_skip_cache_option(mock_cache):  # pylint: disable=redefined-outer-name
+    """Test that the cache is not used when __skip_cache is True."""
+    mock_get, _, _, _ = mock_cache
+    mock_get.return_value = {'data': {'key': 'value-cached'}}
+
+    result = dummy_cached_func()
+    assert result == {'key': 'value-cached'}
+
+    result = dummy_cached_func(__skip_cache=True)
+    assert result == {'key': 'value'}
