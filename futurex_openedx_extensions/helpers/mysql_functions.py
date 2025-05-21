@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models import BooleanField, F, Func, JSONField, QuerySet, Value
 from django.db.models.functions import Cast
 
+from futurex_openedx_extensions.helpers.constants import CONFIG_DRAFT
 from futurex_openedx_extensions.helpers.converters import path_to_json
 
 
@@ -40,7 +41,7 @@ def annotate_queryset_for_update_draft_config(queryset: QuerySet, key_path: str)
     :param key_path: The key path to check in the JSON field.
     :return: Annotated queryset with JSON-related fields.
     """
-    config_draft_path = f'$.config_draft.{key_path}'
+    config_draft_path = f'$.{CONFIG_DRAFT}.{key_path}'
     root_path = f'$.{key_path}'
 
     return queryset.annotate(
@@ -65,7 +66,7 @@ def apply_json_merge_for_update_draft_config(existing_json: F, key_path: str, ne
     :param reset: Whether to reset the value to None.
     :return: A Func object performing the JSON_MERGE_PATCH operation.
     """
-    new_config = {'config_draft': path_to_json(key_path, None if reset else new_value)}
+    new_config = {CONFIG_DRAFT: path_to_json(key_path, None if reset else new_value)}
     return Func(
         Func(existing_json, Value('{}'), function='IFNULL'),
         Cast(Value(json.dumps(new_config)), JSONField()),
@@ -88,14 +89,14 @@ def apply_json_merge_for_publish_draft_config(queryset: QuerySet) -> int:
         queryset.update(
             lms_configs=Func(
                 F('lms_configs'),
-                Cast(Value(json.dumps(queryset[0].lms_configs.get('config_draft'))), JSONField()),
+                Cast(Value(json.dumps(queryset[0].lms_configs.get(CONFIG_DRAFT))), JSONField()),
                 function='JSON_MERGE_PATCH'
             )
         )
         updated = queryset.update(
             lms_configs=Func(
                 F('lms_configs'),
-                Value('$.config_draft'),
+                Value(f'$.{CONFIG_DRAFT}'),
                 Value('{}'),
                 function='JSON_SET'
             )

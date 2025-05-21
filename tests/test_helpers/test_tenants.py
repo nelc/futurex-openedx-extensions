@@ -25,6 +25,29 @@ def expected_exclusion():
     }
 
 
+@pytest.fixture
+def lms_configs_mock():
+    """Mock LMS configs."""
+    lms_configs = {
+        'key1': 'value1',
+        'key2': 'value2',
+        'key3': {
+            'key3_1': 'value3_1',
+            'key3_2': {
+                'key3_2_1': 'value3_2_1',
+            },
+        },
+        'key4': {
+            'key4_1': 'value4_1',
+            'key4_2': 'value4_2',
+        },
+        cs.CONFIG_DRAFT: {'key4': 'value4'},
+    }
+    with patch('futurex_openedx_extensions.helpers.tenants.TenantConfig.objects.get') as mock_lms_configs:
+        mock_lms_configs.return_value = Mock(lms_configs=lms_configs)
+        yield mock_lms_configs
+
+
 @pytest.mark.django_db
 def test_get_excluded_tenant_ids(
     base_data, expected_exclusion,
@@ -797,3 +820,52 @@ def test_get_config_access_control():
         'test_key2': 'test.path.2',
     }
     assert result == expected, f'Unexpected result: {result}'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('test_use_case, readable_keys, expected_result', [
+    (
+        'simple existing keys should return as requested',
+        {'control_key1': 'key1', 'control_key2': 'key4'},
+        {'key1': 'value1', 'key4': {'key4_1': 'value4_1', 'key4_2': 'value4_2'}},
+    ),
+    (
+        'non existing keys should be ignored',
+        {'control_key1': 'key1', 'control_keyX': 'keyX'},
+        {'key1': 'value1'},
+    ),
+    (
+        'repeating keys is fine',
+        {'control_key1': 'key1', 'control_key_repeat': 'key1'},
+        {'key1': 'value1'},
+    ),
+    (
+        'only root keys are considered',
+        {'control_key4_1': 'key4.key4_1'},
+        {'key4': {'key4_1': 'value4_1', 'key4_2': 'value4_2'}},
+    ),
+    (
+        'only root keys are considered in nested request',
+        {'control_key4': 'key4', 'control_key4_1': 'key4.key4_1'},
+        {'key4': {'key4_1': 'value4_1', 'key4_2': 'value4_2'}},
+    ),
+])
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control')
+def test_get_tenant_readable_lms_config_success(
+    mock_access_control, lms_configs_mock, test_use_case, readable_keys, expected_result,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that get_tenant_readable_lms_config function."""
+    expected_result[cs.CONFIG_DRAFT] = {'key4': 'value4'}
+    mock_access_control.return_value = readable_keys
+    result = tenants.get_tenant_readable_lms_config(1)
+
+    assert result == expected_result, f'Unexpected result for use-case ({test_use_case}): {result}'
+
+
+@pytest.mark.django_db
+def test_get_tenant_readable_lms_config_tenant_not_found():
+    """Verify that get_tenant_readable_lms_config function raises exception when tenant is not found."""
+    with pytest.raises(FXCodedException) as exc_info:
+        tenants.get_tenant_readable_lms_config(999)
+    assert exc_info.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
+    assert str(exc_info.value) == 'Unable to find tenant with id: (999)'

@@ -418,7 +418,7 @@ def get_tenant_config_value(
     """
     Retrieves a configuration value based on a comma-separated path.
     - If `published_only` is True, fetches only from the main config.
-    - If `draft_only` is True, fetches only from `config_draft`.
+    - If `draft_only` is True, fetches only from CONFIG_DRAFT root key.
     - By default, prioritizes draft values but falls back to published values.
 
     :param config: The configuration dictionary.
@@ -445,11 +445,64 @@ def get_tenant_config_value(
             result = get_nested_value(config, path)
 
         case ConfigPublishStatus.ONLY_DRAFT:
-            result = get_nested_value(config.get('config_draft', {}), path)
+            result = get_nested_value(config.get(cs.CONFIG_DRAFT, {}), path)
 
         case _:
-            draft_path_exist, draft_value = get_nested_value(config.get('config_draft', {}), path)
+            draft_path_exist, draft_value = get_nested_value(config.get(cs.CONFIG_DRAFT, {}), path)
             result = (draft_path_exist, draft_value) if draft_path_exist else get_nested_value(config, path)
+
+    return result
+
+
+def cache_name_tenant_readable_lms_configs(tenant_id: int) -> str:
+    """
+    Get the cache name for the tenants' readable LMS configs.
+
+    :param tenant_id: The tenant ID
+    :type tenant_id: int
+    :return: The cache name
+    :rtype: str
+    """
+    return f'{cs.CACHE_NAME_TENANT_LMS_CONFIG}_{tenant_id}'
+
+
+@cache_dict(
+    timeout='FX_CACHE_TIMEOUT_CONFIG_ACCESS_CONTROL',
+    key_generator_or_name=cache_name_tenant_readable_lms_configs,
+)
+def get_tenant_readable_lms_config(tenant_id: int) -> dict:
+    """
+    Retrieve the LMS configuration for a given tenant ID. It only includes keys that are defined in the
+    ConfigAccessControl model to avoid loading too much data.
+
+    Note: the function will not return the CONFIG_DRAFT key. Make sure not to use it when draft values are needed.
+
+    :param tenant_id: The ID of the tenant.
+    :type tenant_id: int
+    :return: The LMS configuration dictionary.
+    :rtype: dict
+    :raises FXCodedException: If the tenant is not found.
+    """
+    try:
+        tenant = TenantConfig.objects.get(id=tenant_id)
+    except TenantConfig.DoesNotExist as exc:
+        raise FXCodedException(
+            code=FXExceptionCodes.TENANT_NOT_FOUND,
+            message=f'Unable to find tenant with id: ({tenant_id})'
+        ) from exc
+
+    readable_root_keys = [cs.CONFIG_DRAFT]
+    for key_path in get_config_access_control().values():
+        root_key = key_path.split('.')[0]
+        if root_key not in readable_root_keys:
+            readable_root_keys.append(root_key)
+
+    result = {}
+    lms_configs = tenant.lms_configs
+    for root_key in readable_root_keys:
+        value = lms_configs.get(root_key)
+        if value is not None:
+            result[root_key] = value
 
     return result
 
@@ -550,7 +603,7 @@ def delete_draft_tenant_config(tenant_id: int) -> None:
     :type tenant_id: int
     """
     tenant = TenantConfig.objects.get(id=tenant_id)
-    tenant.lms_configs['config_draft'] = {}
+    tenant.lms_configs[cs.CONFIG_DRAFT] = {}
     tenant.save()
 
 
@@ -562,7 +615,7 @@ def update_draft_tenant_config(
     reset: bool = False
 ) -> None:
     """
-    Updates 'config_draft.<key_path>' inside the JSON field 'lms_configs' in TenantConfig.
+    Updates '<<CONFIG_DRAFT>>.<key_path>' inside the JSON field 'lms_configs' in TenantConfig.
 
     :param tenant_id: ID of the tenant.
     :type tenant_id: int
