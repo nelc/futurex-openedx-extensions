@@ -16,7 +16,12 @@ log = logging.getLogger(__name__)
 
 
 def cache_dict(timeout: int | str, key_generator_or_name: str | Callable) -> Callable:
-    """Cache the dictionary result returned by the function"""
+    """
+    Cache the dictionary result returned by the function
+
+    The caller can pass `___skip_cache` as a keyword argument to skip the cache. This will invoke a fresh call
+    to the function and return the result without caching it nor invalidating the currently cached value.
+    """
     def decorator(func: Callable) -> Callable:
         """Decorator definition"""
         @functools.wraps(func)
@@ -24,6 +29,7 @@ def cache_dict(timeout: int | str, key_generator_or_name: str | Callable) -> Cal
             """Wrapped function"""
             cache_key = None
             timeout_seconds = None
+            skip_cache = kwargs.pop('__skip_cache', False)
             try:
                 if isinstance(timeout, str):
                     timeout_seconds = getattr(settings, timeout, None)
@@ -45,6 +51,9 @@ def cache_dict(timeout: int | str, key_generator_or_name: str | Callable) -> Cal
 
             except Exception as exc:
                 log.exception('cache_dict: error generating cache key: %s', exc)
+
+            if skip_cache:
+                return func(*args, **kwargs)
 
             result = cache.get(cache_key) if cache_key else None
             if result is not None:
