@@ -475,18 +475,19 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Tr
     publish_status = ConfigPublishStatus.ONLY_PUBLISHED if published_only else ConfigPublishStatus.DRAFT_THEN_PUBLISHED
 
     details: dict = {'values': {}, 'not_permitted': [], 'bad_keys': []}
+    config_access_control = get_config_access_control()
     for key in set(keys):
         key = key.strip()
-        try:
-            key_config = ConfigAccessControl.objects.get(key_name=key)
-            _, publish_value = get_tenant_config_value(
-                tenant.lms_configs,
-                key_config.path,
-                publish_status=publish_status,
-            )
-            details['values'][key] = publish_value
-        except ConfigAccessControl.DoesNotExist:
+        key_path = config_access_control.get(key)
+        if not key_path:
             details['bad_keys'].append(key)
+            continue
+        _, publish_value = get_tenant_config_value(
+            tenant.lms_configs,
+            key_path,
+            publish_status=publish_status,
+        )
+        details['values'][key] = publish_value
     return details
 
 
@@ -528,13 +529,13 @@ def get_draft_tenant_config(tenant_id: int) -> dict:
     """
     tenant = TenantConfig.objects.get(id=tenant_id)
     updated_fields = {}
-    for field_config in ConfigAccessControl.objects.all():
-        _, published_value = get_tenant_config_value(tenant.lms_configs, field_config.path)
+    for key_name, key_path in get_config_access_control().items():
+        _, published_value = get_tenant_config_value(tenant.lms_configs, key_path)
         draft_path_exist, draft_value = get_tenant_config_value(
-            tenant.lms_configs, field_config.path, publish_status=ConfigPublishStatus.ONLY_DRAFT,
+            tenant.lms_configs, key_path, publish_status=ConfigPublishStatus.ONLY_DRAFT,
         )
         if draft_path_exist:
-            updated_fields[field_config.key_name] = {
+            updated_fields[key_name] = {
                 'published_value': published_value,
                 'draft_value': draft_value,
             }
@@ -646,3 +647,13 @@ def get_accessible_config_keys(
         queryset = queryset.filter(writable=writable_fields_filter)
 
     return list(queryset.values_list('key_name', flat=True))
+
+
+@cache_dict(timeout='FX_CACHE_TIMEOUT_CONFIG_ACCESS_CONTROL', key_generator_or_name=cs.CACHE_NAME_CONFIG_ACCESS_CONTROL)
+def get_config_access_control() -> Dict[str, str]:
+    """
+    Get values of the config access control objects.
+
+    :return: Dictionary of config access control objects
+    """
+    return {item['key_name']: item['path'] for item in ConfigAccessControl.objects.all().values('key_name', 'path')}

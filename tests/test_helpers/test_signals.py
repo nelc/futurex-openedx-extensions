@@ -5,8 +5,8 @@ import pytest
 from common.djangoapps.student.models import CourseAccessRole
 from django.core.cache import cache
 
-from futurex_openedx_extensions.helpers.constants import CACHE_NAME_ALL_VIEW_ROLES
-from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
+from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, ViewAllowedRoles
 from futurex_openedx_extensions.helpers.roles import cache_name_user_course_access_roles
 
 
@@ -48,13 +48,13 @@ def test_refresh_view_allowed_roles_cache_on_delete(base_data, cache_testing):  
 @pytest.mark.django_db
 def test_refresh_view_allowed_roles_cache_on_save(base_data, cache_testing):  # pylint: disable=unused-argument
     """Verify that the cache is deleted when a ViewAllowedRoles record is saved"""
-    cache.set(CACHE_NAME_ALL_VIEW_ROLES, 'test')
+    cache.set(cs.CACHE_NAME_ALL_VIEW_ROLES, 'test')
     dummy = ViewAllowedRoles.objects.create(view_name='test', allowed_role='test')
-    assert cache.get(CACHE_NAME_ALL_VIEW_ROLES) is None
+    assert cache.get(cs.CACHE_NAME_ALL_VIEW_ROLES) is None
 
-    cache.set(CACHE_NAME_ALL_VIEW_ROLES, 'test')
+    cache.set(cs.CACHE_NAME_ALL_VIEW_ROLES, 'test')
     dummy.save()
-    assert cache.get(CACHE_NAME_ALL_VIEW_ROLES) is None
+    assert cache.get(cs.CACHE_NAME_ALL_VIEW_ROLES) is None
 
 
 @patch('futurex_openedx_extensions.helpers.roles.is_view_exist', return_value=True)
@@ -62,6 +62,27 @@ def test_refresh_view_allowed_roles_cache_on_save(base_data, cache_testing):  # 
 def test_refresh_course_access_role_cache_on_delete(base_data, cache_testing):  # pylint: disable=unused-argument
     """Verify that the cache is deleted when a ViewAllowedRoles record is deleted"""
     ViewAllowedRoles.objects.create(view_name='test', allowed_role='test')
-    cache.set(CACHE_NAME_ALL_VIEW_ROLES, 'test')
+    cache.set(cs.CACHE_NAME_ALL_VIEW_ROLES, 'test')
     ViewAllowedRoles.objects.first().delete()
-    assert cache.get(CACHE_NAME_ALL_VIEW_ROLES) is None
+    assert cache.get(cs.CACHE_NAME_ALL_VIEW_ROLES) is None
+
+
+@pytest.mark.django_db
+def test_refresh_config_access_control_cache_on_save(base_data, cache_testing):  # pylint: disable=unused-argument
+    """Verify that the cache is deleted when a ConfigAccessControl record is saved"""
+    cache.set(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL, 'test')
+    dummy = ConfigAccessControl.objects.create(key_name='k', path='p')
+    assert cache.get(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL) is None
+
+    cache.set(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL, 'test')
+    dummy.save()
+    assert cache.get(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL) is None
+
+
+@pytest.mark.django_db
+def test_refresh_config_access_control_cache_on_delete(base_data, cache_testing):  # pylint: disable=unused-argument
+    """Verify that the cache is deleted when a ConfigAccessControl record is deleted"""
+    dummy = ConfigAccessControl.objects.create(key_name='k', path='p')
+    cache.set(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL, 'test')
+    dummy.delete()
+    assert cache.get(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL) is None

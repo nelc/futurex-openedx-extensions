@@ -782,3 +782,18 @@ def test_get_config_current_request(
         keys=['testing_key'],
         published_only=expected_published_only,
     )
+
+
+@pytest.mark.django_db
+def test_get_config_access_control():
+    """Verify get_config_access_control function."""
+    assert tenants.get_config_access_control() == {}
+
+    ConfigAccessControl.objects.create(key_name='test_key1', path='test.path.1')
+    ConfigAccessControl.objects.create(key_name='test_key2', path='test.path.2')
+    result = tenants.get_config_access_control()
+    expected = {
+        'test_key1': 'test.path.1',
+        'test_key2': 'test.path.2',
+    }
+    assert result == expected, f'Unexpected result: {result}'
