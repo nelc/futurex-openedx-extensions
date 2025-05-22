@@ -669,6 +669,16 @@ def test_get_tenant_config_for_non_exist_tenant():
     assert str(exc_info.value) == 'Unable to find tenant with id: (100000)'
 
 
+@patch('futurex_openedx_extensions.helpers.tenants.get_tenant_readable_lms_config')
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control')
+def test_get_tenant_config_depends_on_published_only(_, mocked_get_lms_config):
+    """Verify that get_tenant_config loads lms_configs correctly, according to the published_only argument."""
+    for published_only in [True, False]:
+        tenants.get_tenant_config(1, ['some_key'], published_only=published_only)
+        mocked_get_lms_config.assert_called_with(1, __skip_cache=not published_only)
+        mocked_get_lms_config.reset_mock()
+
+
 @pytest.mark.django_db
 def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
     """Test get_draft_tenant_config"""
@@ -731,6 +741,23 @@ def test_delete_draft_tenant_config():
     tenants.delete_draft_tenant_config(tenant_id=1)
     tenant.refresh_from_db()
     assert tenant.lms_configs['config_draft'] == {}
+
+
+@pytest.mark.django_db
+def test_delete_draft_tenant_clears_related_cache(base_data, cache_testing):  # pylint: disable=unused-argument
+    """Verify that delete_draft_tenant_config clears the related cache."""
+    new_tenant = TenantConfig.objects.create(external_key='new_tenant', lms_configs={
+        'keep_this': 'value', cs.CONFIG_DRAFT: {'should-be-removed': 'value'}
+    })
+    cache_name = tenants.cache_name_tenant_readable_lms_configs(new_tenant.id)
+
+    cache.set(cache_name, {'data': new_tenant.lms_configs})
+    assert cache.get(cache_name) is not None
+    assert cache.get(cache_name)['data'] == new_tenant.lms_configs
+
+    tenants.delete_draft_tenant_config(tenant_id=new_tenant.id)
+    assert cache.get(cache_name) is not None
+    assert cache.get(cache_name)['data'] == {'keep_this': 'value', cs.CONFIG_DRAFT: {}}
 
 
 @pytest.mark.parametrize('tenant_exists, merge_result, expected_exception, usecase', [

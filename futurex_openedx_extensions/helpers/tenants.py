@@ -11,6 +11,7 @@ from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from crum import get_current_request
 from django.conf import settings
 from django.contrib.sites.models import Site
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
@@ -517,13 +518,7 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Tr
     :return: A dictionary containing key values, not permitted keys, and bad keys.
     :raises FXCodedException: If the tenant is not found.
     """
-    try:
-        tenant = TenantConfig.objects.get(id=tenant_id)
-    except TenantConfig.DoesNotExist as exc:
-        raise FXCodedException(
-            code=FXExceptionCodes.TENANT_NOT_FOUND,
-            message=f'Unable to find tenant with id: ({tenant_id})'
-        ) from exc
+    lms_configs = get_tenant_readable_lms_config(tenant_id, __skip_cache=not published_only)
 
     publish_status = ConfigPublishStatus.ONLY_PUBLISHED if published_only else ConfigPublishStatus.DRAFT_THEN_PUBLISHED
 
@@ -536,7 +531,7 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Tr
             details['bad_keys'].append(key)
             continue
         _, publish_value = get_tenant_config_value(
-            tenant.lms_configs,
+            lms_configs,
             key_path,
             publish_status=publish_status,
         )
@@ -580,12 +575,12 @@ def get_draft_tenant_config(tenant_id: int) -> dict:
     :type tenant_id: int
     :return: A dictionary containing updated fields with published and draft values.
     """
-    tenant = TenantConfig.objects.get(id=tenant_id)
+    lms_configs = get_tenant_readable_lms_config(tenant_id, __skip_cache=True)
     updated_fields = {}
     for key_name, key_path in get_config_access_control().items():
-        _, published_value = get_tenant_config_value(tenant.lms_configs, key_path)
+        _, published_value = get_tenant_config_value(lms_configs, key_path)
         draft_path_exist, draft_value = get_tenant_config_value(
-            tenant.lms_configs, key_path, publish_status=ConfigPublishStatus.ONLY_DRAFT,
+            lms_configs, key_path, publish_status=ConfigPublishStatus.ONLY_DRAFT,
         )
         if draft_path_exist:
             updated_fields[key_name] = {
@@ -605,6 +600,12 @@ def delete_draft_tenant_config(tenant_id: int) -> None:
     tenant = TenantConfig.objects.get(id=tenant_id)
     tenant.lms_configs[cs.CONFIG_DRAFT] = {}
     tenant.save()
+    cache_name = cache_name_tenant_readable_lms_configs(tenant_id)
+    cache.delete(cache_name)
+    cache_dict(
+        timeout='FX_CACHE_TIMEOUT_CONFIG_ACCESS_CONTROL',
+        key_generator_or_name=cache_name_tenant_readable_lms_configs,
+    )(lambda tenant_id: tenant.lms_configs)(tenant_id=tenant_id)
 
 
 def update_draft_tenant_config(
