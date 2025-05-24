@@ -1359,10 +1359,11 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 
             update_draft_tenant_config(
                 tenant_id=int(tenant_id),
-                key_path=key_access_info.path,
-                current_value=data['current_value'],
+                config_path=key_access_info.path,
+                current_revision_id=0,
                 new_value=new_value,
                 reset=reset,
+                user=request.user,
             )
             return Response(status=http_status.HTTP_204_NO_CONTENT)
 

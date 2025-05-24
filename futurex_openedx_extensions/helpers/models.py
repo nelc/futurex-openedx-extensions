@@ -1,6 +1,8 @@
 """Models for the dashboard app."""
 from __future__ import annotations
 
+import json
+import random
 import re
 from typing import Any, Dict, List, Tuple
 
@@ -18,9 +20,24 @@ from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.converters import DateMethods, get_allowed_roles
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.extractors import dot_separated_path_force_set_value
 from futurex_openedx_extensions.helpers.upload import get_tenant_asset_dir
 
 User = get_user_model()
+
+
+class NoUpdateQuerySet(models.QuerySet):
+    """QuerySet that disallows the update method"""
+    def update(self, **kwargs: Any) -> None:
+        """ Override the update method to disallow it """
+        raise AttributeError(f'{self.model.__name__}.objects.update() method is not allowed. Use save() instead.')
+
+
+class NoUpdateManager(models.Manager):  # pylint: disable=too-few-public-methods
+    """Manager that uses NoUpdateQuerySet"""
+    def get_queryset(self) -> NoUpdateQuerySet:
+        """Return a NoUpdateQuerySet instance"""
+        return NoUpdateQuerySet(self.model, using=self._db)
 
 
 class ViewAllowedRoles(models.Model):
@@ -604,3 +621,205 @@ class TenantAsset(models.Model):
         verbose_name_plural = 'Tenant Assets'
 
         unique_together = ('tenant', 'slug')
+
+
+class DraftConfig(models.Model):
+    """Draft configuration for tenant"""
+    tenant = models.ForeignKey(TenantConfig, on_delete=models.CASCADE)
+    config_path = models.CharField(max_length=255, help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url')
+    config_value = models.TextField(default=dict, blank=True)
+    revision_id = models.BigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='draft_config_created_by')
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='draft_config_updated_by')
+
+    class Meta:
+        verbose_name = 'Draft Configuration'
+        verbose_name_plural = 'Draft Configurations'
+        unique_together = ('tenant', 'config_path')
+
+    objects = NoUpdateManager()
+
+    @staticmethod
+    def generate_revision_id() -> int:
+        """
+        Generate a random revision ID.
+
+        :return: A random revision ID.
+        :rtype: int
+        """
+        return random.getrandbits(63)
+
+    def save(self, *args: list, **kwargs: dict) -> None:
+        """
+        Override the save method to set the revision ID and handle the config_value.
+
+        :param args: Positional arguments.
+        :param kwargs: Keyword arguments.
+        """
+        new_value = json.dumps({
+            '___root': self.config_value,
+        })
+
+        if self.pk:
+            original = DraftConfig.objects.filter(pk=self.pk).values_list('config_value', flat=True).first()
+            if original not in (self.config_value, new_value):
+                self.config_value = new_value
+                self.revision_id = self.generate_revision_id()
+            elif original == new_value:
+                self.config_value = original
+        else:
+            self.config_value = new_value
+
+        if not self.revision_id:
+            self.revision_id = self.generate_revision_id()
+
+        super().save(*args, **kwargs)
+
+    def get_config_value(self) -> Dict[str, Any]:
+        """
+        Get one configuration value for the given path.
+
+        :return: A dictionary with the configuration value and the revision_id.
+        """
+        result = {
+            'config_value': json.loads(self.config_value)['___root'],
+            'revision_id': self.revision_id,
+        }
+
+        return result
+
+    @classmethod
+    def get_config_value_by_path(cls, tenant_id: int, config_path: str) -> Dict[str, Any]:
+        """
+        Get one configuration value for the given tenant and path.
+
+        :param tenant_id: The ID of the tenant.
+        :type tenant_id: int
+        :param config_path: path as dot-separated paths, e.g., theme_v2.footer.linkedin_url.
+            will be returned.
+        :type config_path: str
+        :return: A dictionary with the configuration value and the revision_id.
+        """
+        draft_config = cls.objects.filter(tenant_id=tenant_id, config_path=config_path or '').first()
+        if not draft_config:
+            return {
+                'config_value': None,
+                'revision_id': 0,
+            }
+        return draft_config.get_config_value()
+
+    @classmethod
+    def get_config_values(cls, tenant_id: int, config_paths: List[str]) -> Dict[str, Any]:
+        """
+        Get the configuration values for the given tenant and keys.
+
+        :param tenant_id: The ID of the tenant.
+        :type tenant_id: int
+        :param config_paths: list of keys as dot-separated paths, e.g., theme_v2.footer.linkedin_url
+            will be returned.
+        :type config_paths: List[str]
+        :return: A dictionary with the configuration values.
+        """
+        config_paths_set = set(config_paths or [])
+        queryset = DraftConfig.objects.filter(tenant_id=tenant_id, config_path__in=list(config_paths_set))
+        result = {}
+        found_configs = set()
+        for config in queryset:
+            result[config.config_path] = config.get_config_value()
+            found_configs.add(config.config_path)
+
+        for path in config_paths_set - found_configs:
+            result[path] = {
+                'config_value': None,
+                'revision_id': 0,
+            }
+
+        return result
+
+    @classmethod
+    def loads_into(cls, tenant_id: int, config_paths: List[str], dest: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get the configuration values for the given tenant and keys, and merge them into the given dest dictionary. The
+        function will extract the dot-separated paths and return the values as a full dictionary tree.
+
+        :param tenant_id: The ID of the tenant.
+        :type tenant_id: int
+        :param config_paths: list of keys as dot-separated paths, e.g., theme_v2.footer.linkedin_url
+            will be returned.
+        :type config_paths: List[str]
+        :param dest: The destination dictionary to merge the configuration values into.
+        :type dest: Dict[str, Any]
+        :return: A dictionary of the configuration values.
+        """
+        if not isinstance(dest, dict):
+            raise TypeError('DraftConfig.loads: destination must be a dictionary.')
+
+        config_values = cls.get_config_values(tenant_id, config_paths)
+        config_values = dict(sorted(config_values.items()))
+
+        for path, value in config_values.items():
+            if value['revision_id'] == 0 or value['config_value'] is None:
+                continue
+
+            dot_separated_path_force_set_value(target_dict=dest, dot_separated_path=path, value=value['config_value'])
+
+        return config_values
+
+    @classmethod
+    def update_from_dict(
+        cls,
+        tenant_id: int,
+        config_paths: List[str],
+        src: Dict[str, Any],
+        user: get_user_model,
+    ) -> None:
+        """
+        Update the configuration values for the given tenant and keys from the given source dictionary. The function
+        will extract the dot-separated paths and update the values in the database.
+
+        :param tenant_id: The ID of the tenant.
+        :type tenant_id: int
+        :param config_paths: list of keys as dot-separated paths, e.g., theme_v2.footer.linkedin_url.
+        :type config_paths: List[str]
+        :param src: The source dictionary to update the configuration values from.
+        :type src: Dict[str, Any]
+        :param user: The user who is performing the update.
+        :type user: get_user_model
+        """
+        if not isinstance(src, dict):
+            raise TypeError('DraftConfig.update_from_dict: source must be a dictionary.')
+        config_paths = list(set(config_paths or []))
+
+        draft_fast_access = dict(cls.objects.filter(
+            tenant_id=tenant_id, config_path__in=config_paths,
+        ).values_list('config_path', 'pk'))
+        for config_path in config_paths:
+            delete_it = False
+            value = src
+            parts = config_path.split('.')
+            for part in parts:
+                if part not in value:
+                    delete_it = True
+                    break
+                value = value[part]
+
+            if delete_it:
+                cls.objects.filter(pk=draft_fast_access.get(config_path)).delete()
+            elif value is None:
+                cls.objects.filter(pk=draft_fast_access.get(config_path)).delete()
+            elif config_path in draft_fast_access:
+                draft_config = cls.objects.get(pk=draft_fast_access[config_path])
+                if draft_config.get_config_value()['config_value'] != value:
+                    draft_config.config_value = value
+                    draft_config.updated_by = user
+                draft_config.save()
+            else:
+                cls.objects.create(
+                    tenant_id=tenant_id,
+                    config_path=config_path,
+                    config_value=value,
+                    created_by=user,
+                    updated_by=user,
+                )

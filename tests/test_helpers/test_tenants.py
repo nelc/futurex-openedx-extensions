@@ -5,14 +5,13 @@ import pytest
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from django.contrib.sites.models import Site
 from django.core.cache import cache
-from django.db.models import F
 from django.test import override_settings
 from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.models import ConfigAccessControl
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig
 
 
 @pytest.fixture
@@ -467,91 +466,6 @@ def test_create_new_tenant_for_existing_route_and_tenant(test_usecase, expected_
     assert str(excinfo.value) == f'{test_usecase} already exists with domain: ({domain}).'
 
 
-@pytest.mark.parametrize(
-    'config, path, publish_status, expected_value, expected_path_exist, usecase',
-    [
-        (
-            {'Other': 'some value'},
-            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, None, False,
-            'Key missing in both draft and published config, path exist should be False with value None'
-        ),
-        (
-            {'Other': 'some value', 'LMS_BASE': None},
-            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, None, True,
-            'Only root config contains value as None, path exist should be True with value None'
-        ),
-        (
-            {'LMS_BASE': 'example.com'},
-            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, 'example.com', True,
-            'Retrieve from published config, when draft does not exist (default behavior)'
-        ),
-        (
-            {'theme': {'colors': {'primary': 'blue'}}},
-            'theme.colors.primary', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, 'blue', True,
-            'Retrieve from nested published config, when draft does not exist'
-        ),
-        (
-            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, 'draft.example.com', True,
-            'Retrieve from draft config when both published and draft exist'
-        ),
-        (
-            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_PUBLISHED, 'example.com', True,
-            'Retrieve from published config when published_only=True'
-        ),
-        (
-            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_DRAFT, 'draft.example.com', True,
-            'Retrieve from draft config when draft_only=True',
-        ),
-        (
-            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': None}},
-            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_DRAFT, None, True,
-            'Retrieve from draft config when draft_only=True even if value is None with path_exist should be True'
-        ),
-        (
-            {'LMS_BASE': 'example.com', 'config_draft': {'LMS_BASE': ''}},
-            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_DRAFT, '', True,
-            'Retrieve from draft config when draft_only=True even if value is empty with path_exist should be True'
-        ),
-        (
-            {'LMS_BASE': 'example.com', 'config_draft': {}},
-            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_DRAFT, None, False,
-            'Key exists only in published and draft_only=True, retrieve from the draft config'
-            'with path_exist=False and value=None'
-        ),
-        (
-            {'LMS_BASE': 'example.com', 'config_draft': {}},
-            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, 'example.com', True,
-            'Key missing in draft but present in published (fallback works)'
-        ),
-        (
-            {'config_draft': {'LMS_BASE': 'draft.example.com'}},
-            'LMS_BASE', tenants.ConfigPublishStatus.ONLY_PUBLISHED, None, False,
-            'Key exists only in draft and published_only=True is set'
-        ),
-        (
-            None,
-            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, None, False,
-            'Config is None, should return None'
-        ),
-        (
-            {},
-            'LMS_BASE', tenants.ConfigPublishStatus.DRAFT_THEN_PUBLISHED, None, False,
-            'Config is an empty dictionary, should return None'
-        ),
-    ]
-)
-def test_get_tenant_config_value(
-    config, path, publish_status, expected_value, expected_path_exist, usecase,
-):  # pylint: disable=too-many-arguments
-    """Test get_tenant_config_value"""
-    path_exist, value = tenants.get_tenant_config_value(config, path, publish_status=publish_status)
-    assert value == expected_value, f'Failed usecase: {usecase}'
-    assert path_exist == expected_path_exist, f'Failed usecase: {usecase}'
-
-
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     'usecase, config, keys, published_only, expected_values, expected_bad_keys',
@@ -619,9 +533,17 @@ def test_get_tenant_config_value(
     ],
 )
 def test_get_tenant_config(
-    usecase, config, keys, published_only, expected_values, expected_bad_keys
-):  # pylint: disable=too-many-arguments
+    base_data, usecase, config, keys, published_only, expected_values, expected_bad_keys,
+):  # pylint: disable=too-many-arguments, unused-argument
     """Test the get_tenant_config function under different scenarios."""
+    draft_configs = config.get('config_draft', {})
+    assert DraftConfig.objects.count() == 0, 'bad test data, DraftConfig should be empty before the test'
+    for key, value in draft_configs.items():
+        DraftConfig.objects.create(
+            tenant_id=1, config_path=key, config_value=value,
+            created_by_id=1, updated_by_id=1,
+        )
+
     ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook', key_type='string')
     ConfigAccessControl.objects.create(key_name='pages', path='theme_v2.pages', key_type='list')
     ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', key_type='string')
@@ -650,6 +572,10 @@ def test_get_tenant_config_for_non_exist_tenant():
 def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
     """Test get_draft_tenant_config"""
     ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook')
+    DraftConfig.objects.create(
+        tenant_id=1, config_path='theme_v2.links.facebook', config_value='draft.facebook.com',
+        created_by_id=1, updated_by_id=1,
+    )
     assert tenants.get_draft_tenant_config(tenant_id=1) == {
         'facebook_link': {
             'published_value': 'facebook.com',
@@ -659,81 +585,162 @@ def test_get_draft_tenant_config(base_data):  # pylint: disable=unused-argument
 
 
 @pytest.mark.django_db
-@patch('futurex_openedx_extensions.helpers.tenants.TenantConfig.objects.filter')
-@patch('futurex_openedx_extensions.helpers.tenants.annotate_queryset_for_update_draft_config')
-@patch('futurex_openedx_extensions.helpers.tenants.apply_json_merge_for_update_draft_config')
-def test_update_draft_tenant_config(mock_update_draft_json_merge, mock_annotate_queryset, mock_filter):
-    """Test the update_draft_tenant_config function for both successful and unsuccessful updates."""
-    tenant_id = 1
-    key_path = 'some_key_path'
-    current_value = 'current_value'
-    new_value = 'new_value'
-    reset = False
+def test_update_draft_config_success(base_data, support_user):  # pylint: disable=unused-argument
+    """Verify update_draft_tenant_config updates value when revision_id matches"""
+    draft = DraftConfig.objects.create(
+        tenant_id=1,
+        config_path='theme_v2.header.logo',
+        config_value={'log_url': '/old-logo.png', 'width': 100, 'height': 50},
+        revision_id=111,
+        created_by=support_user,
+        updated_by=support_user,
+    )
 
-    mock_filter.return_value.exists.return_value = True
-    mock_filter.return_value = TenantConfig.objects.filter(id=tenant_id)
-    mock_annotate_queryset.return_value = mock_filter.return_value
-    mock_update_draft_json_merge.return_value = MagicMock()
     tenants.update_draft_tenant_config(
         tenant_id=1,
-        key_path=key_path,
-        current_value=current_value,
-        new_value=new_value,
-        reset=reset,
+        config_path='theme_v2.header.logo',
+        current_revision_id=111,
+        new_value='/new-logo.png',
+        user=support_user,
     )
-    mock_annotate_queryset.assert_called_with(mock_filter.return_value, key_path)
-    mock_update_draft_json_merge.assert_called_once_with(F('lms_configs'), key_path, new_value, reset)
-    mock_filter.return_value.filter.return_value.update.assert_called_once()
 
-    mock_filter.return_value.filter.return_value.update.return_value = 0
-    with pytest.raises(FXCodedException) as exc_info:
-        tenants.update_draft_tenant_config(
-            tenant_id=tenant_id,
-            key_path=key_path,
-            current_value=current_value,
-            new_value=new_value,
-            reset=reset,
-        )
-    assert str(exc_info.value) == (
-        'Failed to update config for tenant 1. '
-        'Key path may not exist or current value mismatch.'
+    draft.refresh_from_db()
+    assert draft.get_config_value()['config_value'] == '/new-logo.png'
+
+
+@pytest.mark.django_db
+def test_update_draft_config_reset_to_none(base_data, support_user):  # pylint: disable=unused-argument
+    """Verify reset=True sets config_value to None"""
+    draft = DraftConfig.objects.create(
+        tenant_id=1,
+        config_path='theme_v2.footer.color',
+        config_value='blue',
+        revision_id=222,
+        created_by=support_user,
+        updated_by=support_user,
     )
+
+    tenants.update_draft_tenant_config(
+        tenant_id=1,
+        config_path='theme_v2.footer.color',
+        current_revision_id=222,
+        new_value='should-be-cleared',
+        user=support_user,
+        reset=True,
+    )
+
+    assert DraftConfig.objects.filter(pk=draft.pk).count() == 0
+
+
+@pytest.mark.django_db
+def test_update_draft_config_revision_mismatch(base_data, support_user):  # pylint: disable=unused-argument
+    """Verify FXCodedException is raised if revision ID doesn't match"""
+    DraftConfig.objects.create(
+        tenant_id=1,
+        config_path='theme_v2.footer.link',
+        config_value='https://link.com',
+        revision_id=321,
+        created_by=support_user,
+        updated_by=support_user,
+    )
+
+    with pytest.raises(FXCodedException) as exc:
+        tenants.update_draft_tenant_config(
+            tenant_id=1,
+            config_path='theme_v2.footer.link',
+            current_revision_id=999,  # wrong revision
+            new_value='https://new-link.com',
+            user=support_user,
+        )
+
+    assert exc.value.code == FXExceptionCodes.UPDATE_FAILED.value
+    assert str(exc.value) == \
+        'Failed to update config for tenant 1. Current revision ID mismatch: expected 999, but found 321.'
+
+
+@pytest.mark.django_db
+def test_update_draft_config_creates_new_if_not_exists(base_data, support_user):  # pylint: disable=unused-argument
+    """Verify a new DraftConfig is created if not previously existing"""
+    assert not DraftConfig.objects.filter(tenant_id=1, config_path='theme_v2.footer.new_field').exists()
+
+    tenants.update_draft_tenant_config(
+        tenant_id=1,
+        config_path='theme_v2.footer.new_field',
+        current_revision_id=0,
+        new_value='new-data',
+        user=support_user,
+    )
+
+    draft = DraftConfig.objects.get(tenant_id=1, config_path='theme_v2.footer.new_field')
+    assert draft.get_config_value()['config_value'] == 'new-data'
 
 
 @pytest.mark.django_db
 def test_delete_draft_tenant_config():
     """Test delete_draft_tenant_config"""
-    tenant = TenantConfig.objects.get(id=1)
-    assert tenant.lms_configs['config_draft'] != {}
+    DraftConfig.objects.create(
+        tenant_id=1, config_path='theme_v2.links.facebook', config_value='draft.facebook.com',
+        created_by_id=1, updated_by_id=1,
+    )
+    DraftConfig.objects.create(
+        tenant_id=2, config_path='theme_v2.links.facebook', config_value='draft.facebook.com',
+        created_by_id=1, updated_by_id=1,
+    )
+    assert DraftConfig.objects.count() == 2
     tenants.delete_draft_tenant_config(tenant_id=1)
+    assert DraftConfig.objects.filter(tenant_id=1).count() == 0
+    assert DraftConfig.objects.exclude(tenant_id=1).count() == 1
+
+
+@pytest.mark.django_db
+def test_publish_tenant_config_calls_loads_into_correctly(base_data):  # pylint: disable=unused-argument
+    """Verify publish_tenant_config calls DraftConfig.loads_into with correct args"""
+    tenant = TenantConfig.objects.get(id=1)
+    DraftConfig.objects.create(
+        tenant=tenant, config_path='theme_v2.footer.color', config_value='blue', created_by_id=1, updated_by_id=1,
+    )
+    assert DraftConfig.objects.count() == 1, 'bad test data, DraftConfig should be empty before the test'
+
+    with patch.object(DraftConfig, 'loads_into') as mock_loads:
+        tenants.publish_tenant_config(tenant_id=tenant.id)
+
+    expected_dest = tenant.lms_configs
+    mock_loads.assert_called_once_with(
+        tenant_id=tenant.id,
+        config_paths=['theme_v2.footer.color'],
+        dest=expected_dest,
+    )
+    assert DraftConfig.objects.count() == 0, ''
+
+
+@pytest.mark.django_db
+def test_publish_tenant_config_raises_if_tenant_not_found():
+    """Verify FXCodedException is raised if the tenant does not exist"""
+    with pytest.raises(FXCodedException) as exc:
+        tenants.publish_tenant_config(tenant_id=999)
+
+    assert exc.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
+    assert str(exc.value) == 'Tenant with ID 999 not found.'
+
+
+@pytest.mark.django_db
+def test_publish_tenant_config_merges_lms_configs(base_data):
+    """Verify lms_configs is updated after calling loads_into"""
+    tenant = TenantConfig.objects.get(id=1)
+    test_value = {'footer': {'color': 'blue'}}
+    assert tenant.lms_configs['theme_v2'] != {'footer': {'color': 'red'}}, 'Initial test setup is incorrect'
+
+    def mutate_config(tenant_id, config_paths, dest):  # pylint: disable=unused-argument
+        """Mock function to simulate DraftConfig.loads_into behavior."""
+        dest['theme_v2'] = test_value
+
+    with patch.object(DraftConfig, 'loads_into', side_effect=mutate_config):
+        tenants.publish_tenant_config(tenant_id=tenant.id)
+
     tenant.refresh_from_db()
-    assert tenant.lms_configs['config_draft'] == {}
-
-
-@pytest.mark.parametrize('tenant_exists, merge_result, expected_exception, usecase', [
-    (False, None, 'Tenant with ID 123 not found.', 'Tenant does not exist'),
-    (True, 0, 'Failed to publish config for tenant 123.', 'Merge function returns 0 (publish failed)'),
-    (True, 1, None, 'Successful publish'),
-])
-@patch('futurex_openedx_extensions.helpers.tenants.TenantConfig.objects.filter')
-@patch('futurex_openedx_extensions.helpers.tenants.apply_json_merge_for_publish_draft_config')
-def test_publish_tenant_config(
-    mock_json_merge, mock_tenant_filter, tenant_exists, merge_result, expected_exception, usecase
-):  # pylint: disable=too-many-arguments
-    """Test publish_tenant_config"""
-    tenant_id = 123
-    mock_queryset = MagicMock()
-    mock_queryset.exists.return_value = tenant_exists
-    mock_tenant_filter.return_value = mock_queryset
-    mock_json_merge.return_value = merge_result
-
-    if expected_exception:
-        with pytest.raises(FXCodedException) as exc_info:
-            tenants.publish_tenant_config(tenant_id)
-        assert str(exc_info.value) == expected_exception, f'Unexpected exception message for case: {usecase}'
-    else:
-        tenants.publish_tenant_config(tenant_id)
-        mock_json_merge.assert_called_once_with(mock_queryset)
+    expected_lms_config = base_data['tenant_config'][1]['lms_configs'].copy()
+    expected_lms_config['theme_v2'] = test_value
+    assert tenant.lms_configs == expected_lms_config
 
 
 @pytest.mark.django_db
