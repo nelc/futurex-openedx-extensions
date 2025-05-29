@@ -1099,3 +1099,16 @@ class TenantAssetSerializer(serializers.ModelSerializer):
             }
         )
         return asset
+
+
+class TenantConfigSerializer(ReadOnlySerializer):
+    """Serializer for Tenant Configurations."""
+    values = serializers.DictField(default=dict)
+    not_permitted = serializers.ListField(child=serializers.CharField(), default=list)
+    bad_keys = serializers.ListField(child=serializers.CharField(), default=list)
+    revision_ids = serializers.SerializerMethodField()
+
+    def get_revision_ids(self, obj: Any) -> Dict[str, str]:  # pylint: disable=no-self-use
+        """Return the revision IDs as strings."""
+        revision_ids = obj.get('revision_ids', {})
+        return {key: str(value) for key, value in revision_ids.items()}

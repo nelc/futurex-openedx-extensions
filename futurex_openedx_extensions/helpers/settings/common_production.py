@@ -84,9 +84,3 @@ def plugin_settings(settings: Any) -> None:
         'FX_TENANTS_BASE_DOMAIN',
         'nelp.gov.sa',
     )
-
-    settings.FX_DISABLE_CONFIG_VALIDATIONS = getattr(
-        settings,
-        'FX_DISABLE_CONFIG_VALIDATIONS',
-        True,
-    )
