@@ -1585,7 +1585,7 @@ docs_src = {
     'ThemeConfigDraftView.put': {
         'summary': 'Update draft theme configuration of given tenant.',
         'description': 'Update draft of theme configuration for a given tenant otherwise create new draft with '
-        'updated values if draft does not exist.',
+        'updated values if draft does not exist. The API can also be used to reset a key to its published value.',
         'parameters': [
             common_path_parameters['tenant_id'],
         ],
