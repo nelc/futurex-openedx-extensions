@@ -15,13 +15,6 @@ _base_data = {
                         'facebook': 'facebook.com'
                     }
                 },
-                'config_draft': {
-                    'theme_v2': {
-                        'links': {
-                            'facebook': 'draft.facebook.com'
-                        }
-                    }
-                }
             },
         },
         2: {  # Organisation is duplicated with tenant 7 and 8

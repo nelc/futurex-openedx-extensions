@@ -1222,3 +1222,56 @@ def test_library_serializer_update_raises_error():
     serializer = serializers.LibrarySerializer()
     with pytest.raises(ValueError, match='This serializer does not support update.'):
         serializer.update(instance=object(), validated_data={})
+
+
+@pytest.mark.parametrize('input_data,expected_output,test_case', [
+    (
+        {
+            'values': {'theme_v2': {'header': 'data'}},
+            'not_permitted': ['x', 'y'],
+            'bad_keys': ['bad'],
+            'revision_ids': {'theme_v2.header': 12345678901234567890}
+        },
+        {
+            'values': {'theme_v2': {'header': 'data'}},
+            'not_permitted': ['x', 'y'],
+            'bad_keys': ['bad'],
+            'revision_ids': {'theme_v2.header': '12345678901234567890'}
+        },
+        'converts revision_ids to strings'
+    ),
+    (
+        {
+            'values': {},
+            'not_permitted': [],
+            'bad_keys': [],
+            'revision_ids': {}
+        },
+        {
+            'values': {},
+            'not_permitted': [],
+            'bad_keys': [],
+            'revision_ids': {}
+        },
+        'empty values with empty revision_ids'
+    ),
+    (
+        {
+            # omit revision_ids field entirely
+            'values': {'test': 1},
+            'not_permitted': [],
+            'bad_keys': [],
+        },
+        {
+            'values': {'test': 1},
+            'not_permitted': [],
+            'bad_keys': [],
+            'revision_ids': {}
+        },
+        'missing revision_ids field should return empty dict'
+    ),
+])
+def test_tenant_config_serializer(input_data, expected_output, test_case):
+    """Verify TenantConfigSerializer serializes correctly with revision_ids as strings"""
+    serializer = serializers.TenantConfigSerializer(instance=input_data)
+    assert serializer.data == expected_output, test_case

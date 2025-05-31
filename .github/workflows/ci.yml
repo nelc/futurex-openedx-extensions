@@ -3,7 +3,7 @@ name: Python CI
 on:
   pull_request:
     branches:
-      - '*'
+      - '**'
 
 jobs:
   run_tests:

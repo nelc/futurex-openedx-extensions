@@ -70,7 +70,13 @@ from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXEx
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
 from futurex_openedx_extensions.helpers.library import get_accessible_libraries
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ConfigAccessControl, DataExportTask, TenantAsset
+from futurex_openedx_extensions.helpers.models import (
+    ClickhouseQuery,
+    ConfigAccessControl,
+    DataExportTask,
+    DraftConfig,
+    TenantAsset,
+)
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -1315,33 +1321,36 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
         })
 
     @staticmethod
-    def validate_input(key_type: str, new_value: Any, current_value: Any) -> None:
+    def validate_input(key_type: str, new_value: Any, current_revision_id: int) -> None:
         """Validate the input"""
-        if settings.FX_DISABLE_CONFIG_VALIDATIONS:
-            return
-
         if new_value is not None and not isinstance(new_value, KEY_TYPE_MAP[key_type]):
             raise FXCodedException(
                 code=FXExceptionCodes.INVALID_INPUT,
                 message=f'New value type must be ({KEY_TYPE_MAP[key_type].__name__}) value.'
             )
 
-        if current_value is not None and not isinstance(current_value, KEY_TYPE_MAP[key_type]):
+        if current_revision_id is None:
+            raise KeyError('current_revision_id')
+
+        try:
+            _ = int(current_revision_id)
+        except ValueError as exc:
             raise FXCodedException(
                 code=FXExceptionCodes.INVALID_INPUT,
-                message=f'Current value type must be ({KEY_TYPE_MAP[key_type].__name__}) value.'
-            )
+                message='current_revision_id type must be numeric value.'
+            ) from exc
 
     def put(self, request: Any, tenant_id: int) -> Response:
         """Update draft config"""
         data = request.data
         try:
-            if not isinstance(data['key'], str):
+            key = data['key']
+            if not isinstance(key, str):
                 raise FXCodedException(
                     code=FXExceptionCodes.INVALID_INPUT, message='Key name must be a string.'
                 )
 
-            key_access_info = ConfigAccessControl.objects.get(key_name=data['key'])
+            key_access_info = ConfigAccessControl.objects.get(key_name=key)
             if not key_access_info.writable:
                 raise FXCodedException(
                     code=FXExceptionCodes.INVALID_INPUT, message=f'Config Key: ({data["key"]}) is not writable.'
@@ -1353,18 +1362,31 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
                 )
 
             new_value = data.get('new_value')
+            current_revision_id = data.get('current_revision_id')
             reset = data.get('reset', '0') == '1'
 
-            self.validate_input(key_access_info.key_type, new_value, data.get('current_value'))
+            if not settings.FX_DISABLE_CONFIG_VALIDATIONS:
+                self.validate_input(key_access_info.key_type, new_value, current_revision_id)
+            else:
+                current_revision_id = DraftConfig.get_config_values(
+                    tenant_id=tenant_id,
+                    config_paths=[key_access_info.path],
+                )[key_access_info.path]['revision_id']
 
             update_draft_tenant_config(
                 tenant_id=int(tenant_id),
-                key_path=key_access_info.path,
-                current_value=data['current_value'],
+                config_path=key_access_info.path,
+                current_revision_id=int(current_revision_id),
                 new_value=new_value,
                 reset=reset,
+                user=request.user,
             )
-            return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+            data = get_tenant_config(tenant_id=int(tenant_id), keys=[key], published_only=False)
+            return Response(
+                status=http_status.HTTP_200_OK,
+                data=serializers.TenantConfigSerializer(data, context={'request': request}).data,
+            )
 
         except KeyError as exc:
             return Response(
@@ -1372,6 +1394,11 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
                 status=http_status.HTTP_400_BAD_REQUEST
             )
         except FXCodedException as exc:
+            if exc.code == FXExceptionCodes.UPDATE_FAILED.value:
+                return Response(
+                    error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+                    status=http_status.HTTP_409_CONFLICT,
+                )
             return Response(
                 error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
                 status=http_status.HTTP_400_BAD_REQUEST
@@ -1476,19 +1503,18 @@ class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
 
         return get_accessible_config_keys(user_id=self.request.user.id, tenant_id=tenant_id)
 
-    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """
         GET /api/fx/config/v1/values/
         """
         tenant_id = self.verify_one_tenant_id_provided(request)
 
-        return JsonResponse(
-            get_tenant_config(
-                tenant_id,
-                self.validate_keys(tenant_id=tenant_id),
-                request.query_params.get('published_only', '0') == '1'
-            )
+        data = get_tenant_config(
+            tenant_id,
+            self.validate_keys(tenant_id=tenant_id),
+            request.query_params.get('published_only', '0') == '1'
         )
+        return Response(serializers.TenantConfigSerializer(data, context={'request': request}).data)
 
 
 @docs('ThemeConfigTenantView.post')
