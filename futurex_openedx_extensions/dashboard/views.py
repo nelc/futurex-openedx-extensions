@@ -1288,7 +1288,7 @@ class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
             'editable_fields': get_accessible_config_keys(
                 user_id=request.user.id,
                 tenant_id=tenant_id,
-                writable_fields_filter=True
+                writable_fields_filter=True,
             ),
             'read_only_fields': get_accessible_config_keys(
                 user_id=request.user.id,

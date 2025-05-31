@@ -2091,6 +2091,7 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
         )
 
 
+@pytest.mark.usefixtures('base_data')
 class TestConfigEditableInfoView(BaseTestViewMixin):
     """Tests for ConfigEditableInfoView"""
     VIEW_NAME = 'fx_dashboard:config-editable-info'
