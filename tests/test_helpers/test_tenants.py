@@ -714,20 +714,14 @@ def test_publish_tenant_config_calls_loads_into_correctly(base_data):  # pylint:
 
 
 @pytest.mark.django_db
-def test_publish_tenant_config_raises_if_tenant_not_found():
-    """Verify FXCodedException is raised if the tenant does not exist"""
-    with pytest.raises(FXCodedException) as exc:
-        tenants.publish_tenant_config(tenant_id=999)
-
-    assert exc.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
-    assert str(exc.value) == 'Tenant with ID 999 not found.'
-
-
-@pytest.mark.django_db
 def test_publish_tenant_config_merges_lms_configs(base_data):
     """Verify lms_configs is updated after calling loads_into"""
     tenant = TenantConfig.objects.get(id=1)
     test_value = {'footer': {'color': 'blue'}}
+    ConfigAccessControl.objects.create(key_name='footer_color', path='footer.color')
+    DraftConfig.objects.create(
+        tenant=tenant, config_path='footer.color', config_value=test_value, created_by_id=1, updated_by_id=1,
+    )
     assert tenant.lms_configs['theme_v2'] != {'footer': {'color': 'red'}}, 'Initial test setup is incorrect'
 
     def mutate_config(tenant_id, config_paths, dest):  # pylint: disable=unused-argument
@@ -741,6 +735,18 @@ def test_publish_tenant_config_merges_lms_configs(base_data):
     expected_lms_config = base_data['tenant_config'][1]['lms_configs'].copy()
     expected_lms_config['theme_v2'] = test_value
     assert tenant.lms_configs == expected_lms_config
+
+
+@pytest.mark.django_db
+def test_publish_tenant_config_no_draft(base_data):  # pylint: disable=unused-argument
+    """Verify that publish_tenant_config does nothing if no draft exists."""
+    tenant = TenantConfig.objects.get(id=1)
+    assert DraftConfig.objects.count() == 0, 'bad test data, DraftConfig should be empty before the test'
+
+    with patch.object(DraftConfig, 'loads_into') as mock_loads:
+        tenants.publish_tenant_config(tenant_id=tenant.id)
+
+    mock_loads.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -789,3 +795,134 @@ def test_get_config_current_request(
         keys=['testing_key'],
         published_only=expected_published_only,
     )
+
+
+@pytest.mark.parametrize('writable_fields_filter, expected_keys', [
+    (None, ['key1_writable', 'key1_read_only', 'key2_writable', 'key2_read_only']),
+    (True, ['key1_writable', 'key2_writable']),
+    (False, ['key1_read_only', 'key2_read_only']),
+])
+def test_get_accessible_config_keys(writable_fields_filter, expected_keys):
+    """Verify get_accessible_config_keys returns all keys when writable_fields_filter is None"""
+    with patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control') as mock_get_config_access:
+        mock_get_config_access.return_value = {
+            'key1_writable': {'writable': True},
+            'key1_read_only': {'writable': False},
+            'key2_writable': {'writable': True},
+            'key2_read_only': {'writable': False},
+        }
+        result = tenants.get_accessible_config_keys(
+            user_id=1, tenant_id=1, writable_fields_filter=writable_fields_filter,
+        )
+    assert result == expected_keys
+
+
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control')
+@pytest.mark.django_db
+def test_get_tenant_readable_lms_config_success(mock_access_control):
+    """Verify readable keys are returned correctly and draft keys are excluded"""
+    tenant = TenantConfig.objects.get(id=1)
+    tenant.lms_configs = {
+        'theme_v2': {
+            'header': {
+                'logo': '/logo.png',
+                'title': 'Hello World'
+            },
+            'footer': {
+                'color': 'black'
+            }
+        },
+        'analytics': {
+            'tracking_id': 'UA-999'
+        },
+        'config_draft': {
+            'should_not': 'appear'
+        }
+    }
+    tenant.save()
+
+    mock_access_control.return_value = {
+        'logo': {'path': 'theme_v2.header.logo', 'writable': True},
+        'title': {'path': 'theme_v2.header.title', 'writable': True},
+        'tracking': {'path': 'analytics.tracking_id', 'writable': False},
+    }
+
+    result = tenants.get_tenant_readable_lms_config(tenant.id)
+
+    assert result == {
+        'theme_v2': {
+            'header': {
+                'logo': '/logo.png',
+                'title': 'Hello World',
+            },
+        },
+        'analytics': {
+            'tracking_id': 'UA-999'
+        }
+    }
+
+
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control', return_value={})
+@pytest.mark.django_db
+def test_get_tenant_readable_lms_config_missing_tenant(_):
+    """Verify exception is raised if tenant does not exist"""
+    with pytest.raises(FXCodedException) as exc:
+        tenants.get_tenant_readable_lms_config(tenant_id=9999)
+
+    assert exc.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
+    assert str(exc.value) == 'Unable to find tenant with id: (9999)'
+
+
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control')
+@pytest.mark.django_db
+def test_get_tenant_readable_lms_config_deduplicates_nested_keys(mock_access_control):
+    """Verify child paths are excluded if a parent path is already included"""
+    tenant = TenantConfig.objects.get(id=1)
+    tenant.lms_configs = {
+        'parent': {
+            'child1': 'val1',
+            'child2': 'val2',
+        }
+    }
+    tenant.save()
+
+    mock_access_control.return_value = {
+        'child1': {'path': 'parent.child1', 'writable': True},
+        'parent': {'path': 'parent', 'writable': True},
+    }
+
+    result = tenants.get_tenant_readable_lms_config(tenant.id)
+
+    assert result == {
+        'parent': {
+            'child1': 'val1',
+            'child2': 'val2',
+        }
+    }
+
+
+@patch('django.core.cache.cache.delete')
+def test_invalidate_specific_tenant_cache(mock_delete):
+    """Verify specific tenant cache is deleted correctly"""
+    tenant_id = 42
+    tenants.invalidate_tenant_readable_lms_configs(tenant_id)
+    mock_delete.assert_called_once_with(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}')
+
+
+@patch('futurex_openedx_extensions.helpers.tenants.get_all_tenant_ids')
+@patch('django.core.cache.cache.delete')
+def test_invalidate_all_tenant_caches(mock_delete, mock_get_all_ids):
+    """Verify all tenant caches are deleted when tenant_id is falsy"""
+    mock_get_all_ids.return_value = [1, 2, 3]
+
+    tenants.invalidate_tenant_readable_lms_configs(0)
+
+    expected_calls = [
+        ((f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}',),) for tenant_id in [1, 2, 3]
+    ]
+    actual_calls = mock_delete.call_args_list
+
+    for call in expected_calls:
+        assert call in actual_calls
+
+    assert mock_delete.call_count == len(mock_get_all_ids.return_value) + 1  # +1 for the first call with `0`
