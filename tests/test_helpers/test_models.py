@@ -1057,8 +1057,6 @@ def test_draft_config_loads_into(mock_get_config_values, mock_config_values, exp
         config_paths=['theme_v2.footer.linkedin_url'],
         dest=dest,
     )
-    print(dest)
-    print(expected_merged)
     assert dest == expected_merged, test_case
     assert config_values == mock_config_values
 
