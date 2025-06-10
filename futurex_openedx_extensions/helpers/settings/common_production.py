@@ -26,6 +26,12 @@ def plugin_settings(settings: Any) -> None:
         60 * 30,  # 30 minutes
     )
 
+    settings.FX_CACHE_TIMEOUT_CONFIG_ACCESS_CONTROL = getattr(
+        settings,
+        'FX_CACHE_TIMEOUT_CONFIG_ACCESS_CONTROL',
+        60 * 60 * 24,  # 1 day
+    )
+
     # Exported CSV files directive name
     settings.FX_DASHBOARD_STORAGE_DIR = getattr(
         settings,
@@ -83,10 +89,4 @@ def plugin_settings(settings: Any) -> None:
         settings,
         'FX_TENANTS_BASE_DOMAIN',
         'nelp.gov.sa',
-    )
-
-    settings.FX_DISABLE_CONFIG_VALIDATIONS = getattr(
-        settings,
-        'FX_DISABLE_CONFIG_VALIDATIONS',
-        True,
     )

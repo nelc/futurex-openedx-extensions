@@ -5,7 +5,7 @@ import importlib
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 
 from dateutil.relativedelta import relativedelta
@@ -459,3 +459,86 @@ def external_id_extractor_str_or_one_item_string_list(value: Any) -> Any:
         return str(value)
 
     return ''
+
+
+def dot_separated_path_extract_all(dot_separated_key: str) -> List[str]:
+    """
+    Get the list of parents from the dot-separated key. Each parent as a full dot-separated key. The leaf will
+    also be included in the list as the last item.
+
+    :param dot_separated_key: Dot-separated key to get the parents from.
+    :type dot_separated_key: str
+    :return: List of parents.
+    :rtype: List[str]
+    """
+    if not isinstance(dot_separated_key, str):
+        raise TypeError(
+            f'dot_separated_path_extract_all accepts only str type. Got: {type(dot_separated_key).__name__}'
+        )
+
+    parts = dot_separated_key.strip().rstrip('.').split('.')
+    return ['.'.join(parts[:i + 1]) for i in range(len(parts))] if parts and parts[0] else []
+
+
+def dot_separated_path_force_set_value(
+    target_dict: Dict[str, Any],
+    dot_separated_path: str,
+    value: Any,
+) -> None:
+    """
+    Set the value of the key in the dictionary. If the key already exists, it will be overwritten.
+
+    :param target_dict: Dictionary to set the value in.
+    :type target_dict: Dict[str, Any]
+    :param dot_separated_path: Dot-separated path to the key in the dictionary.
+    :type dot_separated_path: str
+    :param value: Value to set.
+    :type value: Any
+    """
+    if not isinstance(target_dict, dict):
+        raise TypeError(f'dot_separated_path_force_set_value accepts only dict type. Got: {type(target_dict).__name__}')
+
+    parts = dot_separated_path.split('.')
+    current = target_dict
+    for part in parts[:-1]:
+        if part not in current or not isinstance(current[part], dict):
+            current[part] = {}
+        current = current[part]
+    current[parts[-1]] = value
+
+
+def dot_separated_path_get_value(
+    src_dict: Dict[str, Any],
+    dot_separated_path: str,
+    fail_on_bad_type: bool = False,
+) -> Tuple[bool, Any]:
+    """
+    Get the value of the key in the dictionary. If the key does not exist, it will return (False, None).
+
+    :param src_dict: Dictionary to get the value from.
+    :type src_dict: Dict[str, Any]
+    :param dot_separated_path: Dot-separated path to the key in the dictionary.
+    :type dot_separated_path: str
+    :param fail_on_bad_type: If True, raise TypeError if the value is not a dictionary at any level.
+    :type fail_on_bad_type: bool
+    :return: (value-exists as a boolean flag, the value of the key in the dictionary or None if the key doesn't exist).
+    :rtype: Tuple[bool, Any]
+    """
+    if not isinstance(src_dict, dict):
+        raise TypeError(f'dot_separated_path_get_value accepts only dict type. Got: {type(src_dict).__name__}')
+
+    parts = dot_separated_path.split('.')
+    current = src_dict
+    for index, part in enumerate(parts):
+        if not isinstance(current, dict):
+            if fail_on_bad_type:
+                current_path = '.'.join(parts[:index])
+                raise TypeError(f'Expected a dict at level ({current_path}), but got {type(current).__name__}')
+            return False, None
+
+        if part not in current:
+            return False, None
+
+        current = current[part]
+
+    return True, current

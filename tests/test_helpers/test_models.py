@@ -1,15 +1,26 @@
 """Tests for models module."""
+# pylint: disable=too-many-lines
+import json
 from itertools import product
 from unittest.mock import Mock, patch
 
 import pytest
 from common.djangoapps.student.models import CourseAccessRole
+from deepdiff import DeepDiff
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import connection, models
 from django.utils import timezone
 
 from futurex_openedx_extensions.helpers.clickhouse_operations import ClickhouseBaseError
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.models import ClickhouseQuery, DataExportTask, ViewUserMapping
+from futurex_openedx_extensions.helpers.models import (
+    ClickhouseQuery,
+    DataExportTask,
+    DraftConfig,
+    NoUpdateManager,
+    ViewUserMapping,
+)
 
 
 @pytest.fixture
@@ -625,3 +636,555 @@ def test_view_user_mapping_manager_get_queryset(
         assert ViewUserMapping.is_usable_access(
             view_user_mapping.user, view_user_mapping.view_name,
         ) == expected_usable
+
+
+@pytest.fixture
+def sample_no_update_manager():
+    """Fixture to create a sample model with NoUpdateManager."""
+    class SampleModel(models.Model):
+        """Sample model to test NoUpdateManager."""
+        name = models.CharField(max_length=100)
+        objects = NoUpdateManager()
+
+        class Meta:
+            app_label = 'fake_models'
+
+    if 'fake_models_samplemodel' not in connection.introspection.table_names():
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(SampleModel)
+
+    return SampleModel
+
+
+@pytest.mark.django_db(transaction=True)
+def test_no_update_manager_update_raises_error(sample_no_update_manager):  # pylint: disable=redefined-outer-name
+    """Verify NoUpdateQuerySet raises AttributeError on .update()"""
+    obj = sample_no_update_manager.objects.create(name='initial')
+
+    with pytest.raises(AttributeError) as exc:
+        sample_no_update_manager.objects.filter(pk=obj.pk).update(name='changed')
+
+    assert 'SampleModel.objects.update() method is not allowed' in str(exc.value)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_no_update_manager_other_queryset_operations_work(
+    sample_no_update_manager,
+):  # pylint: disable=redefined-outer-name
+    """Verify standard queryset methods still work (e.g., filter, get)"""
+    obj = sample_no_update_manager.objects.create(name='test')
+
+    queryset = sample_no_update_manager.objects.filter(name='test')
+    assert queryset.exists(), 'Queryset should exist after filtering'
+    assert queryset.first().id == obj.id, 'Filtered object should match the created object'
+
+    retrieved = sample_no_update_manager.objects.get(pk=obj.pk)
+    assert retrieved.name == 'test', 'Retrieved object should match the created object'
+
+    assert not sample_no_update_manager.objects.exclude(pk=obj.pk).exists(), \
+        'Excluding the created object should yield no results'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'config_value, expected_saved_string, test_case',
+    [
+        (
+            'a string value',
+            '{"___root": "a string value"}',
+            'sample string value saved as JSON string',
+        ),
+        (
+            {'src': '/logo.png'},
+            '{"___root": {"src": "/logo.png"}}',
+            'saves dictionary value as JSON string',
+        ),
+        (
+            123,
+            '{"___root": 123}',
+            'saves integer value as JSON string',
+        ),
+        (
+            {},
+            '{"___root": {}}',
+            'saves empty dictionary as JSON string',
+        ),
+        (
+            None,
+            '{"___root": null}',
+            'saves None as JSON null value',
+        ),
+    ]
+)
+def test_draft_config_save_value_as_dictionary(
+    base_data, config_value, expected_saved_string, test_case,
+):  # pylint: disable=unused-argument
+    """Verify that DraftConfig.save correctly saves config_value as a dictionary inside a root key."""
+    draft_config = DraftConfig.objects.create(
+        tenant_id=1,
+        config_path='any',
+        config_value=config_value,
+        created_by_id=1,
+        updated_by_id=1
+    )
+    assert draft_config.config_value == expected_saved_string, test_case
+    assert not DeepDiff(json.loads(draft_config.config_value), {
+        '___root': config_value,
+    }, ignore_order=True), test_case
+
+
+@pytest.mark.django_db
+def test_draft_config_save_update_value(base_data):  # pylint: disable=unused-argument
+    """Verify that DraftConfig.save updates existing config_value."""
+    draft_config = DraftConfig.objects.create(
+        tenant_id=1,
+        config_path='any',
+        config_value=123,
+        created_by_id=1,
+        updated_by_id=1
+    )
+    assert draft_config.config_value == '{"___root": 123}', 'test case failed: initial save'
+
+    new_value = [1, 2]
+    draft_config.config_value = new_value
+    draft_config.save()
+    draft_config.refresh_from_db()
+    assert draft_config.config_value == '{"___root": [1, 2]}', 'test case failed: change existing value'
+
+    draft_config.config_value = new_value
+    draft_config.save()
+    draft_config.refresh_from_db()
+    assert draft_config.config_value == '{"___root": [1, 2]}', 'test case failed: save same value again'
+
+
+@pytest.mark.django_db
+def test_draft_config_save_change_value(base_data, draft_configs):  # pylint: disable=unused-argument
+    """Verify that DraftConfig.save changes the revision_id only when config_value is changed."""
+    draft_config = draft_configs[0]
+    revision_id = draft_config.revision_id
+    assert draft_config.config_value == '{"___root": "https://linkedin.com/test"}', 'bad test data'
+
+    draft_config.config_value = 'new value'
+    draft_config.save()
+    draft_config.refresh_from_db()
+    assert draft_config.revision_id != revision_id, 'revision_id should change on value update'
+
+    revision_id = draft_config.revision_id
+    draft_config.config_value = 'new value'
+    draft_config.save()
+    draft_config.refresh_from_db()
+    assert draft_config.revision_id == revision_id, 'revision_id should not change on same value update'
+
+
+@pytest.mark.django_db
+def test_draft_config_save_change_value_db_value_match(base_data, draft_configs):  # pylint: disable=unused-argument
+    """
+    Verify that DraftConfig.save will not json-dumps the config_value if it is already a JSON string, and will not
+    regenerate the revision_id if the value is the same.
+    """
+    draft_config = draft_configs[0]
+    revision_id = draft_config.revision_id
+    assert draft_config.config_value == '{"___root": "https://linkedin.com/test"}', 'bad test data'
+
+    draft_config.config_value = '{"___root": "https://linkedin.com/test"}'
+    draft_config.save()
+    draft_config.refresh_from_db()
+    assert draft_config.config_value == '{"___root": "https://linkedin.com/test"}', 'config_value should match DB value'
+    assert draft_config.revision_id == revision_id, 'revision_id should not change on same value update'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'config_paths, expected, test_case',
+    [
+        (
+            None,
+            {},
+            'None should return empty dict',
+        ),
+        (
+            [],
+            {},
+            'Empty list should return empty dict',
+        ),
+        (
+            ['theme_v2.footer.linkedin_url'],
+            {
+                'theme_v2.footer.linkedin_url': {
+                    'config_value': 'https://linkedin.com/test',
+                    'revision_id': 999,
+                },
+            },
+            'selected paths should return only the specified path',
+        ),
+        (
+            ['non.existent.key'],
+            {
+                'non.existent.key': {
+                    'config_value': None,
+                    'revision_id': 0,
+                },
+            },
+            'Non-existing path should return None and a zero revision_id',
+        ),
+    ]
+)
+def test_draft_config_get_config_values(
+    base_data, draft_configs, config_paths, expected, test_case,
+):  # pylint: disable=unused-argument
+    """Verify DraftConfig.get_config_values returns correctly nested dict based on config_path"""
+    result = DraftConfig.get_config_values(tenant_id=1, config_paths=config_paths)
+    assert result == expected, test_case
+
+
+def test_draft_config_does_not_allow_update_method():
+    """Verify that DraftConfig does not allow update method."""
+    assert isinstance(DraftConfig.objects, NoUpdateManager), \
+        'DraftConfig.objects should be NoUpdateManager to prevent updates using .update() method'
+
+
+@pytest.mark.django_db
+def test_get_config_value_by_path_found(base_data, draft_configs):  # pylint: disable=unused-argument
+    """Verify get_config_value_by_path returns correct dict when config exists"""
+    draft_config = DraftConfig.get_config_value_by_path(
+        tenant_id=1,
+        config_path='theme_v2.footer.linkedin_url'
+    )
+    assert draft_config['config_value'] == 'https://linkedin.com/test'
+    assert draft_config['revision_id'] != 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('config_path,test_case', [
+    ('non.existent.path', 'non-existent path'),
+    ('', 'empty string path'),
+    (None, 'None path'),
+])
+def test_get_config_value_by_path_not_found(
+    base_data, draft_configs, config_path, test_case,
+):  # pylint: disable=unused-argument
+    """Verify get_config_value_by_path returns fallback dict when config is missing"""
+    result = DraftConfig.get_config_value_by_path(tenant_id=1, config_path=config_path)
+    assert result == {'config_value': None, 'revision_id': 0}, test_case
+
+
+@pytest.mark.parametrize('mock_config_values, expected_merged, test_case', [
+    (
+        {
+            'theme_v2.footer.linkedin_url': {
+                'config_value': 'https://linkedin.com',
+                'revision_id': 123
+            },
+            'theme_v2.footer.twitter_url': {
+                'config_value': 'https://twitter.com',
+                'revision_id': 123
+            }
+        },
+        {
+            'theme_v2': {
+                'footer': {
+                    'linkedin_url': 'https://linkedin.com',
+                    'twitter_url': 'https://twitter.com',
+                    'height': 100,
+                },
+                'header': {
+                    'logo': {'src': '/logo.png'},
+                },
+            },
+        },
+        'valid flat config values get merged into nested dict'
+    ),
+    (
+        {
+            'theme_v2.footer.linkedin_url': {
+                'config_value': None,
+                'revision_id': 123,
+            },
+            'theme_v2.footer.twitter_url': {
+                'config_value': 'https://twitter.com',
+                'revision_id': 123,
+            },
+            'theme_v2.footer.facebook_url': {
+                'config_value': 'https://facebook.com',
+                'revision_id': 0,
+            },
+        },
+        {
+            'theme_v2': {
+                'footer': {
+                    'linkedin_url': 'https://linkedin.com/test',
+                    'twitter_url': 'https://twitter.com',
+                    'height': 100,
+                },
+                'header': {
+                    'logo': {'src': '/logo.png'},
+                },
+            },
+        },
+        'skips values with None or revision_id == 0'
+    ),
+    (
+        {},
+        {
+            'theme_v2': {
+                'footer': {
+                    'linkedin_url': 'https://linkedin.com/test',
+                    'height': 100,
+                },
+                'header': {
+                    'logo': {'src': '/logo.png'},
+                },
+            },
+        },
+        'empty config_values is OK'
+    ),
+    (
+        {
+            'theme_v2.footer.colors.text': {
+                'config_value': '#998877',
+                'revision_id': 999,
+            },
+        },
+        {
+            'theme_v2': {
+                'footer': {
+                    'linkedin_url': 'https://linkedin.com/test',
+                    'height': 100,
+                    'colors': {
+                        'text': '#998877',
+                    },
+                },
+                'header': {
+                    'logo': {'src': '/logo.png'},
+                },
+            },
+        },
+        'New dictionary levels can be added with no problem'
+    ),
+    (
+        {
+            'theme_v2.header.logo.src.details': {
+                'config_value': 'extra level',
+                'revision_id': 999,
+            },
+        },
+        {
+            'theme_v2': {
+                'footer': {
+                    'linkedin_url': 'https://linkedin.com/test',
+                    'height': 100,
+                },
+                'header': {
+                    'logo': {'src': {'details': 'extra level'}},
+                },
+            },
+        },
+        'Overriding a value into a dictionary is possible because the priority is for the config_path to be created'
+    ),
+    (
+        {
+            'theme_v2': {
+                'config_value': {
+                    'footer': {
+                        'linkedin_url': 'https://linkedin.com/v1',
+                        'facebook_url': 'https://facebook.com/v1',
+                    },
+                },
+                'revision_id': 999,
+            },
+            'theme_v2.footer.linkedin_url': {
+                'config_value': 'https://linkedin.com/v2',
+                'revision_id': 888,
+            },
+            'theme_v2.footer': {
+                'config_value': {
+                    'linkedin_url': 'https://linkedin.com/v3',
+                    'facebook_url': 'https://facebook.com/v3',
+                },
+                'revision_id': 777,
+            },
+        },
+        {
+            'theme_v2': {
+                'footer': {
+                    'linkedin_url': 'https://linkedin.com/v2',
+                    'facebook_url': 'https://facebook.com/v3',
+                },
+            },
+        },
+        'always consider the value of the most specific path (leaf node)'
+    ),
+    (
+        {
+            'theme_v2.header.color': {
+                'config_value': '#445566',
+                'revision_id': 999,
+            },
+        },
+        {
+            'theme_v2': {
+                'footer': {
+                    'linkedin_url': 'https://linkedin.com/test',
+                    'height': 100,
+                },
+                'header': {
+                    'logo': {'src': '/logo.png'},
+                    'color': '#445566',
+                },
+            },
+        },
+        'adds new config value to existing nested dict structure',
+    ),
+])
+@patch.object(DraftConfig, 'get_config_values')
+def test_draft_config_loads_into(mock_get_config_values, mock_config_values, expected_merged, test_case):
+    """Verify DraftConfig.loads_into returns the expected merged config values."""
+    mock_get_config_values.return_value = mock_config_values
+
+    dest = {
+        'theme_v2': {
+            'footer': {
+                'linkedin_url': 'https://linkedin.com/test',
+                'height': 100,
+            },
+            'header': {
+                'logo': {'src': '/logo.png'},
+            },
+        },
+    }
+    config_values = DraftConfig.loads_into(
+        tenant_id=1,
+        config_paths=['theme_v2.footer.linkedin_url'],
+        dest=dest,
+    )
+    assert dest == expected_merged, test_case
+    assert config_values == mock_config_values
+
+
+def test_draft_config_loads_into_must_be_dict():
+    """Verify that DraftConfig.loads_into raises an error if src is not a dictionary"""
+    with pytest.raises(TypeError) as exc_info:
+        DraftConfig.loads_into(
+            tenant_id=1,
+            config_paths=['any'],
+            dest='not dictionary'
+        )
+    assert str(exc_info.value) == 'DraftConfig.loads: destination must be a dictionary.'
+
+
+@pytest.mark.django_db
+def test_draft_config_update_from_dict_new(base_data):  # pylint: disable=unused-argument
+    """Verify that DraftConfig.update_from_dict works fine with new records"""
+    def _assert_draft_configs(_src):
+        for draft_config in DraftConfig.objects.all():
+            current = _src
+            parts = draft_config.config_path.split('.')
+            for part in parts:
+                current = current[part]
+            assert draft_config.get_config_value()['config_value'] == current
+
+    user1 = get_user_model().objects.get(id=1)
+    user2 = get_user_model().objects.get(id=2)
+
+    assert DraftConfig.objects.count() == 0, 'bad test data'
+    config_paths = [
+        'level1.level2.level3',
+        'level1.level2.level3',
+        'level1',
+        'level1-1.level2.level3',
+        'level1-1.level2.level4',
+    ]
+
+    src = {
+        'level1': {
+            'level2': {
+                'level3': 'value33',
+            },
+            'level2-2': 'value22',
+        },
+        'level1-1': {
+            'level2': {
+                'level3': 'value33-2',
+                'level4': 'value33-3',
+                'level5': 'value33-4',
+            },
+        },
+    }
+
+    DraftConfig.update_from_dict(
+        tenant_id=1,
+        config_paths=config_paths,
+        src=src,
+        user=user1,
+    )
+
+    assert DraftConfig.objects.count() == 4, 'should create 4 records'
+    assert DraftConfig.objects.filter(updated_by=user1).count() == 4, 'all records should be created by the same user'
+    _assert_draft_configs(_src=src)
+
+    src['level1']['level2']['level3'] = None
+    DraftConfig.update_from_dict(
+        tenant_id=1,
+        config_paths=config_paths,
+        src=src,
+        user=user2,
+    )
+    assert DraftConfig.objects.count() == 3, 'the record related to the None value should be deleted'
+    assert DraftConfig.objects.filter(updated_by=user2).count() == 1, 'one record should be updated'
+    assert DraftConfig.objects.filter(updated_by=user1).count() == 2, 'rest of the records should not be updated'
+
+    _assert_draft_configs(_src=src)
+
+    src['level1']['level2']['level3'] = None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('src, test_case', [
+    (
+        {
+            'level1': {
+                'level2b': 'value',
+            },
+        }, 'the key does not exist at all'
+    ),
+    (
+        {
+            'level1': {
+                'level2': 'value',
+            },
+        }, 'the key exists but the type is not dictionary'
+    ),
+])
+def test_draft_config_update_from_dict_delete_non_existing(
+    base_data, src, test_case,
+):  # pylint: disable=unused-argument
+    """Verify that DraftConfig.update_from_dict removes DraftConfig that their path is not included in the source"""
+    assert DraftConfig.objects.count() == 0, 'bad test data'
+    config_paths = ['level1.level2.level3']
+    DraftConfig.objects.create(
+        tenant_id=1,
+        config_path=config_paths[0],
+        config_value='value33',
+        created_by_id=1,
+        updated_by_id=1,
+    )
+
+    DraftConfig.update_from_dict(
+        tenant_id=1,
+        config_paths=config_paths,
+        src=src,
+        user=get_user_model().objects.first(),
+    )
+
+    assert DraftConfig.objects.count() == 0, test_case
+
+
+def test_draft_config_update_from_dict_src_must_be_dict():
+    """Verify that DraftConfig.update_from_dict raises an error if src is not a dictionary"""
+    with pytest.raises(TypeError) as exc_info:
+        DraftConfig.update_from_dict(
+            tenant_id=1,
+            config_paths=['any'],
+            src='not dictionary',
+            user=Mock())
+    assert str(exc_info.value) == 'DraftConfig.update_from_dict: source must be a dictionary.'

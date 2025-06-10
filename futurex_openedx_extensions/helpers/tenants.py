@@ -1,9 +1,9 @@
 """Tenant management helpers"""
 from __future__ import annotations
 
+import copy
 import json
 import logging
-from enum import Enum
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
@@ -11,21 +11,21 @@ from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from crum import get_current_request
 from django.conf import settings
 from django.contrib.sites.models import Site
+from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
+from django.db.models import Count, OuterRef, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
-from futurex_openedx_extensions.helpers.converters import fill_deleted_keys_with_none
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.extractors import get_first_not_empty_item
-from futurex_openedx_extensions.helpers.models import ConfigAccessControl
-from futurex_openedx_extensions.helpers.mysql_functions import (
-    annotate_queryset_for_update_draft_config,
-    apply_json_merge_for_publish_draft_config,
-    apply_json_merge_for_update_draft_config,
+from futurex_openedx_extensions.helpers.extractors import (
+    dot_separated_path_extract_all,
+    dot_separated_path_force_set_value,
+    dot_separated_path_get_value,
+    get_first_not_empty_item,
 )
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig
 
 logger = logging.getLogger(__name__)
 
@@ -406,50 +406,93 @@ def create_new_tenant_config(sub_domain: str, platform_name: str) -> TenantConfi
     return tenant_config
 
 
-class ConfigPublishStatus(Enum):
-    ONLY_PUBLISHED = 'only_published'
-    ONLY_DRAFT = 'only_draft'
-    DRAFT_THEN_PUBLISHED = 'draft_then_published'
-
-
-def get_tenant_config_value(
-    config: dict, path: str, publish_status: ConfigPublishStatus = ConfigPublishStatus.ONLY_PUBLISHED,
-) -> tuple:
+@cache_dict(
+    timeout='FX_CACHE_TIMEOUT_CONFIG_ACCESS_CONTROL',
+    key_generator_or_name=cs.CACHE_NAME_CONFIG_ACCESS_CONTROL,
+)
+def get_config_access_control() -> Dict[str, Dict[str, Any]]:
     """
-    Retrieves a configuration value based on a comma-separated path.
-    - If `published_only` is True, fetches only from the main config.
-    - If `draft_only` is True, fetches only from `config_draft`.
-    - By default, prioritizes draft values but falls back to published values.
+    Get the configuration access control dictionary.
 
-    :param config: The configuration dictionary.
-    :param path: The comma-separated path to the desired value.
-    :param publish_status: The status of the value to fetch.
-    :return: The configuration value or None if not found.
+    :return: Dictionary of configuration access control
+    :rtype: Dict[str, Dict[str, Any]]
     """
-    def get_nested_value(_config: dict, _path: str) -> tuple:
-        """
-        Retrieves a value from a nested dictionary based on a dot-separated path.
-        """
-        keys = [key.strip() for key in _path.split('.')]
-        for key in keys:
-            if not isinstance(_config, dict) or key not in _config:
-                return False, None
-            _config = _config[key]
-        return True, _config
+    result = {}
+    for record in ConfigAccessControl.objects.all():
+        result[record.key_name] = {
+            'key_type': record.key_type,
+            'path': record.path,
+            'writable': record.writable,
+        }
 
-    if not config:
-        return False, None
+    return result
 
-    match publish_status:
-        case ConfigPublishStatus.ONLY_PUBLISHED:
-            result = get_nested_value(config, path)
 
-        case ConfigPublishStatus.ONLY_DRAFT:
-            result = get_nested_value(config.get('config_draft', {}), path)
+def cache_name_tenant_readable_lms_configs(tenant_id: int) -> str:
+    """
+    Get the cache name for the tenants' readable LMS configs.
+    :param tenant_id: The tenant ID
+    :type tenant_id: int
+    :return: The cache name
+    :rtype: str
+    """
+    return f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}'
 
-        case _:
-            draft_path_exist, draft_value = get_nested_value(config.get('config_draft', {}), path)
-            result = (draft_path_exist, draft_value) if draft_path_exist else get_nested_value(config, path)
+
+def invalidate_tenant_readable_lms_configs(tenant_id: int) -> None:
+    """
+    Invalidate the cache for the tenant's readable LMS configs.
+
+    :param tenant_id: The tenant ID
+    :type tenant_id: int
+    """
+    if not tenant_id:
+        for t_id in get_all_tenant_ids():
+            invalidate_tenant_readable_lms_configs(t_id)
+
+    cache.delete(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}')
+
+
+@cache_dict(
+    timeout='FX_CACHE_TIMEOUT_CONFIG_ACCESS_CONTROL',
+    key_generator_or_name=cache_name_tenant_readable_lms_configs,
+)
+def get_tenant_readable_lms_config(tenant_id: int) -> dict:
+    """
+    Retrieve the LMS configuration for a given tenant ID. It only includes keys that are defined in the
+    ConfigAccessControl model to avoid loading too much data.
+
+    Note: the function will not return the CONFIG_DRAFT key. Make sure not to use it when draft values are needed.
+
+    :param tenant_id: The ID of the tenant.
+    :type tenant_id: int
+    :return: The LMS configuration dictionary.
+    :rtype: dict
+    :raises FXCodedException: If the tenant is not found.
+    """
+    try:
+        tenant = TenantConfig.objects.get(id=tenant_id)
+    except TenantConfig.DoesNotExist as exc:
+        raise FXCodedException(
+            code=FXExceptionCodes.TENANT_NOT_FOUND,
+            message=f'Unable to find tenant with id: ({tenant_id})'
+        ) from exc
+
+    config_paths = [
+        access_control_value['path'] for access_control_key, access_control_value in get_config_access_control().items()
+    ]
+    unique_paths = sorted(set(config_paths))
+    readable_root_paths: List[str] = []
+    for path in unique_paths:
+        if not any(path == existing or path.startswith(existing + '.') for existing in readable_root_paths):
+            readable_root_paths.append(path)
+
+    result: Dict[str, Any] = {}
+    lms_configs = tenant.lms_configs
+    for root_path in readable_root_paths:
+        exists, value = dot_separated_path_get_value(lms_configs, root_path)
+        if exists:
+            dot_separated_path_force_set_value(result, root_path, value)
 
     return result
 
@@ -464,29 +507,34 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Tr
     :return: A dictionary containing key values, not permitted keys, and bad keys.
     :raises FXCodedException: If the tenant is not found.
     """
-    try:
-        tenant = TenantConfig.objects.get(id=tenant_id)
-    except TenantConfig.DoesNotExist as exc:
-        raise FXCodedException(
-            code=FXExceptionCodes.TENANT_NOT_FOUND,
-            message=f'Unable to find tenant with id: ({tenant_id})'
-        ) from exc
+    lms_configs = get_tenant_readable_lms_config(tenant_id)
+    config_access_control = get_config_access_control()
 
-    publish_status = ConfigPublishStatus.ONLY_PUBLISHED if published_only else ConfigPublishStatus.DRAFT_THEN_PUBLISHED
+    cleaned_keys = {key.strip() for key in keys}
 
-    details: dict = {'values': {}, 'not_permitted': [], 'bad_keys': []}
-    for key in set(keys):
-        key = key.strip()
-        try:
-            key_config = ConfigAccessControl.objects.get(key_name=key)
-            _, publish_value = get_tenant_config_value(
-                tenant.lms_configs,
-                key_config.path,
-                publish_status=publish_status,
-            )
-            details['values'][key] = publish_value
-        except ConfigAccessControl.DoesNotExist:
+    draft_configs = {}
+    if not published_only:
+        search_keys = list(cleaned_keys & set(config_access_control.keys()))
+        config_paths = [config_access_control[key]['path'] for key in search_keys]
+        draft_configs = DraftConfig.loads_into(tenant_id=tenant_id, config_paths=config_paths, dest=lms_configs)
+
+    details: Dict[str, Any] = {
+        'values': {},
+        'not_permitted': [],
+        'bad_keys': [],
+        'revision_ids': {},
+    }
+
+    for key in list(cleaned_keys):
+        if key in config_access_control:
+            config = config_access_control[key]
+            _, config_value = dot_separated_path_get_value(lms_configs, config['path'])
+            details['values'][key] = config_value
+            if not published_only:
+                details['revision_ids'][key] = draft_configs[config['path']]['revision_id']
+        else:
             details['bad_keys'].append(key)
+
     return details
 
 
@@ -526,18 +574,28 @@ def get_draft_tenant_config(tenant_id: int) -> dict:
     :type tenant_id: int
     :return: A dictionary containing updated fields with published and draft values.
     """
-    tenant = TenantConfig.objects.get(id=tenant_id)
+    config_access_control = get_config_access_control()
+    config_paths = [
+        access_control_value['path'] for access_control_value in config_access_control.values()
+    ]
+    lms_configs = get_tenant_readable_lms_config(tenant_id)
+    draft_configs: Dict[str, Any] = {}
+    DraftConfig.loads_into(
+        tenant_id=tenant_id,
+        config_paths=config_paths,
+        dest=draft_configs,
+    )
+
     updated_fields = {}
-    for field_config in ConfigAccessControl.objects.all():
-        _, published_value = get_tenant_config_value(tenant.lms_configs, field_config.path)
-        draft_path_exist, draft_value = get_tenant_config_value(
-            tenant.lms_configs, field_config.path, publish_status=ConfigPublishStatus.ONLY_DRAFT,
-        )
+    for access_control_key, access_control_value in config_access_control.items():
+        draft_path_exist, draft_value = dot_separated_path_get_value(draft_configs, access_control_value['path'])
         if draft_path_exist:
-            updated_fields[field_config.key_name] = {
+            _, published_value = dot_separated_path_get_value(lms_configs, access_control_value['path'])
+            updated_fields[access_control_key] = {
                 'published_value': published_value,
                 'draft_value': draft_value,
             }
+
     return updated_fields
 
 
@@ -548,79 +606,92 @@ def delete_draft_tenant_config(tenant_id: int) -> None:
     :param tenant_id: The ID of the tenant whose draft config needs to be deleted.
     :type tenant_id: int
     """
-    tenant = TenantConfig.objects.get(id=tenant_id)
-    tenant.lms_configs['config_draft'] = {}
-    tenant.save()
+    DraftConfig.objects.filter(tenant_id=tenant_id).delete()
 
 
-def update_draft_tenant_config(
+def update_draft_tenant_config(  # pylint: disable=too-many-arguments
     tenant_id: int,
-    key_path: str,
-    current_value: Any,
+    config_path: str,
+    current_revision_id: int,
     new_value: Any,
-    reset: bool = False
+    user: Any,
+    reset: bool = False,
 ) -> None:
     """
-    Updates 'config_draft.<key_path>' inside the JSON field 'lms_configs' in TenantConfig.
+    Updates 'config_draft.<key_path>' inside the JSON field 'lms_configs' in TenantConfig. The function will also
+    update all draft records for parent keys of the specified path.
 
     :param tenant_id: ID of the tenant.
     :type tenant_id: int
-    :param key_path: JSON key path to update.
-    :type key_path: str
-    :param current_value: Expected current value for validation.
-    :type current_value: Any
+    :param config_path: JSON key path to update.
+    :type config_path: str
+    :param current_revision_id: Expected current revision ID of the draft config for multi-user-edit protection.
+    :type current_revision_id: Any
     :param new_value: New value to be updated.
     :type new_value: Any
+    :param user: The user who is updating the config.
+    :type user: Any
     :param reset: Whether to reset the value to None.
     :type reset: bool
-    :raises FXCodedException: If the tenant does not exist or update fails.
+    :raises FXCodedException: If the tenant does not exist or the update fails.
     """
-    queryset = TenantConfig.objects.filter(id=tenant_id)
-    queryset = annotate_queryset_for_update_draft_config(queryset, key_path)
 
-    condition = (
-        Q(config_draft_exists=False, root_key_exists=False) |
-        Q(config_draft_exists=True, config_draft_value=current_value) |
-        Q(config_draft_exists=False, root_key_exists=True, root_value=current_value)
+    config_paths = dot_separated_path_extract_all(config_path)
+    config_paths.extend(DraftConfig.objects.filter(
+        tenant_id=tenant_id, config_path__startswith=f'{config_path}.',
+    ).values_list('config_path', flat=True))
+
+    current_draft: Dict[str, Any] = {}
+    draft_configs = DraftConfig.loads_into(
+        tenant_id=tenant_id,
+        config_paths=config_paths,
+        dest=current_draft,
     )
 
-    fill_deleted_keys_with_none(current_value, new_value)
-
-    updated = queryset.filter(condition).update(
-        lms_configs=apply_json_merge_for_update_draft_config(F('lms_configs'), key_path, new_value, reset)
-    )
-
-    if updated == 0:
+    if draft_configs[config_path]['revision_id'] != current_revision_id:
         raise FXCodedException(
             code=FXExceptionCodes.UPDATE_FAILED,
             message=(
-                f'Failed to update config for tenant {tenant_id}. Key path may not exist or current value mismatch.'
+                f'Failed to update config for tenant {tenant_id}. '
+                f'Current revision ID mismatch: expected {current_revision_id}, '
+                f'but found {draft_configs[config_path]["revision_id"]}.'
             )
         )
+
+    if reset:
+        new_value = None
+
+    dot_separated_path_force_set_value(target_dict=current_draft, dot_separated_path=config_path, value=new_value)
+    config_paths = [
+        draft_path for draft_path, draft_value in draft_configs.items() if draft_value['revision_id'] != 0
+    ]
+    config_paths.append(config_path)
+    DraftConfig.update_from_dict(
+        tenant_id=tenant_id,
+        config_paths=config_paths,
+        src=current_draft,
+        user=user,
+    )
 
 
 def publish_tenant_config(tenant_id: int) -> None:
     """
-    Publish draft config for given tenant
+    Publish draft config for the given tenant
 
     :param tenant_id: ID of the tenant.
     :raises FXCodedException: If publish fails.
     """
-    queryset = TenantConfig.objects.filter(id=tenant_id)
-    if not queryset.exists():
-        raise FXCodedException(
-            code=FXExceptionCodes.TENANT_NOT_FOUND,
-            message=f'Tenant with ID {tenant_id} not found.'
-        )
+    config_paths = list(DraftConfig.objects.filter(tenant_id=tenant_id).values_list('config_path', flat=True))
+    if not config_paths:
+        return
 
-    updated = apply_json_merge_for_publish_draft_config(queryset)
-    if updated == 0:
-        raise FXCodedException(
-            code=FXExceptionCodes.UPDATE_FAILED,
-            message=(
-                f'Failed to publish config for tenant {tenant_id}.'
-            )
-        )
+    tenant_config = TenantConfig.objects.get(id=tenant_id)
+    lms_configs = copy.deepcopy(tenant_config.lms_configs)
+    DraftConfig.loads_into(tenant_id=tenant_id, config_paths=config_paths, dest=lms_configs)
+    tenant_config.lms_configs = lms_configs
+    tenant_config.save()
+    delete_draft_tenant_config(tenant_id)
+    invalidate_tenant_readable_lms_configs(tenant_id)
 
 
 def get_accessible_config_keys(
@@ -641,8 +712,11 @@ def get_accessible_config_keys(
         Default is None: return all fields.
     :return: A list of accessible config keys.
     """
-    queryset = ConfigAccessControl.objects.all()
-    if writable_fields_filter is not None:
-        queryset = queryset.filter(writable=writable_fields_filter)
+    config_access_control = get_config_access_control()
 
-    return list(queryset.values_list('key_name', flat=True))
+    if writable_fields_filter is not None:
+        config_access_control = {
+            key: value for key, value in config_access_control.items() if value['writable'] is writable_fields_filter
+        }
+
+    return list(config_access_control.keys())

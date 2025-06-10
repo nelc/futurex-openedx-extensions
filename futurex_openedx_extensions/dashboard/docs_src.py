@@ -1585,7 +1585,7 @@ docs_src = {
     'ThemeConfigDraftView.put': {
         'summary': 'Update draft theme configuration of given tenant.',
         'description': 'Update draft of theme configuration for a given tenant otherwise create new draft with '
-        'updated values if draft does not exist.',
+        'updated values if draft does not exist. The API can also be used to reset a key to its published value.',
         'parameters': [
             common_path_parameters['tenant_id'],
         ],
@@ -1597,10 +1597,10 @@ docs_src = {
                     description='Config field name value is updated for.',
                     example='platform_name',
                 ),
-                'current_value': openapi.Schema(
+                'current_revision_id': openapi.Schema(
                     type=openapi.TYPE_OBJECT,
-                    description='Last stored value before making changes. Caller can get it using the '
-                    'API: GET /api/fx/config/v1/values/ without published_only parameter.',
+                    description='Last fetched value of `revision_id` for the key. It is used to prevent'
+                    ' concurrent updates. The API will return `409` if the value is outdated.',
                     example='My Platform Name',
                 ),
                 'new_value': openapi.Schema(
@@ -1619,8 +1619,56 @@ docs_src = {
             required=['key', 'current_value']
         ),
         'responses': responses(
+            success_description='See /draft/values API for details, the response is exactly the same as that one,'
+            ' except that it\'ll always contain one key.'
+            '\n\n**Note:** If the `new_value` is identical to the current value, the API will still succeed and it\'ll'
+            ' return the same revision ID (indicating that the value has not changed).',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'values': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'key1': openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description='Value of key1',
+                            ),
+                        },
+                    ),
+                    'not_permitted': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        description='always empty in this API.',
+                        items=openapi.Schema(type=openapi.TYPE_STRING),
+                    ),
+                    'bad_keys': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        description='always empty in this API.',
+                        items=openapi.Schema(type=openapi.TYPE_STRING),
+                    ),
+                    'revision_ids': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'key1': openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description='revision_id of key1.',
+                            ),
+                        },
+                    ),
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'values': {
+                        'secondary_colors': '#ff0000',
+                    },
+                    'not_permitted': [],
+                    'bad_keys': [],
+                    'revision_ids': {
+                        'secondary_colors': '654987344',
+                    },
+                },
+            },
             overrides={
-                204: 'Changes saved successfully.',
                 400: openapi.Response(
                     description='Bad request. Details in the response body.',
                     schema=openapi.Schema(
@@ -1631,7 +1679,7 @@ docs_src = {
                         },
                         example={
                             'detail': 'API can only be used for single tenant id.',
-                        }
+                        },
                     ),
                 ),
                 409: openapi.Response(
@@ -1644,11 +1692,11 @@ docs_src = {
                         },
                         example={
                             'detail': 'Current value is outdated.',
-                        }
+                        },
                     ),
                 ),
             },
-            remove=[200, 404],
+            remove=[404],
         ),
     },
 
@@ -1805,8 +1853,13 @@ docs_src = {
         ],
         'responses': responses(
             success_description='The response is a list of values, along with `not_permitted` and `bad_keys` info.'
-            '\n`Not permitted` will contain a list of keys that are not accessible to the user.'
-            '\n`Bad keys` will contain a list of keys that do not exist.',
+            '\n`not_permitted` will contain a list of keys that are not accessible to the user.'
+            '\n`bad_keys` will contain a list of keys that do not exist.'
+            '\n`revision_ids` will contain a dictionary of requested keys with the current `revision_id`. The revision'
+            ' ID is a unique identifier for the current draft value of the key across the tenant. It can be used to'
+            ' check if the value has changed since the last time it was fetched.'
+            '\n\n**Note:** the value `"0"` in the `revision_ids` means that the key does not have a draft value. This'
+            ' is useful when `published_only=0` to check if the value returned for the key has been published or not.',
             success_schema=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
                 properties={
@@ -1833,15 +1886,33 @@ docs_src = {
                         description='List of keys that the user tried to access but do not exist.',
                         items=openapi.Schema(type=openapi.TYPE_STRING),
                     ),
+                    'revision_ids': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'key1': openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description='revision_id of key1.',
+                            ),
+                            'key2': openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description='revision_id of key2.',
+                            )
+                        }
+                    ),
                 },
             ),
             success_examples={
                 'application/json': {
                     'values': {
-                        'primary_colors': '#ff00ff'
+                        'primary_colors': '#ff00ff',
+                        'secondary_colors': '#ff0000',
                     },
                     'not_permitted': ['platform_name'],
-                    'bad_keys': ['something']
+                    'bad_keys': ['something'],
+                    'revision_ids': {
+                        'primary_colors': '0',
+                        'secondary_colors': '654987321',
+                    },
                 },
             },
             remove=[404]

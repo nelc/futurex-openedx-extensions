@@ -12,6 +12,9 @@ from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.extractors import (
     DictHashcode,
     DictHashcodeSet,
+    dot_separated_path_extract_all,
+    dot_separated_path_force_set_value,
+    dot_separated_path_get_value,
     external_id_extractor_str_or_one_item_string_list,
     external_id_extractor_value,
     get_available_optional_field_tags,
@@ -622,3 +625,173 @@ def test_external_id_extractor_value(value, expected_result):
 def test_external_id_extractor_str_or_one_item_string_list(value, expected_result):
     """Verify that external_id_extractor_str_or_one_item_string_list returns the expected value."""
     assert external_id_extractor_str_or_one_item_string_list(value) == expected_result
+
+
+@pytest.mark.parametrize('input_key,expected,test_case', [
+    (
+        'theme_v2.header.colors.main_color',
+        ['theme_v2', 'theme_v2.header', 'theme_v2.header.colors', 'theme_v2.header.colors.main_color'],
+        'standard nested path'
+    ),
+    (
+        'single',
+        ['single'],
+        'single key has no parents'
+    ),
+    (
+        '',
+        [],
+        'empty string returns empty list'
+    ),
+    (
+        'a.b.c.d.e',
+        ['a', 'a.b', 'a.b.c', 'a.b.c.d', 'a.b.c.d.e'],
+        'deep key returns all intermediate parents'
+    ),
+    (
+        'trailing.dot.',
+        ['trailing', 'trailing.dot'],
+        'trailing dot is stripped before processing'
+    ),
+    (
+        '  spaced.out.path  ',
+        ['spaced', 'spaced.out', 'spaced.out.path'],
+        'whitespace trimmed before processing'
+    ),
+])
+def test_dot_separated_path_extract_all_valid(input_key, expected, test_case):
+    """Verify dot_separated_path_extract_all returns correct parent list for valid keys"""
+    assert dot_separated_path_extract_all(input_key) == expected, test_case
+
+
+@pytest.mark.parametrize('initial, path, value, expected, test_case', [
+    (
+        {},
+        'a.b.c',
+        123,
+        {'a': {'b': {'c': 123}}},
+        'sets value in empty dict'
+    ),
+    (
+        {'a': {'b': {'c': 0}}},
+        'a.b.c',
+        999,
+        {'a': {'b': {'c': 999}}},
+        'overwrites existing value'
+    ),
+    (
+        {'a': {'x': 1}},
+        'a.b.c',
+        'new',
+        {'a': {'x': 1, 'b': {'c': 'new'}}},
+        'creates missing branch under existing dict'
+    ),
+    (
+        {'x': 'not a dict'},
+        'x.y.z',
+        True,
+        {'x': {'y': {'z': True}}},
+        'overwrites non-dict intermediate key'
+    ),
+    (
+        {'a': {}},
+        'a.b',
+        None,
+        {'a': {'b': None}},
+        'sets None value'
+    ),
+])
+def test_dot_separated_path_force_set_value_behavior(initial, path, value, expected, test_case):
+    """Verify dot_separated_path_force_set_value updates the dict structure correctly"""
+    target = initial.copy()
+    dot_separated_path_force_set_value(target, path, value)
+    assert target == expected, test_case
+
+
+@pytest.mark.parametrize('bad_target', [
+    None, [], 'not a dict', 123, 12.5
+])
+def test_dot_separated_path_force_set_value_invalid_target_type(bad_target):
+    """Verify dot_separated_path_force_set_value raises TypeError on non-dict target"""
+    with pytest.raises(TypeError) as exc:
+        dot_separated_path_force_set_value(bad_target, 'a.b', 'value')
+    assert 'dot_separated_path_force_set_value accepts only dict type' in str(exc.value)
+
+
+@pytest.mark.parametrize('bad_input', [
+    None,
+    123,
+    12.5,
+    ['a.b'],
+    {'key': 'value'},
+])
+def test_dot_separated_path_extract_all_invalid_type(bad_input):
+    """Verify dot_separated_path_extract_all raises TypeError on invalid input types"""
+    with pytest.raises(TypeError) as exc:
+        dot_separated_path_extract_all(bad_input)
+    assert 'dot_separated_path_extract_all accepts only str type' in str(exc.value)
+
+
+@pytest.mark.parametrize('src, path, expected_exists, expected_value, test_case', [
+    (
+        {'a': {'b': {'c': 123}}},
+        'a.b',
+        True,
+        {'c': 123},
+        'nested path returns subtree'
+    ),
+    (
+        {'x': {'y': {'z': 'value'}}},
+        'x.y.z.w',
+        False,
+        None,
+        'missing deep key returns (False, None)'
+    ),
+    (
+        {'root': {}},
+        'root',
+        True,
+        {},
+        'root level returns empty dict'
+    ),
+    (
+        {},
+        'missing',
+        False,
+        None,
+        'missing top-level key'
+    ),
+])
+def test_dot_separated_path_get_value_valid(src, path, expected_exists, expected_value, test_case):
+    """Verify dot_separated_path_get_value behaves correctly on normal input"""
+    exists, value = dot_separated_path_get_value(src, path)
+    assert exists is expected_exists, test_case
+    assert value == expected_value, test_case
+
+
+@pytest.mark.parametrize('src, path, expected_msg', [
+    (
+        {'a': {'b': 'not-a-dict'}},
+        'a.b.c',
+        'Expected a dict at level (a.b), but got str',
+    ),
+    (
+        {'x': 123},
+        'x.y',
+        'Expected a dict at level (x), but got int',
+    )
+])
+def test_dot_separated_path_get_value_raises_on_type_error(src, path, expected_msg):
+    """Verify dot_separated_path_get_value raises TypeError when fail_on_bad_type is True"""
+    with pytest.raises(TypeError) as exc:
+        dot_separated_path_get_value(src, path, fail_on_bad_type=True)
+    assert expected_msg in str(exc.value)
+
+
+@pytest.mark.parametrize('bad_input', [
+    None, 'not-a-dict', 123, [1, 2, 3]
+])
+def test_dot_separated_path_get_value_invalid_top_level_type(bad_input):
+    """Verify top-level non-dict input raises TypeError"""
+    with pytest.raises(TypeError, match='dot_separated_path_get_value accepts only dict type'):
+        dot_separated_path_get_value(bad_input, 'some.path')

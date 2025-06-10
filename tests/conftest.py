@@ -17,6 +17,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from organizations.models import Organization
 
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.models import DraftConfig
 from tests.base_test_data import _base_data
 from tests.fixture_helpers import get_tenants_of_org, get_user1_fx_permission_info
 
@@ -96,6 +97,31 @@ def view_data():
         'start_page': 1,
         'end_page': None,
     }
+
+
+@pytest.fixture
+def draft_configs(base_data):  # pylint: disable=unused-argument, redefined-outer-name
+    """Create draft configs for testing."""
+    tenant = TenantConfig.objects.get(id=1)
+    user = get_user_model().objects.get(id=1)
+    revision_id = 999
+    result = []
+    with patch('futurex_openedx_extensions.helpers.models.DraftConfig.generate_revision_id') as mocked_revision_id:
+        for data in [
+            ('theme_v2.footer.linkedin_url', 'https://linkedin.com/test'),
+            ('theme_v2.footer.height', 100),
+            ('theme_v2.header.logo', {'src': '/logo.png'}),
+        ]:
+            mocked_revision_id.return_value = revision_id
+            result.append(DraftConfig.objects.create(
+                tenant=tenant,
+                config_path=data[0],
+                config_value=data[1],
+                created_by=user,
+                updated_by=user
+            ))
+            revision_id += 1
+    return result
 
 
 @pytest.fixture(scope='session')
@@ -284,3 +310,5 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
         _create_course_enrollments()
         _create_certificates()
         _create_sites()
+
+    return _base_data
