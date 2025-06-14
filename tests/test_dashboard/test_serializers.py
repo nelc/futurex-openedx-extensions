@@ -1114,18 +1114,43 @@ def test_read_only_serializer_update():
     assert str(exc_info.value) == 'This serializer is read-only and does not support object updates.'
 
 
+@pytest.mark.parametrize('context, expected_error', [
+    ({'request': Mock(fx_permission_info={'view_allowed_tenant_ids_full_access': [1, 2]})}, None),
+    ({'request': Mock(fx_permission_info={})}, None),
+    ({'request': Mock(spec=object)}, 'fx_permission_info is missing in the request context of the serializer!'),
+    ({}, 'Unable to load fx_permission_info as request object is missing.'),
+])
+def test_fx_permission_info_serializer_mixin(context, expected_error):
+    """
+    Verify that the FxPermissionInfoSerializerMixin correctly reads fx_permission_info from context and raises an
+    error if the something is missing.
+    """
+    class TestSerializer(
+        serializers.FxPermissionInfoSerializerMixin,
+        serializers.serializers.Serializer,
+    ):  # pylint: disable=abstract-method
+        """Test serializer to check fx_permission_info handling."""
+        test_field = serializers.serializers.CharField()
+
+    serializer = TestSerializer(data={'test_field': 'test_value'}, context=context)
+    if expected_error:
+        with pytest.raises(ValidationError) as exc_info:
+            _ = serializer.fx_permission_info
+        assert expected_error in str(exc_info.value)
+    else:
+        assert serializer.fx_permission_info == context['request'].fx_permission_info
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize('tenant_id, allowed_tenants, expected_error', [
     (1, [1], None),
     (99, [1], 'Tenant with ID 99 does not exist.'),
     (1, [4], 'User does not have have required access for tenant (1).'),
-    (1, None, 'Unable to verify tenant access as request object is missing.'),
 ])
 def test_file_upload_serializer(tenant_id, allowed_tenants, expected_error):
     """Test validation of tenant_id in FileUploadSerializer"""
     request = None
-    if allowed_tenants:
-        request = Mock(fx_permission_info={'view_allowed_tenant_ids_full_access': allowed_tenants})
+    request = Mock(fx_permission_info={'view_allowed_tenant_ids_full_access': allowed_tenants})
 
     file_data = SimpleUploadedFile('test.png', b'file_content', content_type='image/png')
     serializer = serializers.FileUploadSerializer(
@@ -1145,20 +1170,18 @@ def test_file_upload_serializer(tenant_id, allowed_tenants, expected_error):
     (1, [1], 'test.png', None, None),
     (1, [1], 'test.invalid', f'Invalid file type. Allowed types are {cs.ALLOWED_FILE_EXTENSIONS}.', 'file'),
     (1, [4], 'test.png', 'User does not have have required access for tenant (1).', 'tenant_id'),
-    (1, None, 'test.png', 'Unable to verify tenant access as request or fx_permission_info is missing.', 'tenant_id'),
 ])
 def test_tenant_asset_serializer(
     tenant_id, allowed_tenants, payload_file, expected_error, error_key, base_data
 ):  # pylint: disable=unused-argument, too-many-arguments
     """Test validation of tenant_id in FileUploadSerializer"""
     request = None
-    if allowed_tenants:
-        request = Mock(
-            fx_permission_info={
-                'view_allowed_tenant_ids_full_access': allowed_tenants,
-                'is_system_staff_user': False,
-            }
-        )
+    request = Mock(
+        fx_permission_info={
+            'view_allowed_tenant_ids_full_access': allowed_tenants,
+            'is_system_staff_user': False,
+        }
+    )
 
     file_data = SimpleUploadedFile(payload_file, b'file_content', content_type='image/png')
     serializer = serializers.TenantAssetSerializer(
@@ -1172,6 +1195,68 @@ def test_tenant_asset_serializer(
     else:
         assert serializer.is_valid()
         assert serializer.validated_data['tenant'].id == tenant_id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('is_system_staff, expected_allow, use_case', [
+    (False, False, 'Non system staff user cannot create asset in the template tenant'),
+    (True, True, 'System staff user can create asset in the template tenant'),
+])
+def test_tenant_asset_serializer_allow_template_tenant_id(
+    is_system_staff, expected_allow, use_case, base_data, template_tenant,
+):  # pylint: disable=unused-argument
+    """Test that TenantAssetSerializer allows tenant_id to be None for template assets."""
+    accessible_tenants = [1, 2]
+    assert template_tenant.id not in accessible_tenants, 'bad test data'
+
+    request = Mock(fx_permission_info={
+        'is_system_staff_user': is_system_staff, 'view_allowed_tenant_ids_full_access': accessible_tenants,
+    })
+    file_data = SimpleUploadedFile('test.png', b'file_content', content_type='image/png')
+    serializer = serializers.TenantAssetSerializer(
+        data={
+            'file': file_data,
+            'slug': 'test-slug',
+            'tenant_id': template_tenant.id,
+        },
+        context={'request': request},
+    )
+
+    assert expected_allow == serializer.is_valid(), use_case
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('is_superuser, slug, expected_error', [
+    (False, 'test-slug', None),
+    (True, 'test-slug', None),
+    (False, '_test-slug', 'Slug cannot start with an underscore unless the user is a system staff.'),
+    (True, '_test-slug', None),
+])
+def test_tenant_asset_serializer_slug_validation(
+    base_data, is_superuser, slug, expected_error,
+):  # pylint: disable=unused-argument
+    """Validate that only superusers and staff can create assets with slugs that start with '_'."""
+    user = get_user_model().objects.get(id=1)
+    user.is_superuser = is_superuser
+    user.save()
+
+    fx_permission_info = {
+        'is_system_staff_user': is_superuser,
+        'view_allowed_tenant_ids_full_access': [1],
+    }
+
+    request = Mock(user=user, fx_permission_info=fx_permission_info)
+    file_data = SimpleUploadedFile('test.png', b'file_content', content_type='image/png')
+    serializer = serializers.TenantAssetSerializer(
+        data={'file': file_data, 'slug': slug, 'tenant_id': 1}, context={'request': request}
+    )
+
+    if expected_error:
+        with pytest.raises(ValidationError):
+            assert not serializer.is_valid(raise_exception=True)
+        assert serializer.errors['slug'][0] == expected_error
+    else:
+        assert serializer.is_valid()
 
 
 @pytest.mark.django_db

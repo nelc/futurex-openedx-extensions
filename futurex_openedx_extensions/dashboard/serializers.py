@@ -1000,7 +1000,27 @@ class AggregatedCountsSerializer(ReadOnlySerializer):
     limited_access = serializers.BooleanField()
 
 
-class FileUploadSerializer(ReadOnlySerializer):
+class FxPermissionInfoSerializerMixin:  # pylint: disable=too-few-public-methods
+    """Mixin to add a property fx_permission_info that loads the fx_permission_info from the request context."""
+
+    @property
+    def fx_permission_info(self) -> dict[str, Any]:
+        """
+        Get the fx_permission_info from the request context.
+
+        :return: The fx_permission_info dictionary.
+        :rtype: dict[str, Any]
+        """
+        request = self.context.get('request')  # type: ignore[attr-defined]
+        if not request:
+            raise serializers.ValidationError('Unable to load fx_permission_info as request object is missing.')
+        if not hasattr(request, 'fx_permission_info'):
+            raise serializers.ValidationError('fx_permission_info is missing in the request context of the serializer!')
+
+        return request.fx_permission_info
+
+
+class FileUploadSerializer(FxPermissionInfoSerializerMixin, ReadOnlySerializer):
     """
     Serializer for handling the file upload request. It validates and serializes the input data.
     """
@@ -1017,18 +1037,13 @@ class FileUploadSerializer(ReadOnlySerializer):
         except TenantConfig.DoesNotExist as exc:
             raise serializers.ValidationError(f'Tenant with ID {value} does not exist.') from exc
 
-        request = self.context.get('request')
-
-        if not request or not hasattr(request, 'fx_permission_info'):
-            raise serializers.ValidationError('Unable to verify tenant access as request object is missing.')
-
-        if value not in request.fx_permission_info['view_allowed_tenant_ids_full_access']:
+        if value not in self.fx_permission_info['view_allowed_tenant_ids_full_access']:
             raise serializers.ValidationError(f'User does not have have required access for tenant ({value}).')
 
         return value
 
 
-class TenantAssetSerializer(serializers.ModelSerializer):
+class TenantAssetSerializer(FxPermissionInfoSerializerMixin, serializers.ModelSerializer):
     """Serializer for Data Export Task"""
     file_url = serializers.SerializerMethodField()
     file = serializers.FileField(write_only=True)
@@ -1066,19 +1081,25 @@ class TenantAssetSerializer(serializers.ModelSerializer):
         """
         Custom validation for tenant to ensure that the tenant permissions.
         """
-        request = self.context.get('request')
-        if not request or not hasattr(request, 'fx_permission_info'):
-            raise serializers.ValidationError(
-                'Unable to verify tenant access as request or fx_permission_info is missing.'
-            )
-        if (
-            not request.fx_permission_info['is_system_staff_user'] and
-            tenant.id not in request.fx_permission_info['view_allowed_tenant_ids_full_access']
-        ):
+        if tenant.id not in self.fx_permission_info['view_allowed_tenant_ids_full_access']:
+            template_tenant_id = get_all_tenants_info()['template_tenant']['tenant_id']
+            if self.fx_permission_info['is_system_staff_user'] and template_tenant_id == tenant.id:
+                return tenant
             raise serializers.ValidationError(
                 f'User does not have have required access for tenant ({tenant.id}).'
             )
+
         return tenant
+
+    def validate_slug(self, slug: str) -> str:
+        """
+        Custom validation for the slug to ensure it doesn't start with an underscore unless the user is a system staff.
+        """
+        if slug.startswith('_') and not self.fx_permission_info['is_system_staff_user']:
+            raise serializers.ValidationError(
+                'Slug cannot start with an underscore unless the user is a system staff.'
+            )
+        return slug
 
     def get_file_url(self, obj: TenantAsset) -> Any:  # pylint: disable=no-self-use
         """Return file url."""

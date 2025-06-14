@@ -6,6 +6,7 @@ import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, UserSignupSource
 from custom_reg_form.models import ExtraInfo
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
 from django.core.cache import cache
@@ -122,6 +123,17 @@ def draft_configs(base_data):  # pylint: disable=unused-argument, redefined-oute
             ))
             revision_id += 1
     return result
+
+
+@pytest.fixture
+def template_tenant(base_data):  # pylint: disable=unused-argument, redefined-outer-name
+    """Fixture to create a template tenant."""
+    assert settings.FX_TEMPLATE_TENANT_SITE, 'FX_TEMPLATE_TENANT_SITE setting is not set'
+    assert TenantConfig.objects.filter(external_key=settings.FX_TEMPLATE_TENANT_SITE).count() == 0
+    tenant4 = TenantConfig.objects.get(id=4)
+    tenant4.external_key = settings.FX_TEMPLATE_TENANT_SITE
+    tenant4.save()
+    return tenant4
 
 
 @pytest.fixture(scope='session')

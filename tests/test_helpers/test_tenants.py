@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
+from django.conf import settings
 from django.contrib.sites.models import Site
 from django.core.cache import cache
 from django.test import override_settings
@@ -245,6 +246,32 @@ def test_get_all_tenants_info_config_priorities(
     assert mock_get_first_not_empty_item.call_args_list[call_index][0][0] == [
         f'{data_prefix}{config_key}_value' for config_key in config_keys
     ]
+
+
+@pytest.mark.django_db
+def test_get_all_tenants_info_template_tenant_not_found(base_data, caplog):  # pylint: disable=unused-argument
+    """Verify that get_all_tenants_info will log an error if the template tenant is not found."""
+    assert settings.FX_TEMPLATE_TENANT_SITE, 'FX_TEMPLATE_TENANT_SITE setting is not set'
+    assert TenantConfig.objects.filter(external_key=settings.FX_TEMPLATE_TENANT_SITE).count() == 0
+    result = tenants.get_all_tenants_info()
+    assert f'CONFIGURATION ERROR: Template tenant not found! ({settings.FX_TEMPLATE_TENANT_SITE})' in caplog.text
+    assert isinstance(result['template_tenant'], dict)
+    assert result['template_tenant'] == {
+        'tenant_id': None,
+        'tenant_site': None,
+    }
+
+
+@pytest.mark.django_db
+def test_get_all_tenants_info_template_tenant(base_data, template_tenant):  # pylint: disable=unused-argument
+    """Verify that get_all_tenants_info will return the template tenant ID correctly."""
+    result = tenants.get_all_tenants_info()
+    assert template_tenant.id not in result['tenant_ids'], 'Template tenant should not be in tenant_ids'
+    assert result['template_tenant'] == {
+        'tenant_id': template_tenant.id,
+        'tenant_site': template_tenant.external_key,
+    }
+    assert template_tenant.external_key == settings.FX_TEMPLATE_TENANT_SITE
 
 
 @pytest.mark.django_db
