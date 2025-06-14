@@ -1642,10 +1642,10 @@ class FileUploadView(FXViewRoleInfoMixin, APIView):
         )
 
 
-@docs('CourseAssetsManagementView.create')
-@docs('CourseAssetsManagementView.list')
+@docs('TenantAssetsManagementView.create')
+@docs('TenantAssetsManagementView.list')
 @exclude_schema_for('retrieve', 'update', 'partial_update', 'destroy')
-class CourseAssetsManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
+class TenantAssetsManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
     """View to list and retrieve course assets."""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
