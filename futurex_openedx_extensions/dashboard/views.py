@@ -1665,9 +1665,13 @@ class TenantAssetsManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  #
 
     def get_queryset(self) -> QuerySet:
         """Get the list of user uploaded files."""
-        return TenantAsset.objects.filter(
+        result = TenantAsset.objects.filter(
             tenant__id__in=self.request.fx_permission_info['view_allowed_tenant_ids_full_access']
         )
+        if not self.request.fx_permission_info['is_system_staff_user']:
+            result = result.exclude(slug__startswith='_')
+
+        return result
 
 
 class SetThemePreviewCookieView(APIView):

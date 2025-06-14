@@ -2880,7 +2880,7 @@ class TestTenantAssetsManagementView(BaseTestViewMixin):
         )
         TenantAsset.objects.create(
             slug='tenant4-sample1',
-            tenant_id=4,
+            tenant_id=2,
             file=SimpleUploadedFile('sample41.png', b'dummy41', content_type='image/png'),
             updated_by_id=3
         )
@@ -2889,11 +2889,28 @@ class TestTenantAssetsManagementView(BaseTestViewMixin):
         self.assertEqual(
             len(response.data['results']),
             3,
-            'Failed, user should only have accesss to accessible tenants.',
+            'Failed, user should only have access to accessible tenants.',
         )
         self.assertEqual(response.data['results'][0]['id'], tenant1_sample3.id)
         self.assertEqual(response.data['results'][1]['id'], tenant1_sample2.id)
         self.assertEqual(response.data['results'][2]['id'], tenant1_sample1.id)
+
+        tenant1_sample1.slug = '_private-tenant1-sample1'
+        tenant1_sample1.save()
+        response = self.client.get(self.url)
+        self.assertEqual(
+            len(response.data['results']),
+            2,
+            'Private asset records shouldn\'t be accessible by non system-staff users.',
+        )
+
+        self.login_user(1)
+        response = self.client.get(self.url)
+        self.assertEqual(
+            len(response.data['results']),
+            TenantAsset.objects.count(),
+            'System-staff users should have access to all asset records.',
+        )
 
     def tearDown(self):
         """Delete created files"""
