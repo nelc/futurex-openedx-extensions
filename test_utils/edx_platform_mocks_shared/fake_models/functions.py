@@ -65,3 +65,16 @@ def add_users(caller, role, *users):  # pylint: disable=unused-argument
 def render(request, template):  # pylint: disable=unused-argument
     """render Mock"""
     return HttpResponse()
+
+
+def get_openedx_site_theme_model():
+    """get_openedx_site_theme_model Mock"""
+    class SiteThemeMock:  # pylint: disable=too-few-public-methods
+        """Mock class for SiteTheme"""
+        def __init__(self, site_id: int, theme_dir_name: str) -> None:
+            """Initialize the mock with site_id and theme_dir_name."""
+            self.site_id = site_id
+            self.theme_dir_name = theme_dir_name
+            self.id = -1  # pylint: disable=invalid-name
+
+    return SiteThemeMock
