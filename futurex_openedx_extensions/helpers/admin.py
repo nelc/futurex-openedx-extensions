@@ -331,7 +331,7 @@ class ConfigAccessControlForm(forms.ModelForm):
         fields = '__all__'
 
     def clean_path(self) -> str:
-        """Validates path with default tenant config."""
+        """Validates path with template tenant config."""
         key_path = self.data['path']
 
         if not key_path:
@@ -341,7 +341,7 @@ class ConfigAccessControlForm(forms.ModelForm):
             raise forms.ValidationError('Key path must not contain spaces.')
 
         try:
-            default_config = TenantConfig.objects.get(route__domain=settings.FX_DEFAULT_TENANT_SITE).lms_configs
+            template_config = TenantConfig.objects.get(route__domain=settings.FX_TEMPLATE_TENANT_SITE).lms_configs
         except TenantConfig.DoesNotExist as exc:
             raise forms.ValidationError('Unable to update path as default TenantConfig not found.') from exc
 
@@ -354,7 +354,7 @@ class ConfigAccessControlForm(forms.ModelForm):
         if any(invalid_chars_pattern.search(part) for part in path_parts):
             raise forms.ValidationError('Key path parts must include only alphanumeric characters and underscores.')
 
-        data_pointer = default_config
+        data_pointer = template_config
         found_path = []
         for part in path_parts:
             try:
