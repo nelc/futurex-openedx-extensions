@@ -1953,11 +1953,14 @@ docs_src = {
         ),
     },
 
-    'CourseAssetsManagementView.create': {
+    'TenantAssetsManagementView.create': {
         'summary': 'Add new asset to the tenant',
         'description': 'Add new asset to the tenant. \n `Note:` If an asset with the same slug already exists, the '
         'existing record will be updated with the new file instead of creating a duplicate entry. The old file will '
-        '**not** be deleted from the storage.',
+        '**not** be deleted from the storage.\n\n'
+        '**Note:** only superusers can add assets with slugs starting with an underscore (`_`). These assets are '
+        'considered private and will not be visible to other users. This is about the record in the database, not '
+        'the asset file itself. The asset file will have it\'s own permissions according to the host that serves it',
         'body': serializers.TenantAssetSerializer(),
         'responses': responses(
             overrides={
@@ -1967,11 +1970,14 @@ docs_src = {
         ),
     },
 
-    'CourseAssetsManagementView.list': {
+    'TenantAssetsManagementView.list': {
         'summary': 'List all asset',
         'description': 'Retrieve a list of all assets. System admins can view all assets, while other users can only '
         'view assets associated with their accessible tenant. Use the Tenant ID filter to narrow down the results to a '
-        'specific tenant.',
+        'specific tenant.\n\n'
+        '**Note:** assets with slugs starting with an underscore (`_`) are considered private and will be visible only '
+        'to system admins. This is about the record in the database, not the asset file itself. The asset file will '
+        'have it\'s own permissions according to the host that serves it',
         'parameters': [
             query_parameter(
                 'tenant_id',

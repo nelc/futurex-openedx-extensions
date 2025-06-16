@@ -78,9 +78,9 @@ def plugin_settings(settings: Any) -> None:
     )
 
     # Default Tenant site
-    settings.FX_DEFAULT_TENANT_SITE = getattr(
+    settings.FX_TEMPLATE_TENANT_SITE = getattr(
         settings,
-        'FX_DEFAULT_TENANT_SITE',
+        'FX_TEMPLATE_TENANT_SITE',
         'template.futurex.sa',
     )
 

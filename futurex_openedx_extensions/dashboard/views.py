@@ -98,6 +98,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     create_new_tenant_config,
     delete_draft_tenant_config,
     get_accessible_config_keys,
+    get_all_tenants_info,
     get_draft_tenant_config,
     get_excluded_tenant_ids,
     get_tenant_config,
@@ -1642,10 +1643,10 @@ class FileUploadView(FXViewRoleInfoMixin, APIView):
         )
 
 
-@docs('CourseAssetsManagementView.create')
-@docs('CourseAssetsManagementView.list')
+@docs('TenantAssetsManagementView.create')
+@docs('TenantAssetsManagementView.list')
 @exclude_schema_for('retrieve', 'update', 'partial_update', 'destroy')
-class CourseAssetsManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
+class TenantAssetsManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
     """View to list and retrieve course assets."""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantAllCoursesAccess]
@@ -1665,9 +1666,18 @@ class CourseAssetsManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  #
 
     def get_queryset(self) -> QuerySet:
         """Get the list of user uploaded files."""
-        return TenantAsset.objects.filter(
-            tenant__id__in=self.request.fx_permission_info['view_allowed_tenant_ids_full_access']
-        )
+        is_staff_user = self.request.fx_permission_info['is_system_staff_user']
+        accessible_tenant_ids = self.request.fx_permission_info['view_allowed_tenant_ids_full_access']
+        if is_staff_user:
+            template_tenant_id = get_all_tenants_info()['template_tenant']['tenant_id']
+            if template_tenant_id:
+                accessible_tenant_ids.append(template_tenant_id)
+
+        result = TenantAsset.objects.filter(tenant__id__in=accessible_tenant_ids)
+        if not is_staff_user:
+            result = result.exclude(slug__startswith='_')
+
+        return result
 
 
 class SetThemePreviewCookieView(APIView):

@@ -137,6 +137,12 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
         tenant_by_site[lms_base_no_port] = tenant['id']
         tenant_by_site[lms_base] = tenant['id']
 
+    try:
+        template_tenant = TenantConfig.objects.get(external_key=settings.FX_TEMPLATE_TENANT_SITE)
+    except TenantConfig.DoesNotExist:
+        template_tenant = None
+        logger.error('CONFIGURATION ERROR: Template tenant not found! (%s)', settings.FX_TEMPLATE_TENANT_SITE)
+
     return {
         'tenant_ids': tenant_ids,
         'sites': {
@@ -161,6 +167,10 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
         },
         'tenant_by_site': tenant_by_site,
         'sso_sites': sso_sites,
+        'template_tenant': {
+            'tenant_id': template_tenant.id if template_tenant else None,
+            'tenant_site': settings.FX_TEMPLATE_TENANT_SITE if template_tenant else None,
+        },
     }
 
 
@@ -358,7 +368,7 @@ def generate_tenant_config(sub_domain: str, platform_name: str) -> dict:
     :rtype: dict
     """
     try:
-        default_config = TenantConfig.objects.get(route__domain=settings.FX_DEFAULT_TENANT_SITE)
+        default_config = TenantConfig.objects.get(route__domain=settings.FX_TEMPLATE_TENANT_SITE)
         config_lms_dict = json.dumps(default_config.lms_configs)
         config_lms_dict = config_lms_dict.replace('{{platform_name}}', platform_name)
         config_lms_dict = config_lms_dict.replace('{{sub_domain}}', sub_domain)
@@ -366,7 +376,7 @@ def generate_tenant_config(sub_domain: str, platform_name: str) -> dict:
     except TenantConfig.DoesNotExist as exc:
         raise FXCodedException(
             code=FXExceptionCodes.TENANT_NOT_FOUND,
-            message=f'Default TenantConfig not found! default site: ({settings.FX_DEFAULT_TENANT_SITE})',
+            message=f'Default TenantConfig not found! default site: ({settings.FX_TEMPLATE_TENANT_SITE})',
         ) from exc
 
 

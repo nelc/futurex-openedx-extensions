@@ -19,7 +19,7 @@ roles_router.register(r'user_roles', views.UserRolesManagementView, basename='us
 export_router = DefaultRouter()
 export_router.register(r'tasks', views.DataExportManagementView, basename='data-export-tasks')
 tenant_assets_router = DefaultRouter()
-tenant_assets_router.register(r'tenant_assets', views.CourseAssetsManagementView, basename='tenant-assets')
+tenant_assets_router.register(r'tenant_assets', views.TenantAssetsManagementView, basename='tenant-assets')
 
 urlpatterns = [
     re_path(r'^api/fx/accessible/v1/info/$', views.AccessibleTenantsInfoView.as_view(), name='accessible-info'),

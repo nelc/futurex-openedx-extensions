@@ -10,6 +10,7 @@ import ddt
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment
 from deepdiff import DeepDiff
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
@@ -2880,7 +2881,7 @@ class TestTenantAssetsManagementView(BaseTestViewMixin):
         )
         TenantAsset.objects.create(
             slug='tenant4-sample1',
-            tenant_id=4,
+            tenant_id=2,
             file=SimpleUploadedFile('sample41.png', b'dummy41', content_type='image/png'),
             updated_by_id=3
         )
@@ -2889,11 +2890,52 @@ class TestTenantAssetsManagementView(BaseTestViewMixin):
         self.assertEqual(
             len(response.data['results']),
             3,
-            'Failed, user should only have accesss to accessible tenants.',
+            'Failed, user should only have access to accessible tenants.',
         )
         self.assertEqual(response.data['results'][0]['id'], tenant1_sample3.id)
         self.assertEqual(response.data['results'][1]['id'], tenant1_sample2.id)
         self.assertEqual(response.data['results'][2]['id'], tenant1_sample1.id)
+
+        tenant1_sample1.slug = '_private-tenant1-sample1'
+        tenant1_sample1.save()
+        response = self.client.get(self.url)
+        self.assertEqual(
+            len(response.data['results']),
+            2,
+            'Private asset records shouldn\'t be accessible by non system-staff users.',
+        )
+
+        self.login_user(1)
+        response = self.client.get(self.url)
+        self.assertEqual(
+            len(response.data['results']),
+            TenantAsset.objects.count(),
+            'System-staff users should have access to all asset records.',
+        )
+
+    @patch('futurex_openedx_extensions.helpers.upload.get_storage_dir')
+    def test_list_success_template_tenant(self, mocked_storage_dir):
+        """Verify that only staff-users can view assets in the template tenant"""
+        self.set_action('list')
+        mocked_storage_dir.return_value = self.fake_storage_dir
+        self.assertFalse(TenantConfig.objects.filter(external_key=settings.FX_TEMPLATE_TENANT_SITE).exists())
+        template_tenant = TenantConfig.objects.create(external_key=settings.FX_TEMPLATE_TENANT_SITE)
+
+        self.assertEqual(TenantAsset.objects.count(), 0, 'bad test data, no assets should exist yet')
+        TenantAsset.objects.create(
+            slug='sample',
+            tenant_id=template_tenant.id,
+            file=SimpleUploadedFile('sample.png', b'dummy data', content_type='image/png'),
+            updated_by_id=self.staff_user,
+        )
+
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(
+            len(response.data['results']),
+            1,
+            'Failed, staff user should be able to see the asset records in the template tenant!',
+        )
 
     def tearDown(self):
         """Delete created files"""
