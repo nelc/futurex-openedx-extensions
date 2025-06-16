@@ -135,7 +135,7 @@ KEY_TYPE_MAP = {
     'list': list,
 }
 
-ALLOWED_FILE_EXTENSIONS = ['.png', '.jpeg', '.jpg', '.ico', '.svg']
+ALLOWED_FILE_EXTENSIONS = ['.png', '.jpeg', '.jpg', '.ico', '.svg', '.css']
 
 CSV_EXPORT_UPLOAD_DIR = 'exported_files'
 CONFIG_FILES_UPLOAD_DIR = 'config_files'

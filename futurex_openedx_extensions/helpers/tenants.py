@@ -25,7 +25,7 @@ from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_get_value,
     get_first_not_empty_item,
 )
-from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig, TenantAsset
 
 logger = logging.getLogger(__name__)
 
@@ -581,6 +581,26 @@ def get_config_current_request(keys: List[str]) -> dict | None:
         keys=keys,
         published_only=theme_preview.lower() != 'yes',
     )
+
+
+def get_fx_theme_css_override() -> Dict[str, Any]:
+    """
+    Get the CSS override for the FX theme.
+
+    :return: A dictionary containing the CSS override.
+    :rtype: Dict[str, str]
+    """
+    configs = get_config_current_request(keys=['fx_css_override_asset_slug', 'fx_dev_css_enabled'])
+    override_slug = configs['values'].get('fx_css_override_asset_slug', '') if configs else None
+
+    assets: Dict[str, Any] = {}
+    if override_slug:
+        assets = get_all_tenants_info()['template_tenant']['assets'] or {}
+
+    return {
+        'css_override_file': assets.get(override_slug, '') if override_slug else '',
+        'dev_css_enabled': configs['values'].get('fx_dev_css_enabled', False) is True if configs else False,
+    }
 
 
 def get_draft_tenant_config(tenant_id: int) -> dict:
