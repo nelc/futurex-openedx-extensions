@@ -9,6 +9,12 @@ from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl, TenantAsset, ViewAllowedRoles
 from futurex_openedx_extensions.helpers.roles import cache_name_user_course_access_roles
 
+tenant_info_test_cases = [
+    (1, 2, False, 'Non-template tenant will not trigger cache invalidation'),
+    (1, None, False, 'Undefined template tenant will not trigger cache invalidation'),
+    (2, 2, True, 'Template tenant will trigger cache invalidation'),
+]
+
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.signals.add_missing_signup_source_record')
@@ -102,38 +108,61 @@ def test_refresh_config_access_control_cache_on_delete(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('tenant_id, template_id, trigger_flag, test_usecase', tenant_info_test_cases)
 @patch('futurex_openedx_extensions.helpers.signals.invalidate_cache')
+@patch('futurex_openedx_extensions.helpers.signals.get_all_tenants_info')
 def test_refresh_tenant_info_cache_on_save_template_asset(
-    mock_invalidate, base_data, cache_testing,
-):  # pylint: disable=unused-argument
+    mock_tenants_info, mock_invalidate, tenant_id, template_id, trigger_flag, test_usecase, base_data, cache_testing,
+):  # pylint: disable=unused-argument, too-many-arguments
     """Verify that the tenant info cache is invalidated when a TenantAsset is saved"""
+    mock_tenants_info.return_value = {
+        'template_tenant': {
+            'tenant_id': template_id,
+        }
+    }
     dummy = TenantAsset.objects.create(
         slug='slug',
-        tenant_id=1,
+        tenant_id=tenant_id,
         file='http://example.com/slug.png',
         updated_by_id=1,
     )
-    mock_invalidate.assert_called_once()
+    if trigger_flag:
+        mock_invalidate.assert_called_once()
+    else:
+        mock_invalidate.assert_not_called()
 
     mock_invalidate.reset_mock()
     dummy.asset_value = 'updated_value'
     dummy.save()
-    mock_invalidate.assert_called_once()
+    if trigger_flag:
+        mock_invalidate.assert_called_once()
+    else:
+        mock_invalidate.assert_not_called()
 
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.signals.invalidate_cache')
+@pytest.mark.parametrize('tenant_id, template_id, trigger_flag, test_usecase', tenant_info_test_cases)
+@patch('futurex_openedx_extensions.helpers.signals.get_all_tenants_info')
 def test_refresh_tenant_info_cache_on_delete_template_asset(
-    mock_invalidate, base_data, cache_testing,
-):  # pylint: disable=unused-argument
+    mock_tenants_info, mock_invalidate, tenant_id, template_id, trigger_flag, test_usecase, base_data, cache_testing,
+):  # pylint: disable=unused-argument, too-many-arguments
     """Verify that the tenant info cache is invalidated when a TenantAsset is deleted"""
+    mock_tenants_info.return_value = {
+        'template_tenant': {
+            'tenant_id': template_id,
+        }
+    }
     dummy = TenantAsset.objects.create(
         slug='slug',
-        tenant_id=1,
+        tenant_id=tenant_id,
         file='http://example.com/slug.png',
         updated_by_id=1,
     )
     mock_invalidate.reset_mock()
 
     dummy.delete()
-    mock_invalidate.assert_called_once()
+    if trigger_flag:
+        mock_invalidate.assert_called_once()
+    else:
+        mock_invalidate.assert_not_called()
