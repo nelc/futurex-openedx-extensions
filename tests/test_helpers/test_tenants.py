@@ -12,7 +12,7 @@ from eox_tenant.models import Route, TenantConfig
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig, TenantAsset
 
 
 @pytest.fixture
@@ -259,17 +259,32 @@ def test_get_all_tenants_info_template_tenant_not_found(base_data, caplog):  # p
     assert result['template_tenant'] == {
         'tenant_id': None,
         'tenant_site': None,
+        'assets': None,
     }
 
 
 @pytest.mark.django_db
 def test_get_all_tenants_info_template_tenant(base_data, template_tenant):  # pylint: disable=unused-argument
     """Verify that get_all_tenants_info will return the template tenant ID correctly."""
+    assert template_tenant.id != 1, 'bad test data'
+
+    assets = []
+    for tenant_id in (1, template_tenant.id):
+        assets.append(TenantAsset.objects.create(
+            slug=f'_template_asset_{tenant_id}',
+            tenant_id=tenant_id,
+            file=f'http://example.com/template_asset_{tenant_id}.png',
+            updated_by_id=1,
+        ))
+
     result = tenants.get_all_tenants_info()
     assert template_tenant.id not in result['tenant_ids'], 'Template tenant should not be in tenant_ids'
     assert result['template_tenant'] == {
         'tenant_id': template_tenant.id,
         'tenant_site': template_tenant.external_key,
+        'assets': {
+            f'_template_asset_{template_tenant.id}': assets[1].file.url,
+        },
     }
     assert template_tenant.external_key == settings.FX_TEMPLATE_TENANT_SITE
 

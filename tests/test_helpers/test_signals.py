@@ -6,7 +6,7 @@ from common.djangoapps.student.models import CourseAccessRole
 from django.core.cache import cache
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.models import ConfigAccessControl, ViewAllowedRoles
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, TenantAsset, ViewAllowedRoles
 from futurex_openedx_extensions.helpers.roles import cache_name_user_course_access_roles
 
 
@@ -99,3 +99,41 @@ def test_refresh_config_access_control_cache_on_delete(
     dummy.delete()
     assert cache.get(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL) is None
     mock_invalidate.assert_called_once_with(tenant_id=0)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.signals.invalidate_cache')
+def test_refresh_tenant_info_cache_on_save_template_asset(
+    mock_invalidate, base_data, cache_testing,
+):  # pylint: disable=unused-argument
+    """Verify that the tenant info cache is invalidated when a TenantAsset is saved"""
+    dummy = TenantAsset.objects.create(
+        slug='slug',
+        tenant_id=1,
+        file='http://example.com/slug.png',
+        updated_by_id=1,
+    )
+    mock_invalidate.assert_called_once()
+
+    mock_invalidate.reset_mock()
+    dummy.asset_value = 'updated_value'
+    dummy.save()
+    mock_invalidate.assert_called_once()
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.signals.invalidate_cache')
+def test_refresh_tenant_info_cache_on_delete_template_asset(
+    mock_invalidate, base_data, cache_testing,
+):  # pylint: disable=unused-argument
+    """Verify that the tenant info cache is invalidated when a TenantAsset is deleted"""
+    dummy = TenantAsset.objects.create(
+        slug='slug',
+        tenant_id=1,
+        file='http://example.com/slug.png',
+        updated_by_id=1,
+    )
+    mock_invalidate.reset_mock()
+
+    dummy.delete()
+    mock_invalidate.assert_called_once()

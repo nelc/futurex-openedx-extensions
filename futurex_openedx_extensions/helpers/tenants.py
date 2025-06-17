@@ -137,11 +137,17 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
         tenant_by_site[lms_base_no_port] = tenant['id']
         tenant_by_site[lms_base] = tenant['id']
 
+    template_tenant = None
+    template_assets: Dict[str, str] | None = None
     try:
         template_tenant = TenantConfig.objects.get(external_key=settings.FX_TEMPLATE_TENANT_SITE)
     except TenantConfig.DoesNotExist:
-        template_tenant = None
         logger.error('CONFIGURATION ERROR: Template tenant not found! (%s)', settings.FX_TEMPLATE_TENANT_SITE)
+
+    if template_tenant:
+        template_assets = {
+            asset.slug: asset.file.url for asset in TenantAsset.objects.filter(tenant=template_tenant)
+        }
 
     return {
         'tenant_ids': tenant_ids,
@@ -170,6 +176,7 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
         'template_tenant': {
             'tenant_id': template_tenant.id if template_tenant else None,
             'tenant_site': settings.FX_TEMPLATE_TENANT_SITE if template_tenant else None,
+            'assets': template_assets,
         },
     }
 
