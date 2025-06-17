@@ -15,7 +15,7 @@ from futurex_openedx_extensions.helpers.roles import (
     add_missing_signup_source_record,
     cache_name_user_course_access_roles,
 )
-from futurex_openedx_extensions.helpers.tenants import invalidate_tenant_readable_lms_configs
+from futurex_openedx_extensions.helpers.tenants import get_all_tenants_info, invalidate_tenant_readable_lms_configs
 
 
 @receiver(post_save, sender=CourseAccessRole)
@@ -77,7 +77,9 @@ def refresh_tenant_info_cache_on_save_template_asset(
     sender: Any, instance: TenantAsset, **kwargs: Any,  # pylint: disable=unused-argument
 ) -> None:
     """Receiver to refresh the tenant info cache when a tenant asset is saved"""
-    invalidate_cache()
+    template_tenant_id = get_all_tenants_info()['template_tenant']['tenant_id']
+    if template_tenant_id and instance.tenant_id == template_tenant_id:
+        invalidate_cache()
 
 
 @receiver(post_delete, sender=TenantAsset)
@@ -85,4 +87,6 @@ def refresh_tenant_info_cache_on_delete_template_asset(
     sender: Any, instance: TenantAsset, **kwargs: Any,  # pylint: disable=unused-argument
 ) -> None:
     """Receiver to refresh the tenant info cache when a tenant asset is deleted"""
-    invalidate_cache()
+    template_tenant_id = get_all_tenants_info()['template_tenant']['tenant_id']
+    if template_tenant_id and instance.tenant_id == template_tenant_id:
+        invalidate_cache()
