@@ -25,7 +25,7 @@ from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_get_value,
     get_first_not_empty_item,
 )
-from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig, TenantAsset
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +137,17 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
         tenant_by_site[lms_base_no_port] = tenant['id']
         tenant_by_site[lms_base] = tenant['id']
 
+    template_tenant = None
+    template_assets: Dict[str, str] | None = None
     try:
         template_tenant = TenantConfig.objects.get(external_key=settings.FX_TEMPLATE_TENANT_SITE)
     except TenantConfig.DoesNotExist:
-        template_tenant = None
         logger.error('CONFIGURATION ERROR: Template tenant not found! (%s)', settings.FX_TEMPLATE_TENANT_SITE)
+
+    if template_tenant:
+        template_assets = {
+            asset.slug: asset.file.url for asset in TenantAsset.objects.filter(tenant=template_tenant)
+        }
 
     return {
         'tenant_ids': tenant_ids,
@@ -170,6 +176,7 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
         'template_tenant': {
             'tenant_id': template_tenant.id if template_tenant else None,
             'tenant_site': settings.FX_TEMPLATE_TENANT_SITE if template_tenant else None,
+            'assets': template_assets,
         },
     }
 
@@ -574,6 +581,26 @@ def get_config_current_request(keys: List[str]) -> dict | None:
         keys=keys,
         published_only=theme_preview.lower() != 'yes',
     )
+
+
+def get_fx_theme_css_override() -> Dict[str, Any]:
+    """
+    Get the CSS override for the FX theme.
+
+    :return: A dictionary containing the CSS override.
+    :rtype: Dict[str, str]
+    """
+    configs = get_config_current_request(keys=['fx_css_override_asset_slug', 'fx_dev_css_enabled'])
+    override_slug = configs['values'].get('fx_css_override_asset_slug', '') if configs else None
+
+    assets: Dict[str, Any] = {}
+    if override_slug:
+        assets = get_all_tenants_info()['template_tenant']['assets'] or {}
+
+    return {
+        'css_override_file': assets.get(override_slug, '') if override_slug else '',
+        'dev_css_enabled': configs['values'].get('fx_dev_css_enabled', False) is True if configs else False,
+    }
 
 
 def get_draft_tenant_config(tenant_id: int) -> dict:

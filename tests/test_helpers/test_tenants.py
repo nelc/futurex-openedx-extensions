@@ -1,4 +1,5 @@
 """Tests for tenants helpers."""
+# pylint: disable=too-many-lines
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -12,7 +13,7 @@ from eox_tenant.models import Route, TenantConfig
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers import tenants
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig, TenantAsset
 
 
 @pytest.fixture
@@ -259,17 +260,32 @@ def test_get_all_tenants_info_template_tenant_not_found(base_data, caplog):  # p
     assert result['template_tenant'] == {
         'tenant_id': None,
         'tenant_site': None,
+        'assets': None,
     }
 
 
 @pytest.mark.django_db
 def test_get_all_tenants_info_template_tenant(base_data, template_tenant):  # pylint: disable=unused-argument
     """Verify that get_all_tenants_info will return the template tenant ID correctly."""
+    assert template_tenant.id != 1, 'bad test data'
+
+    assets = []
+    for tenant_id in (1, template_tenant.id):
+        assets.append(TenantAsset.objects.create(
+            slug=f'_template_asset_{tenant_id}',
+            tenant_id=tenant_id,
+            file=f'http://example.com/template_asset_{tenant_id}.png',
+            updated_by_id=1,
+        ))
+
     result = tenants.get_all_tenants_info()
     assert template_tenant.id not in result['tenant_ids'], 'Template tenant should not be in tenant_ids'
     assert result['template_tenant'] == {
         'tenant_id': template_tenant.id,
         'tenant_site': template_tenant.external_key,
+        'assets': {
+            f'_template_asset_{template_tenant.id}': assets[1].file.url,
+        },
     }
     assert template_tenant.external_key == settings.FX_TEMPLATE_TENANT_SITE
 
@@ -953,3 +969,79 @@ def test_invalidate_all_tenant_caches(mock_delete, mock_get_all_ids):
         assert call in actual_calls
 
     assert mock_delete.call_count == len(mock_get_all_ids.return_value) + 1  # +1 for the first call with `0`
+
+
+@pytest.mark.parametrize('config_value, call_info, _', [
+    (None, False, 'get_all_tenants_info should not be called when config_value is None'),
+    ({'values': {}}, False, 'get_all_tenants_info should not be called when fx_css_override_asset_slug is missing'),
+    (
+        {'values': {'fx_css_override_asset_slug': 'test-slug'}},
+        True,
+        'get_all_tenants_info should be called when fx_css_override_asset_slug is defined',
+    ),
+])
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_current_request')
+@patch('futurex_openedx_extensions.helpers.tenants.get_all_tenants_info')
+def test_get_fx_theme_css_override_calls(mock_info, mock_get_config, config_value, call_info, _):
+    """Verify get_fx_theme_css_override calls get_config_current_request and get_all_tenants_info correctly."""
+    mock_get_config.return_value = config_value
+    tenants.get_fx_theme_css_override()
+
+    mock_get_config.assert_called_once_with(keys=['fx_css_override_asset_slug', 'fx_dev_css_enabled'])
+    if call_info:
+        mock_info.assert_called_once()
+    else:
+        mock_info.assert_not_called()
+
+
+@pytest.mark.parametrize('config_value, assets, expected_result_values, test_usecase', [
+    (
+        {'values': {'fx_dev_css_enabled': False}},
+        {'_': 'assets are ignored in this test because override slug is not defined'},
+        ('', False),
+        'dev css returned as defined',
+    ),
+    (
+        {'values': {'fx_dev_css_enabled': True}},
+        {'_': 'assets are ignored in this test because override slug is not defined'},
+        ('', True),
+        'dev css returned as defined',
+    ),
+    (
+        {'values': {}},
+        {'_': 'assets are ignored in this test because override slug is not defined'},
+        ('', False),
+        'dev css returned as False if not defined',
+    ),
+    (
+        {'values': {'fx_css_override_asset_slug': 'slug1'}},
+        {'slug1': 'https://example.com/asset.css'},
+        ('https://example.com/asset.css', False),
+        'override asset returned as defined',
+    ),
+    (
+        {'values': {'fx_css_override_asset_slug': 'slug-not-defined'}},
+        {'slug1': 'https://example.com/asset.css'},
+        ('', False),
+        'override asset returned as empty when not found',
+    ),
+])
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_current_request')
+@patch('futurex_openedx_extensions.helpers.tenants.get_all_tenants_info')
+def test_get_fx_theme_css_override_success(
+    mock_info, mock_get_config, config_value, assets, expected_result_values, test_usecase,
+):  # pylint: disable=too-many-arguments
+    """Verify get_fx_theme_css_override returns the correct result."""
+    mock_get_config.return_value = config_value
+    mock_info.return_value = {
+        'template_tenant': {
+            'assets': assets,
+        }
+    }
+
+    expected_result = {
+        'css_override_file': expected_result_values[0],
+        'dev_css_enabled': expected_result_values[1],
+    }
+    result = tenants.get_fx_theme_css_override()
+    assert result == expected_result, test_usecase
