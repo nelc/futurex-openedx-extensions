@@ -691,27 +691,27 @@ def test_no_update_manager_other_queryset_operations_work(
     [
         (
             'a string value',
-            '{"___root": "a string value"}',
+            f'{{"{DraftConfig.ROOT}": "a string value"}}',
             'sample string value saved as JSON string',
         ),
         (
             {'src': '/logo.png'},
-            '{"___root": {"src": "/logo.png"}}',
+            f'{{"{DraftConfig.ROOT}": {{"src": "/logo.png"}}}}',
             'saves dictionary value as JSON string',
         ),
         (
             123,
-            '{"___root": 123}',
+            f'{{"{DraftConfig.ROOT}": 123}}',
             'saves integer value as JSON string',
         ),
         (
             {},
-            '{"___root": {}}',
+            f'{{"{DraftConfig.ROOT}": {{}}}}',
             'saves empty dictionary as JSON string',
         ),
         (
             None,
-            '{"___root": null}',
+            f'{{"{DraftConfig.ROOT}": null}}',
             'saves None as JSON null value',
         ),
     ]
@@ -729,7 +729,7 @@ def test_draft_config_save_value_as_dictionary(
     )
     assert draft_config.config_value == expected_saved_string, test_case
     assert not DeepDiff(json.loads(draft_config.config_value), {
-        '___root': config_value,
+        DraftConfig.ROOT: config_value,
     }, ignore_order=True), test_case
 
 
@@ -743,18 +743,18 @@ def test_draft_config_save_update_value(base_data):  # pylint: disable=unused-ar
         created_by_id=1,
         updated_by_id=1
     )
-    assert draft_config.config_value == '{"___root": 123}', 'test case failed: initial save'
+    assert draft_config.config_value == f'{{"{DraftConfig.ROOT}": 123}}', 'test case failed: initial save'
 
     new_value = [1, 2]
     draft_config.config_value = new_value
     draft_config.save()
     draft_config.refresh_from_db()
-    assert draft_config.config_value == '{"___root": [1, 2]}', 'test case failed: change existing value'
+    assert draft_config.config_value == f'{{"{DraftConfig.ROOT}": [1, 2]}}', 'test case failed: change existing value'
 
     draft_config.config_value = new_value
     draft_config.save()
     draft_config.refresh_from_db()
-    assert draft_config.config_value == '{"___root": [1, 2]}', 'test case failed: save same value again'
+    assert draft_config.config_value == f'{{"{DraftConfig.ROOT}": [1, 2]}}', 'test case failed: save same value again'
 
 
 @pytest.mark.django_db
@@ -762,7 +762,7 @@ def test_draft_config_save_change_value(base_data, draft_configs):  # pylint: di
     """Verify that DraftConfig.save changes the revision_id only when config_value is changed."""
     draft_config = draft_configs[0]
     revision_id = draft_config.revision_id
-    assert draft_config.config_value == '{"___root": "https://linkedin.com/test"}', 'bad test data'
+    assert draft_config.config_value == f'{{"{DraftConfig.ROOT}": "https://linkedin.com/test"}}', 'bad test data'
 
     draft_config.config_value = 'new value'
     draft_config.save()
@@ -784,13 +784,44 @@ def test_draft_config_save_change_value_db_value_match(base_data, draft_configs)
     """
     draft_config = draft_configs[0]
     revision_id = draft_config.revision_id
-    assert draft_config.config_value == '{"___root": "https://linkedin.com/test"}', 'bad test data'
+    assert draft_config.config_value == f'{{"{DraftConfig.ROOT}": "https://linkedin.com/test"}}', 'bad test data'
 
-    draft_config.config_value = '{"___root": "https://linkedin.com/test"}'
+    draft_config.config_value = f'{{"{DraftConfig.ROOT}": "https://linkedin.com/test"}}'
     draft_config.save()
     draft_config.refresh_from_db()
-    assert draft_config.config_value == '{"___root": "https://linkedin.com/test"}', 'config_value should match DB value'
+    assert draft_config.config_value == f'{{"{DraftConfig.ROOT}": "https://linkedin.com/test"}}', \
+        'config_value should match DB value'
     assert draft_config.revision_id == revision_id, 'revision_id should not change on same value update'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('new_config_value', ['test', 123, None, {'key': 'value'}])
+def test_draft_config_save_change_value_with_root(
+    base_data, draft_configs, new_config_value,
+):  # pylint: disable=unused-argument
+    """
+    Verify that DraftConfig.save will not json-dumps the config_value if it is already a JSON string starting with
+    the `DraftConfig.ROOT` key.
+    """
+    draft_config = draft_configs[0]
+    revision_id = draft_config.revision_id
+    assert draft_config.config_value == f'{{"{DraftConfig.ROOT}": "https://linkedin.com/test"}}', 'bad test data'
+
+    final_new_value = json.dumps({
+        DraftConfig.ROOT: new_config_value,
+    })
+    draft_config.config_value = final_new_value
+    draft_config.save()
+    draft_config.refresh_from_db()
+    assert draft_config.config_value == final_new_value, 'config_value should match DB value'
+    assert draft_config.revision_id != revision_id, 'revision_id should change'
+
+    revision_id = draft_config.revision_id
+    draft_config.config_value = new_config_value
+    draft_config.save()
+    draft_config.refresh_from_db()
+    assert draft_config.config_value == final_new_value, 'config_value should match DB value'
+    assert draft_config.revision_id == revision_id, 'revision_id should not be changed'
 
 
 @pytest.mark.django_db
@@ -1188,3 +1219,9 @@ def test_draft_config_update_from_dict_src_must_be_dict():
             src='not dictionary',
             user=Mock())
     assert str(exc_info.value) == 'DraftConfig.update_from_dict: source must be a dictionary.'
+
+
+def test_draft_config_root_key():
+    """Verify that DraftConfig.ROOT is a valid root key."""
+    assert DraftConfig.ROOT == '___root', 'DANGEROUS ACTION: breaking this test means that data migration is needed ' \
+        'to fix existing data. Or at least making sure that all drafts are published before deploying this changed!'
