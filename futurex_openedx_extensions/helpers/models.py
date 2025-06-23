@@ -634,6 +634,8 @@ class DraftConfig(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='draft_config_updated_by')
 
+    ROOT = '___root'
+
     class Meta:
         verbose_name = 'Draft Configuration'
         verbose_name_plural = 'Draft Configurations'
@@ -658,19 +660,28 @@ class DraftConfig(models.Model):
         :param args: Positional arguments.
         :param kwargs: Keyword arguments.
         """
-        new_value = json.dumps({
-            '___root': self.config_value,
+        new_config_value = self.config_value
+        if isinstance(self.config_value, str):
+            try:
+                dict_value = json.loads(self.config_value)
+            except json.JSONDecodeError:
+                dict_value = {}
+            if self.ROOT in dict_value:
+                new_config_value = dict_value[self.ROOT]
+
+        new_config_value = json.dumps({
+            self.ROOT: new_config_value,
         })
 
         if self.pk:
             original = DraftConfig.objects.filter(pk=self.pk).values_list('config_value', flat=True).first()
-            if original not in (self.config_value, new_value):
-                self.config_value = new_value
+            if original != new_config_value:
+                self.config_value = new_config_value
                 self.revision_id = self.generate_revision_id()
-            elif original == new_value:
+            else:
                 self.config_value = original
         else:
-            self.config_value = new_value
+            self.config_value = new_config_value
 
         if not self.revision_id:
             self.revision_id = self.generate_revision_id()
@@ -684,7 +695,7 @@ class DraftConfig(models.Model):
         :return: A dictionary with the configuration value and the revision_id.
         """
         result = {
-            'config_value': json.loads(self.config_value)['___root'],
+            'config_value': json.loads(self.config_value)[self.ROOT],
             'revision_id': self.revision_id,
         }
 
