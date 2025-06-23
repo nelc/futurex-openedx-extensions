@@ -2252,6 +2252,16 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
         assert response.status_code == http_status.HTTP_400_BAD_REQUEST
         assert response.data['reason'] == expected_reason
 
+    @staticmethod
+    def _prepare_data(tenant_id, config_path):
+        """Helper to prepare data for the test"""
+        tenant_config = TenantConfig.objects.get(id=tenant_id)
+        assert tenant_config.lms_configs['platform_name'] == 's1 platform name'
+        assert DraftConfig.objects.filter(tenant_id=tenant_id).count() == 1, 'bad test data'
+
+        ConfigAccessControl.objects.create(key_name='platform_name', path=config_path, writable=True)
+        assert DraftConfig.objects.filter(tenant_id=tenant_id, config_path=config_path).count() == 0, 'bad test data'
+
     @patch('futurex_openedx_extensions.dashboard.views.ThemeConfigDraftView.validate_input')
     @patch('futurex_openedx_extensions.dashboard.views.update_draft_tenant_config')
     def test_draft_config_update(self, mock_update_draft, mocked_validate_input):
@@ -2269,15 +2279,11 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
             draft_config.save()
 
         tenant_id = 1
-        tenant_config = TenantConfig.objects.get(id=tenant_id)
-        assert tenant_config.lms_configs['platform_name'] == 's1 platform name'
-        assert DraftConfig.objects.filter(tenant_id=tenant_id).count() == 1, 'bad test data'
-        self.login_user(self.staff_user)
-        self.url_args = [tenant_config.id]
-
         config_path = 'platform_name'
-        ConfigAccessControl.objects.create(key_name='platform_name', path=config_path, writable=True)
-        assert DraftConfig.objects.filter(tenant_id=tenant_id, config_path=config_path).count() == 0, 'bad test data'
+        self.login_user(self.staff_user)
+        self.url_args = [tenant_id]
+
+        self._prepare_data(tenant_id, config_path)
 
         new_value = 's1 new name'
         mock_update_draft.side_effect = _update_draft
@@ -2311,6 +2317,44 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
             user=ANY,
         )
         mocked_validate_input.assert_called_once_with('string', new_value, '456')
+
+    @patch('futurex_openedx_extensions.dashboard.views.ThemeConfigDraftView.validate_input')
+    @patch('futurex_openedx_extensions.dashboard.views.update_draft_tenant_config')
+    @ddt.data(
+        (None, False),
+        ('not boolean', False),
+        ('1', False),
+        (1, False),
+        (False, False),
+        (True, True),
+    )
+    @ddt.unpack
+    def test_draft_config_update_reset(self, reset_value, expected_passed_value, mock_update_draft, _):
+        """Verify that `reset` is passed to update_draft_tenant_config correctly."""
+        tenant_id = 1
+        config_path = 'platform_name'
+        self._prepare_data(tenant_id, config_path)
+
+        self.url_args = [1]
+        self.login_user(self.staff_user)
+        self.client.put(
+            self.url,
+            data={
+                'key': 'platform_name',
+                'new_value': 'anything',
+                'current_revision_id': '0',
+                'reset': reset_value,
+            },
+            format='json'
+        )
+        mock_update_draft.assert_called_once_with(
+            tenant_id=1,
+            config_path=config_path,
+            current_revision_id=0,
+            new_value='anything',
+            reset=expected_passed_value,
+            user=ANY,
+        )
 
     @ddt.data(
         *validation_test_data,
