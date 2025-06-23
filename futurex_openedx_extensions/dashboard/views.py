@@ -1577,7 +1577,7 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
                 message=f'User with ID {owner_user_id} does not exist.'
             )
 
-    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         POST /api/fx/config/v1/tenant/
         """
@@ -1594,7 +1594,10 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
                 tenant_wide=True,
                 course_ids=[],
             )
-        return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+        result = {'tenant_id': tenant_config.id}
+        result.update(get_all_tenants_info()['info'].get(tenant_config.id))
+        return JsonResponse(result)
 
 
 class FileUploadView(FXViewRoleInfoMixin, APIView):
