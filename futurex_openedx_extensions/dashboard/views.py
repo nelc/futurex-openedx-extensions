@@ -1364,7 +1364,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 
             new_value = data.get('new_value')
             current_revision_id = data.get('current_revision_id')
-            reset = data.get('reset', '0') == '1'
+            reset = data.get('reset', False) is True
 
             if not settings.FX_DISABLE_CONFIG_VALIDATIONS:
                 self.validate_input(key_access_info.key_type, new_value, current_revision_id)
