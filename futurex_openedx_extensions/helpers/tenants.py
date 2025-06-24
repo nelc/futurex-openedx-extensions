@@ -11,13 +11,16 @@ from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from crum import get_current_request
 from django.conf import settings
 from django.contrib.sites.models import Site
-from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Count, OuterRef, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
+from futurex_openedx_extensions.helpers.caching import (
+    cache_dict,
+    invalidate_cache,
+    invalidate_tenant_readable_lms_configs,
+)
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_extract_all,
@@ -456,20 +459,6 @@ def cache_name_tenant_readable_lms_configs(tenant_id: int) -> str:
     return f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}'
 
 
-def invalidate_tenant_readable_lms_configs(tenant_id: int) -> None:
-    """
-    Invalidate the cache for the tenant's readable LMS configs.
-
-    :param tenant_id: The tenant ID
-    :type tenant_id: int
-    """
-    if not tenant_id:
-        for t_id in get_all_tenant_ids():
-            invalidate_tenant_readable_lms_configs(t_id)
-
-    cache.delete(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}')
-
-
 @cache_dict(
     timeout='FX_CACHE_TIMEOUT_CONFIG_ACCESS_CONTROL',
     key_generator_or_name=cache_name_tenant_readable_lms_configs,
@@ -728,7 +717,7 @@ def publish_tenant_config(tenant_id: int) -> None:
     tenant_config.lms_configs = lms_configs
     tenant_config.save()
     delete_draft_tenant_config(tenant_id)
-    invalidate_tenant_readable_lms_configs(tenant_id)
+    invalidate_tenant_readable_lms_configs([tenant_id])
 
 
 def get_accessible_config_keys(

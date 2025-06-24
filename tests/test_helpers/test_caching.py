@@ -7,7 +7,11 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
+from futurex_openedx_extensions.helpers.caching import (
+    cache_dict,
+    invalidate_cache,
+    invalidate_tenant_readable_lms_configs,
+)
 
 
 @pytest.fixture
@@ -223,3 +227,11 @@ def test_skip_cache_option(mock_cache):  # pylint: disable=redefined-outer-name
 
     result = dummy_cached_func(__skip_cache=True)
     assert result == {'key': 'value'}
+
+
+@patch('django.core.cache.cache.delete')
+def test_invalidate_specific_tenant_cache(mock_delete):
+    """Verify specific tenant cache is deleted correctly"""
+    tenant_id = 42
+    invalidate_tenant_readable_lms_configs([tenant_id])
+    mock_delete.assert_called_once_with(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}')

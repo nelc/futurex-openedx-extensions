@@ -9,13 +9,13 @@ from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.caching import invalidate_cache
+from futurex_openedx_extensions.helpers.caching import invalidate_cache, invalidate_tenant_readable_lms_configs
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl, TenantAsset, ViewAllowedRoles
 from futurex_openedx_extensions.helpers.roles import (
     add_missing_signup_source_record,
     cache_name_user_course_access_roles,
 )
-from futurex_openedx_extensions.helpers.tenants import get_all_tenants_info, invalidate_tenant_readable_lms_configs
+from futurex_openedx_extensions.helpers.tenants import get_all_tenant_ids, get_all_tenants_info
 
 
 @receiver(post_save, sender=CourseAccessRole)
@@ -60,7 +60,7 @@ def refresh_config_access_control_cache_on_save(
 ) -> None:
     """Receiver to refresh the config access control cache when a config access control is saved"""
     cache.delete(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL)
-    invalidate_tenant_readable_lms_configs(tenant_id=0)
+    invalidate_tenant_readable_lms_configs(tenant_ids=get_all_tenant_ids())
 
 
 @receiver(post_delete, sender=ConfigAccessControl)
@@ -69,7 +69,7 @@ def refresh_config_access_control_cache_on_delete(
 ) -> None:
     """Receiver to refresh the config access control cache when a config access control is deleted"""
     cache.delete(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL)
-    invalidate_tenant_readable_lms_configs(tenant_id=0)
+    invalidate_tenant_readable_lms_configs(tenant_ids=get_all_tenant_ids())
 
 
 @receiver(post_save, sender=TenantAsset)

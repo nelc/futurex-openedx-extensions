@@ -944,33 +944,6 @@ def test_get_tenant_readable_lms_config_deduplicates_nested_keys(mock_access_con
     }
 
 
-@patch('django.core.cache.cache.delete')
-def test_invalidate_specific_tenant_cache(mock_delete):
-    """Verify specific tenant cache is deleted correctly"""
-    tenant_id = 42
-    tenants.invalidate_tenant_readable_lms_configs(tenant_id)
-    mock_delete.assert_called_once_with(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}')
-
-
-@patch('futurex_openedx_extensions.helpers.tenants.get_all_tenant_ids')
-@patch('django.core.cache.cache.delete')
-def test_invalidate_all_tenant_caches(mock_delete, mock_get_all_ids):
-    """Verify all tenant caches are deleted when tenant_id is falsy"""
-    mock_get_all_ids.return_value = [1, 2, 3]
-
-    tenants.invalidate_tenant_readable_lms_configs(0)
-
-    expected_calls = [
-        ((f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}',),) for tenant_id in [1, 2, 3]
-    ]
-    actual_calls = mock_delete.call_args_list
-
-    for call in expected_calls:
-        assert call in actual_calls
-
-    assert mock_delete.call_count == len(mock_get_all_ids.return_value) + 1  # +1 for the first call with `0`
-
-
 @pytest.mark.parametrize('config_value, call_info, _', [
     (None, False, 'get_all_tenants_info should not be called when config_value is None'),
     ({'values': {}}, False, 'get_all_tenants_info should not be called when fx_css_override_asset_slug is missing'),

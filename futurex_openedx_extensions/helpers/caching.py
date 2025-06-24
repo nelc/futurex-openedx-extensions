@@ -4,7 +4,7 @@ from __future__ import annotations
 import functools
 import logging
 from datetime import timedelta
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List
 
 from django.conf import settings
 from django.core.cache import cache
@@ -101,3 +101,14 @@ def invalidate_cache(cache_name: str = None) -> None:
         cache.delete(cs.CACHE_NAME_ORG_TO_TENANT_MAP)
     else:
         cache.delete(cache_name)
+
+
+def invalidate_tenant_readable_lms_configs(tenant_ids: List[int]) -> None:
+    """
+    Invalidate the cache for the tenant's readable LMS configs.
+
+    :param tenant_ids: List of the tenant IDs to invalidate the cache for.
+    :type tenant_ids: List[int]
+    """
+    for tenant_id in tenant_ids:
+        cache.delete(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}')
