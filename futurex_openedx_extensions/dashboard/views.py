@@ -1118,6 +1118,30 @@ class ExcludedTenantsView(APIView):
         return JsonResponse(get_excluded_tenant_ids())
 
 
+@docs('TenantInfoView.get')
+class TenantInfoView(FXViewRoleInfoMixin, APIView):
+    """View to get the list of excluded tenants"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'tenant_info'
+    fx_default_read_only_roles = COURSE_ACCESS_ROLES_SUPPORTED_READ.copy()
+    fx_view_description = 'api/fx/tenants/v1/info/<tenant_id>/: tenant basic information'
+
+    def get(
+        self, request: Any, tenant_id: str, *args: Any, **kwargs: Any,
+    ) -> JsonResponse | Response:
+        """Get the tenant's information by tenant ID"""
+        if int(tenant_id) not in self.request.fx_permission_info['view_allowed_tenant_ids_any_access']:
+            return Response(
+                error_details_to_dictionary(reason='You do not have access to this tenant'),
+                status=http_status.HTTP_403_FORBIDDEN,
+            )
+
+        result = {'tenant_id': int(tenant_id)}
+        result.update(get_all_tenants_info()['info'].get(int(tenant_id)))
+        return JsonResponse(result)
+
+
 @exclude_schema_for('get')
 class ClickhouseQueryView(FXViewRoleInfoMixin, APIView):
     """View to get the Clickhouse query"""

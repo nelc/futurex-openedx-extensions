@@ -1929,6 +1929,40 @@ class TestExcludedTenantsView(BaseTestViewMixin):
         })
 
 
+@pytest.mark.usefixtures('base_data')
+class TestTenantInfoView(BaseTestViewMixin):
+    """Tests for TenantInfoView"""
+    VIEW_NAME = 'fx_dashboard:tenant-info'
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        self.url_args = ['1']
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_no_permission(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        self.url_args = ['1']
+        self.login_user(11)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_success(self):
+        """Verify that the view returns the correct response"""
+        self.url_args = ['1']
+        self.login_user(3)
+        expected_result = {
+            'tenant_id': 1,
+            'lms_root_url': 'https://s1.sample.com',
+            'studio_root_url': 'https://studio.example.com',
+            'platform_name': 's1 platform name',
+            'logo_image_url': '',
+        }
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertFalse(DeepDiff(response.json(), expected_result))
+
+
 @ddt.ddt
 class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     """Tests for ClickhouseQueryView"""
