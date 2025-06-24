@@ -2699,7 +2699,16 @@ class ThemeConfigTenantView(BaseTestViewMixin):
             mock_add_course_access_roles.assert_called_once()
         else:
             mock_add_course_access_roles.assert_not_called()
-        assert response.status_code == http_status.HTTP_204_NO_CONTENT
+        assert response.status_code == http_status.HTTP_200_OK
+        result = response.json()
+        assert result['tenant_id'] > 0
+        result.pop('tenant_id')
+        assert result == {
+            'lms_root_url': 'https://testplatform.local.overhang.io',
+            'logo_image_url': '',
+            'platform_name': '',
+            'studio_root_url': 'https://studio.example.com',
+        }
 
 
 @pytest.mark.usefixtures('base_data')
