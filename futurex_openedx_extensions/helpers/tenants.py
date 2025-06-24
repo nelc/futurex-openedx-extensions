@@ -16,11 +16,7 @@ from django.db.models import Count, OuterRef, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.caching import (
-    cache_dict,
-    invalidate_cache,
-    invalidate_tenant_readable_lms_configs,
-)
+from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_extract_all,
@@ -28,7 +24,7 @@ from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_get_value,
     get_first_not_empty_item,
 )
-from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DraftConfig, TenantAsset
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, ConfigMirror, DraftConfig, TenantAsset
 
 logger = logging.getLogger(__name__)
 
@@ -709,6 +705,7 @@ def publish_tenant_config(tenant_id: int) -> None:
     """
     config_paths = list(DraftConfig.objects.filter(tenant_id=tenant_id).values_list('config_path', flat=True))
     if not config_paths:
+        ConfigMirror.sync_tenant(tenant_id=tenant_id)
         return
 
     tenant_config = TenantConfig.objects.get(id=tenant_id)
@@ -717,7 +714,7 @@ def publish_tenant_config(tenant_id: int) -> None:
     tenant_config.lms_configs = lms_configs
     tenant_config.save()
     delete_draft_tenant_config(tenant_id)
-    invalidate_tenant_readable_lms_configs([tenant_id])
+    ConfigMirror.sync_tenant(tenant_id=tenant_id)
 
 
 def get_accessible_config_keys(

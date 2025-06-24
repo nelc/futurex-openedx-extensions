@@ -781,15 +781,30 @@ def test_publish_tenant_config_merges_lms_configs(base_data):
 
 
 @pytest.mark.django_db
-def test_publish_tenant_config_no_draft(base_data):  # pylint: disable=unused-argument
-    """Verify that publish_tenant_config does nothing if no draft exists."""
-    tenant = TenantConfig.objects.get(id=1)
+@patch('futurex_openedx_extensions.helpers.tenants.ConfigMirror.sync_tenant')
+def test_publish_tenant_config_no_draft(mock_sync, base_data):  # pylint: disable=unused-argument
+    """Verify that publish_tenant_config does nothing if no draft exists except syncing mirrors."""
+    tenant_id = 1
     assert DraftConfig.objects.count() == 0, 'bad test data, DraftConfig should be empty before the test'
 
     with patch.object(DraftConfig, 'loads_into') as mock_loads:
-        tenants.publish_tenant_config(tenant_id=tenant.id)
+        tenants.publish_tenant_config(tenant_id=tenant_id)
 
     mock_loads.assert_not_called()
+    mock_sync.assert_called_once_with(tenant_id=tenant_id)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.tenants.ConfigMirror.sync_tenant')
+def test_publish_tenant_config_calls_sync_tenant(mock_sync, base_data):  # pylint: disable=unused-argument
+    """Verify that publish_tenant_config calls ConfigMirror.sync_tenant."""
+    tenant_id = 1
+    DraftConfig.objects.create(
+        tenant_id=tenant_id, config_path='theme_v2.links.facebook', config_value='draft.facebook.com',
+        created_by_id=1, updated_by_id=1,
+    )
+    tenants.publish_tenant_config(tenant_id=tenant_id)
+    mock_sync.assert_called_once_with(tenant_id=tenant_id)
 
 
 @pytest.mark.django_db
