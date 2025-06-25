@@ -62,6 +62,9 @@ class FXExceptionCodes(Enum):
 
     BAD_CONFIGURATION_EXTERNAL_ID_EXTRACTOR = 13001
 
+    CONFIG_MIRROR_INVALID_PATH = 14001
+    CONFIG_MIRROR_INVALID_ACTION = 14002
+
 
 class FXCodedException(Exception):
     """Exception with a code."""

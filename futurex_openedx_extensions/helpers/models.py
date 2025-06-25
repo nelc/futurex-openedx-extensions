@@ -1,6 +1,7 @@
 """Models for the dashboard app."""
 from __future__ import annotations
 
+import copy
 import json
 import random
 import re
@@ -10,7 +11,7 @@ from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import BooleanField, Case, Exists, OuterRef, Q, Value, When
+from django.db.models import BooleanField, Case, Exists, OuterRef, Q, QuerySet, Value, When
 from django.utils import timezone
 from eox_tenant.models import TenantConfig
 from opaque_keys.edx.django.models import CourseKeyField
@@ -18,9 +19,13 @@ from simple_history.models import HistoricalRecords
 
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.caching import invalidate_tenant_readable_lms_configs
 from futurex_openedx_extensions.helpers.converters import DateMethods, get_allowed_roles
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.extractors import dot_separated_path_force_set_value
+from futurex_openedx_extensions.helpers.extractors import (
+    dot_separated_path_force_set_value,
+    dot_separated_path_get_value,
+)
 from futurex_openedx_extensions.helpers.upload import get_tenant_asset_dir
 
 User = get_user_model()
@@ -834,3 +839,134 @@ class DraftConfig(models.Model):
                     created_by=user,
                     updated_by=user,
                 )
+
+
+class ConfigMirror(models.Model):
+    """Configuration mirror for tenant"""
+    MISSING_SOURCE_ACTION_SKIP = 'skip'
+    MISSING_SOURCE_ACTION_SET_NULL = 'set_null'
+    MISSING_SOURCE_ACTION_DELETE = 'delete'
+    MISSING_SOURCE_ACTION_COPY_DEST = 'copy_dest'
+    MISSING_SOURCE_ACTION_CHOICES = (
+        (MISSING_SOURCE_ACTION_SKIP, 'Skip'),
+        (MISSING_SOURCE_ACTION_SET_NULL, 'Set Null'),
+        (MISSING_SOURCE_ACTION_DELETE, 'Delete'),
+        (MISSING_SOURCE_ACTION_COPY_DEST, 'Copy Destination'),
+    )
+
+    source_path = models.CharField(max_length=255, help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url')
+    destination_path = models.CharField(
+        max_length=255, help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url',
+    )
+    missing_source_action = models.CharField(
+        max_length=16,
+        choices=MISSING_SOURCE_ACTION_CHOICES,
+        default=MISSING_SOURCE_ACTION_SKIP,
+        help_text='Action to take if the source is missing.',
+    )
+    priority = models.IntegerField(
+        default=0,
+        help_text='Priority of the mirror. Higher priority mirrors will be applied first. Similar priorities will be '
+                  'applied according to the id value in ascending order.',
+    )
+    enabled = models.BooleanField(
+        default=False,
+        help_text='Indicates if the mirror is enabled or not.',
+    )
+
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = 'Config Mirror'
+        verbose_name_plural = 'Config Mirrors'
+        unique_together = ('source_path', 'destination_path')
+
+    @classmethod
+    def get_active_records(cls) -> QuerySet:
+        """
+        Get the configuration mirrors for the given tenant.
+
+        :return: A list of configuration mirrors.
+        :rtype: QuerySet
+        """
+        return cls.objects.filter(enabled=True).order_by('-priority', 'id')
+
+    def _handle_missing_source_skip(self, configs: Dict[str, Any]) -> None:
+        """Handles `skip` action"""
+        # No action needed for `skip`, just return.
+
+    def _handle_missing_source_set_null(self, configs: Dict[str, Any]) -> None:
+        """Handles `set_null` action"""
+        dot_separated_path_force_set_value(configs, self.source_path, None)
+        dot_separated_path_force_set_value(configs, self.destination_path, None)
+
+    def _handle_missing_source_delete(self, configs: Dict[str, Any]) -> None:
+        """Handles `delete` action"""
+        if '.' in self.destination_path:
+            destination_parent_path = self.destination_path.rsplit('.', 1)[0]
+            exists, dest_parent_value = dot_separated_path_get_value(configs, destination_parent_path)
+            if exists and isinstance(dest_parent_value, dict):
+                dest_key = self.destination_path.rsplit('.', 1)[-1]
+                dest_parent_value.pop(dest_key, None)
+        elif self.destination_path in configs:
+            del configs[self.destination_path]
+
+    def _handle_missing_source_copy_dest(self, configs: Dict[str, Any]) -> None:
+        """Handles `copy_dest` action"""
+        exists, dest_value = dot_separated_path_get_value(configs, self.destination_path)
+        if exists:
+            dot_separated_path_force_set_value(configs, self.source_path, copy.deepcopy(dest_value))
+
+    def clean(self) -> None:
+        """Validate the model data before saving."""
+        super().clean()
+        src_path = self.source_path + '.'
+        dest_path = self.destination_path + '.'
+        if src_path.startswith(dest_path) or dest_path.startswith(src_path):
+            raise FXCodedException(
+                code=FXExceptionCodes.CONFIG_MIRROR_INVALID_PATH,
+                message=(
+                    f'ConfigMirror source path and destination path cannot share the same path. '
+                    f'(source: <{self.source_path}>, dest: <{self.destination_path}>).'
+                )
+            )
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Override the save method to validate data."""
+        self.clean()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def sync_tenant(cls, tenant_id: int) -> None:
+        """
+        Synchronize the configuration mirrors for the given tenant.
+
+        :param tenant_id: The tenant ID to synchronize.
+        :type tenant_id: int
+        """
+        tenant = TenantConfig.objects.filter(id=tenant_id).first()
+        if not tenant:
+            raise FXCodedException(
+                code=FXExceptionCodes.TENANT_NOT_FOUND,
+                message=f'Tenant with ID {tenant_id} not found.'
+            )
+
+        records = cls.get_active_records()
+        for record in records:
+            exists, source_value = dot_separated_path_get_value(tenant.lms_configs, record.source_path)
+            if exists:
+                dot_separated_path_force_set_value(
+                    tenant.lms_configs, record.destination_path, copy.deepcopy(source_value),
+                )
+            else:
+                valid_actions = [action_value for action_value, _ in record.MISSING_SOURCE_ACTION_CHOICES]
+                if record.missing_source_action not in valid_actions:
+                    raise FXCodedException(
+                        code=FXExceptionCodes.CONFIG_MIRROR_INVALID_ACTION,
+                        message=f'Invalid missing source action: {record.missing_source_action} in record {record.id}',
+                    )
+                method_name = f'_handle_missing_source_{record.missing_source_action}'
+                getattr(record, method_name)(configs=tenant.lms_configs)
+
+        tenant.save()
+        invalidate_tenant_readable_lms_configs([tenant_id])

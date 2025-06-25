@@ -1,5 +1,6 @@
 """Tests for models module."""
 # pylint: disable=too-many-lines
+import copy
 import json
 from itertools import product
 from unittest.mock import Mock, patch
@@ -14,8 +15,13 @@ from django.utils import timezone
 
 from futurex_openedx_extensions.helpers.clickhouse_operations import ClickhouseBaseError
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.extractors import (
+    dot_separated_path_force_set_value,
+    dot_separated_path_get_value,
+)
 from futurex_openedx_extensions.helpers.models import (
     ClickhouseQuery,
+    ConfigMirror,
     DataExportTask,
     DraftConfig,
     NoUpdateManager,
@@ -1225,3 +1231,234 @@ def test_draft_config_root_key():
     """Verify that DraftConfig.ROOT is a valid root key."""
     assert DraftConfig.ROOT == '___root', 'DANGEROUS ACTION: breaking this test means that data migration is needed ' \
         'to fix existing data. Or at least making sure that all drafts are published before deploying this changed!'
+
+
+@pytest.mark.django_db
+def test_config_mirror_sync_tenant(config_mirror_fixture):
+    """Verify that config_mirror_sync_tenant copies the configs correctly."""
+    tenant, _ = config_mirror_fixture
+    tenant.lms_configs['LMS_NAME'] = 'Tenant LMS'
+    tenant.save()
+
+    ConfigMirror.sync_tenant(tenant.id)
+    tenant.refresh_from_db()
+    assert tenant.lms_configs['LMS_NAME'] == 'Dummy LMS', 'should be resynced from source'
+    assert tenant.lms_configs['deep']['LMS_NAME'] == 'Dummy LMS', 'it is a source, should not change'
+
+    tenant.lms_configs['deep']['LMS_NAME'] = 'Tenant LMS'
+    tenant.save()
+
+    ConfigMirror.sync_tenant(tenant.id)
+    tenant.refresh_from_db()
+    assert tenant.lms_configs['LMS_NAME'] == 'Tenant LMS', 'should be synced from source'
+    assert tenant.lms_configs['deep']['LMS_NAME'] == 'Tenant LMS', 'it is a source, should not change'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.models.invalidate_tenant_readable_lms_configs')
+def test_config_mirror_sync_tenant_calls_invalidate_cache(mock_invalidate_cache, config_mirror_fixture):
+    """Verify that config_mirror_sync_tenant calls invalidate_cache when there is something to change."""
+    tenant, _ = config_mirror_fixture
+    ConfigMirror.sync_tenant(tenant.id)
+    mock_invalidate_cache.asset_not_called()
+
+    tenant.lms_configs['deep']['LMS_NAME'] = 'Tenant LMS'
+    tenant.save()
+    mock_invalidate_cache.assert_called_once_with([tenant.id])
+    mock_invalidate_cache.reset_mock()
+    ConfigMirror.sync_tenant(tenant.id)
+    mock_invalidate_cache.assert_called_once_with([tenant.id])
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'action', [item[0] for item in ConfigMirror.MISSING_SOURCE_ACTION_CHOICES]
+)
+def test_config_mirror_sync_tenant_missing_source_action(action, config_mirror_fixture):
+    """Verify that the correct method is called when the key of the source path does not exist."""
+    tenant, mirror = config_mirror_fixture
+    tenant.lms_configs['deep'].pop('LMS_NAME')
+    tenant.save()
+    mirror.missing_source_action = action
+    mirror.save()
+
+    method_name = f'_handle_missing_source_{action}'
+    with patch(f'futurex_openedx_extensions.helpers.models.ConfigMirror.{method_name}') as mock_handle_missing:
+        ConfigMirror.sync_tenant(tenant.id)
+        mock_handle_missing.assert_called_once_with(configs=tenant.lms_configs)
+
+
+@pytest.mark.django_db
+def test_config_mirror_sync_tenant_missing_source_action_wrong(config_mirror_fixture):
+    """Verify that an exception is raised if a non-supported value for the action is used."""
+    tenant, mirror = config_mirror_fixture
+    tenant.lms_configs['deep'].pop('LMS_NAME')
+    tenant.save()
+    mirror.missing_source_action = 'action_wrong'
+    mirror.save()
+
+    with pytest.raises(FXCodedException) as exc_info:
+        ConfigMirror.sync_tenant(tenant.id)
+    assert exc_info.value.code == FXExceptionCodes.CONFIG_MIRROR_INVALID_ACTION.value
+    assert str(exc_info.value) == f'Invalid missing source action: action_wrong in record {mirror.id}'
+
+
+def init_config_mirror_sync_tenant_action_test(tenant, mirror, action):
+    """Helper function to initialize the test for ConfigMirror.sync_tenant with a specific action."""
+    dest_original = copy.deepcopy(tenant.lms_configs['LMS_NAME']) if tenant.lms_configs.get('LMS_NAME') else None
+    source_copy = copy.deepcopy(tenant.lms_configs['deep'])
+    source_copy.pop('LMS_NAME', None)
+    tenant.lms_configs['deep'] = source_copy
+    tenant.save()
+    mirror.missing_source_action = action
+    mirror.save()
+
+    method_name = f'_handle_missing_source_{action}'
+    getattr(mirror, method_name)(configs=tenant.lms_configs)
+    tenant.save()
+    tenant.refresh_from_db()
+
+    return tenant, mirror, dest_original
+
+
+@pytest.mark.django_db
+def test_config_mirror_sync_tenant_action_skip(config_mirror_fixture):
+    """Verify that ConfigMirror._handle_missing_source_skip works as expected."""
+    tenant, _, dest_original = init_config_mirror_sync_tenant_action_test(*config_mirror_fixture, action='skip')
+    assert 'LMS_NAME' not in tenant.lms_configs['deep']
+    assert tenant.lms_configs['LMS_NAME'] == dest_original
+
+
+@pytest.mark.django_db
+def test_config_mirror_sync_tenant_action_set_null(config_mirror_fixture):
+    """Verify that ConfigMirror._handle_missing_source_set_null works as expected."""
+    tenant, _, _ = init_config_mirror_sync_tenant_action_test(*config_mirror_fixture, action='set_null')
+    assert tenant.lms_configs['deep']['LMS_NAME'] is None
+    assert tenant.lms_configs['LMS_NAME'] is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('dest_path, dest_value, dest_exists', product(
+    ['LMS_NAME2', 'deep2.LMS_NAME2'],
+    [{'dict': 'value'}, 'not dictionary'],
+    [True, False],
+))
+def test_config_mirror_sync_tenant_action_delete(dest_path, dest_value, dest_exists, config_mirror_fixture):
+    """Verify that ConfigMirror._handle_missing_source_delete works as expected."""
+    tenant, mirror = config_mirror_fixture
+    mirror.destination_path = dest_path
+    mirror.save()
+    if dest_exists:
+        dot_separated_path_force_set_value(tenant.lms_configs, dest_path, dest_value)
+    else:
+        assert dot_separated_path_get_value(tenant.lms_configs, dest_path) == (False, None)
+    tenant, mirror, _ = init_config_mirror_sync_tenant_action_test(tenant, mirror, action='delete')
+    assert dot_separated_path_get_value(tenant.lms_configs, dest_path) == (False, None)
+    assert dot_separated_path_get_value(tenant.lms_configs, mirror.source_path) == (False, None)
+
+
+@pytest.mark.django_db
+def test_config_mirror_sync_tenant_action_copy_dest(config_mirror_fixture):
+    """Verify that ConfigMirror._handle_missing_source_copy_dest works as expected."""
+    tenant, _, dest_original = init_config_mirror_sync_tenant_action_test(
+        *config_mirror_fixture, action='copy_dest',
+    )
+    assert tenant.lms_configs['deep']['LMS_NAME'] == dest_original
+    assert tenant.lms_configs['LMS_NAME'] == dest_original
+
+
+@pytest.mark.django_db
+def test_config_mirror_sync_tenant_action_copy_dest_missing_dest(config_mirror_fixture):
+    """Verify that ConfigMirror._handle_missing_source_copy_dest works as expected."""
+    tenant, mirror = config_mirror_fixture
+    tenant.lms_configs.pop('LMS_NAME')
+    tenant.save()
+    tenant, _, _ = init_config_mirror_sync_tenant_action_test(tenant, mirror, action='copy_dest')
+    assert 'LMS_NAME' not in tenant.lms_configs['deep']
+    assert 'LMS_NAME' not in tenant.lms_configs
+
+
+@pytest.mark.django_db
+def test_config_mirror_get_active_records(config_mirror_fixture):
+    """Verify that ConfigMirror.get_active_records respects the priority of the records."""
+    tenant, mirror = config_mirror_fixture
+    tenant.lms_configs['lms_name'] = 'Dummy2 lms_name'
+    tenant.save()
+    mirror2 = ConfigMirror.objects.create(
+        source_path='LMS_NAME',
+        destination_path='lms_name',
+        missing_source_action=ConfigMirror.MISSING_SOURCE_ACTION_SKIP,
+        enabled=True,
+    )
+
+    result = ConfigMirror.get_active_records()
+    assert len(result) == 2
+    assert result[0] == mirror
+    assert result[1] == mirror2
+
+    mirror2.priority = 1
+    mirror2.save()
+    result = ConfigMirror.get_active_records()
+    assert len(result) == 2
+    assert result[0] == mirror2
+    assert result[1] == mirror
+
+
+@pytest.mark.django_db
+def test_config_mirror_enabled(config_mirror_fixture):
+    """Verify that ConfigMirror.get_active_records returns only enabled records."""
+    _, mirror = config_mirror_fixture
+    result = ConfigMirror.get_active_records()
+    assert len(result) == 1, 'should return no records when all are disabled'
+    assert result[0] == mirror
+
+    mirror.enabled = False
+    mirror.save()
+
+    result = ConfigMirror.get_active_records()
+    assert len(result) == 0, 'should return no records when all are disabled'
+
+
+@pytest.mark.django_db
+def test_config_mirror_sync_tenant_tenant_not_found():
+    """Verify that ConfigMirror.sync_tenant raises an error if tenant is not found."""
+    with pytest.raises(FXCodedException) as exc_info:
+        ConfigMirror.sync_tenant(9999)
+    assert exc_info.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
+    assert str(exc_info.value) == 'Tenant with ID 9999 not found.'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'source_path, destination_path, allowed',
+    [
+        ('l1.l2.l3', 'l1.l2.l3.l4', False),
+        ('l1.l2.l3.l4', 'l1.l2.l3', False),
+        ('l1', 'l1.l2.l3.l4', False),
+        ('l1.l2.l3.l4', 'l1', False),
+        ('l1.l2', 'l1.l2b.l3', True),
+        ('l1.l2b.l3', 'l1.l2', True),
+        ('l1.l2', 'l1.l2b', True),
+        ('l1.l2b', 'l1.l2', True),
+    ]
+)
+def test_config_mirror_no_same_path(source_path, destination_path, allowed, config_mirror_fixture):
+    """
+    Verify that ConfigMirror does not allow saving a record when the destination and the source share
+    the same path or path origin.
+    """
+    _, mirror = config_mirror_fixture
+    mirror.source_path = source_path
+    mirror.destination_path = destination_path
+
+    if allowed:
+        mirror.save()
+        assert mirror.id is not None, 'should save the mirror without errors'
+    else:
+        with pytest.raises(FXCodedException) as exc_info:
+            mirror.save()
+        assert exc_info.value.code == FXExceptionCodes.CONFIG_MIRROR_INVALID_PATH.value
+        assert str(exc_info.value) == (
+            f'ConfigMirror source path and destination path cannot share the same path. (source: '
+            f'<{mirror.source_path}>, dest: <{mirror.destination_path}>).'
+        )

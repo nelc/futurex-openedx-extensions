@@ -25,6 +25,7 @@ from futurex_openedx_extensions.helpers.constants import CACHE_NAMES
 from futurex_openedx_extensions.helpers.models import (
     ClickhouseQuery,
     ConfigAccessControl,
+    ConfigMirror,
     DataExportTask,
     DraftConfig,
     TenantAsset,
@@ -393,6 +394,16 @@ class DraftConfigAdmin(admin.ModelAdmin):
     ordering = ('-updated_at',)
 
 
+class ConfigMirrorAdmin(SimpleHistoryAdmin):
+    """Admin class of ConfigMirror model"""
+    # raw_id_fields = ('updated_by',)
+    list_display = (
+        'id', 'source_path', 'destination_path', 'missing_source_action', 'priority', 'enabled',
+    )
+    search_fields = ('source_path', 'destination_path')
+    ordering = ('-priority', 'id')
+
+
 def register_admins() -> None:
     """Register the admin views."""
     CacheInvalidator._meta.abstract = False  # to be able to register the admin view
@@ -405,6 +416,7 @@ def register_admins() -> None:
     admin.site.register(ConfigAccessControl, ConfigAccessControlAdmin)
     admin.site.register(TenantAsset, TenantAssetAdmin)
     admin.site.register(DraftConfig, DraftConfigAdmin)
+    admin.site.register(ConfigMirror, ConfigMirrorAdmin)
 
 
 register_admins()

@@ -18,7 +18,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from organizations.models import Organization
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.models import DraftConfig
+from futurex_openedx_extensions.helpers.models import ConfigMirror, DraftConfig
 from tests.base_test_data import _base_data
 from tests.fixture_helpers import get_tenants_of_org, get_user1_fx_permission_info
 
@@ -134,6 +134,28 @@ def template_tenant(base_data):  # pylint: disable=unused-argument, redefined-ou
     tenant4.external_key = settings.FX_TEMPLATE_TENANT_SITE
     tenant4.save()
     return tenant4
+
+
+@pytest.fixture
+def config_mirror_fixture(base_data):  # pylint: disable=unused-argument, redefined-outer-name
+    """Fixture to create a dummy tenant mirror."""
+    tenant = TenantConfig.objects.create(
+        lms_configs={
+            'LMS_BASE': 'http://dummy-lms.example.com',
+            'LMS_NAME': 'Dummy LMS',
+            'LMS_LOGO': '/static/dummy_logo.png',
+            'deep': {
+                'LMS_NAME': 'Dummy LMS',
+            },
+        },
+    )
+    mirror = ConfigMirror.objects.create(
+        source_path='deep.LMS_NAME',
+        destination_path='LMS_NAME',
+        missing_source_action=ConfigMirror.MISSING_SOURCE_ACTION_SKIP,
+        enabled=True,
+    )
+    return tenant, mirror
 
 
 @pytest.fixture(scope='session')

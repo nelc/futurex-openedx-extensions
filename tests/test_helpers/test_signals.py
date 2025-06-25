@@ -82,13 +82,13 @@ def test_refresh_config_access_control_cache_on_save(
     cache.set(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL, 'test')
     dummy = ConfigAccessControl.objects.create(key_name='k', path='p')
     assert cache.get(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL) is None
-    mock_invalidate.assert_called_once_with(tenant_id=0)
+    mock_invalidate.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8])
 
     mock_invalidate.reset_mock()
     cache.set(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL, 'test')
     dummy.save()
     assert cache.get(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL) is None
-    mock_invalidate.assert_called_once_with(tenant_id=0)
+    mock_invalidate.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8])
 
 
 @pytest.mark.django_db
@@ -99,12 +99,12 @@ def test_refresh_config_access_control_cache_on_delete(
     """Verify that the cache is deleted when a ConfigAccessControl record is deleted"""
     dummy = ConfigAccessControl.objects.create(key_name='k', path='p')
     cache.set(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL, 'test')
-    mock_invalidate.assert_called_once_with(tenant_id=0)
+    mock_invalidate.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8])
 
     mock_invalidate.reset_mock()
     dummy.delete()
     assert cache.get(cs.CACHE_NAME_CONFIG_ACCESS_CONTROL) is None
-    mock_invalidate.assert_called_once_with(tenant_id=0)
+    mock_invalidate.assert_called_once_with(tenant_ids=[1, 2, 3, 7, 8])
 
 
 @pytest.mark.django_db
