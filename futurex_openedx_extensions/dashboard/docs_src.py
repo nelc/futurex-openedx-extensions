@@ -1988,6 +1988,53 @@ docs_src = {
         ),
     },
 
+    'TenantInfoView.get': {
+        'summary': 'Get basic information about the tenant.',
+        'description': 'Return the basic information about the tenant. The caller must have any access role to the '
+                       'tenant.',
+        'responses': responses(
+            success_description='Returns the basic information about the tenant',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'tenant_id': openapi.Schema(
+                        type=openapi.TYPE_INTEGER,
+                        description='The tenant_id for the tenant',
+                    ),
+                    'lms_root_url': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description='The LMS root URL of the tenant',
+                    ),
+                    'studio_root_url': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description='The Studio root URL of the tenant',
+                    ),
+                    'platform_name': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description='The platform name of the tenant',
+                    ),
+                    'logo_image_url': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description='The logo image URL of the tenant',
+                    )
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'tenant_id': 99,
+                    'lms_root_url': 'https://heroes.lms.com',
+                    'studio_root_url': 'https://studio.lms.com',
+                    'platform_name': 'Heroes Academy',
+                    'logo_image_url': 'https://www.s3.com/logo.png',
+                },
+            },
+            overrides={
+                200: 'Changes saved successfully.',
+            },
+            remove=[404],
+        ),
+    },
+
     'TenantAssetsManagementView.create': {
         'summary': 'Add new asset to the tenant',
         'description': 'Add new asset to the tenant. \n `Note:` If an asset with the same slug already exists, the '

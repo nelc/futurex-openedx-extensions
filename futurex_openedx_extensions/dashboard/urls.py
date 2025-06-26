@@ -55,6 +55,7 @@ urlpatterns = [
         name='aggregated-counts',
     ),
     re_path(r'^api/fx/tenants/v1/excluded', views.ExcludedTenantsView.as_view(), name='excluded-tenants'),
+    re_path(r'^api/fx/tenants/v1/info/(?P<tenant_id>\d+)/$', views.TenantInfoView.as_view(), name='tenant-info'),
     re_path(
         fr'^api/fx/query/v1/(?P<scope>{QUERY_ALLOWED_SCOPES})/(?P<slug>{CLICKHOUSE_QUERY_SLUG_PATTERN})/$',
         views.ClickhouseQueryView.as_view(),
