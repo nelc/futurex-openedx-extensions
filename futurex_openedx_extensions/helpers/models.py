@@ -19,7 +19,7 @@ from simple_history.models import HistoricalRecords
 
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.caching import invalidate_tenant_readable_lms_configs
+from futurex_openedx_extensions.helpers.caching import invalidate_cache, invalidate_tenant_readable_lms_configs
 from futurex_openedx_extensions.helpers.converters import DateMethods, get_allowed_roles
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import (
@@ -970,3 +970,4 @@ class ConfigMirror(models.Model):
 
         tenant.save()
         invalidate_tenant_readable_lms_configs([tenant_id])
+        invalidate_cache()

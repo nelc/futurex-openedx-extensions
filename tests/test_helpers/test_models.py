@@ -1256,18 +1256,15 @@ def test_config_mirror_sync_tenant(config_mirror_fixture):
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.models.invalidate_tenant_readable_lms_configs')
-def test_config_mirror_sync_tenant_calls_invalidate_cache(mock_invalidate_cache, config_mirror_fixture):
+@patch('futurex_openedx_extensions.helpers.models.invalidate_cache')
+def test_config_mirror_sync_tenant_calls_invalidate_cache(
+    mock_invalidate_cache, mock_readable_lms_configs, config_mirror_fixture,
+):
     """Verify that config_mirror_sync_tenant calls invalidate_cache when there is something to change."""
     tenant, _ = config_mirror_fixture
     ConfigMirror.sync_tenant(tenant.id)
-    mock_invalidate_cache.asset_not_called()
-
-    tenant.lms_configs['deep']['LMS_NAME'] = 'Tenant LMS'
-    tenant.save()
-    mock_invalidate_cache.assert_called_once_with([tenant.id])
-    mock_invalidate_cache.reset_mock()
-    ConfigMirror.sync_tenant(tenant.id)
-    mock_invalidate_cache.assert_called_once_with([tenant.id])
+    mock_readable_lms_configs.assert_called_once_with([tenant.id])
+    mock_invalidate_cache.assert_called_once_with()
 
 
 @pytest.mark.django_db
