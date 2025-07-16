@@ -650,12 +650,12 @@ docs_src = {
             query_parameter(
                 'rating_instructors',
                 str,
-                'A comma-separated list of integers (in range 1 to 5), e.g., `2,3`, to filter the results by.',
+                'A comma-separated list of integers from 0 to 5 (inclusive), e.g., `2,3`, to filter the results by.',
             ),
             query_parameter(
                 'rating_content',
                 str,
-                'A comma-separated list of integers (in range 1 to 5), e.g., `2,3`, to filter the results by.',
+                'A comma-separated list of integers from 0 to 5 (inclusive), e.g., `2,3`, to filter the results by.',
             ),
             openapi.Parameter(
                 'public_only',
@@ -782,7 +782,7 @@ docs_src = {
         'summary': 'Get global rating statistics for the tenants',
         'description': 'Get global rating statistics for the tenants. The response will include the average rating and'
         ' the total number of ratings for the selected tenants, plus the number of ratings for each rating value from'
-        ' 1 to 5.\n'
+        ' 0 to 5 (inclusive).\n'
         '\n**Note:** the count includes only visible courses.\n'
         f'{repeated_descriptions["visible_course_definition"]}',
         'parameters': [

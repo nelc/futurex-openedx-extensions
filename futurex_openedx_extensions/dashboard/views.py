@@ -892,10 +892,10 @@ class CoursesFeedbackView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
                 message=f"'{param_key}' must be a comma-separated list of valid integers."
             ) from exc
 
-        if any(r < 1 or r > 5 for r in ratings):
+        if any(r < 0 or r > 5 for r in ratings):
             raise FXCodedException(
                 code=FXExceptionCodes.INVALID_INPUT,
-                message=f"Each value in '{param_key}' must be between 1 and 5."
+                message=f"Each value in '{param_key}' must be between 0 and 5 (inclusive)."
             )
 
         return ratings
@@ -912,7 +912,7 @@ class CoursesFeedbackView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             course_ids=course_ids_list,
             public_only=self.request.query_params.get('public_only', '0') == '1',
             recommended_only=self.request.query_params.get('recommended_only', '0') == '1',
-            feedback_search=self.request.query_params.get('search_text'),
+            feedback_search=self.request.query_params.get('feedback_search'),
             rating_content_filter=self.validate_rating_list('rating_content'),
             rating_instructors_filter=self.validate_rating_list('rating_instructors')
         )

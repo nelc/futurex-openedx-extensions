@@ -794,11 +794,11 @@ class TestCoursesFeedbackView(BaseTestViewMixin):
         assert len(response.data['results']) == 1
         assert response.data['results'][0]['feedback'] == 'some comment 2'
 
-    def test_filter_by_search_text(self):
-        """Verify filtering by search_text returns matching feedback"""
+    def test_filter_by_feedback_search(self):
+        """Verify filtering by feedback_search returns matching feedback"""
         self.prepare_feedbacks()
         self.login_user(self.staff_user)
-        response = self.client.get(self.url + '?search_text=learner')
+        response = self.client.get(self.url + '?feedback_search=learner')
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         assert len(response.data['results']) == 1
         assert 'learner' in response.data['results'][0]['feedback']
@@ -845,7 +845,12 @@ class TestCoursesFeedbackView(BaseTestViewMixin):
         (
             '3,6',
             http_status.HTTP_400_BAD_REQUEST,
-            "Each value in 'rating_content' must be between 1 and 5."
+            "Each value in 'rating_content' must be between 0 and 5 (inclusive)."
+        ),
+        (
+            '3,-1',
+            http_status.HTTP_400_BAD_REQUEST,
+            "Each value in 'rating_content' must be between 0 and 5 (inclusive)."
         ),
         (
             '3,2,invalid',
