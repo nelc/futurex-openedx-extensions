@@ -22,6 +22,7 @@ from django.test import override_settings
 from django.urls import resolve, reverse
 from django.utils.functional import SimpleLazyObject
 from django.utils.timezone import now, timedelta
+from eox_nelp.course_experience.models import FeedbackCourse
 from eox_tenant.models import Route, TenantConfig
 from opaque_keys.edx.locator import CourseLocator, LibraryLocator
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
@@ -711,6 +712,164 @@ class TestCoursesView(BaseTestViewMixin):
         })
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.json()['errors']['tenant_id'][0], expected_error, f'Failed for usecase: {case}')
+
+
+@ddt.ddt
+@pytest.mark.usefixtures('base_data')
+class TestCoursesFeedbackView(BaseTestViewMixin):
+    """Tests for CoursesFeedbackView"""
+    VIEW_NAME = 'fx_dashboard:courses-feedback'
+
+    @staticmethod
+    def prepare_feedbacks() -> None:
+        """Create all components required for tests"""
+        FeedbackCourse.objects.create(
+            author=get_user_model().objects.get(id=3),
+            course_id=CourseOverview.objects.get(id='course-v1:Org1+1+1'),
+            rating_content=5,
+            feedback='some comment 1',
+            public=True,
+            rating_instructors=4,
+            recommended=True,
+        )
+        FeedbackCourse.objects.create(
+            author=get_user_model().objects.get(id=1),
+            course_id=CourseOverview.objects.get(id='course-v1:ORG1+2+2'),
+            rating_content=4,
+            feedback='some comment 2',
+            public=True,
+            rating_instructors=3,
+            recommended=True,
+        )
+        FeedbackCourse.objects.create(
+            author=get_user_model().objects.get(id=3),
+            course_id=CourseOverview.objects.get(id='course-v1:ORG1+4+4'),
+            rating_content=2,
+            feedback='some comment 3',
+            public=False,
+            rating_instructors=2,
+            recommended=True,
+        )
+        FeedbackCourse.objects.create(
+            author=get_user_model().objects.get(id=47),
+            course_id=CourseOverview.objects.get(id='course-v1:ORG8+1+1'),
+            rating_content=5,
+            feedback='some comment by learner',
+            public=True,
+            rating_instructors=1,
+            recommended=False,
+        )
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_success_no_filters(self):
+        """Verify that user can only view feedbacks of accessible courses"""
+        self.prepare_feedbacks()
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(
+            len(response.data['results']),
+            4,
+            'Unexpected result, as global staff user should have access to all feedbacks'
+        )
+        self.login_user(23)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(
+            len(response.data['results']),
+            1,
+            'Unexpected result, user 23 has only access to org5 and org8 courses.'
+        )
+
+    def test_filter_by_course_ids(self):
+        """Verify filtering by course_ids returns only feedbacks for specified courses"""
+        self.prepare_feedbacks()
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url + '?course_ids=course-v1%3AORG1%2B2%2B2')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['feedback'] == 'some comment 2'
+
+    def test_filter_by_feedback_search(self):
+        """Verify filtering by feedback_search returns matching feedback"""
+        self.prepare_feedbacks()
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url + '?feedback_search=learner')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert len(response.data['results']) == 1
+        assert 'learner' in response.data['results'][0]['feedback']
+
+    def test_filter_by_public_only(self):
+        """Verify filtering by public_only=1 returns only public feedbacks"""
+        self.prepare_feedbacks()
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url + '?public_only=1')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert len(response.data['results']) == 3  # 1 feedback is public=False
+
+    def test_filter_by_recommended_only(self):
+        """Verify filtering by recommended_only=1 returns only recommended feedbacks"""
+        self.prepare_feedbacks()
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url + '?recommended_only=1')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert len(response.data['results']) == 3  # 1 feedback is recommended=False
+
+    def test_filter_by_rating_content(self):
+        """Verify filtering by rating_content returns only matching ratings"""
+        self.prepare_feedbacks()
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url + '?rating_content=5')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert len(response.data['results']) == 2
+
+    def test_filter_by_rating_instructors(self):
+        """Verify filtering by rating_instructors returns only matching instructor ratings"""
+        self.prepare_feedbacks()
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url + '?rating_instructors=2')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['rating_instructors'] == 2
+
+    @ddt.data(
+        (
+            '5,2',
+            http_status.HTTP_200_OK,
+            None
+        ),
+        (
+            '3,6',
+            http_status.HTTP_400_BAD_REQUEST,
+            "Each value in 'rating_content' must be between 0 and 5 (inclusive)."
+        ),
+        (
+            '3,-1',
+            http_status.HTTP_400_BAD_REQUEST,
+            "Each value in 'rating_content' must be between 0 and 5 (inclusive)."
+        ),
+        (
+            '3,2,invalid',
+            http_status.HTTP_400_BAD_REQUEST,
+            "'rating_content' must be a comma-separated list of valid integers."
+        ),
+    )
+    @ddt.unpack
+    def test_rating_content_validation(self, query, expected_status, error_message):
+        """Test rating_content filter for validation logic"""
+        self.prepare_feedbacks()
+        self.login_user(self.staff_user)
+        response = self.client.get(f'{self.url}?rating_content={query}')
+        assert response.status_code == expected_status
+        if expected_status == http_status.HTTP_400_BAD_REQUEST:
+            assert response.json()['reason'] == error_message
+        else:
+            assert 'results' in response.data
+            assert len(response.data['results']) == 3
 
 
 @ddt.ddt

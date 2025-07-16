@@ -3,6 +3,9 @@ from datetime import date, datetime
 from unittest.mock import Mock, patch
 
 import pytest
+from common.djangoapps.student.models import UserProfile
+from custom_reg_form.models import ExtraInfo
+from django.contrib.auth import get_user_model
 from django.test import override_settings
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
@@ -17,6 +20,8 @@ from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_get_value,
     external_id_extractor_str_or_one_item_string_list,
     external_id_extractor_value,
+    extract_arabic_name_from_user,
+    extract_full_name_from_user,
     get_available_optional_field_tags,
     get_available_optional_field_tags_docs_table,
     get_course_id_from_uri,
@@ -795,3 +800,57 @@ def test_dot_separated_path_get_value_invalid_top_level_type(bad_input):
     """Verify top-level non-dict input raises TypeError"""
     with pytest.raises(TypeError, match='dot_separated_path_get_value accepts only dict type'):
         dot_separated_path_get_value(bad_input, 'some.path')
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('first_name, last_name, profile_name, expected_full_name, expected_alt_name, use_case', [
+    ('', '', '', '', '', 'all empty'),
+    ('', 'Doe', 'Alt John', 'Doe', 'Alt John', 'first name empty'),
+    ('John', '', 'Alt John', 'John', 'Alt John', 'last name empty'),
+    ('John', 'Doe', '', 'John Doe', '', 'profile name empty'),
+    ('', '', 'Alt John', 'Alt John', '', 'fallback to profile name'),
+    ('John', 'John', 'Alt John', 'John John', 'Alt John', 'first/last identical no space'),
+    ('John Doe', 'John Doe', 'Alt John', 'John Doe', 'Alt John', 'first/last identical with space'),
+    ('عربي', 'Doe', 'Alt John', 'عربي Doe', 'Alt John', 'Arabic first name'),
+    ('John', 'Doe', 'عربي', 'عربي', 'John Doe', 'Arabic alternative (non-ASCII) name'),
+])
+def test_extract_full_name_from_user(  # pylint: disable=too-many-arguments
+    first_name, last_name, profile_name, expected_full_name, expected_alt_name, use_case
+):
+    """test extract_full_name_from_user"""
+    user = get_user_model().objects.create(first_name=first_name, last_name=last_name)
+    if profile_name:
+        UserProfile.objects.create(user=user, name=profile_name)
+
+    full_name = extract_full_name_from_user(user)
+    alt_name = extract_full_name_from_user(user, alternative=True)
+
+    assert full_name == expected_full_name, f'Failed full_name check for: {use_case}'
+    assert alt_name == expected_alt_name, f'Failed alt_name check for: {use_case}'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('arabic_first, arabic_last, arabic_name, expected_name, use_case', [
+    ('', '', '', '', 'all empty'),
+    ('اسم', 'كامل', 'عربي', 'عربي', 'arabic name has priority'),
+    ('اسم', 'كامل', '', 'اسم كامل', 'use first + last if arabic_name empty'),
+    ('', '', 'عربي', 'عربي', 'arabic name fallback'),
+    ('', 'قديم', 'عربي', 'عربي', 'fallback to arabic name if first is empty'),
+    ('قديم', '', 'عربي', 'عربي', 'fallback to arabic name if last is empty'),
+    ('', 'قديم', '', 'قديم', 'fallback to arabic last'),
+    ('قديم', '', '', 'قديم', 'fallback to arabic first'),
+])
+def test_extract_arabic_name_from_user(
+    arabic_first, arabic_last, arabic_name, expected_name, use_case
+):
+    """test extract_arabic_name_from_user"""
+    user = get_user_model().objects.create(username='arabic_test')
+    ExtraInfo.objects.create(
+        user=user,
+        arabic_first_name=arabic_first,
+        arabic_last_name=arabic_last,
+        arabic_name=arabic_name,
+    )
+
+    result = extract_arabic_name_from_user(user)
+    assert result == expected_name, f'Failed for case: {use_case}'
