@@ -1360,3 +1360,10 @@ def test_tenant_config_serializer(input_data, expected_output, test_case):
     """Verify TenantConfigSerializer serializes correctly with revision_ids as strings"""
     serializer = serializers.TenantConfigSerializer(instance=input_data)
     assert serializer.data == expected_output, test_case
+
+
+def test_course_serializer_update_raises_error():
+    """test CourseCreate serializer for update """
+    serializer = serializers.CourseCreateSerializer()
+    with pytest.raises(ValueError, match='This serializer does not support update.'):
+        serializer.update(instance=object(), validated_data={})
