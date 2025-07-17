@@ -168,7 +168,7 @@ def get_all_tenants_info() -> Dict[str, str | dict | List[int]]:
             } for tenant in info
         },
         'default_org_per_tenant': {
-            tenant['id']: tenant['lms_configs'].get('DEFAULT_ORG', None) for tenant in info
+            tenant['id']: tenant['lms_configs'].get('DEFAULT_COURSE_ORG', None) for tenant in info
         },
         'tenant_by_site': tenant_by_site,
         'sso_sites': sso_sites,

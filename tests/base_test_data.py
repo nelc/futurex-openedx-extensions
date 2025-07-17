@@ -6,7 +6,7 @@ _base_data = {
             'lms_configs': {
                 'LMS_BASE': 's1.sample.com',
                 'course_org_filter': ['ORG1', 'ORG2', 'Org1'],
-                'DEFAULT_ORG': 'org1',
+                'DEFAULT_COURSE_ORG': 'org1',
                 'IS_FX_DASHBOARD_ENABLED': True,
                 'platform_name': 's1 platform name',
                 'theme_v2': {
@@ -57,7 +57,7 @@ _base_data = {
                 'LMS_BASE': 's7.sample.com',
                 'course_org_filter': 'ORG3',  # This a string, not a list, it should be fine too
                 'IS_FX_DASHBOARD_ENABLED': True,
-                'DEFAULT_ORG': 'invalid',
+                'DEFAULT_COURSE_ORG': 'invalid',
             },
         },
         8: {
