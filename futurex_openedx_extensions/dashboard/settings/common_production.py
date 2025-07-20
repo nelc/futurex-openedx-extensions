@@ -18,3 +18,9 @@ def plugin_settings(settings: Any) -> None:
         'FX_DISABLE_CONFIG_VALIDATIONS',
         False,
     )
+
+    settings.FX_ALLOWED_COURSE_LANGUAGE_CODES = getattr(
+        settings,
+        'FX_ALLOWED_COURSE_LANGUAGE_CODES',
+        ['en', 'ar', 'fr'],
+    )

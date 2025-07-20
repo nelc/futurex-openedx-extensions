@@ -2,6 +2,8 @@
 from datetime import datetime
 from unittest.mock import Mock
 
+from pytz import utc
+
 
 class RoleBase:  # pylint: disable=too-few-public-methods
     """Mock"""
@@ -56,10 +58,13 @@ class DiscussionsConfiguration:  # pylint: disable=too-few-public-methods
 
 
 class CourseFields:  # pylint: disable=too-few-public-methods
-    start = Mock(
-        help=('Start time when this block is visible'),
-        default=datetime(2030, 1, 1)
-    )
+    """Mock"""
+    start = Mock(default=datetime(2030, 1, 1, tzinfo=utc))
+    end = Mock(default=None)
+    enrollment_start = Mock(default=datetime.now(tz=utc))
+    enrollment_end = Mock(default=None)
+    self_paced = Mock(default=None)
+    invitation_only = Mock(default=None)
 
 
 REGISTERED_ACCESS_ROLES = {}

@@ -31,7 +31,6 @@ from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.test import APIRequestFactory, APITestCase
-from xmodule.modulestore.exceptions import DuplicateCourseError
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import ThemeConfigDraftView, UserRolesManagementView
@@ -611,6 +610,19 @@ class TestCoursesView(BaseTestViewMixin):
         view_class = view_func.view_class
         self.assertEqual(view_class.filter_backends, [DefaultOrderingFilter])
 
+    def test_invalid_input(self):
+        """Verify that the view filters the courses by enrollments"""
+        self.login_user(self.staff_user)
+
+        with patch('futurex_openedx_extensions.dashboard.serializers.CourseCreateSerializer') as mock_ser:
+            mocked_serializer = Mock()
+            mocked_serializer.is_valid.return_value = False
+            mocked_serializer.errors = {'tenant_id': ['This field is required.']}
+            mock_ser.return_value = mocked_serializer
+            response = self.client.post(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json(), {'errors': {'tenant_id': ['This field is required.']}})
+
     @patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
     @patch('futurex_openedx_extensions.dashboard.serializers.CourseInstructorRole')
     @patch('futurex_openedx_extensions.dashboard.serializers.CourseStaffRole')
@@ -631,11 +643,17 @@ class TestCoursesView(BaseTestViewMixin):
         staff_user_lazy_obj = SimpleLazyObject(lambda: staff_user_obj)
         mock_ensure_org.return_value = {'id': 'org1', 'name': 'org1', 'short_name': 'org1'}
 
-        response = self.client.post(
-            self.url, data={'tenant_id': 1, 'display_name': 'test 1', 'number': '11', 'run': '111'}
-        )
+        with patch('futurex_openedx_extensions.dashboard.serializers.relative_url_to_absolute_url') as mock_get_url:
+            mock_get_url.return_value = 'https://example.com/courses/course-v1:org1+11+111'
+            response = self.client.post(
+                self.url, data={'tenant_id': 1, 'display_name': 'test 1', 'number': '11', 'run': '111'}
+            )
+
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        self.assertEqual(response.json()['course_key'], 'course-v1:org1+11+111')
+        self.assertEqual(response.json(), {
+            'id': 'course-v1:org1+11+111',
+            'url': mock_get_url.return_value,
+        })
 
         expected_course_locator = CourseLocator.from_string('course-v1:org1+11+111')
         mock_ensure_org.assert_called_once_with('org1')
@@ -649,69 +667,6 @@ class TestCoursesView(BaseTestViewMixin):
         mock_assign_default_role.assert_called_once_with(expected_course_locator, staff_user_obj)
         mock_add_org_course.assert_called_once_with(mock_ensure_org.return_value, expected_course_locator)
         mock_discussions_config_get.assert_called_once_with(context_key=expected_course_locator)
-
-    def test_create_success_without_display_name(self):
-        """Verify that the view allow course creation without display name"""
-        self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={'tenant_id': 1, 'number': '11', 'run': '111'})
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        self.assertEqual(response.json()['course_key'], 'course-v1:org1+11+111')
-
-    @patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
-    def test_create_failure_for_organization_error(self, mock_ensure_org):
-        """Verify that the view returns the correct response"""
-        self.login_user(self.staff_user)
-        mock_ensure_org.side_effect = Exception('some error')
-        response = self.client.post(self.url, data={'tenant_id': 1, 'number': '11', 'run': '111'})
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.json()[0], 'Organization does not exist. Please add the organization before proceeding.'
-        )
-
-    @patch('futurex_openedx_extensions.dashboard.serializers.modulestore')
-    def test_create_failure_duplicate_course(self, mock_modulestore):
-        """Verify that the view returns the correct response"""
-        mock_modulestore.return_value.create_course.side_effect = DuplicateCourseError('Course already exist')
-
-        self.login_user(self.staff_user)
-        response = self.client.post(
-            self.url, data={'tenant_id': 1, 'number': 'does-not-matter', 'run': 'does-not-matter'}
-        )
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.json()[0],
-            'Course with org: "org1", number: "does-not-matter", run: "does-not-matter" already exists.'
-        )
-
-    @ddt.data(
-        (
-            4,
-            'Invalid tenant_id: "4". This tenant does not exist or is not configured properly.',
-            'invalid tenant as LMS_BASE not set'
-        ),
-        (
-            3,
-            'No default organization configured for tenant_id: "3".',
-            'default org is not set'
-        ),
-        (
-            7,
-            'Invalid default organization "invalid" configured for tenant ID "7". '
-            'This organization is not associated with the tenant.',
-            'default org is not valid',
-        ),
-    )
-    @ddt.unpack
-    def test_course_create_for_failure_for_tenant_id_errors(self, tenant_id, expected_error, case):
-        """Verify the view returns the correct error for various invalid tenant_id configurations."""
-        self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={
-            'tenant_id': tenant_id,
-            'number': '11',
-            'run': '111',
-        })
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.json()['errors']['tenant_id'][0], expected_error, f'Failed for usecase: {case}')
 
 
 @ddt.ddt

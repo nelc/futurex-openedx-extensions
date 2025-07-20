@@ -541,13 +541,43 @@ docs_src = {
                 ),
                 'display_name': openapi.Schema(
                     type=openapi.TYPE_STRING,
-                    description='Optional - Name of the course',
+                    description='Name of the course',
                     example='my test course',
                 ),
                 'start': openapi.Schema(
                     type=openapi.TYPE_STRING,
-                    description='Optional - Course start date',
+                    description='Course start date',
+                    example='2025-02-05T00:00:00Z',
+                ),
+                'end': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Course end date',
+                    example='2028-02-05T23:59:59Z',
+                ),
+                'enrollment_start': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Enrollment start date',
                     example='2025-02-05T23:59:59Z',
+                ),
+                'enrollment_end': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Enrollment end date',
+                    example='2025-02-05T23:59:59Z',
+                ),
+                'instructor_paced': openapi.Schema(
+                    type=openapi.TYPE_BOOLEAN,
+                    description='True means the course is instructor-paced, False means it is self-paced',
+                    example=True,
+                ),
+                'invitation_only': openapi.Schema(
+                    type=openapi.TYPE_BOOLEAN,
+                    description='True means the course enrollment is invitation-only, False means it is open for all',
+                    example=True,
+                ),
+                'language': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Language code of the course, e.g., "en" for English',
+                    example='ar',
                 ),
             },
             required=['tenant_id', 'number', 'run']
