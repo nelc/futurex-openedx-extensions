@@ -2,6 +2,8 @@
 # pylint: disable=too-many-lines
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import re
@@ -1789,8 +1791,16 @@ class SetThemePreviewCookieView(APIView):
     """View to set theme preview cookie"""
     def get(self, request: Any) -> Any:  # pylint: disable=no-self-use
         """Set theme preview cookie"""
-        next_url = request.GET.get('next', request.build_absolute_uri())
+        original_next_url = request.GET.get('next')
+        if original_next_url:
+            try:
+                next_url = base64.b64decode(original_next_url.encode('utf-8')).decode('utf-8')
+            except (UnicodeDecodeError, binascii.Error):
+                next_url = original_next_url
+        else:
+            next_url = f'{request.scheme}://{request.get_host()}/'
+
         if request.COOKIES.get('theme-preview') == 'yes':
             return redirect(next_url)
 
-        return render(request, template_name='set_theme_preview.html', context={'next_url': next_url})
+        return render(request, 'set_theme_preview.html', {'next_url': next_url})

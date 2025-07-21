@@ -3316,8 +3316,16 @@ class TestSetThemePreviewCookieView(APITestCase):
         assert 'set_theme_preview.html' in [t.name for t in response.templates], 'Expected template to be rendered'
 
     @ddt.data(
-        ('/custom-next-url/', '/custom-next-url/'),
-        (None, f'http://testserver{reverse("fx_dashboard:set-theme-preview")}')
+        (
+            'aHR0cHM6Ly9leGFtcGxlLmNvbS9wYWdlP25hbWU9YWJvdXQjc2VjdGlvbjI=',
+            'https://example.com/page?name=about#section2',
+        ),
+        (None, f'http://testserver{reverse("fx_dashboard:set-theme-preview")}'),
+        (
+            'http://example.com/not-encoded-or-bad-encoding',
+            f'http://testserver{reverse("fx_dashboard:set-theme-preview")}?next='
+            'http%3A%2F%2Fexample.com%2Fnot-encoded-or-bad-encoding',
+        ),
     )
     @ddt.unpack
     def test_redirect_url_resolves_correctly(self, next_param, expected_redirect):
