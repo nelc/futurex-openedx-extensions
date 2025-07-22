@@ -661,8 +661,8 @@ class CourseCreateSerializer(serializers.Serializer):
         help_text='If true, the course enrollment is invitation-only.',
     )
     language = serializers.ChoiceField(
-        choices=settings.FX_ALLOWED_COURSE_LANGUAGE_CODES,
-        default=settings.FX_ALLOWED_COURSE_LANGUAGE_CODES[0],
+        choices=[],
+        required=False,
         help_text='Language code for the course, like "en" for English.',
     )
 
@@ -670,6 +670,7 @@ class CourseCreateSerializer(serializers.Serializer):
         """Initialize the serializer."""
         super().__init__(*args, **kwargs)
         self._default_org = ''
+        self.fields['language'].choices = getattr(settings, 'FX_ALLOWED_COURSE_LANGUAGE_CODES', [])
 
     @property
     def default_org(self) -> str:
