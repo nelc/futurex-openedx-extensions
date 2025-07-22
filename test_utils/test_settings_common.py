@@ -133,3 +133,5 @@ FX_TEMPLATE_TENANT_SITE = 'default.example.com'
 FX_TENANTS_BASE_DOMAIN = 'local.overhang.io'
 
 FX_DISABLE_CONFIG_VALIDATIONS = False
+
+FX_ALLOWED_COURSE_LANGUAGE_CODES = ['en', 'ar']

@@ -625,29 +625,129 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
 
 class CourseCreateSerializer(serializers.Serializer):
     """Serializer for course create."""
-    number = serializers.CharField()
-    run = serializers.CharField()
-    display_name = serializers.CharField(required=False, allow_blank=True)
-    start = serializers.DateTimeField(required=False)
-    tenant_id = serializers.IntegerField(write_only=True)
+    COURSE_NUMBER_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
+    MAX_COURSE_ID_LENGTH = 250
 
-    def validate_tenant_id(self, tenant_id: Any) -> Any:  # pylint: disable=no-self-use
+    tenant_id = serializers.IntegerField(
+        help_text='Tenant ID for the course. Must be a valid tenant ID.',
+    )
+    number = serializers.CharField(help_text='Course code number, like "CS101"')
+    run = serializers.CharField(help_text='Course run, like "2023_Fall"')
+    display_name = serializers.CharField(
+        help_text='Display name of the course.',
+    )
+    start = serializers.DateTimeField(
+        required=False,
+        help_text='Start date of the course.',
+    )
+    end = serializers.DateTimeField(
+        required=False,
+        help_text='End date of the course.',
+    )
+    enrollment_start = serializers.DateTimeField(
+        required=False,
+        help_text='Start date of the course enrollment.',
+    )
+    enrollment_end = serializers.DateTimeField(
+        required=False,
+        help_text='End date of the course enrollment.',
+    )
+    self_paced = serializers.BooleanField(
+        default=False,
+        help_text='If true, the course is self-paced. If false, the course is instructor-paced.',
+    )
+    invitation_only = serializers.BooleanField(
+        default=False,
+        help_text='If true, the course enrollment is invitation-only.',
+    )
+    language = serializers.ChoiceField(
+        choices=settings.FX_ALLOWED_COURSE_LANGUAGE_CODES,
+        default=settings.FX_ALLOWED_COURSE_LANGUAGE_CODES[0],
+        help_text='Language code for the course, like "en" for English.',
+    )
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the serializer."""
+        super().__init__(*args, **kwargs)
+        self._default_org = ''
+
+    @property
+    def default_org(self) -> str:
+        """Get the default organization for the tenant."""
+        return self._default_org
+
+    def get_absolute_url(self) -> str | None:
+        """Get the absolute URL for the course."""
+        if not self._default_org:
+            raise serializers.ValidationError('Default organization is not set. Call validate_tenant_id first.')
+
+        course_id = f'course-v1:{self.default_org}+{self.validated_data["number"]}+{self.validated_data["run"]}'
+        return relative_url_to_absolute_url(f'/courses/{course_id}/', self.context.get('request'))
+
+    def validate_tenant_id(self, tenant_id: Any) -> Any:
         """Validate the tenant ID."""
         default_orgs = get_all_tenants_info().get('default_org_per_tenant', {})
         if tenant_id not in default_orgs:
             raise serializers.ValidationError(
-                f'Invalid tenant_id: "{tenant_id}". This tenant does not exist or is not configured properly.'
+                f'Invalid tenant_id: {tenant_id}. This tenant does not exist or is not configured properly.'
             )
+
         if not default_orgs[tenant_id]:
             raise serializers.ValidationError(
-                f'No default organization configured for tenant_id: "{tenant_id}".'
+                f'No default organization configured for tenant_id: {tenant_id}.'
             )
         if tenant_id not in get_org_to_tenant_map().get(default_orgs[tenant_id], []):
             raise serializers.ValidationError(
-                f'Invalid default organization "{default_orgs[tenant_id]}" configured for tenant ID "{tenant_id}". '
-                'This organization is not associated with the tenant.'
+                f'Invalid default organization ({default_orgs[tenant_id]}) configured for tenant ID {tenant_id}.'
             )
+        self._default_org = default_orgs[tenant_id]
         return tenant_id
+
+    def validate_number(self, value: str) -> str:
+        """Validate that number matches COURSE_NUMBER_PATTERN."""
+        if not self.COURSE_NUMBER_PATTERN.match(value):
+            raise serializers.ValidationError(
+                f'Invalid number ({value}). Only alphanumeric characters, underscores, and hyphens are allowed.'
+            )
+        return value
+
+    def validate_run(self, value: str) -> str:
+        """Validate that run matches COURSE_NUMBER_PATTERN."""
+        if not self.COURSE_NUMBER_PATTERN.match(value):
+            raise serializers.ValidationError(
+                f'Invalid run ({value}). Only alphanumeric characters, underscores, and hyphens are allowed.'
+            )
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        """Validate the course creation data."""
+        number = attrs.get('number', '')
+        run = attrs.get('run', '')
+        if len(f'course-v1:{self.default_org}+{number}+{run}') > self.MAX_COURSE_ID_LENGTH:
+            raise serializers.ValidationError(
+                f'Course ID is too long. The maximum length is {self.MAX_COURSE_ID_LENGTH} characters.'
+            )
+
+        dates = {
+            'start': attrs.get('start', CourseFields.start.default),
+            'end': attrs.get('end'),
+            'enrollment_start': attrs.get('enrollment_start', CourseFields.enrollment_start.default),
+            'enrollment_end': attrs.get('enrollment_end'),
+        }
+        greater_or_equal_rules = [
+            ('end', 'start'),
+            ('enrollment_end', 'enrollment_start'),
+            ('start', 'enrollment_start'),
+            ('end', 'enrollment_end'),
+        ]
+        for rule in greater_or_equal_rules:
+            lvalue, rvalue = rule
+            if dates[lvalue] and dates[rvalue] and dates[lvalue] < dates[rvalue]:
+                raise serializers.ValidationError(
+                    f'{lvalue} cannot be before {rvalue}. {lvalue}[{dates[lvalue]}], {rvalue}[{dates[rvalue]}]'
+                )
+
+        return attrs
 
     @staticmethod
     def update_course_discussions_settings(course: Any) -> None:
@@ -690,15 +790,20 @@ class CourseCreateSerializer(serializers.Serializer):
         org = get_all_tenants_info()['default_org_per_tenant'][tenant_id]
         number = validated_data.get('number')
         run = validated_data['run']
-        display_name = validated_data.get('display_name')
+
+        field_names = [
+            'start',
+            'end',
+            'enrollment_start',
+            'enrollment_end',
+            'language',
+            'self_paced',
+            'invitation_only',
+            'display_name',
+        ]
         fields = {
-            'start': validated_data.get('start', CourseFields.start.default),
-            'language': 'en',
-            'cert_html_view_enabled': True,
-            'wiki_slug': f'{org}.{number}.{run}',
+            field_name: validated_data.get(field_name) for field_name in field_names if field_name in validated_data
         }
-        if display_name is not None:
-            fields['display_name'] = display_name
 
         try:
             org_data = ensure_organization(org)
@@ -720,11 +825,12 @@ class CourseCreateSerializer(serializers.Serializer):
                 self.add_roles_and_permissions(new_course, user)
             add_organization_course(org_data, new_course.id)
             self.update_course_discussions_settings(new_course)
-            return new_course
         except DuplicateCourseError as exc:
             raise serializers.ValidationError(
-                f'Course with org: "{org}", number: "{number}", run: "{run}" already exists.'
+                f'Course with org: {org}, number: {number}, run: {run} already exists.'
             ) from exc
+
+        return new_course
 
     def update(self, instance: Any, validated_data: Any) -> Any:
         """Not implemented: Update an existing object."""

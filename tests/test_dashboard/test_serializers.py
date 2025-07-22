@@ -2,7 +2,7 @@
 # pylint: disable=too-many-lines
 import copy
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from cms.djangoapps.course_creators.models import CourseCreator
@@ -15,6 +15,7 @@ from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import Value
 from django.test import override_settings
+from django.utils import timezone
 from django.utils.timezone import get_current_timezone, now, timedelta
 from lms.djangoapps.grades.models import PersistentSubsectionGrade
 from opaque_keys.edx.keys import UsageKey
@@ -22,6 +23,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
 from rest_framework.exceptions import ValidationError
 from social_django.models import UserSocialAuth
+from xmodule.modulestore.exceptions import DuplicateCourseError
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers import constants as cs
@@ -1309,7 +1311,7 @@ def test_library_serializer_update_raises_error():
         serializer.update(instance=object(), validated_data={})
 
 
-@pytest.mark.parametrize('input_data,expected_output,test_case', [
+@pytest.mark.parametrize('input_data, expected_output, test_case', [
     (
         {
             'values': {'theme_v2': {'header': 'data'}},
@@ -1367,3 +1369,305 @@ def test_course_serializer_update_raises_error():
     serializer = serializers.CourseCreateSerializer()
     with pytest.raises(ValueError, match='This serializer does not support update.'):
         serializer.update(instance=object(), validated_data={})
+
+
+@pytest.fixture
+def valid_tenants():
+    """Fixture to provide valid tenants for testing."""
+    return {
+        'default_org_per_tenant': {
+            1: 'testorg',
+        }
+    }
+
+
+@pytest.fixture
+def valid_org_map():
+    """Fixture to provide a valid organization map."""
+    return {
+        'testorg': [1],
+    }
+
+
+@pytest.fixture(autouse=True)
+def fx_allowed_course_language_codes(settings):  # pylint: disable=redefined-outer-name
+    """Fixture to set FX_ALLOWED_COURSE_LANGUAGE_CODES in settings."""
+    settings.FX_ALLOWED_COURSE_LANGUAGE_CODES = ['en', 'ar']
+    return settings
+
+
+@pytest.fixture
+def course_data():
+    """Fixture to provide valid course data for testing."""
+    time_now = timezone.now()
+    return {
+        'tenant_id': 1,
+        'number': 'CS101',
+        'run': '2023_Fall',
+        'display_name': 'Test Course',
+        'start': time_now,
+        'end': time_now,
+        'enrollment_start': time_now,
+        'enrollment_end': time_now,
+        'self_paced': True,
+        'invitation_only': False,
+        'language': 'en',
+    }
+
+
+@pytest.mark.parametrize(
+    'tenant_id, org_map, expected_error, test_case',
+    [
+        (2, {'default_org_per_tenant': {1: 'testorg'}}, 'Invalid tenant_id', 'tenant_id not in default_orgs'),
+        (1, {'default_org_per_tenant': {1: ''}}, 'No default organization', 'default_org empty'),
+        (1, {'default_org_per_tenant': {1: 'testorg'}}, 'Invalid default organization', 'org/tenant mapping missing'),
+    ]
+)
+def test_validate_tenant_id_errors(tenant_id, org_map, expected_error, test_case):
+    """Verify tenant_id validation error handling for various misconfigurations."""
+    serializer = serializers.CourseCreateSerializer()
+    with patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info', return_value=org_map), \
+         patch('futurex_openedx_extensions.dashboard.serializers.get_org_to_tenant_map', return_value={}):
+        with pytest.raises(ValidationError) as exc:
+            serializer.validate_tenant_id(tenant_id)
+        assert expected_error in str(exc.value), test_case
+
+
+@pytest.mark.parametrize(
+    'number, should_pass, test_case',
+    [
+        ('CS101', True, 'valid'),
+        ('cs-1_23', True, 'valid with underscore/hyphen'),
+        ('cs!@#', False, 'invalid chars'),
+        ('cs 123', False, 'space not allowed'),
+    ]
+)
+def test_validate_number(number, should_pass, test_case):
+    """Verify number field validation for allowed/disallowed patterns."""
+    serializer = serializers.CourseCreateSerializer()
+    if should_pass:
+        assert serializer.validate_number(number) == number, test_case
+    else:
+        with pytest.raises(ValidationError, match='Invalid number'):
+            serializer.validate_number(number)
+
+
+@pytest.mark.parametrize(
+    'run, should_pass, test_case',
+    [
+        ('2024_Fall', True, 'valid'),
+        ('run-1', True, 'valid hyphen'),
+        ('run!', False, 'invalid character'),
+        ('run 1', False, 'space not allowed'),
+    ]
+)
+def test_validate_run(run, should_pass, test_case):
+    """Verify run field validation for allowed/disallowed patterns."""
+    serializer = serializers.CourseCreateSerializer()
+    if should_pass:
+        assert serializer.validate_run(run) == run, test_case
+    else:
+        with pytest.raises(ValidationError, match='Invalid run'):
+            serializer.validate_run(run)
+
+
+@pytest.mark.parametrize(
+    'default_org, number, run, should_raise, test_case',
+    [
+        ('a' * 10, 'b' * 10, 'c' * 10, False, 'max length ok'),
+        ('a', 'b', 'c', False, 'very short'),
+        ('a' * 100, 'b' * 100, 'c' * 100, True, 'exceeding max'),
+    ]
+)
+def test_validate_course_id_length(default_org, number, run, should_raise, test_case):
+    """Verify course ID total length constraint."""
+    serializer = serializers.CourseCreateSerializer()
+    serializer._default_org = default_org  # pylint: disable=protected-access
+    attrs = {'number': number, 'run': run}
+    max_len = serializers.CourseCreateSerializer.MAX_COURSE_ID_LENGTH
+    if should_raise:
+        with pytest.raises(
+            ValidationError,
+            match=f'Course ID is too long. The maximum length is {max_len} characters.',
+        ):
+            serializer.validate(attrs)
+    else:
+        assert serializer.validate(attrs) == attrs, test_case
+
+
+@pytest.mark.parametrize(
+    'dates, should_raise, test_case',
+    [
+        ({'start': timezone.now(), 'end': timezone.now() - timezone.timedelta(days=1)}, True, 'end before start'),
+        (
+            {
+                'enrollment_start': timezone.now(),
+                'enrollment_end': timezone.now() - timezone.timedelta(days=2)
+            },
+            True,
+            'enrollment_end before enrollment_start',
+        ),
+        (
+            {
+                'start': timezone.now(),
+                'enrollment_start': timezone.now() + timezone.timedelta(days=1)
+            },
+            True,
+            'start before enrollment_start',
+        ),
+        (
+            {
+                'end': timezone.now(),
+                'enrollment_end': timezone.now() + timezone.timedelta(days=1)
+            },
+            True,
+            'end before enrollment_end',
+        ),
+        ({'start': timezone.now(), 'end': timezone.now() + timezone.timedelta(days=1)}, False, 'valid dates'),
+    ]
+)
+def test_validate_dates(dates, should_raise, test_case):
+    """Verify date validation rules between fields."""
+    serializer = serializers.CourseCreateSerializer()
+    serializer._default_org = 'org'  # pylint: disable=protected-access
+    attrs = {'number': 'num', 'run': 'run'}
+    attrs.update(dates)
+    if should_raise:
+        with pytest.raises(ValidationError) as exc:
+            serializer.validate(attrs)
+        assert 'cannot be before' in str(exc.value), test_case
+    else:
+        assert serializer.validate(attrs) == attrs, test_case
+
+
+def test_get_absolute_url_requires_default_org(course_data):  # pylint: disable=redefined-outer-name
+    """Verify get_absolute_url requires ._default_org set."""
+    serializer = serializers.CourseCreateSerializer()
+    serializer._validated_data = course_data  # pylint: disable=protected-access
+    serializer._default_org = ''  # pylint: disable=protected-access
+    with pytest.raises(ValidationError, match='Default organization is not set. Call validate_tenant_id first.'):
+        serializer.get_absolute_url()
+
+
+@patch('futurex_openedx_extensions.dashboard.serializers.relative_url_to_absolute_url')
+def test_get_absolute_url_success(
+    mock_get_url, course_data,
+):  # pylint: disable=redefined-outer-name
+    """Verify get_absolute_url builds the correct URL."""
+    serializer = serializers.CourseCreateSerializer(context={'request': MagicMock()})
+    serializer._validated_data = course_data  # pylint: disable=protected-access
+    serializer._default_org = 'org'  # pylint: disable=protected-access
+    mock_get_url.return_value = 'the url'
+    result_url = serializer.get_absolute_url()
+    assert result_url == 'the url'
+
+
+def test_update_not_implemented(course_data):  # pylint: disable=redefined-outer-name
+    """Verify update() always raises ValueError."""
+    serializer = serializers.CourseCreateSerializer()
+    with pytest.raises(ValueError, match='does not support update'):
+        serializer.update(MagicMock(), course_data)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+@patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
+@patch('futurex_openedx_extensions.dashboard.serializers.add_organization_course')
+@patch('futurex_openedx_extensions.dashboard.serializers.get_org_to_tenant_map')
+@patch('futurex_openedx_extensions.dashboard.serializers.modulestore')
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseCreateSerializer.add_roles_and_permissions')
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseCreateSerializer.update_course_discussions_settings')
+def test_create_success(
+    _,
+    __,
+    mock_modulestore,
+    mock_get_org_to_tenant_map,
+    mock_add_organization_course,
+    mock_ensure_organization,
+    mock_get_all_tenants_info,
+    course_data,
+    valid_tenants,
+    valid_org_map,
+):  # pylint: disable=redefined-outer-name,too-many-arguments
+    """Verify successful course creation, with all external calls patched."""
+    serializer = serializers.CourseCreateSerializer(context={'request': MagicMock(user=MagicMock(id=123))})
+
+    mock_get_all_tenants_info.return_value = valid_tenants
+    mock_ensure_organization.return_value = {'org': 'org'}
+    mock_add_organization_course.return_value = None
+    mock_get_org_to_tenant_map.return_value = valid_org_map
+
+    mock_modulestore_instance = MagicMock()
+    mock_modulestore_instance.default_modulestore.get_modulestore_type.return_value = 'type'
+    mock_modulestore_instance.default_store.return_value.__enter__.return_value = None
+    created_course = MagicMock()
+    mock_modulestore_instance.create_course.return_value = created_course
+    mock_modulestore.return_value = mock_modulestore_instance
+
+    result = serializer.create(course_data)
+    assert result == created_course, 'new course returned'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+@patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
+@patch('futurex_openedx_extensions.dashboard.serializers.add_organization_course')
+@patch('futurex_openedx_extensions.dashboard.serializers.get_org_to_tenant_map')
+@patch('futurex_openedx_extensions.dashboard.serializers.modulestore')
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseCreateSerializer.add_roles_and_permissions')
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseCreateSerializer.update_course_discussions_settings')
+def test_create_duplicate_course_error(
+    _,
+    __,
+    mock_modulestore,
+    mock_get_org_to_tenant_map,
+    mock_add_organization_course,
+    mock_ensure_organization,
+    mock_get_all_tenants_info,
+    course_data,
+    valid_tenants,
+    valid_org_map,
+):  # pylint: disable=too-many-arguments,redefined-outer-name
+    """Verify DuplicateCourseError during create raises ValidationError."""
+    serializer = serializers.CourseCreateSerializer(context={'request': MagicMock(user=MagicMock(id=123))})
+
+    mock_get_all_tenants_info.return_value = valid_tenants
+    mock_ensure_organization.return_value = {'org': 'org'}
+    mock_add_organization_course.return_value = None
+    mock_get_org_to_tenant_map.return_value = valid_org_map
+
+    mock_modulestore_instance = MagicMock()
+    mock_modulestore_instance.default_modulestore.get_modulestore_type.return_value = 'type'
+    mock_modulestore_instance.default_store.return_value.__enter__.return_value = None
+    mock_modulestore_instance.create_course.side_effect = DuplicateCourseError('Course already exists')
+    mock_modulestore.return_value = mock_modulestore_instance
+
+    with pytest.raises(ValidationError, match='already exists'):
+        serializer.create(course_data)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+@patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
+@patch('futurex_openedx_extensions.dashboard.serializers.get_org_to_tenant_map')
+@patch('futurex_openedx_extensions.dashboard.serializers.DuplicateCourseError', Exception)
+def test_create_organization_missing_raises_validation_error(
+    mock_get_org_to_tenant_map,
+    mock_ensure_organization,
+    mock_get_all_tenants_info,
+    course_data,
+    valid_tenants,
+    valid_org_map,
+):  # pylint: disable=too-many-arguments, redefined-outer-name
+    """Verify create() raises ValidationError if ensure_organization fails."""
+    serializer = serializers.CourseCreateSerializer(context={'request': MagicMock(user=MagicMock(id=123))})
+
+    mock_get_all_tenants_info.return_value = valid_tenants
+    mock_ensure_organization.side_effect = Exception('no org')
+    mock_get_org_to_tenant_map.return_value = valid_org_map
+
+    with pytest.raises(
+        ValidationError,
+        match='Organization does not exist. Please add the organization before proceeding.'
+    ):
+        serializer.create(course_data)
