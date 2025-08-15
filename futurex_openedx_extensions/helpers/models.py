@@ -1,4 +1,5 @@
 """Models for the dashboard app."""
+# pylint: disable=too-many-lines
 from __future__ import annotations
 
 import copy
@@ -10,8 +11,9 @@ from typing import Any, Dict, List, Tuple
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import BooleanField, Case, Exists, OuterRef, Q, QuerySet, Value, When
+from django.db.utils import IntegrityError
 from django.utils import timezone
 from eox_tenant.models import TenantConfig
 from opaque_keys.edx.django.models import CourseKeyField
@@ -26,23 +28,10 @@ from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_force_set_value,
     dot_separated_path_get_value,
 )
+from futurex_openedx_extensions.helpers.model_helpers import DraftConfigUpdatePreparer, NoUpdateQuerySet
 from futurex_openedx_extensions.helpers.upload import get_tenant_asset_dir
 
 User = get_user_model()
-
-
-class NoUpdateQuerySet(models.QuerySet):
-    """QuerySet that disallows the update method"""
-    def update(self, **kwargs: Any) -> None:
-        """ Override the update method to disallow it """
-        raise AttributeError(f'{self.model.__name__}.objects.update() method is not allowed. Use save() instead.')
-
-
-class NoUpdateManager(models.Manager):  # pylint: disable=too-few-public-methods
-    """Manager that uses NoUpdateQuerySet"""
-    def get_queryset(self) -> NoUpdateQuerySet:
-        """Return a NoUpdateQuerySet instance"""
-        return NoUpdateQuerySet(self.model, using=self._db)
 
 
 class ViewAllowedRoles(models.Model):
@@ -646,7 +635,7 @@ class DraftConfig(models.Model):
         verbose_name_plural = 'Draft Configurations'
         unique_together = ('tenant', 'config_path')
 
-    objects = NoUpdateManager()
+    objects = NoUpdateQuerySet.as_manager()
 
     @staticmethod
     def generate_revision_id() -> int:
@@ -658,6 +647,33 @@ class DraftConfig(models.Model):
         """
         return random.getrandbits(63)
 
+    @classmethod
+    def get_save_ready_config_value(cls, config_value: Any) -> str:
+        """
+        Get the config value ready to be saved. Which is a raw string representing a JSON with root key.
+
+        :param config_value: The config value to be saved.
+        :type config_value: Any
+        :return: The config value ready to be saved.
+        :rtype: str
+        """
+        if isinstance(config_value, str):
+            try:
+                dict_value = json.loads(config_value)
+            except json.JSONDecodeError:
+                dict_value = {}
+        else:
+            dict_value = config_value
+
+        if isinstance(dict_value, dict) and cls.ROOT in dict_value:
+            new_config_value = config_value
+        else:
+            new_config_value = json.dumps({
+                cls.ROOT: config_value,
+            })
+
+        return new_config_value
+
     def save(self, *args: list, **kwargs: dict) -> None:
         """
         Override the save method to set the revision ID and handle the config_value.
@@ -665,18 +681,7 @@ class DraftConfig(models.Model):
         :param args: Positional arguments.
         :param kwargs: Keyword arguments.
         """
-        new_config_value = self.config_value
-        if isinstance(self.config_value, str):
-            try:
-                dict_value = json.loads(self.config_value)
-            except json.JSONDecodeError:
-                dict_value = {}
-            if self.ROOT in dict_value:
-                new_config_value = dict_value[self.ROOT]
-
-        new_config_value = json.dumps({
-            self.ROOT: new_config_value,
-        })
+        new_config_value = self.get_save_ready_config_value(self.config_value)
 
         if self.pk:
             original = DraftConfig.objects.filter(pk=self.pk).values_list('config_value', flat=True).first()
@@ -687,11 +692,21 @@ class DraftConfig(models.Model):
                 self.config_value = original
         else:
             self.config_value = new_config_value
-
         if not self.revision_id:
             self.revision_id = self.generate_revision_id()
-
         super().save(*args, **kwargs)
+
+    @classmethod
+    def json_load_config_value(cls, config_value: str) -> Any:
+        """
+        Load the config value from JSON.
+
+        :param config_value: The config value to load.
+        :type config_value: str
+        :return: The loaded config value.
+        :rtype: Any
+        """
+        return json.loads(config_value)[cls.ROOT]
 
     def get_config_value(self) -> Dict[str, Any]:
         """
@@ -700,7 +715,7 @@ class DraftConfig(models.Model):
         :return: A dictionary with the configuration value and the revision_id.
         """
         result = {
-            'config_value': json.loads(self.config_value)[self.ROOT],
+            'config_value': self.json_load_config_value(self.config_value),
             'revision_id': self.revision_id,
         }
 
@@ -784,16 +799,21 @@ class DraftConfig(models.Model):
         return config_values
 
     @classmethod
-    def update_from_dict(
+    def update_from_dict(  # pylint: disable=too-many-arguments
         cls,
         tenant_id: int,
         config_paths: List[str],
         src: Dict[str, Any],
         user: get_user_model,
-    ) -> None:
+        verify_revision_ids: Dict[str, int] = None,
+    ) -> Dict[str, int]:
         """
         Update the configuration values for the given tenant and keys from the given source dictionary. The function
         will extract the dot-separated paths and update the values in the database.
+
+        The update will use the collected result from the private method `_prepare_update_from_dict` to perform
+        the actual database operations. It'll be used in CRUD reverse order (delete, update, create) to ensure data
+        integrity.
 
         :param tenant_id: The ID of the tenant.
         :type tenant_id: int
@@ -803,42 +823,73 @@ class DraftConfig(models.Model):
         :type src: Dict[str, Any]
         :param user: The user who is performing the update.
         :type user: get_user_model
+        :param verify_revision_ids: A dictionary with the revision IDs to verify before updating. The keys are the
+            config path to be verified, and the values are the expected revision IDs. If any of the revision IDs do not
+            match, the update will be aborted and an exception will be raised. Keys not present in config_paths list
+            will be ignored.
+        :type verify_revision_ids: Dict[str, int]
+        :return: A dictionary with the updated configuration values and their revision IDs.
+        :rtype: Dict[str, int]
         """
         if not isinstance(src, dict):
             raise TypeError('DraftConfig.update_from_dict: source must be a dictionary.')
         config_paths = list(set(config_paths or []))
 
-        draft_fast_access = dict(cls.objects.filter(
-            tenant_id=tenant_id, config_path__in=config_paths,
-        ).values_list('config_path', 'pk'))
-        for config_path in config_paths:
-            delete_it = False
-            value = src
-            parts = config_path.split('.')
-            for part in parts:
-                if part not in value:
-                    delete_it = True
-                    break
-                value = value[part]
+        update_prepare = DraftConfigUpdatePreparer(cls, tenant_id=tenant_id, user=user)
+        update_plan = update_prepare.get_update_plan(
+            tenant_id=tenant_id,
+            config_paths=config_paths,
+            src=src,
+            verify_revision_ids=verify_revision_ids,
+        )
 
-            if delete_it:
-                cls.objects.filter(pk=draft_fast_access.get(config_path)).delete()
-            elif value is None:
-                cls.objects.filter(pk=draft_fast_access.get(config_path)).delete()
-            elif config_path in draft_fast_access:
-                draft_config = cls.objects.get(pk=draft_fast_access[config_path])
-                if draft_config.get_config_value()['config_value'] != value:
-                    draft_config.config_value = value
-                    draft_config.updated_by = user
-                draft_config.save()
-            else:
-                cls.objects.create(
-                    tenant_id=tenant_id,
-                    config_path=config_path,
-                    config_value=value,
-                    created_by=user,
-                    updated_by=user,
-                )
+        to_delete = None
+        to_update = None
+        to_create = None
+
+        if update_plan['to_delete']:
+            to_delete = update_prepare.get_to_delete(update_plan['to_delete'])
+
+        if update_plan['to_update']:
+            to_update = update_prepare.get_to_update(update_plan['to_update'])
+
+        if update_plan['to_create']:
+            to_create = update_prepare.get_to_create(update_plan['to_create'])
+
+        with transaction.atomic():
+            if to_delete:
+                count, _ = cls.objects.filter(tenant_id=tenant_id).filter(to_delete).delete()
+                if count != len(update_plan['to_delete']):
+                    raise FXCodedException(
+                        code=FXExceptionCodes.DRAFT_CONFIG_DELETE_MISMATCH,
+                        message='Failed to delete all the specified draft config paths.'
+                    )
+
+            if to_update:
+                try:
+                    count = cls.objects.filter(tenant_id=tenant_id).filter(
+                        config_path__in=list(update_plan['to_update'].keys()),
+                    ).allow_update().update(**to_update)
+                except IntegrityError:
+                    count = -1
+                if count != len(update_plan['to_update']):
+                    raise FXCodedException(
+                        code=FXExceptionCodes.DRAFT_CONFIG_UPDATE_MISMATCH,
+                        message='Failed to update all the specified draft config paths.'
+                    )
+
+            if to_create:
+                try:
+                    count = len(cls.objects.bulk_create(to_create))
+                except IntegrityError:
+                    count = -1
+                if count != len(update_plan['to_create']):
+                    raise FXCodedException(
+                        code=FXExceptionCodes.DRAFT_CONFIG_CREATE_MISMATCH,
+                        message='Failed to create all the specified draft config paths.'
+                    )
+
+        return update_plan
 
 
 class ConfigMirror(models.Model):

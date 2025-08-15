@@ -10,7 +10,7 @@ from common.djangoapps.student.models import CourseAccessRole
 from deepdiff import DeepDiff
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import connection, models
+from django.db.utils import IntegrityError
 from django.utils import timezone
 
 from futurex_openedx_extensions.helpers.clickhouse_operations import ClickhouseBaseError
@@ -19,12 +19,12 @@ from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_force_set_value,
     dot_separated_path_get_value,
 )
+from futurex_openedx_extensions.helpers.model_helpers import NoUpdateQuerySet
 from futurex_openedx_extensions.helpers.models import (
     ClickhouseQuery,
     ConfigMirror,
     DataExportTask,
     DraftConfig,
-    NoUpdateManager,
     ViewUserMapping,
 )
 
@@ -644,53 +644,6 @@ def test_view_user_mapping_manager_get_queryset(
         ) == expected_usable
 
 
-@pytest.fixture
-def sample_no_update_manager():
-    """Fixture to create a sample model with NoUpdateManager."""
-    class SampleModel(models.Model):
-        """Sample model to test NoUpdateManager."""
-        name = models.CharField(max_length=100)
-        objects = NoUpdateManager()
-
-        class Meta:
-            app_label = 'fake_models'
-
-    if 'fake_models_samplemodel' not in connection.introspection.table_names():
-        with connection.schema_editor() as schema_editor:
-            schema_editor.create_model(SampleModel)
-
-    return SampleModel
-
-
-@pytest.mark.django_db(transaction=True)
-def test_no_update_manager_update_raises_error(sample_no_update_manager):  # pylint: disable=redefined-outer-name
-    """Verify NoUpdateQuerySet raises AttributeError on .update()"""
-    obj = sample_no_update_manager.objects.create(name='initial')
-
-    with pytest.raises(AttributeError) as exc:
-        sample_no_update_manager.objects.filter(pk=obj.pk).update(name='changed')
-
-    assert 'SampleModel.objects.update() method is not allowed' in str(exc.value)
-
-
-@pytest.mark.django_db(transaction=True)
-def test_no_update_manager_other_queryset_operations_work(
-    sample_no_update_manager,
-):  # pylint: disable=redefined-outer-name
-    """Verify standard queryset methods still work (e.g., filter, get)"""
-    obj = sample_no_update_manager.objects.create(name='test')
-
-    queryset = sample_no_update_manager.objects.filter(name='test')
-    assert queryset.exists(), 'Queryset should exist after filtering'
-    assert queryset.first().id == obj.id, 'Filtered object should match the created object'
-
-    retrieved = sample_no_update_manager.objects.get(pk=obj.pk)
-    assert retrieved.name == 'test', 'Retrieved object should match the created object'
-
-    assert not sample_no_update_manager.objects.exclude(pk=obj.pk).exists(), \
-        'Excluding the created object should yield no results'
-
-
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     'config_value, expected_saved_string, test_case',
@@ -780,6 +733,19 @@ def test_draft_config_save_change_value(base_data, draft_configs):  # pylint: di
     draft_config.save()
     draft_config.refresh_from_db()
     assert draft_config.revision_id == revision_id, 'revision_id should not change on same value update'
+
+
+@pytest.mark.parametrize('input_value, expected_json_string, test_case', [
+    ('a string', f'{{"{DraftConfig.ROOT}": "a string"}}', 'string input'),
+    ({'key': 'value'}, f'{{"{DraftConfig.ROOT}": {{"key": "value"}}}}', 'dictionary input'),
+    (123, f'{{"{DraftConfig.ROOT}": 123}}', 'integer input'),
+    (None, f'{{"{DraftConfig.ROOT}": null}}', 'None input'),
+    (f'{{"{DraftConfig.ROOT}": "already json"}}', f'{{"{DraftConfig.ROOT}": "already json"}}', 'already JSON string'),
+])
+def test_draft_config_get_save_ready_config_value(input_value, expected_json_string, test_case):
+    """Verify that DraftConfig.get_save_ready_config_value works correctly."""
+    result = DraftConfig.get_save_ready_config_value(input_value)
+    assert result == expected_json_string, test_case
 
 
 @pytest.mark.django_db
@@ -876,8 +842,25 @@ def test_draft_config_get_config_values(
 
 def test_draft_config_does_not_allow_update_method():
     """Verify that DraftConfig does not allow update method."""
-    assert isinstance(DraftConfig.objects, NoUpdateManager), \
-        'DraftConfig.objects should be NoUpdateManager to prevent updates using .update() method'
+    assert DraftConfig.objects.__class__.__name__ == NoUpdateQuerySet.as_manager().__class__.__name__, \
+        'DraftConfig.objects should be NoUpdateQuerySet.as_manager to prevent updates using .update() method'
+
+
+@pytest.mark.django_db
+def test_draft_config_must_not_allow_null_value():
+    """Verify that DraftConfig does not allow null config_value."""
+    sample = DraftConfig.objects.create(
+        tenant_id=1,
+        config_path='any.path',
+        config_value=None,
+        revision_id=999,
+        created_by_id=1,
+        updated_by_id=1,
+    )
+    assert sample is not None, 'Should be able to create with null config_value since it will be saved as JSON null'
+    with pytest.raises(IntegrityError) as exc_info:
+        DraftConfig.objects.allow_update().update(config_value=None)
+    assert 'NOT NULL constraint failed' in str(exc_info.value)
 
 
 @pytest.mark.django_db
@@ -1148,7 +1131,7 @@ def test_draft_config_update_from_dict_new(base_data):  # pylint: disable=unused
         },
     }
 
-    DraftConfig.update_from_dict(
+    update_plan = DraftConfig.update_from_dict(
         tenant_id=1,
         config_paths=config_paths,
         src=src,
@@ -1156,6 +1139,12 @@ def test_draft_config_update_from_dict_new(base_data):  # pylint: disable=unused
     )
 
     assert DraftConfig.objects.count() == 4, 'should create 4 records'
+    assert set(update_plan['to_create'].keys()) == {
+        'level1-1.level2.level4',
+        'level1.level2.level3',
+        'level1',
+        'level1-1.level2.level3'
+    }
     assert DraftConfig.objects.filter(updated_by=user1).count() == 4, 'all records should be created by the same user'
     _assert_draft_configs(_src=src)
 
@@ -1171,8 +1160,6 @@ def test_draft_config_update_from_dict_new(base_data):  # pylint: disable=unused
     assert DraftConfig.objects.filter(updated_by=user1).count() == 2, 'rest of the records should not be updated'
 
     _assert_draft_configs(_src=src)
-
-    src['level1']['level2']['level3'] = None
 
 
 @pytest.mark.django_db
@@ -1197,10 +1184,10 @@ def test_draft_config_update_from_dict_delete_non_existing(
 ):  # pylint: disable=unused-argument
     """Verify that DraftConfig.update_from_dict removes DraftConfig that their path is not included in the source"""
     assert DraftConfig.objects.count() == 0, 'bad test data'
-    config_paths = ['level1.level2.level3']
+    config_path = 'level1.level2.level3'
     DraftConfig.objects.create(
         tenant_id=1,
-        config_path=config_paths[0],
+        config_path=config_path,
         config_value='value33',
         created_by_id=1,
         updated_by_id=1,
@@ -1208,7 +1195,7 @@ def test_draft_config_update_from_dict_delete_non_existing(
 
     DraftConfig.update_from_dict(
         tenant_id=1,
-        config_paths=config_paths,
+        config_paths=[config_path],
         src=src,
         user=get_user_model().objects.first(),
     )
@@ -1227,10 +1214,183 @@ def test_draft_config_update_from_dict_src_must_be_dict():
     assert str(exc_info.value) == 'DraftConfig.update_from_dict: source must be a dictionary.'
 
 
+def _prepare_test_data_for_conflict_tests(multi_user_scenario):
+    """Create users and draft config records for conflict tests."""
+    revision_id_to_verify = 100
+    draft_config = DraftConfig.objects.create(
+        tenant_id=1,
+        config_path='a.b',
+        config_value='value',
+        revision_id=revision_id_to_verify,
+        created_by_id=1,
+        updated_by_id=1,
+    )
+    assert DraftConfig.objects.count() == 1, 'bad test data'
+    if multi_user_scenario == 'updated_by_other':
+        draft_config.config_value = 'changed by other user'
+        draft_config.save()
+        draft_config.refresh_from_db()
+        assert draft_config.revision_id != 100, 'the revision_id should be changed'
+    elif multi_user_scenario == 'deleted_by_other':
+        draft_config.delete()
+        assert DraftConfig.objects.count() == 0, 'the record should be deleted'
+
+    return get_user_model().objects.get(id=10), draft_config
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('multi_user_scenario', ['nothing', 'updated_by_other', 'deleted_by_other'])
+@patch('futurex_openedx_extensions.helpers.models.DraftConfigUpdatePreparer.get_update_plan')
+def test_draft_config_update_from_dict_conflict_delete(
+    mock_update_plan, base_data, multi_user_scenario,
+):  # pylint: disable=unused-argument
+    """
+    Verify that DraftConfig.update_from_dict detects if a record that is supposed to be deleted was changed or deleted
+    by another user after the update plan was prepared.
+    """
+    revision_id_to_verify = 100
+    mock_update_plan.return_value = {
+        'to_delete': {'a.b': {'current_revision_id': revision_id_to_verify}},
+        'to_create': {},
+        'to_update': {},
+    }
+    user10, _ = _prepare_test_data_for_conflict_tests(multi_user_scenario)
+
+    if multi_user_scenario == 'nothing':
+        DraftConfig.update_from_dict(
+            tenant_id=1,
+            config_paths=['a.b'],
+            src={},
+            user=user10,
+            verify_revision_ids={'dummy': 'this has no effect here since we mocked get_update_plan'},
+        )
+        assert DraftConfig.objects.count() == 0, 'the record should be deleted with no problem'
+    else:
+        with pytest.raises(FXCodedException) as exc_info:
+            DraftConfig.update_from_dict(
+                tenant_id=1,
+                config_paths=['a.b'],
+                src={},
+                user=user10,
+                verify_revision_ids={'dummy': 'this has no effect here since we mocked get_update_plan'},
+            )
+        assert exc_info.value.code == FXExceptionCodes.DRAFT_CONFIG_DELETE_MISMATCH.value
+        assert str(exc_info.value) == 'Failed to delete all the specified draft config paths.'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('multi_user_scenario', ['nothing', 'updated_by_other', 'deleted_by_other'])
+@patch('futurex_openedx_extensions.helpers.models.DraftConfigUpdatePreparer.get_update_plan')
+def test_draft_config_update_from_dict_conflict_update(
+    mock_update_plan, base_data, multi_user_scenario,
+):  # pylint: disable=unused-argument
+    """
+    Verify that DraftConfig.update_from_dict detects if a record that is supposed to be updated was changed or deleted
+    by another user after the update plan was prepared.
+    """
+    revision_id_to_verify = 100
+    mock_update_plan.return_value = {
+        'to_update': {
+            'a.b': {
+                'new_config_value': 'newVal',
+                'current_revision_id': revision_id_to_verify,
+                'new_revision_id': 123,
+            },
+        },
+        'to_create': {},
+        'to_delete': {},
+    }
+    user10, draft_config = _prepare_test_data_for_conflict_tests(multi_user_scenario)
+
+    if multi_user_scenario == 'nothing':
+        DraftConfig.update_from_dict(
+            tenant_id=1,
+            config_paths=['a.b'],
+            src={},
+            user=user10,
+            verify_revision_ids={'dummy': 'this has no effect here since we mocked get_update_plan'},
+        )
+        assert DraftConfig.objects.count() == 1, 'the record should be there'
+        draft_config.refresh_from_db()
+        assert draft_config.get_save_ready_config_value('newVal') == draft_config.config_value, \
+            'the record should be updated'
+        assert draft_config.revision_id == 123, 'the revision_id should be updated too'
+    else:
+        with pytest.raises(FXCodedException) as exc_info:
+            DraftConfig.update_from_dict(
+                tenant_id=1,
+                config_paths=['a.b'],
+                src={},
+                user=user10,
+                verify_revision_ids={'dummy': 'this has no effect here since we mocked get_update_plan'},
+            )
+        assert exc_info.value.code == FXExceptionCodes.DRAFT_CONFIG_UPDATE_MISMATCH.value
+        assert str(exc_info.value) == 'Failed to update all the specified draft config paths.'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('multi_user_scenario', ['nothing', 'created_by_other'])
+@patch('futurex_openedx_extensions.helpers.models.DraftConfigUpdatePreparer.get_update_plan')
+def test_draft_config_update_from_dict_conflict_create(
+    mock_update_plan, base_data, multi_user_scenario,
+):  # pylint: disable=unused-argument
+    """
+    Verify that DraftConfig.update_from_dict detects if a record that is supposed to be created was already created
+    by another user after the update plan was prepared.
+    """
+    mock_update_plan.return_value = {
+        'to_create': {
+            'a.b': {
+                'new_config_value': 'newVal',
+                'new_revision_id': 123,
+            },
+        },
+        'to_update': {},
+        'to_delete': {},
+    }
+    user10 = get_user_model().objects.get(id=10)
+
+    assert DraftConfig.objects.count() == 0, 'bad test data'
+    if multi_user_scenario == 'created_by_other':
+        DraftConfig.objects.create(
+            tenant_id=1,
+            config_path='a.b',
+            config_value='changed by other user',
+            revision_id=999,
+            created_by_id=1,
+            updated_by_id=1,
+        )
+
+    if multi_user_scenario == 'nothing':
+        DraftConfig.update_from_dict(
+            tenant_id=1,
+            config_paths=['a.b'],
+            src={},
+            user=user10,
+            verify_revision_ids={'dummy': 'this has no effect here since we mocked get_update_plan'},
+        )
+        assert DraftConfig.objects.count() == 1, 'the record should be there'
+        draft_config = DraftConfig.objects.first()
+        assert draft_config.get_save_ready_config_value('newVal') == draft_config.config_value, \
+            'the record should be created'
+        assert draft_config.revision_id == 123, 'the revision_id should be correct'
+    else:
+        with pytest.raises(FXCodedException) as exc_info:
+            DraftConfig.update_from_dict(
+                tenant_id=1,
+                config_paths=['a.b'],
+                src={},
+                user=user10,
+                verify_revision_ids={'dummy': 'this has no effect here since we mocked get_update_plan'},
+            )
+        assert exc_info.value.code == FXExceptionCodes.DRAFT_CONFIG_CREATE_MISMATCH.value
+        assert str(exc_info.value) == 'Failed to create all the specified draft config paths.'
+
+
 def test_draft_config_root_key():
     """Verify that DraftConfig.ROOT is a valid root key."""
     assert DraftConfig.ROOT == '___root', 'DANGEROUS ACTION: breaking this test means that data migration is needed ' \
-        'to fix existing data. Or at least making sure that all drafts are published before deploying this changed!'
+        'to fix existing data, or at least ensure that all drafts are published before deploying this change!'
 
 
 @pytest.mark.django_db
