@@ -1136,6 +1136,7 @@ def test_draft_config_update_from_dict_new(base_data):  # pylint: disable=unused
         config_paths=config_paths,
         src=src,
         user=user1,
+        verify_revision_ids=None,
     )
 
     assert DraftConfig.objects.count() == 4, 'should create 4 records'
@@ -1154,6 +1155,7 @@ def test_draft_config_update_from_dict_new(base_data):  # pylint: disable=unused
         config_paths=config_paths,
         src=src,
         user=user2,
+        verify_revision_ids=None,
     )
     assert DraftConfig.objects.count() == 3, 'the record related to the None value should be deleted'
     assert DraftConfig.objects.filter(updated_by=user2).count() == 1, 'one record should be updated'
@@ -1198,6 +1200,7 @@ def test_draft_config_update_from_dict_delete_non_existing(
         config_paths=[config_path],
         src=src,
         user=get_user_model().objects.first(),
+        verify_revision_ids=None,
     )
 
     assert DraftConfig.objects.count() == 0, test_case
@@ -1210,7 +1213,9 @@ def test_draft_config_update_from_dict_src_must_be_dict():
             tenant_id=1,
             config_paths=['any'],
             src='not dictionary',
-            user=Mock())
+            user=Mock(),
+            verify_revision_ids=None,
+        )
     assert str(exc_info.value) == 'DraftConfig.update_from_dict: source must be a dictionary.'
 
 

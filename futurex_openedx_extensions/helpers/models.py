@@ -805,7 +805,7 @@ class DraftConfig(models.Model):
         config_paths: List[str],
         src: Dict[str, Any],
         user: get_user_model,
-        verify_revision_ids: Dict[str, int] = None,
+        verify_revision_ids: Dict[str, int] | None,
     ) -> Dict[str, int]:
         """
         Update the configuration values for the given tenant and keys from the given source dictionary. The function
@@ -827,7 +827,7 @@ class DraftConfig(models.Model):
             config path to be verified, and the values are the expected revision IDs. If any of the revision IDs do not
             match, the update will be aborted and an exception will be raised. Keys not present in config_paths list
             will be ignored.
-        :type verify_revision_ids: Dict[str, int]
+        :type verify_revision_ids: Dict[str, int] | None
         :return: A dictionary with the updated configuration values and their revision IDs.
         :rtype: Dict[str, int]
         """

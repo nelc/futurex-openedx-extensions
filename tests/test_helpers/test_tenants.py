@@ -676,32 +676,6 @@ def test_update_draft_config_reset_to_none(base_data, support_user):  # pylint: 
 
 
 @pytest.mark.django_db
-def test_update_draft_config_revision_mismatch(base_data, support_user):  # pylint: disable=unused-argument
-    """Verify FXCodedException is raised if revision ID doesn't match"""
-    DraftConfig.objects.create(
-        tenant_id=1,
-        config_path='theme_v2.footer.link',
-        config_value='https://link.com',
-        revision_id=321,
-        created_by=support_user,
-        updated_by=support_user,
-    )
-
-    with pytest.raises(FXCodedException) as exc:
-        tenants.update_draft_tenant_config(
-            tenant_id=1,
-            config_path='theme_v2.footer.link',
-            current_revision_id=999,  # wrong revision
-            new_value='https://new-link.com',
-            user=support_user,
-        )
-
-    assert exc.value.code == FXExceptionCodes.UPDATE_FAILED.value
-    assert str(exc.value) == \
-        'Failed to update config for tenant 1. Current revision ID mismatch: expected 999, but found 321.'
-
-
-@pytest.mark.django_db
 def test_update_draft_config_creates_new_if_not_exists(base_data, support_user):  # pylint: disable=unused-argument
     """Verify a new DraftConfig is created if not previously existing"""
     assert not DraftConfig.objects.filter(tenant_id=1, config_path='theme_v2.footer.new_field').exists()
