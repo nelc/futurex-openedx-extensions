@@ -1395,7 +1395,7 @@ def test_draft_config_update_from_dict_conflict_create(
 def test_draft_config_root_key():
     """Verify that DraftConfig.ROOT is a valid root key."""
     assert DraftConfig.ROOT == '___root', 'DANGEROUS ACTION: breaking this test means that data migration is needed ' \
-        'to fix existing data, or at least ensure that all drafts are published before deploying this change!'
+        'to fix existing data, OR at least make sure that all drafts are published before deploying your changes!'
 
 
 @pytest.mark.django_db
