@@ -657,7 +657,6 @@ def update_draft_tenant_config(  # pylint: disable=too-many-arguments
     :type reset: bool
     :raises FXCodedException: If the tenant does not exist or the update fails.
     """
-
     config_paths = dot_separated_path_extract_all(config_path)
     config_paths.extend(DraftConfig.objects.filter(
         tenant_id=tenant_id, config_path__startswith=f'{config_path}.',
@@ -669,16 +668,6 @@ def update_draft_tenant_config(  # pylint: disable=too-many-arguments
         config_paths=config_paths,
         dest=current_draft,
     )
-
-    if draft_configs[config_path]['revision_id'] != current_revision_id:
-        raise FXCodedException(
-            code=FXExceptionCodes.UPDATE_FAILED,
-            message=(
-                f'Failed to update config for tenant {tenant_id}. '
-                f'Current revision ID mismatch: expected {current_revision_id}, '
-                f'but found {draft_configs[config_path]["revision_id"]}.'
-            )
-        )
 
     if reset:
         new_value = None
@@ -693,6 +682,7 @@ def update_draft_tenant_config(  # pylint: disable=too-many-arguments
         config_paths=config_paths,
         src=current_draft,
         user=user,
+        verify_revision_ids={config_path: current_revision_id},
     )
 
 

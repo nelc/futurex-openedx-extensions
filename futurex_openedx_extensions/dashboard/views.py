@@ -67,20 +67,13 @@ from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
     FX_VIEW_DEFAULT_AUTH_CLASSES,
-    KEY_TYPE_MAP,
 )
 from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
 from futurex_openedx_extensions.helpers.library import get_accessible_libraries
-from futurex_openedx_extensions.helpers.models import (
-    ClickhouseQuery,
-    ConfigAccessControl,
-    DataExportTask,
-    DraftConfig,
-    TenantAsset,
-)
+from futurex_openedx_extensions.helpers.models import ClickhouseQuery, ConfigAccessControl, DataExportTask, TenantAsset
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -1424,14 +1417,8 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
         })
 
     @staticmethod
-    def validate_input(key_type: str, new_value: Any, current_revision_id: int) -> None:
+    def validate_input(current_revision_id: int) -> None:
         """Validate the input"""
-        if new_value is not None and not isinstance(new_value, KEY_TYPE_MAP[key_type]):
-            raise FXCodedException(
-                code=FXExceptionCodes.INVALID_INPUT,
-                message=f'New value type must be ({KEY_TYPE_MAP[key_type].__name__}) value.'
-            )
-
         if current_revision_id is None:
             raise KeyError('current_revision_id')
 
@@ -1467,14 +1454,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
             new_value = data.get('new_value')
             current_revision_id = data.get('current_revision_id')
             reset = data.get('reset', False) is True
-
-            if not settings.FX_DISABLE_CONFIG_VALIDATIONS:
-                self.validate_input(key_access_info.key_type, new_value, current_revision_id)
-            else:
-                current_revision_id = DraftConfig.get_config_values(
-                    tenant_id=tenant_id,
-                    config_paths=[key_access_info.path],
-                )[key_access_info.path]['revision_id']
+            self.validate_input(current_revision_id)
 
             update_draft_tenant_config(
                 tenant_id=int(tenant_id),
@@ -1497,10 +1477,14 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
                 status=http_status.HTTP_400_BAD_REQUEST
             )
         except FXCodedException as exc:
-            if exc.code == FXExceptionCodes.UPDATE_FAILED.value:
+            if exc.code in [
+                FXExceptionCodes.DRAFT_CONFIG_CREATE_MISMATCH.value,
+                FXExceptionCodes.DRAFT_CONFIG_UPDATE_MISMATCH.value,
+                FXExceptionCodes.DRAFT_CONFIG_DELETE_MISMATCH.value,
+            ]:
                 return Response(
                     error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
-                    status=http_status.HTTP_409_CONFLICT,
+                    status=http_status.HTTP_409_CONFLICT
                 )
             return Response(
                 error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),

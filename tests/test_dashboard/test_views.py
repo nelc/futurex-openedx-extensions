@@ -18,7 +18,6 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import EmptyPage
 from django.db.models import Q
 from django.http import JsonResponse
-from django.test import override_settings
 from django.urls import resolve, reverse
 from django.utils.functional import SimpleLazyObject
 from django.utils.timezone import now, timedelta
@@ -2398,11 +2397,6 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
     """Tests for ThemeConfigDraftView"""
     VIEW_NAME = 'fx_dashboard:theme-config-draft'
 
-    validation_test_data = [
-        ('string', 3, 99, 'New value type must be (str) value.'),
-        ('string', 'whatever', 'not numeric', 'current_revision_id type must be numeric value.')
-    ]
-
     def test_only_authorized_users_can_retrieve_draft_config(self):
         """Verify that only authourized users can retrieve draft"""
         ConfigAccessControl.objects.create(key_name='facebook_link', path='theme_v2.links.facebook')
@@ -2459,10 +2453,6 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
         (
             {'key': 'platform_name'},
             '(4001) Provide either new_value or reset.'
-        ),
-        (
-            {'key': 'platform_name', 'new_value': 123},
-            '(4001) New value type must be (str) value.'
         ),
         (
             {'key': 'platform_name', 'new_value': 'new updated name'},
@@ -2568,7 +2558,7 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
             reset=False,
             user=ANY,
         )
-        mocked_validate_input.assert_called_once_with('string', new_value, '456')
+        mocked_validate_input.assert_called_once_with('456')
 
     @patch('futurex_openedx_extensions.dashboard.views.ThemeConfigDraftView.validate_input')
     @patch('futurex_openedx_extensions.dashboard.views.update_draft_tenant_config')
@@ -2608,16 +2598,12 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
             user=ANY,
         )
 
-    @ddt.data(
-        *validation_test_data,
-    )
-    @ddt.unpack
-    def test_validate_input(self, key_type, new_value, current_revision_id, error_message):
+    def test_validate_input(self):
         """Verify the sad scenario when the validation is enabled."""
         with pytest.raises(FXCodedException) as exc_info:
-            ThemeConfigDraftView.validate_input(key_type, new_value, current_revision_id)
+            ThemeConfigDraftView.validate_input('not numeric')
         self.assertEqual(exc_info.value.code, FXExceptionCodes.INVALID_INPUT.value)
-        self.assertEqual(str(exc_info.value), error_message)
+        self.assertEqual(str(exc_info.value), 'current_revision_id type must be numeric value.')
 
     def test_put_with_conflicted_revision_id(self):
         """Verify that the view returns 409 when the revision_id is conflicted."""
@@ -2641,18 +2627,14 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
             },
             format='json'
         )
-        self.assertEqual(response.status_code, http_status.HTTP_409_CONFLICT)
+        self.assertEqual(response.status_code, http_status.HTTP_409_CONFLICT, response.data)
         self.assertEqual(
             response.data['reason'],
-            '(12001) Failed to update config for tenant 1. Current revision ID mismatch: expected 457, but found 456.',
+            '(13003) Failed to update all the specified draft config paths.',
         )
 
     @patch('futurex_openedx_extensions.dashboard.views.update_draft_tenant_config')
-    @patch('futurex_openedx_extensions.dashboard.views.ThemeConfigDraftView.validate_input')
-    @patch('futurex_openedx_extensions.dashboard.views.DraftConfig.get_config_values')
-    def test_draft_config_update_fails(
-        self, mock_get_config_values, mock_update_draft, mock_validate_input,
-    ):  # pylint: disable=unused-argument
+    def test_draft_config_update_fails(self, mock_update_draft):
         """
         Verify that if the update_draft_tenant_config fails for any reason other than FXExceptionCodes.UPDATE_FAILED
         it'll return 400 with the error message.
@@ -2677,60 +2659,6 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
         )
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST, response.data)
         self.assertEqual(response.data['reason'], '(4001) some error message')
-
-    @patch('futurex_openedx_extensions.dashboard.views.update_draft_tenant_config')
-    def test_draft_config_update_no_validation(self, mock_update_draft):
-        """Verify that the view will fetch the latest revision_id if the validation is disabled."""
-        def _update_draft(**kwargs):
-            """mock update_draft_tenant_config effect"""
-            draft_config.config_value = new_value
-            draft_config.save()
-            draft_config.revision_id = 987
-            draft_config.save()
-
-        tenant_id = 1
-        tenant_config = TenantConfig.objects.get(id=tenant_id)
-        assert tenant_config.lms_configs['theme_v2']['links']['facebook'] == 'facebook.com'
-        ConfigAccessControl.objects.create(key_name='facebook', path='theme_v2.links.facebook', writable=True)
-        draft_config = DraftConfig.objects.get(tenant_id=tenant_id, config_path='theme_v2.links.facebook')
-        draft_config.revision_id = 456
-        draft_config.save()
-
-        self.login_user(self.staff_user)
-        self.url_args = [tenant_config.id]
-
-        new_value = 'draft.facebook.com/v2'
-        mock_update_draft.side_effect = _update_draft
-
-        with override_settings(FX_DISABLE_CONFIG_VALIDATIONS=True):
-            response = self.client.put(
-                self.url,
-                data={
-                    'key': 'facebook',
-                    'new_value': new_value,
-                    'current_revision_id': '*** bad value or bad type of value ***',
-                },
-                format='json'
-            )
-            mock_update_draft.assert_called_once_with(
-                tenant_id=1,
-                config_path='theme_v2.links.facebook',
-                current_revision_id=456,
-                new_value=new_value,
-                reset=0,
-                user=ANY,
-            )
-            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-            self.assertEqual(response.data, {
-                'bad_keys': [],
-                'not_permitted': [],
-                'revision_ids': {
-                    'facebook': '987',
-                },
-                'values': {
-                    'facebook': 'draft.facebook.com/v2',
-                },
-            })
 
     def test_draft_config_delete(self):
         """Verify that the view returns the correct response"""
