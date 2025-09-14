@@ -733,3 +733,26 @@ def get_accessible_config_keys(
         }
 
     return list(config_access_control.keys())
+
+
+def set_request_domain_by_org(request: Any, org: str | None) -> None:
+    """
+    Set the request domain based on the org.
+
+    :param request: The request object.
+    :type request: Any
+    :param org: The course org.
+    :type org: str
+    """
+    if not request or not hasattr(request, 'site') or not org:
+        return
+
+    tenant_ids = get_tenants_by_org(org)
+    if not tenant_ids:
+        return
+
+    tenant_sites = get_tenants_sites(tenant_ids)
+    if not tenant_sites:
+        return
+
+    request.site = Site.objects.get(domain=tenant_sites[0])
