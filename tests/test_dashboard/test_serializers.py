@@ -868,29 +868,30 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
         'locked_count': 1,
     }
 
-    request = Mock(site=Mock(domain='test.com'), scheme='https')
+    request = Mock(site=Mock(), scheme='https')
     with patch(
         'futurex_openedx_extensions.dashboard.serializers.get_course_blocks_completion_summary',
         return_value=completion_summary,
     ):
         with patch(
             'futurex_openedx_extensions.dashboard.serializers.LearnerCoursesDetailsSerializer.get_certificate_url',
-            return_value='https://test.com/courses/course-v1:dummy+key/certificate/'
+            return_value='https://s1.sample.com/courses/course-v1:dummy+key/certificate/'
         ):
             data = serializers.LearnerCoursesDetailsSerializer(course, context={'request': request}).data
 
     assert data['id'] == str(course.id)
     assert data['enrollment_date'] == dt_to_str(enrollment_date)
     assert data['last_activity'] == dt_to_str(last_activity)
-    assert data['progress_url'] == f'https://test.com/learning/course/{course.id}/progress/{course.related_user_id}/'
-    assert data['grades_url'] == f'https://test.com/gradebook/{course.id}/'
+    assert data['progress_url'] == \
+           f'https://s1.sample.com/learning/course/{course.id}/progress/{course.related_user_id}/'
+    assert data['grades_url'] == f'https://s1.sample.com/gradebook/{course.id}/'
     assert data['progress'] == completion_summary
     assert dict(data['grade']) == {
         'letter_grade': 'Fail',
         'percent': 0.4,
         'is_passing': False,
     }
-    assert data['certificate_url'] == 'https://test.com/courses/course-v1:dummy+key/certificate/'
+    assert data['certificate_url'] == 'https://s1.sample.com/courses/course-v1:dummy+key/certificate/'
 
 
 @pytest.mark.django_db
@@ -1550,8 +1551,9 @@ def test_get_absolute_url_requires_default_org(course_data):  # pylint: disable=
 
 
 @patch('futurex_openedx_extensions.dashboard.serializers.relative_url_to_absolute_url')
+@patch('futurex_openedx_extensions.dashboard.serializers.set_request_domain_by_org')
 def test_get_absolute_url_success(
-    mock_get_url, course_data,
+    _, mock_get_url, course_data,
 ):  # pylint: disable=redefined-outer-name
     """Verify get_absolute_url builds the correct URL."""
     serializer = serializers.CourseCreateSerializer(context={'request': MagicMock()})

@@ -70,6 +70,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_org_to_tenant_map,
     get_sso_sites,
     get_tenants_by_org,
+    set_request_domain_by_org,
 )
 
 logger = logging.getLogger(__name__)
@@ -679,10 +680,11 @@ class CourseCreateSerializer(serializers.Serializer):
 
     def get_absolute_url(self) -> str | None:
         """Get the absolute URL for the course."""
-        if not self._default_org:
+        if not self.default_org:
             raise serializers.ValidationError('Default organization is not set. Call validate_tenant_id first.')
 
         course_id = f'course-v1:{self.default_org}+{self.validated_data["number"]}+{self.validated_data["run"]}'
+        set_request_domain_by_org(self.context.get('request'), self.default_org)
         return relative_url_to_absolute_url(f'/courses/{course_id}/', self.context.get('request'))
 
     def validate_tenant_id(self, tenant_id: Any) -> Any:
@@ -867,6 +869,7 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 
     def get_progress_url(self, obj: CourseOverview) -> Any:
         """Return the certificate URL."""
+        set_request_domain_by_org(self.context.get('request'), obj.org)
         return relative_url_to_absolute_url(
             f'/learning/course/{obj.id}/progress/{obj.related_user_id}/',
             self.context.get('request')
@@ -874,6 +877,7 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
 
     def get_grades_url(self, obj: CourseOverview) -> Any:
         """Return the certificate URL."""
+        set_request_domain_by_org(self.context.get('request'), obj.org)
         return relative_url_to_absolute_url(
             f'/gradebook/{obj.id}/',
             self.context.get('request')

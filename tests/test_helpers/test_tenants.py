@@ -1007,3 +1007,51 @@ def test_get_fx_theme_css_override_success(
     }
     result = tenants.get_fx_theme_css_override()
     assert result == expected_result, test_usecase
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'the_request, org, tenants_by_org, tenants_sites, expected_site_called, test_case',
+    [
+        (None, 'org1', [1], ['s1.sample.com'], False, 'request is None, should not call Site.objects.get'),
+        (Mock(spec=[]), 'org1', [1], ['s1.sample.com'], False, 'request has no site, should not call Site.objects.get'),
+        (Mock(site=Mock()), '', [1], ['s1.sample.com'], False, 'org is empty, should not call Site.objects.get'),
+        (Mock(site=Mock()), 'orgX', [], [], False, 'no tenants for org, should not call Site.objects.get'),
+        (Mock(site=Mock()), 'org1', [], [], False, 'tenants_by_org returns empty, should not call Site.objects.get'),
+        (Mock(site=Mock()), 'org1', [1], [], False, 'tenants_sites returns empty, should not call Site.objects.get'),
+        (Mock(site=Mock()), 'org1', [1], ['s1.sample.com'], True, 'happy path, should call Site.objects.get'),
+    ],
+)
+def test_set_request_domain_by_org(
+    the_request, org, tenants_by_org, tenants_sites, expected_site_called, test_case,
+):  # pylint: disable=too-many-arguments, unused-argument
+    """Verify set_request_domain_by_org covers all branches"""
+    with patch('futurex_openedx_extensions.helpers.tenants.get_tenants_by_org', return_value=tenants_by_org), \
+         patch('futurex_openedx_extensions.helpers.tenants.get_tenants_sites', return_value=tenants_sites), \
+         patch('futurex_openedx_extensions.helpers.tenants.Site.objects.get') as mock_site_get:
+
+        if expected_site_called:
+            mock_site_get.return_value = Mock(domain=tenants_sites[0])
+        tenants.set_request_domain_by_org(the_request, org)
+
+        if expected_site_called:
+            mock_site_get.assert_called_once_with(domain=tenants_sites[0])
+            assert hasattr(the_request, 'site')
+            assert the_request.site.domain == tenants_sites[0]
+        else:
+            mock_site_get.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_set_request_domain_by_org_sets_first_site():
+    """Verify set_request_domain_by_org sets request.site to the first site from tenants_sites"""
+    the_request = Mock(site=Mock())
+    org = 'org1'
+
+    with patch(
+        'futurex_openedx_extensions.helpers.tenants.Site.objects.get',
+        return_value=Mock(domain='s1.sample.com')
+    ) as mock_site_get:
+        tenants.set_request_domain_by_org(the_request, org)
+        mock_site_get.assert_called_once_with(domain='s1.sample.com')
+        assert the_request.site.domain == 's1.sample.com'

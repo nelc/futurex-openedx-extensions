@@ -8,6 +8,7 @@ from lms.djangoapps.certificates.api import get_certificates_for_user_by_course_
 from opaque_keys.edx.locator import CourseLocator
 
 from futurex_openedx_extensions.helpers.converters import relative_url_to_absolute_url
+from futurex_openedx_extensions.helpers.tenants import set_request_domain_by_org
 
 
 def get_certificate_url(request: Any, user: get_user_model, course_id: CourseLocator) -> Any:
@@ -26,6 +27,7 @@ def get_certificate_url(request: Any, user: get_user_model, course_id: CourseLoc
     if certificate:
         url = certificate.get(course_id, {}).get('download_url')
         if url and url.startswith('/'):
+            set_request_domain_by_org(request, course_id.org)
             url = relative_url_to_absolute_url(url, request)
         return url
 
