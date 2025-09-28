@@ -499,6 +499,24 @@ def get_tenant_readable_lms_config(tenant_id: int) -> dict:
     return result
 
 
+def _get_tenant_config_non_published(
+    tenant_id: int, lms_configs: Any, config_access_control: Any, cleaned_keys: set[str], revision_ids: Dict[str, int],
+) -> Dict[str, Any]:
+    """Helper function to get non-published config values"""
+    search_keys = list(cleaned_keys & set(config_access_control.keys()))
+    config_paths = [config_access_control[key]['path'] for key in search_keys]
+    config_paths_reverse = {
+        value['path']: key for key, value in config_access_control.items() if key in search_keys
+    }
+    for _path in config_paths:
+        for extra_config_path, revision_id in DraftConfig.objects.filter(
+            config_path__startswith=f'{_path}.'
+        ).values_list('config_path', 'revision_id'):
+            extra_config_path = config_paths_reverse[_path] + extra_config_path[len(_path):]
+            revision_ids[extra_config_path] = revision_id
+    return DraftConfig.loads_into(tenant_id=tenant_id, config_paths=config_paths, dest=lms_configs)
+
+
 def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = True) -> Dict[str, Any]:
     """
     Retrieve tenant configuration details for the given tenant ID.
@@ -510,21 +528,24 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Tr
     :raises FXCodedException: If the tenant is not found.
     """
     lms_configs = get_tenant_readable_lms_config(tenant_id)
+
     config_access_control = get_config_access_control()
 
     cleaned_keys = {key.strip() for key in keys}
 
-    draft_configs = {}
+    revision_ids: Dict[str, int] = {}
     if not published_only:
-        search_keys = list(cleaned_keys & set(config_access_control.keys()))
-        config_paths = [config_access_control[key]['path'] for key in search_keys]
-        draft_configs = DraftConfig.loads_into(tenant_id=tenant_id, config_paths=config_paths, dest=lms_configs)
+        draft_configs = _get_tenant_config_non_published(
+            tenant_id, lms_configs, config_access_control, cleaned_keys, revision_ids,
+        )
+    else:
+        draft_configs = {}
 
     details: Dict[str, Any] = {
         'values': {},
         'not_permitted': [],
         'bad_keys': [],
-        'revision_ids': {},
+        'revision_ids': revision_ids,
     }
 
     for key in list(cleaned_keys):
@@ -533,7 +554,7 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Tr
             _, config_value = dot_separated_path_get_value(lms_configs, config['path'])
             details['values'][key] = config_value
             if not published_only:
-                details['revision_ids'][key] = draft_configs[config['path']]['revision_id']
+                revision_ids[key] = draft_configs[config['path']]['revision_id']
         else:
             details['bad_keys'].append(key)
 
