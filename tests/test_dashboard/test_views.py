@@ -2501,24 +2501,42 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
         assert tenant_config.lms_configs['platform_name'] == 's1 platform name'
         assert DraftConfig.objects.filter(tenant_id=tenant_id).count() == 1, 'bad test data'
 
-        ConfigAccessControl.objects.create(key_name='platform_name', path=config_path, writable=True)
+        ConfigAccessControl.objects.create(key_name='platform_name_key', path=config_path, writable=True)
         assert DraftConfig.objects.filter(tenant_id=tenant_id, config_path=config_path).count() == 0, 'bad test data'
 
     @patch('futurex_openedx_extensions.dashboard.views.ThemeConfigDraftView.validate_input')
     @patch('futurex_openedx_extensions.dashboard.views.update_draft_tenant_config')
-    def test_draft_config_update(self, mock_update_draft, mocked_validate_input):
+    @ddt.data(
+        (None, 'platform_name_key', 'platform_name'),
+        ('sub-key', 'platform_name_key.sub-key', 'platform_name.sub-key'),
+        ('sub-key.another_sub', 'platform_name_key.sub-key.another_sub', 'platform_name.sub-key.another_sub'),
+    )
+    @ddt.unpack
+    def test_draft_config_update(
+        self, sub_key, final_key, result_config_path, mock_update_draft, mock_validate_input,
+    ):  # pylint: disable=too-many-arguments
         """Verify that the view returns the correct response"""
         def _update_draft(**kwargs):
             """mock update_draft_tenant_config effect"""
             draft_config = DraftConfig.objects.create(
                 tenant_id=1,
                 config_path=config_path,
-                config_value=new_value,
+                config_value='get_tenant_config should fetch the value of the main key',
                 created_by_id=1,
                 updated_by_id=1,
             )
-            draft_config.revision_id = 987
+            draft_config.revision_id = 123
             draft_config.save()
+            if sub_key:
+                draft_config = DraftConfig.objects.create(
+                    tenant_id=1,
+                    config_path=result_config_path,
+                    config_value='should not be fetched by get_tenant_config',
+                    created_by_id=1,
+                    updated_by_id=1,
+                )
+                draft_config.revision_id = 987
+                draft_config.save()
 
         tenant_id = 1
         config_path = 'platform_name'
@@ -2527,38 +2545,42 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
 
         self._prepare_data(tenant_id, config_path)
 
-        new_value = 's1 new name'
         mock_update_draft.side_effect = _update_draft
 
+        sub_key_new_value = 'should not be fetched by get_tenant_config, because it fetches the value of the main key'
         response = self.client.put(
             self.url,
             data={
-                'key': 'platform_name',
-                'new_value': new_value,
+                'key': 'platform_name_key',
+                'sub_key': sub_key,
+                'new_value': sub_key_new_value,
                 'current_revision_id': '456',
             },
             format='json'
         )
         self.assertEqual(response.status_code, http_status.HTTP_200_OK, response.data)
-        self.assertEqual(response.data, {
-            'bad_keys': [],
-            'not_permitted': [],
-            'revision_ids': {
-                'platform_name': '987',
-            },
-            'values': {
-                'platform_name': new_value,
-            },
-        })
         mock_update_draft.assert_called_once_with(
             tenant_id=tenant_id,
-            config_path='platform_name',
+            config_path=result_config_path,
             current_revision_id=456,
-            new_value=new_value,
+            new_value=sub_key_new_value,
             reset=False,
             user=ANY,
         )
-        mocked_validate_input.assert_called_once_with('456')
+        expected_response_data = {
+            'bad_keys': [],
+            'not_permitted': [],
+            'revision_ids': {
+                'platform_name_key': '123',
+            },
+            'values': {
+                'platform_name_key': 'get_tenant_config should fetch the value of the main key',
+            },
+        }
+        if sub_key:
+            expected_response_data['revision_ids'][final_key] = '987'
+        self.assertEqual(response.data, expected_response_data)
+        mock_validate_input.assert_called_once_with('456')
 
     @patch('futurex_openedx_extensions.dashboard.views.ThemeConfigDraftView.validate_input')
     @patch('futurex_openedx_extensions.dashboard.views.update_draft_tenant_config')
@@ -2582,7 +2604,7 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
         self.client.put(
             self.url,
             data={
-                'key': 'platform_name',
+                'key': 'platform_name_key',
                 'new_value': 'anything',
                 'current_revision_id': '0',
                 'reset': reset_value,
