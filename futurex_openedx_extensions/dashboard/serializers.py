@@ -40,7 +40,7 @@ from futurex_openedx_extensions.dashboard.custom_serializers import (
     ModelSerializerOptionalFields,
     SerializerOptionalMethodField,
 )
-from futurex_openedx_extensions.helpers.certificates import get_certificate_url
+from futurex_openedx_extensions.helpers.certificates import get_certificate_date, get_certificate_url
 from futurex_openedx_extensions.helpers.constants import (
     ALLOWED_FILE_EXTENSIONS,
     COURSE_ACCESS_ROLES_GLOBAL,
@@ -232,6 +232,7 @@ class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
     active_in_course = serializers.BooleanField()
     progress = SerializerOptionalMethodField(field_tags=['progress', 'csv_export'])
     certificate_url = SerializerOptionalMethodField(field_tags=['certificate_url', 'csv_export'])
+    certificate_date = SerializerOptionalMethodField(field_tags=['certificate_date', 'csv_export'])
 
     class Meta:
         fields = [
@@ -240,6 +241,7 @@ class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
             'active_in_course',
             'progress',
             'certificate_url',
+            'certificate_date',
             'exam_scores',
         ]
 
@@ -306,6 +308,12 @@ class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
         """Return the certificate URL."""
         return get_certificate_url(
             self.context.get('request'), self._get_user(obj), self._get_course_id(obj)
+        )
+
+    def get_certificate_date(self, obj: Any) -> Any:
+        """Return the certificate Date."""
+        return get_certificate_date(
+            self._get_user(obj), self._get_course_id(obj)
         )
 
     def get_progress(self, obj: Any) -> Any:
