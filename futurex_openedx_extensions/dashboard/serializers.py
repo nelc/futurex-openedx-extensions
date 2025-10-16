@@ -312,9 +312,9 @@ class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
 
     def get_certificate_date(self, obj: Any) -> Any:
         """Return the certificate Date."""
-        return get_certificate_date(
+        return dt_to_str(get_certificate_date(
             self._get_user(obj), self._get_course_id(obj)
-        )
+        ))
 
     def get_progress(self, obj: Any) -> Any:
         """Return the certificate URL."""
