@@ -1402,7 +1402,7 @@ class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
 
         return attrs
 
-    def validate_course_id(self, value: str) -> CourseLocator:
+    def validate_course_id(self, value: str) -> CourseLocator:  # pylint: disable=no-self-use
         """Validate and convert course_id to CourseLocator."""
         try:
             course_key = CourseLocator.from_string(value)

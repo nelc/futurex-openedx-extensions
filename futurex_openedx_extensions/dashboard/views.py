@@ -25,10 +25,10 @@ from django.utils.decorators import method_decorator
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg.utils import swagger_auto_schema
 from edx_api_doc_tools import exclude_schema_for
-from rest_framework import serializers as drf_serializers
 from rest_framework import status as http_status
 from rest_framework import viewsets
-from rest_framework.exceptions import ParseError, PermissionDenied, ValidationError as DRFValidationError
+from rest_framework.exceptions import ParseError, PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
@@ -1020,10 +1020,10 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'learner_unenroll'
-    fx_default_read_only_roles = []
+    fx_default_read_only_roles: list[str] = []
     fx_view_description = 'api/fx/learners/v1/unenroll: Unenroll a learner from a course'
 
-    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:  # pylint: disable=too-many-return-statements
         """
         POST /api/fx/learners/v1/unenroll/
         Unenroll a learner from a course. Requires staff or instructor permissions.
@@ -1052,7 +1052,12 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
         try:
             # Verify user has permission to manage the course
             course_key = serializer.validated_data['course_id']
-            course_org = str(course_key).split('+')[0].split(':')[1] if '+' in str(course_key) else None
+            course_key_str = str(course_key)
+            if '+' in course_key_str:
+                course_org = course_key_str.split('+', maxsplit=1)[0].split(':', maxsplit=1)[1]
+            else:
+                course_org = None
+
             if not course_org:
                 return Response(
                     error_details_to_dictionary(reason='Invalid course ID format'),
