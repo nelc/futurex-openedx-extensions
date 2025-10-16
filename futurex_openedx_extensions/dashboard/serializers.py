@@ -1355,3 +1355,129 @@ class TenantConfigSerializer(ReadOnlySerializer):
         """Return the revision IDs as strings."""
         revision_ids = obj.get('revision_ids', {})
         return {key: str(value) for key, value in revision_ids.items()}
+
+
+class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
+    """
+    Serializer for unenrolling a learner from a course.
+    Accepts one of: user_id, username, or email to identify the user.
+    """
+    user_id = serializers.IntegerField(
+        required=False,
+        help_text='User ID of the learner to unenroll'
+    )
+    username = serializers.CharField(
+        required=False,
+        help_text='Username of the learner to unenroll'
+    )
+    email = serializers.EmailField(
+        required=False,
+        help_text='Email of the learner to unenroll'
+    )
+    course_id = serializers.CharField(
+        required=True,
+        help_text='Course ID from which to unenroll the learner'
+    )
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text='Optional reason for unenrollment'
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        """Validate that at least one user identifier is provided."""
+        user_id = attrs.get('user_id')
+        username = attrs.get('username')
+        email = attrs.get('email')
+
+        if not any([user_id, username, email]):
+            raise serializers.ValidationError(
+                'At least one of user_id, username, or email must be provided.'
+            )
+
+        if sum([bool(user_id), bool(username), bool(email)]) > 1:
+            raise serializers.ValidationError(
+                'Only one of user_id, username, or email should be provided.'
+            )
+
+        return attrs
+
+    def validate_course_id(self, value: str) -> CourseLocator:
+        """Validate and convert course_id to CourseLocator."""
+        try:
+            course_key = CourseLocator.from_string(value)
+        except Exception as exc:
+            raise serializers.ValidationError(f'Invalid course ID format: {value}') from exc
+
+        # Check if course exists
+        try:
+            CourseOverview.objects.get(id=course_key)
+        except CourseOverview.DoesNotExist as exc:
+            raise serializers.ValidationError(f'Course not found: {value}') from exc
+
+        return course_key
+
+    def get_user(self) -> get_user_model:
+        """Get the user based on provided identifier."""
+        user_id = self.validated_data.get('user_id')
+        username = self.validated_data.get('username')
+        email = self.validated_data.get('email')
+
+        try:
+            if user_id:
+                user = get_user_model().objects.get(id=user_id)
+            elif username:
+                user = get_user_model().objects.get(username=username)
+            elif email:
+                user = get_user_model().objects.get(email=email)
+            else:
+                raise serializers.ValidationError('No user identifier provided.')
+        except get_user_model().DoesNotExist as exc:
+            identifier = user_id or username or email
+            raise serializers.ValidationError(f'User not found: {identifier}') from exc
+
+        return user
+
+    def unenroll(self) -> dict:
+        """
+        Unenroll the user from the course.
+        :return: Dictionary with success status and message
+        :rtype: dict
+        """
+        user = self.get_user()
+        course_key = self.validated_data['course_id']
+
+        try:
+            enrollment = CourseEnrollment.objects.get(
+                user=user,
+                course_id=course_key
+            )
+        except CourseEnrollment.DoesNotExist as exc:
+            raise serializers.ValidationError(
+                f'User {user.username} is not enrolled in course {course_key}'
+            ) from exc
+
+        if not enrollment.is_active:
+            raise serializers.ValidationError(
+                f'User {user.username} is already unenrolled from course {course_key}'
+            )
+
+        # Unenroll by setting is_active to False
+        enrollment.is_active = False
+        enrollment.save()
+
+        return {
+            'success': True,
+            'message': f'Successfully unenrolled {user.username} from {course_key}',
+            'user_id': user.id,
+            'username': user.username,
+            'course_id': str(course_key),
+        }
+
+    def create(self, validated_data: Any) -> Any:
+        """Not implemented: Create is handled by unenroll method."""
+        raise ValueError('Use unenroll() method instead of create().')
+
+    def update(self, instance: Any, validated_data: Any) -> Any:
+        """Not implemented: Update an existing object."""
+        raise ValueError('This serializer does not support update.')
