@@ -521,7 +521,7 @@ def test_learner_enrollment_serializer_exam_scores(
 def test_learner_details_for_course_serializer_optional_fields():
     """Verify that the LearnerDetailsForCourseSerializer returns the correct optional fields."""
     serializer = serializers.LearnerDetailsForCourseSerializer(context={'course_id': 'course-v1:ORG2+1+1'})
-    assert serializer.optional_field_names == ['progress', 'certificate_url', 'exam_scores']
+    assert serializer.optional_field_names == ['progress', 'certificate_url', 'certificate_date', 'exam_scores']
 
 
 @pytest.mark.django_db
