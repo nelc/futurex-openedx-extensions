@@ -3457,3 +3457,82 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
         self.assertEqual(view.fx_view_name, 'learner_unenroll')
         self.assertEqual(view.fx_default_read_only_roles, [])
         self.assertEqual(view.fx_view_description, 'api/fx/learners/v1/unenroll: Unenroll a learner from a course')
+
+    def test_unenroll_permission_denied_for_course_org(self):
+        """Test permission denied when user doesn't have access to course org"""
+        self.login_user(self.staff_user)
+
+        # Create enrollment for a course the user doesn't have access to
+        test_course = 'course-v1:ORG1+3+3'
+        CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=test_course,
+            is_active=True
+        )
+
+        # Patch the post method to modify fx_permission_info before processing
+        original_post = views.LearnerUnenrollView.post
+
+        def patched_post(view_self, request, *args, **kwargs):
+            # Modify fx_permission_info to exclude ORG1
+            request.fx_permission_info['view_allowed_full_access_orgs'] = [
+                'org2', 'org3', 'org8', 'org4', 'org5'  # org1 excluded
+            ]
+            return original_post(view_self, request, *args, **kwargs)
+
+        with patch.object(views.LearnerUnenrollView, 'post', patched_post):
+            data = {
+                'username': self.test_user.username,
+                'course_id': test_course,  # ORG1 not in allowed list
+            }
+            response = self.client.post(self.url, data, format='json')
+            self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+            self.assertIn(
+                'You do not have permission to unenroll learners from this course',
+                response.data['reason']
+            )
+
+    def test_unenroll_generic_exception(self):
+        """Test generic exception handling during unenrollment"""
+        self.login_user(self.staff_user)
+
+        # Patch the unenroll method of the serializer to raise a generic exception
+        # that's not DRFValidationError or FXCodedException
+        with patch(
+            'futurex_openedx_extensions.dashboard.serializers.LearnerUnenrollSerializer.unenroll'
+        ) as mock_unenroll:
+            mock_unenroll.side_effect = RuntimeError('Unexpected database error')
+
+            data = {
+                'username': self.test_user.username,
+                'course_id': self.test_course_id,
+            }
+            response = self.client.post(self.url, data, format='json')
+            self.assertEqual(response.status_code, http_status.HTTP_500_INTERNAL_SERVER_ERROR)
+            self.assertIn('An error occurred during unenrollment', response.data['reason'])
+            # Verify the exception was logged
+            mock_unenroll.assert_called_once()
+
+    def test_unenroll_fx_coded_exception(self):
+        """Test FXCodedException handling during unenrollment"""
+        self.login_user(self.staff_user)
+
+        # Import FXCodedException to raise it
+        from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+
+        # Patch the unenroll method to raise FXCodedException
+        with patch(
+            'futurex_openedx_extensions.dashboard.serializers.LearnerUnenrollSerializer.unenroll'
+        ) as mock_unenroll:
+            mock_unenroll.side_effect = FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='Invalid enrollment data'
+            )
+
+            data = {
+                'username': self.test_user.username,
+                'course_id': self.test_course_id,
+            }
+            response = self.client.post(self.url, data, format='json')
+            self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+            self.assertIn('Invalid enrollment data', response.data['reason'])

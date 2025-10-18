@@ -1884,3 +1884,12 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
         assert serializer.is_valid()
+
+    def test_get_user_no_identifier_provided(self):
+        """Test get_user raises error when no identifier is provided (edge case)"""
+        serializer = serializers.LearnerUnenrollSerializer()
+        serializer._validated_data = {'course_id': self.test_course_id}  # pylint: disable=protected-access
+
+        with pytest.raises(ValidationError) as exc_info:
+            serializer.get_user()
+        assert 'No user identifier provided' in str(exc_info.value)
