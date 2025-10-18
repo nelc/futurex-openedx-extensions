@@ -1052,17 +1052,7 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
         try:
             # Verify user has permission to manage the course
             course_key = serializer.validated_data['course_id']
-            course_key_str = str(course_key)
-            if '+' in course_key_str:
-                course_org = course_key_str.split('+', maxsplit=1)[0].split(':', maxsplit=1)[1]
-            else:
-                course_org = None
-
-            if not course_org:
-                return Response(
-                    error_details_to_dictionary(reason='Invalid course ID format'),
-                    status=http_status.HTTP_400_BAD_REQUEST
-                )
+            course_org = course_key.org
 
             # Check if user has course access in the course's org
             allowed_orgs = self.fx_permission_info['view_allowed_full_access_orgs']
