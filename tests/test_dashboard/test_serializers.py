@@ -1644,3 +1644,243 @@ def test_create_organization_missing_raises_validation_error(
         match='Organization does not exist. Please add the organization before proceeding.'
     ):
         serializer.create(course_data)
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures('base_data')
+class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outside-init
+    """Tests for LearnerUnenrollSerializer"""
+
+    def setup_method(self):
+        """Setup method for each test"""
+        self.test_user = get_user_model().objects.get(id=10)
+        self.test_course_id = 'course-v1:Org1+1+1'
+        self.course_key = CourseOverview.objects.get(id=self.test_course_id).id
+
+    def test_validate_at_least_one_user_identifier_required(self):
+        """Test that at least one user identifier is required"""
+        data = {
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert not serializer.is_valid()
+        assert 'non_field_errors' in serializer.errors
+        assert 'At least one of user_id, username, or email must be provided' in str(serializer.errors)
+
+    def test_validate_only_one_user_identifier_allowed(self):
+        """Test that only one user identifier is allowed"""
+        data = {
+            'user_id': self.test_user.id,
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert not serializer.is_valid()
+        assert 'non_field_errors' in serializer.errors
+        assert 'Only one of user_id, username, or email should be provided' in str(serializer.errors)
+
+    def test_validate_course_id_invalid_format(self):
+        """Test validation with invalid course ID format"""
+        data = {
+            'username': self.test_user.username,
+            'course_id': 'invalid-course-id',
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert not serializer.is_valid()
+        assert 'course_id' in serializer.errors
+        assert 'Invalid course ID format' in str(serializer.errors['course_id'])
+
+    def test_validate_course_id_not_found(self):
+        """Test validation when course doesn't exist"""
+        data = {
+            'username': self.test_user.username,
+            'course_id': 'course-v1:ORG1+999+999',
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert not serializer.is_valid()
+        assert 'course_id' in serializer.errors
+        assert 'Course not found' in str(serializer.errors['course_id'])
+
+    def test_validate_course_id_success(self):
+        """Test successful course ID validation"""
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        assert serializer.validated_data['course_id'] == self.course_key
+
+    def test_get_user_by_user_id(self):
+        """Test getting user by user_id"""
+        data = {
+            'user_id': self.test_user.id,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        user = serializer.get_user()
+        assert user.id == self.test_user.id
+
+    def test_get_user_by_username(self):
+        """Test getting user by username"""
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        user = serializer.get_user()
+        assert user.username == self.test_user.username
+
+    def test_get_user_by_email(self):
+        """Test getting user by email"""
+        data = {
+            'email': self.test_user.email,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        user = serializer.get_user()
+        assert user.email == self.test_user.email
+
+    def test_get_user_not_found(self):
+        """Test error when user doesn't exist"""
+        data = {
+            'username': 'nonexistent_user',
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        with pytest.raises(ValidationError) as exc_info:
+            serializer.get_user()
+        assert 'User not found' in str(exc_info.value)
+
+    def test_unenroll_success(self):
+        """Test successful unenrollment"""
+        # Create active enrollment
+        enrollment = CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=self.test_course_id,
+            is_active=True
+        )
+
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        result = serializer.unenroll()
+
+        assert result['success'] is True
+        assert 'Successfully unenrolled' in result['message']
+        assert result['user_id'] == self.test_user.id
+        assert result['username'] == self.test_user.username
+        assert result['course_id'] == str(self.course_key)
+
+        # Verify enrollment is inactive
+        enrollment.refresh_from_db()
+        assert not enrollment.is_active
+
+    def test_unenroll_user_not_enrolled(self):
+        """Test error when user is not enrolled"""
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+
+        with pytest.raises(ValidationError) as exc_info:
+            serializer.unenroll()
+        assert 'not enrolled' in str(exc_info.value)
+
+    def test_unenroll_already_unenrolled(self):
+        """Test error when user is already unenrolled"""
+        # Create inactive enrollment
+        CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=self.test_course_id,
+            is_active=False
+        )
+
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+
+        with pytest.raises(ValidationError) as exc_info:
+            serializer.unenroll()
+        assert 'already unenrolled' in str(exc_info.value)
+
+    def test_unenroll_with_reason(self):
+        """Test unenrollment with reason provided"""
+        # Create active enrollment
+        enrollment = CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=self.test_course_id,
+            is_active=True
+        )
+
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+            'reason': 'Student requested withdrawal',
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        result = serializer.unenroll()
+
+        assert result['success'] is True
+        # Verify enrollment is inactive
+        enrollment.refresh_from_db()
+        assert not enrollment.is_active
+
+    def test_create_not_implemented(self):
+        """Test that create method raises ValueError"""
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+
+        with pytest.raises(ValueError) as exc_info:
+            serializer.create({})
+        assert 'Use unenroll() method instead' in str(exc_info.value)
+
+    def test_update_not_implemented(self):
+        """Test that update method raises ValueError"""
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+
+        with pytest.raises(ValueError) as exc_info:
+            serializer.update(None, {})
+        assert 'This serializer does not support update' in str(exc_info.value)
+
+    def test_optional_reason_field(self):
+        """Test that reason field is optional"""
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        assert 'reason' not in serializer.validated_data or serializer.validated_data.get('reason') in (None, '')
+
+    def test_reason_field_can_be_blank(self):
+        """Test that reason field can be blank"""
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+            'reason': '',
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
