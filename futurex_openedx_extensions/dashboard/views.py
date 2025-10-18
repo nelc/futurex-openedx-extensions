@@ -1023,7 +1023,7 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
     fx_default_read_only_roles: list[str] = []
     fx_view_description = 'api/fx/learners/v1/unenroll: Unenroll a learner from a course'
 
-    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:  # pylint: disable=too-many-return-statements
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """
         POST /api/fx/learners/v1/unenroll/
         Unenroll a learner from a course. Requires staff or instructor permissions.

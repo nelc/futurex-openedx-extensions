@@ -3517,9 +3517,6 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
         """Test FXCodedException handling during unenrollment"""
         self.login_user(self.staff_user)
 
-        # Import FXCodedException to raise it
-        from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-
         # Patch the unenroll method to raise FXCodedException
         with patch(
             'futurex_openedx_extensions.dashboard.serializers.LearnerUnenrollSerializer.unenroll'
