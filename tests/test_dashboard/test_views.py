@@ -3262,3 +3262,198 @@ class TestSetThemePreviewCookieView(APITestCase):
         self.client.cookies['theme-preview'] = 'yes'
         response = self.client.get(self.url, params)
         assert response.url == expected_redirect, f'Expected redirect to {expected_redirect}'
+
+
+@pytest.mark.usefixtures('base_data')
+@ddt.ddt
+class TestLearnerUnenrollView(BaseTestViewMixin):
+    """Tests for LearnerUnenrollView"""
+    VIEW_NAME = 'fx_dashboard:learner-unenroll'
+
+    def setUp(self):
+        """Setup"""
+        super().setUp()
+        self.staff_user = 2
+        # Create test enrollment (using a course that exists in base_data)
+        self.test_user = get_user_model().objects.get(id=10)
+        self.test_course_id = 'course-v1:ORG1+2+2'
+        self.enrollment = CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=self.test_course_id,
+            is_active=True
+        )
+
+    def test_unauthorized(self):
+        """Test unauthorized access"""
+        response = self.client.post(self.url, {})
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_invalid_request_missing_user_identifier(self):
+        """Test request with missing user identifier"""
+        self.login_user(self.staff_user)
+        data = {
+            'course_id': self.test_course_id,
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['reason'], 'Invalid request data')
+        # Serializer errors are in 'details' key
+        self.assertIn('detail', response.data.get('details', {}))
+
+    def test_invalid_request_missing_course_id(self):
+        """Test request with missing course_id"""
+        self.login_user(self.staff_user)
+        data = {
+            'username': self.test_user.username,
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['reason'], 'Invalid request data')
+        # Serializer errors are in 'details' key
+        self.assertIn('detail', response.data.get('details', {}))
+
+    def test_invalid_request_multiple_user_identifiers(self):
+        """Test request with multiple user identifiers"""
+        self.login_user(self.staff_user)
+        data = {
+            'user_id': self.test_user.id,
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['reason'], 'Invalid request data')
+        # Serializer errors are in 'details' key
+        self.assertIn('detail', response.data.get('details', {}))
+
+    @ddt.data('user_id', 'username', 'email')
+    def test_successful_unenroll_with_different_identifiers(self, identifier_type):
+        """Test successful unenrollment using different user identifiers"""
+        self.login_user(self.staff_user)
+        data = {
+            'course_id': self.test_course_id,
+        }
+        if identifier_type == 'user_id':
+            data['user_id'] = self.test_user.id
+        elif identifier_type == 'username':
+            data['username'] = self.test_user.username
+        else:  # email
+            data['email'] = self.test_user.email
+
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertIn('Successfully unenrolled', response.data['message'])
+        self.assertEqual(response.data['user_id'], self.test_user.id)
+        self.assertEqual(response.data['username'], self.test_user.username)
+        self.assertEqual(response.data['course_id'], self.test_course_id)
+
+        # Verify enrollment is inactive
+        self.enrollment.refresh_from_db()
+        self.assertFalse(self.enrollment.is_active)
+
+    def test_unenroll_with_reason(self):
+        """Test unenrollment with a reason provided"""
+        self.login_user(self.staff_user)
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+            'reason': 'Student requested withdrawal'
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+
+    def test_unenroll_user_not_found(self):
+        """Test unenrollment when user doesn't exist"""
+        self.login_user(self.staff_user)
+        data = {
+            'username': 'nonexistent_user',
+            'course_id': self.test_course_id,
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        # Error from unenroll() method is caught and put in reason
+        self.assertTrue(
+            'User not found' in response.data['reason'] or
+            'nonexistent_user' in response.data['reason']
+        )
+
+    def test_unenroll_course_not_found(self):
+        """Test unenrollment when course doesn't exist"""
+        self.login_user(self.staff_user)
+        data = {
+            'username': self.test_user.username,
+            'course_id': 'course-v1:ORG1+999+999',
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        # Course validation error is caught during is_valid()
+        self.assertEqual(response.data['reason'], 'Invalid request data')
+        self.assertIn('detail', response.data.get('details', {}))
+
+    def test_unenroll_invalid_course_id_format(self):
+        """Test unenrollment with invalid course ID format"""
+        self.login_user(self.staff_user)
+        data = {
+            'username': self.test_user.username,
+            'course_id': 'invalid-course-id',
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        # Course validation error is caught during is_valid()
+        self.assertEqual(response.data['reason'], 'Invalid request data')
+        self.assertIn('detail', response.data.get('details', {}))
+
+    def test_unenroll_user_not_enrolled(self):
+        """Test unenrollment when user is not enrolled in the course"""
+        self.login_user(self.staff_user)
+        # Use a different course that user is not enrolled in
+        data = {
+            'username': self.test_user.username,
+            'course_id': 'course-v1:ORG1+3+3',  # Different from self.test_course_id (which is ORG1+2+2)
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertIn('not enrolled', response.data['reason'])
+
+    def test_unenroll_already_unenrolled(self):
+        """Test unenrollment when user is already unenrolled"""
+        self.login_user(self.staff_user)
+        # First unenroll
+        self.enrollment.is_active = False
+        self.enrollment.save()
+
+        data = {
+            'username': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        # Error from unenroll() method
+        self.assertIn('already unenrolled', response.data['reason'])
+
+    def test_unenroll_invalid_course_id_format_no_org(self):
+        """Test unenrollment with course ID that has no org"""
+        self.login_user(self.staff_user)
+        data = {
+            'username': self.test_user.username,
+            'course_id': 'course-v1:+1+1',  # Missing org
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        # Course validation error caught during is_valid()
+        self.assertEqual(response.data['reason'], 'Invalid request data')
+        self.assertIn('detail', response.data.get('details', {}))
+
+    def test_view_has_correct_permissions(self):
+        """Test that the view has correct permission classes"""
+        view = views.LearnerUnenrollView()
+        self.assertIn(FXHasTenantCourseAccess, view.permission_classes)
+
+    def test_view_configuration(self):
+        """Test view configuration"""
+        view = views.LearnerUnenrollView()
+        self.assertEqual(view.fx_view_name, 'learner_unenroll')
+        self.assertEqual(view.fx_default_read_only_roles, [])
+        self.assertEqual(view.fx_view_description, 'api/fx/learners/v1/unenroll: Unenroll a learner from a course')
