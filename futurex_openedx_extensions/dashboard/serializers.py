@@ -1413,7 +1413,6 @@ class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
         except Exception as exc:
             raise serializers.ValidationError(f'Invalid course ID format: {value}') from exc
 
-        # Check if course exists
         try:
             CourseOverview.objects.get(id=course_key)
         except CourseOverview.DoesNotExist as exc:
@@ -1466,9 +1465,7 @@ class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
                 f'User {user.username} is already unenrolled from course {course_key}'
             )
 
-        # Unenroll by setting is_active to False
-        enrollment.is_active = False
-        enrollment.save()
+        CourseEnrollment.unenroll(user, course_key)
 
         return {
             'success': True,
