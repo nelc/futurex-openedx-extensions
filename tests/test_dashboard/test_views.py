@@ -3266,7 +3266,7 @@ class TestSetThemePreviewCookieView(APITestCase):
 
 @pytest.mark.usefixtures('base_data')
 @ddt.ddt
-class TestLearnerUnenrollView(BaseTestViewMixin):
+class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-public-methods
     """Tests for LearnerUnenrollView"""
     VIEW_NAME = 'fx_dashboard:learner-unenroll'
 
@@ -3533,3 +3533,114 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
             response = self.client.post(self.url, data, format='json')
             self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
             self.assertIn('Invalid enrollment data', response.data['reason'])
+
+    def test_unenroll_with_course_specific_staff_access(self):
+        """Test that user with course-specific staff access can unenroll learners"""
+        self.login_user(self.staff_user)
+
+        # Create enrollment for a course in ORG2
+        test_course = 'course-v1:ORG2+3+3'
+        CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=test_course,
+            is_active=True
+        )
+
+        # Patch the post method to simulate user having only course-specific staff access
+        original_post = views.LearnerUnenrollView.post
+
+        def patched_post(view_self, request, *args, **kwargs):
+            # Simulate user with no org-wide access but specific course access
+            request.fx_permission_info['view_allowed_full_access_orgs'] = []
+            request.fx_permission_info['user_roles'] = {
+                'staff': {
+                    'course_limited_access': [test_course],  # Access to this specific course
+                    'orgs_of_courses': ['org2'],
+                }
+            }
+            return original_post(view_self, request, *args, **kwargs)
+
+        with patch.object(views.LearnerUnenrollView, 'post', patched_post):
+            data = {
+                'username': self.test_user.username,
+                'course_id': test_course,
+            }
+            response = self.client.post(self.url, data, format='json')
+            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+            self.assertTrue(response.data['success'])
+            self.assertIn('Successfully unenrolled', response.data['message'])
+
+    def test_unenroll_with_course_specific_instructor_access(self):
+        """Test that user with course-specific instructor access can unenroll learners"""
+        self.login_user(self.staff_user)
+
+        # Create enrollment for a course
+        test_course = 'course-v1:ORG1+3+3'
+        CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=test_course,
+            is_active=True
+        )
+
+        # Patch the post method to simulate user having only course-specific instructor access
+        original_post = views.LearnerUnenrollView.post
+
+        def patched_post(view_self, request, *args, **kwargs):
+            # Simulate user with no org-wide access but specific course instructor access
+            request.fx_permission_info['view_allowed_full_access_orgs'] = []
+            request.fx_permission_info['user_roles'] = {
+                'instructor': {
+                    'course_limited_access': [test_course],  # Access to this specific course
+                    'orgs_of_courses': ['org1'],
+                }
+            }
+            return original_post(view_self, request, *args, **kwargs)
+
+        with patch.object(views.LearnerUnenrollView, 'post', patched_post):
+            data = {
+                'username': self.test_user.username,
+                'course_id': test_course,
+            }
+            response = self.client.post(self.url, data, format='json')
+            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+            self.assertTrue(response.data['success'])
+            self.assertIn('Successfully unenrolled', response.data['message'])
+
+    def test_unenroll_denied_without_course_specific_access(self):
+        """Test that user without course-specific access is denied unenrollment"""
+        self.login_user(self.staff_user)
+
+        # Create enrollment for a course
+        test_course = 'course-v1:ORG1+3+3'
+        CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=test_course,
+            is_active=True
+        )
+
+        # Patch the post method to simulate user having course-limited access but NOT for this course
+        original_post = views.LearnerUnenrollView.post
+
+        def patched_post(view_self, request, *args, **kwargs):
+            # Simulate a user with course-limited access to a different course
+            # They have access to the tenant but not org-wide or for this specific course
+            request.fx_permission_info['view_allowed_full_access_orgs'] = []  # No org-wide access
+            request.fx_permission_info['user_roles'] = {
+                'staff': {
+                    'course_limited_access': ['course-v1:ORG1+2+2'],  # Access to a different course
+                    'orgs_of_courses': ['org1'],
+                }
+            }
+            return original_post(view_self, request, *args, **kwargs)
+
+        with patch.object(views.LearnerUnenrollView, 'post', patched_post):
+            data = {
+                'username': self.test_user.username,
+                'course_id': test_course,  # Trying to unenroll from course they don't have access to
+            }
+            response = self.client.post(self.url, data, format='json')
+            self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+            self.assertIn(
+                'You do not have permission to unenroll learners from this course',
+                response.data['reason']
+            )
