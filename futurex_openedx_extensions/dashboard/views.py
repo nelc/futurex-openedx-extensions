@@ -1054,9 +1054,23 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
             course_key = serializer.validated_data['course_id']
             course_org = course_key.org
 
-            # Check if user has course access in the course's org
+            # Check if user has org-wide full access
             allowed_orgs = self.fx_permission_info['view_allowed_full_access_orgs']
-            if course_org.lower() not in [org.lower() for org in allowed_orgs]:
+            has_org_access = course_org.lower() in [org.lower() for org in allowed_orgs]
+
+            # Check if user has course-specific staff access
+            has_course_access = False
+            if not has_org_access:
+                user_roles = self.fx_permission_info.get('user_roles', {})
+                for role_name in [COURSE_ACCESS_ROLES_STAFF_EDITOR, 'instructor']:
+                    if role_name in user_roles:
+                        course_limited_access = user_roles[role_name].get('course_limited_access', [])
+                        if str(course_key) in course_limited_access:
+                            has_course_access = True
+                            break
+
+            # Deny access if user has neither org-wide nor course-specific access
+            if not has_org_access and not has_course_access:
                 return Response(
                     error_details_to_dictionary(
                         reason='You do not have permission to unenroll learners from this course'
