@@ -70,6 +70,14 @@ class CourseEnrollment(models.Model):
         """Mock"""
         return None
 
+    @classmethod
+    def unenroll(cls, user, course_id):
+        """Mock"""
+        enrollment = cls.objects.get(user=user, course_id=course_id)
+        enrollment.is_active = False
+        enrollment.save()
+        return None
+
 
 class UserSignupSource(models.Model):
     """Mock"""
