@@ -1050,15 +1050,10 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
             )
 
         try:
-            # Verify user has permission to manage the course
             course_key = serializer.validated_data['course_id']
             course_org = course_key.org
-
-            # Check if user has org-wide full access
             allowed_orgs = self.fx_permission_info['view_allowed_full_access_orgs']
             has_org_access = course_org.lower() in [org.lower() for org in allowed_orgs]
-
-            # Check if user has course-specific staff access
             has_course_access = False
             if not has_org_access:
                 user_roles = self.fx_permission_info.get('user_roles', {})
@@ -1069,7 +1064,6 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
                             has_course_access = True
                             break
 
-            # Deny access if user has neither org-wide nor course-specific access
             if not has_org_access and not has_course_access:
                 return Response(
                     error_details_to_dictionary(
