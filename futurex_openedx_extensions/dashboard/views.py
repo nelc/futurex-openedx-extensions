@@ -85,6 +85,7 @@ from futurex_openedx_extensions.helpers.permissions import (
     IsSystemStaff,
     get_tenant_limited_fx_permission_info,
 )
+from futurex_openedx_extensions.helpers.querysets import get_course_search_queryset
 from futurex_openedx_extensions.helpers.roles import (
     FXViewRoleInfoMixin,
     add_course_access_roles,
@@ -1020,7 +1021,7 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'learner_unenroll'
-    fx_default_read_only_roles: list[str] = []
+    fx_default_read_write_roles = ['staff', 'instructor', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/unenroll: Unenroll a learner from a course'
 
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
@@ -1028,12 +1029,9 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
         POST /api/fx/learners/v1/unenroll/
         Unenroll a learner from a course. Requires staff or instructor permissions.
         Body parameters:
-        - user_id (optional): User ID of the learner to unenroll
-        - username (optional): Username of the learner to unenroll
-        - email (optional): Email of the learner to unenroll
+        - user_key (required): User identifier (can be user ID, username, or email)
         - course_id (required): Course ID from which to unenroll the learner
         - reason (optional): Reason for unenrollment
-        At least one of user_id, username, or email must be provided.
         """
         serializer = serializers.LearnerUnenrollSerializer(
             data=request.data,
@@ -1051,20 +1049,12 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
 
         try:
             course_key = serializer.validated_data['course_id']
-            course_org = course_key.org
-            allowed_orgs = self.fx_permission_info['view_allowed_full_access_orgs']
-            has_org_access = course_org.lower() in [org.lower() for org in allowed_orgs]
-            has_course_access = False
-            if not has_org_access:
-                user_roles = self.fx_permission_info.get('user_roles', {})
-                for role_name in [COURSE_ACCESS_ROLES_STAFF_EDITOR, 'instructor']:
-                    if role_name in user_roles:
-                        course_limited_access = user_roles[role_name].get('course_limited_access', [])
-                        if str(course_key) in course_limited_access:
-                            has_course_access = True
-                            break
+            accessible_courses = get_course_search_queryset(
+                fx_permission_info=self.fx_permission_info,
+                course_ids=[str(course_key)]
+            )
 
-            if not has_org_access and not has_course_access:
+            if not accessible_courses.exists():
                 return Response(
                     error_details_to_dictionary(
                         reason='You do not have permission to unenroll learners from this course'

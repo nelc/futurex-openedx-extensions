@@ -3304,7 +3304,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
         """Test request with missing course_id"""
         self.login_user(self.staff_user)
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
         }
         response = self.client.post(self.url, data, format='json')
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
@@ -3312,33 +3312,25 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
         # Serializer errors are in 'details' key
         self.assertIn('detail', response.data.get('details', {}))
 
-    def test_invalid_request_multiple_user_identifiers(self):
-        """Test request with multiple user identifiers"""
-        self.login_user(self.staff_user)
-        data = {
-            'user_id': self.test_user.id,
-            'username': self.test_user.username,
-            'course_id': self.test_course_id,
-        }
-        response = self.client.post(self.url, data, format='json')
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['reason'], 'Invalid request data')
-        # Serializer errors are in 'details' key
-        self.assertIn('detail', response.data.get('details', {}))
-
-    @ddt.data('user_id', 'username', 'email')
-    def test_successful_unenroll_with_different_identifiers(self, identifier_type):
+    @ddt.data(
+        ('user_id', lambda user: str(user.id)),
+        ('username', lambda user: user.username),
+        ('email', lambda user: user.email),
+    )
+    @ddt.unpack
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_successful_unenroll_with_different_identifiers(self, identifier_name, identifier_value_func, mock_get_user_by_key):
         """Test successful unenrollment using different user identifiers"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         self.login_user(self.staff_user)
         data = {
             'course_id': self.test_course_id,
+            'user_key': identifier_value_func(self.test_user),
         }
-        if identifier_type == 'user_id':
-            data['user_id'] = self.test_user.id
-        elif identifier_type == 'username':
-            data['username'] = self.test_user.username
-        else:  # email
-            data['email'] = self.test_user.email
 
         response = self.client.post(self.url, data, format='json')
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
@@ -3352,11 +3344,17 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
         self.enrollment.refresh_from_db()
         self.assertFalse(self.enrollment.is_active)
 
-    def test_unenroll_with_reason(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_with_reason(self, mock_get_user_by_key):
         """Test unenrollment with a reason provided"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         self.login_user(self.staff_user)
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
             'reason': 'Student requested withdrawal'
         }
@@ -3368,7 +3366,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
         """Test unenrollment when user doesn't exist"""
         self.login_user(self.staff_user)
         data = {
-            'username': 'nonexistent_user',
+            'user_key': 'nonexistent_user',
             'course_id': self.test_course_id,
         }
         response = self.client.post(self.url, data, format='json')
@@ -3383,7 +3381,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
         """Test unenrollment when course doesn't exist"""
         self.login_user(self.staff_user)
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': 'course-v1:ORG1+999+999',
         }
         response = self.client.post(self.url, data, format='json')
@@ -3396,7 +3394,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
         """Test unenrollment with invalid course ID format"""
         self.login_user(self.staff_user)
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': 'invalid-course-id',
         }
         response = self.client.post(self.url, data, format='json')
@@ -3405,27 +3403,39 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
         self.assertEqual(response.data['reason'], 'Invalid request data')
         self.assertIn('detail', response.data.get('details', {}))
 
-    def test_unenroll_user_not_enrolled(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_user_not_enrolled(self, mock_get_user_by_key):
         """Test unenrollment when user is not enrolled in the course"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         self.login_user(self.staff_user)
         # Use a different course that user is not enrolled in
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': 'course-v1:ORG1+3+3',  # Different from self.test_course_id (which is ORG1+2+2)
         }
         response = self.client.post(self.url, data, format='json')
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertIn('not enrolled', response.data['reason'])
 
-    def test_unenroll_already_unenrolled(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_already_unenrolled(self, mock_get_user_by_key):
         """Test unenrollment when user is already unenrolled"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         self.login_user(self.staff_user)
         # First unenroll
         self.enrollment.is_active = False
         self.enrollment.save()
 
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
         }
         response = self.client.post(self.url, data, format='json')
@@ -3437,7 +3447,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
         """Test unenrollment with course ID that has no org"""
         self.login_user(self.staff_user)
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': 'course-v1:+1+1',  # Missing org
         }
         response = self.client.post(self.url, data, format='json')
@@ -3455,7 +3465,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
         """Test view configuration"""
         view = views.LearnerUnenrollView()
         self.assertEqual(view.fx_view_name, 'learner_unenroll')
-        self.assertEqual(view.fx_default_read_only_roles, [])
+        self.assertEqual(view.fx_default_read_write_roles, ['staff', 'instructor', 'org_course_creator_group'])
         self.assertEqual(view.fx_view_description, 'api/fx/learners/v1/unenroll: Unenroll a learner from a course')
 
     def test_unenroll_permission_denied_for_course_org(self):
@@ -3482,7 +3492,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
 
         with patch.object(views.LearnerUnenrollView, 'post', patched_post):
             data = {
-                'username': self.test_user.username,
+                'user_key': self.test_user.username,
                 'course_id': test_course,  # ORG1 not in allowed list
             }
             response = self.client.post(self.url, data, format='json')
@@ -3504,7 +3514,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
             mock_unenroll.side_effect = RuntimeError('Unexpected database error')
 
             data = {
-                'username': self.test_user.username,
+                'user_key': self.test_user.username,
                 'course_id': self.test_course_id,
             }
             response = self.client.post(self.url, data, format='json')
@@ -3527,15 +3537,22 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
             )
 
             data = {
-                'username': self.test_user.username,
+                'user_key': self.test_user.username,
                 'course_id': self.test_course_id,
             }
             response = self.client.post(self.url, data, format='json')
             self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
             self.assertIn('Invalid enrollment data', response.data['reason'])
 
-    def test_unenroll_with_course_specific_staff_access(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    @patch('futurex_openedx_extensions.dashboard.views.get_course_search_queryset')
+    def test_unenroll_with_course_specific_staff_access(self, mock_course_search, mock_get_user_by_key):
         """Test that user with course-specific staff access can unenroll learners"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         self.login_user(self.staff_user)
 
         # Create enrollment for a course in ORG2
@@ -3546,32 +3563,28 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
             is_active=True
         )
 
-        # Patch the post method to simulate user having only course-specific staff access
-        original_post = views.LearnerUnenrollView.post
+        # Mock get_course_search_queryset to return the course when accessed with limited permissions
+        course_key = CourseLocator.from_string(test_course)
+        mock_course_search.return_value = CourseOverview.objects.filter(id=course_key)
 
-        def patched_post(view_self, request, *args, **kwargs):
-            # Simulate user with no org-wide access but specific course access
-            request.fx_permission_info['view_allowed_full_access_orgs'] = []
-            request.fx_permission_info['user_roles'] = {
-                'staff': {
-                    'course_limited_access': [test_course],  # Access to this specific course
-                    'orgs_of_courses': ['org2'],
-                }
-            }
-            return original_post(view_self, request, *args, **kwargs)
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': test_course,
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertIn('Successfully unenrolled', response.data['message'])
 
-        with patch.object(views.LearnerUnenrollView, 'post', patched_post):
-            data = {
-                'username': self.test_user.username,
-                'course_id': test_course,
-            }
-            response = self.client.post(self.url, data, format='json')
-            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-            self.assertTrue(response.data['success'])
-            self.assertIn('Successfully unenrolled', response.data['message'])
-
-    def test_unenroll_with_course_specific_instructor_access(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    @patch('futurex_openedx_extensions.dashboard.views.get_course_search_queryset')
+    def test_unenroll_with_course_specific_instructor_access(self, mock_course_search, mock_get_user_by_key):
         """Test that user with course-specific instructor access can unenroll learners"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         self.login_user(self.staff_user)
 
         # Create enrollment for a course
@@ -3582,29 +3595,18 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
             is_active=True
         )
 
-        # Patch the post method to simulate user having only course-specific instructor access
-        original_post = views.LearnerUnenrollView.post
+        # Mock get_course_search_queryset to return the course when accessed with limited permissions
+        course_key = CourseLocator.from_string(test_course)
+        mock_course_search.return_value = CourseOverview.objects.filter(id=course_key)
 
-        def patched_post(view_self, request, *args, **kwargs):
-            # Simulate user with no org-wide access but specific course instructor access
-            request.fx_permission_info['view_allowed_full_access_orgs'] = []
-            request.fx_permission_info['user_roles'] = {
-                'instructor': {
-                    'course_limited_access': [test_course],  # Access to this specific course
-                    'orgs_of_courses': ['org1'],
-                }
-            }
-            return original_post(view_self, request, *args, **kwargs)
-
-        with patch.object(views.LearnerUnenrollView, 'post', patched_post):
-            data = {
-                'username': self.test_user.username,
-                'course_id': test_course,
-            }
-            response = self.client.post(self.url, data, format='json')
-            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-            self.assertTrue(response.data['success'])
-            self.assertIn('Successfully unenrolled', response.data['message'])
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': test_course,
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertIn('Successfully unenrolled', response.data['message'])
 
     def test_unenroll_denied_without_course_specific_access(self):
         """Test that user without course-specific access is denied unenrollment"""
@@ -3635,7 +3637,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
 
         with patch.object(views.LearnerUnenrollView, 'post', patched_post):
             data = {
-                'username': self.test_user.username,
+                'user_key': self.test_user.username,
                 'course_id': test_course,  # Trying to unenroll from course they don't have access to
             }
             response = self.client.post(self.url, data, format='json')

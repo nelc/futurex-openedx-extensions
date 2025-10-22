@@ -72,6 +72,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_tenants_by_org,
     set_request_domain_by_org,
 )
+from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 logger = logging.getLogger(__name__)
 
@@ -1360,19 +1361,11 @@ class TenantConfigSerializer(ReadOnlySerializer):
 class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
     """
     Serializer for unenrolling a learner from a course.
-    Accepts one of: user_id, username, or email to identify the user.
+    Accepts user_key which can be a user ID, username, or email to identify the user.
     """
-    user_id = serializers.IntegerField(
-        required=False,
-        help_text='User ID of the learner to unenroll'
-    )
-    username = serializers.CharField(
-        required=False,
-        help_text='Username of the learner to unenroll'
-    )
-    email = serializers.EmailField(
-        required=False,
-        help_text='Email of the learner to unenroll'
+    user_key = serializers.CharField(
+        required=True,
+        help_text='User identifier: can be user ID, username, or email'
     )
     course_id = serializers.CharField(
         required=True,
@@ -1383,24 +1376,6 @@ class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
         allow_blank=True,
         help_text='Optional reason for unenrollment'
     )
-
-    def validate(self, attrs: dict) -> dict:
-        """Validate that at least one user identifier is provided."""
-        user_id = attrs.get('user_id')
-        username = attrs.get('username')
-        email = attrs.get('email')
-
-        if not any([user_id, username, email]):
-            raise serializers.ValidationError(
-                'At least one of user_id, username, or email must be provided.'
-            )
-
-        if sum([bool(user_id), bool(username), bool(email)]) > 1:
-            raise serializers.ValidationError(
-                'Only one of user_id, username, or email should be provided.'
-            )
-
-        return attrs
 
     def validate_course_id(self, value: str) -> CourseLocator:  # pylint: disable=no-self-use
         """Validate and convert course_id to CourseLocator."""
@@ -1418,24 +1393,14 @@ class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
 
     def get_user(self) -> get_user_model:
         """Get the user based on provided identifier."""
-        user_id = self.validated_data.get('user_id')
-        username = self.validated_data.get('username')
-        email = self.validated_data.get('email')
+        user_key = self.validated_data.get('user_key')
+        user_info = get_user_by_key(user_key)
+        if not user_info['user']:
+            raise serializers.ValidationError(
+                f"({user_info['error_code']}): Invalid user: {user_info['error_message']}"
+            )
 
-        try:
-            if user_id:
-                user = get_user_model().objects.get(id=user_id)
-            elif username:
-                user = get_user_model().objects.get(username=username)
-            elif email:
-                user = get_user_model().objects.get(email=email)
-            else:
-                raise serializers.ValidationError('No user identifier provided.')
-        except get_user_model().DoesNotExist as exc:
-            identifier = user_id or username or email
-            raise serializers.ValidationError(f'User not found: {identifier}') from exc
-
-        return user
+        return user_info['user']
 
     def unenroll(self) -> dict:
         """
