@@ -1687,26 +1687,25 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         self.course_key = CourseOverview.objects.get(id=self.test_course_id).id
 
     def test_validate_at_least_one_user_identifier_required(self):
-        """Test that at least one user identifier is required"""
+        """Test that user_key is required"""
         data = {
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
         assert not serializer.is_valid()
-        assert 'non_field_errors' in serializer.errors
-        assert 'At least one of user_id, username, or email must be provided' in str(serializer.errors)
+        assert 'user_key' in serializer.errors
+        assert 'This field is required' in str(serializer.errors)
 
     def test_validate_only_one_user_identifier_allowed(self):
-        """Test that only one user identifier is allowed"""
+        """Test that user_key accepts any identifier"""
+        # This test is no longer needed with single user_key field
+        # But let's test that user_key works with different types
         data = {
-            'user_id': self.test_user.id,
-            'username': self.test_user.username,
+            'user_key': str(self.test_user.id),
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
-        assert not serializer.is_valid()
-        assert 'non_field_errors' in serializer.errors
-        assert 'Only one of user_id, username, or email should be provided' in str(serializer.errors)
+        assert serializer.is_valid()
 
     def test_validate_course_id_invalid_format(self):
         """Test validation with invalid course ID format"""
@@ -1733,60 +1732,94 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
     def test_validate_course_id_success(self):
         """Test successful course ID validation"""
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
         assert serializer.is_valid()
         assert serializer.validated_data['course_id'] == self.course_key
 
-    def test_get_user_by_user_id(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_by_user_id(self, mock_get_user_by_key):
         """Test getting user by user_id"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         data = {
-            'user_id': self.test_user.id,
+            'user_key': str(self.test_user.id),
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
         assert serializer.is_valid()
         user = serializer.get_user()
         assert user.id == self.test_user.id
+        mock_get_user_by_key.assert_called_once_with(str(self.test_user.id))
 
-    def test_get_user_by_username(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_by_username(self, mock_get_user_by_key):
         """Test getting user by username"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
         assert serializer.is_valid()
         user = serializer.get_user()
         assert user.username == self.test_user.username
+        mock_get_user_by_key.assert_called_once_with(self.test_user.username)
 
-    def test_get_user_by_email(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_by_email(self, mock_get_user_by_key):
         """Test getting user by email"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         data = {
-            'email': self.test_user.email,
+            'user_key': self.test_user.email,
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
         assert serializer.is_valid()
         user = serializer.get_user()
         assert user.email == self.test_user.email
+        mock_get_user_by_key.assert_called_once_with(self.test_user.email)
 
-    def test_get_user_not_found(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_not_found(self, mock_get_user_by_key):
         """Test error when user doesn't exist"""
+        mock_get_user_by_key.return_value = {
+            'user': None,
+            'error_code': 1001,
+            'error_message': 'User with username/email (nonexistent_user) does not exist!'
+        }
         data = {
-            'username': 'nonexistent_user',
+            'user_key': 'nonexistent_user',
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
         assert serializer.is_valid()
         with pytest.raises(ValidationError) as exc_info:
             serializer.get_user()
-        assert 'User not found' in str(exc_info.value)
+        assert 'Invalid user' in str(exc_info.value)
+        mock_get_user_by_key.assert_called_once_with('nonexistent_user')
 
-    def test_unenroll_success(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_success(self, mock_get_user_by_key):
         """Test successful unenrollment"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         # Create active enrollment
         enrollment = CourseEnrollment.objects.create(
             user=self.test_user,
@@ -1795,7 +1828,7 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         )
 
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
@@ -1812,10 +1845,16 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         enrollment.refresh_from_db()
         assert not enrollment.is_active
 
-    def test_unenroll_user_not_enrolled(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_user_not_enrolled(self, mock_get_user_by_key):
         """Test error when user is not enrolled"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
@@ -1825,8 +1864,14 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
             serializer.unenroll()
         assert 'not enrolled' in str(exc_info.value)
 
-    def test_unenroll_already_unenrolled(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_already_unenrolled(self, mock_get_user_by_key):
         """Test error when user is already unenrolled"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         # Create inactive enrollment
         CourseEnrollment.objects.create(
             user=self.test_user,
@@ -1835,7 +1880,7 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         )
 
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
@@ -1845,8 +1890,14 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
             serializer.unenroll()
         assert 'already unenrolled' in str(exc_info.value)
 
-    def test_unenroll_with_reason(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_with_reason(self, mock_get_user_by_key):
         """Test unenrollment with reason provided"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
         # Create active enrollment
         enrollment = CourseEnrollment.objects.create(
             user=self.test_user,
@@ -1855,7 +1906,7 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         )
 
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
             'reason': 'Student requested withdrawal',
         }
@@ -1871,7 +1922,7 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
     def test_create_not_implemented(self):
         """Test that create method raises ValueError"""
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
@@ -1884,7 +1935,7 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
     def test_update_not_implemented(self):
         """Test that update method raises ValueError"""
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
@@ -1897,7 +1948,7 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
     def test_optional_reason_field(self):
         """Test that reason field is optional"""
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
@@ -1907,18 +1958,25 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
     def test_reason_field_can_be_blank(self):
         """Test that reason field can be blank"""
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': self.test_course_id,
             'reason': '',
         }
         serializer = serializers.LearnerUnenrollSerializer(data=data)
         assert serializer.is_valid()
 
-    def test_get_user_no_identifier_provided(self):
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_no_identifier_provided(self, mock_get_user_by_key):
         """Test get_user raises error when no identifier is provided (edge case)"""
+        mock_get_user_by_key.return_value = {
+            'user': None,
+            'error_code': 1001,
+            'error_message': 'Invalid user key type, expected int or str, but got NoneType'
+        }
         serializer = serializers.LearnerUnenrollSerializer()
         serializer._validated_data = {'course_id': self.test_course_id}  # pylint: disable=protected-access
 
         with pytest.raises(ValidationError) as exc_info:
             serializer.get_user()
-        assert 'No user identifier provided' in str(exc_info.value)
+        assert 'Invalid user' in str(exc_info.value)
+        mock_get_user_by_key.assert_called_once_with(None)
