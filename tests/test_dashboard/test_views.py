@@ -3266,7 +3266,7 @@ class TestSetThemePreviewCookieView(APITestCase):
 
 @pytest.mark.usefixtures('base_data')
 @ddt.ddt
-class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-public-methods
+class TestLearnerUnenrollView(BaseTestViewMixin):
     """Tests for LearnerUnenrollView"""
     VIEW_NAME = 'fx_dashboard:learner-unenroll'
 
@@ -3319,7 +3319,9 @@ class TestLearnerUnenrollView(BaseTestViewMixin):  # pylint: disable=too-many-pu
     )
     @ddt.unpack
     @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
-    def test_successful_unenroll_with_different_identifiers(self, identifier_name, identifier_value_func, mock_get_user_by_key):
+    def test_successful_unenroll_with_different_identifiers(
+        self, _identifier_name, identifier_value_func, mock_get_user_by_key
+    ):
         """Test successful unenrollment using different user identifiers"""
         mock_get_user_by_key.return_value = {
             'user': self.test_user,
