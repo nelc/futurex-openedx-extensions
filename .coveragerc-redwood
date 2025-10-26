@@ -5,6 +5,7 @@ source=futurex_openedx_extensions
 omit =
     test_settings_redwood.py
     test_settings_sumac.py
+    test_settings_teak.py
     */migrations/*
     */static/*
     # Ignore mysql fucntions not supported by SQLITE i.e JSON_MERGE_PATCH
@@ -13,3 +14,4 @@ omit =
     futurex_openedx_extensions/upgrade/models_switch.py
     # Version specific code for anything not redwood
     futurex_openedx_extensions/upgrade/releases/sumac/*
+    futurex_openedx_extensions/upgrade/releases/teak/*
