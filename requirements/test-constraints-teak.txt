@@ -1,0 +1,17 @@
+-c https://raw.githubusercontent.com/openedx/edx-platform/refs/heads/release/teak/requirements/constraints.txt
+
+-r constraints-teak.txt
+
+# Nelc specific requirements
+eox-tenant>=v14.0.0
+
+# edx-platform related requirements. Pinned to the versions used in Teak.
+edx-api-doc-tools==2.0.0
+edx-opaque-keys==3.0.0
+edx-lint==5.6.0
+django-config-models==2.9.0
+django-filter==25.1
+django-mysql==4.16.0
+jsonfield==3.1.0
+python-dateutil==2.9.0.post0
+social-auth-app-django==5.4.1

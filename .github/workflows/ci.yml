@@ -17,7 +17,7 @@ jobs:
           - python-version: '3.11'
             tox-env: py311-redwood
           - python-version: '3.11'
-            tox-env: py311-sumac
+            tox-env: py311-teak
 
     steps:
       - uses: actions/checkout@v4

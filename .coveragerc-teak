@@ -12,6 +12,6 @@ omit =
     futurex_openedx_extensions/helpers/mysql_functions.py
     # Ignore the models_switch.py file since it cannot be tested in all environments, so coverage will never be 100%
     futurex_openedx_extensions/upgrade/models_switch.py
-    # Version specific code for anything not sumac
+    # Version specific code for anything not teak
     futurex_openedx_extensions/upgrade/releases/redwood/*
-    futurex_openedx_extensions/upgrade/releases/teak/*
+    futurex_openedx_extensions/upgrade/releases/sumac/*
