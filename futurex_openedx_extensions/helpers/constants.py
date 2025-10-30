@@ -35,13 +35,14 @@ CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS = '__ca_users_of_tenants__'
 
 CLICKHOUSE_QUERY_SLUG_PATTERN = r'[a-z0-9_\-.]+'
 
-ID_PART = r'[a-zA-Z0-9_-]+'
+ID_PART = r'[a-zA-Z0-9_\-]+'
+ID_RUN = r'[a-zA-Z0-9_.\-]+'
 COURSE_ID_REGX = \
-    fr'(?P<course_id>course-v1:(?P<org>{ID_PART})\+(?P<course>{ID_PART})\+(?P<run>{ID_PART}))'
+    fr'(?P<course_id>course-v1:(?P<org>{ID_PART})\+(?P<course>{ID_PART})\+(?P<run>{ID_RUN}))'
 COURSE_ID_REGX_EXACT = rf'^{COURSE_ID_REGX}$'
 
 LIBRARY_ID_REGX = \
-    fr'(?P<course_id>library-v1:(?P<org>{ID_PART})\+(?P<code>{ID_PART}))'
+    fr'(?P<library_id>library-v1:(?P<org>{ID_PART})\+(?P<code>{ID_PART}))'
 LIBRARY_ID_REGX_EXACT = rf'^{LIBRARY_ID_REGX}$'
 
 COURSE_STATUSES = {
