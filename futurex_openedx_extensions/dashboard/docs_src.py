@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from django.conf import settings
 from drf_yasg import openapi
 from edx_api_doc_tools import ParameterLocation, path_parameter, query_parameter
+from zeitlabs_payments.models import Cart, CatalogueItem
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers.extractors import (
@@ -115,6 +116,36 @@ def get_optional_parameter(path: str) -> Any:
 
 
 common_parameters = {
+    'course_ids': query_parameter(
+        'course_ids',
+        str,
+        'a comma separated list of course ids to filter the results by. If not provided, the system will '
+        'assume all courses that are accessible to the caller.'
+    ),
+    'user_ids': query_parameter(
+        'user_ids',
+        str,
+        'a comma separated list of learner user ids to filter the results by. If not provided, the system '
+        'will assume all users that are accessible to the caller.'
+    ),
+    'usernames': query_parameter(
+        'usernames',
+        str,
+        'a comma separated list of learner usernames to filter the results by. If not provided, the system '
+        'will assume all users that are accessible to the caller.'
+    ),
+    'learner_search': query_parameter(
+        'learner_search',
+        str,
+        'A search text to filter results, matched against the user\'s full name, username, national ID, and '
+        'email address.'
+    ),
+    'course_search': query_parameter(
+        'course_search',
+        str,
+        'a comma separated list of learner usernames to filter the results by. If not provided, the system '
+        'will assume all users that are accessible to the caller.'
+    ),
     'include_staff': openapi.Parameter(
         'include_staff',
         ParameterLocation.QUERY,
@@ -932,35 +963,12 @@ docs_src = {
         ' least one enrollment in any course.',
         'parameters': [
             common_parameters['tenant_ids'],
-            query_parameter(
-                'course_ids',
-                str,
-                'a comma separated list of course ids to filter the results by. If not provided, the system will '
-                'assume all courses that are accessible to the caller.',
-            ),
-            query_parameter(
-                'user_ids',
-                str,
-                'a comma separated list of learner user ids to filter the results by. If not provided, the system '
-                'will assume all users that are accessible to the caller.',
-            ),
-            query_parameter(
-                'usernames',
-                str,
-                'a comma separated list of learner usernames to filter the results by. If not provided, the system '
-                ' will assume all users that are accessible to the caller.',
-            ),
-            query_parameter(
-                'learner_search',
-                str,
-                'A search text to filter results, matched against the user\'s full name, username, national ID, and '
-                ' email address.',
-            ),
-            query_parameter(
-                'course_search',
-                str,
-                'A search text to filter results, matched against the course\'s ID and display name.',
-            ),
+            common_parameters['user_ids'],
+            common_parameters['usernames'],
+            common_parameters['course_ids'],
+            common_parameters['learner_search'],
+            common_parameters['course_search'],
+            common_parameters['include_staff'],
             query_parameter(
                 'progress_min',
                 int,
@@ -973,7 +981,6 @@ docs_src = {
                 'Filter enrollments to include only those with progress less than or equal to this value '
                 '(0-1). Negative values will disable this filter as if it was not provided.',
             ),
-            common_parameters['include_staff'],
             get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::LearnerEnrollmentSerializer'),
             common_parameters['download'],
             common_parameters['omit_subsection_name'],
@@ -1563,6 +1570,212 @@ docs_src = {
             overrides={
                 200: common_schemas['role'],
             },
+        ),
+    },
+
+    'OrderView.get': {
+        'summary': 'Get the list of cart orders',
+        'description': 'Get the list of orders in the tenants.',
+        'parameters': [
+            common_parameters['tenant_ids'],
+            common_parameters['user_ids'],
+            common_parameters['usernames'],
+            common_parameters['course_ids'],
+            common_parameters['learner_search'],
+            common_parameters['course_search'],
+            query_parameter(
+                'sku_search',
+                str,
+                'A search text to filter results, matched against the item sku.',
+            ),
+            openapi.Parameter(
+                'include_invoice',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=['1', '0'],
+                description=(
+                    '- `include_invoice=0`: (**default**) The API will not return any invoice data.\n'
+                    '- `include_invoice=1`: The API will include invoice data for paid carts only. '
+                    'Carts with any other status will have invoice null.'
+                )
+            ),
+            openapi.Parameter(
+                'include_user_details',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=['1', '0'],
+                description=(
+                    '- `include_user_details=0`: (**default**) The API will only return user_id.\n'
+                    '- `include_user_details=1`: The API will return user details like name, email.'
+                )
+            ),
+            openapi.Parameter(
+                'status',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=Cart.valid_statuses(),
+                description=(
+                    'to filter carts of specific status.'
+                )
+            ),
+            openapi.Parameter(
+                'item_type',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=CatalogueItem.valid_item_types(),
+                description=(
+                    'to filter carts containing specific item types.\n'
+                    'Note: right now only paid_course is implemented.'
+                )
+            ),
+            common_parameters['include_staff'],
+            common_parameters['download'],
+        ],
+        'responses': responses(
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            description='List of payment orders.',
+                            items=openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    'id': openapi.Schema(
+                                        type=openapi.TYPE_INTEGER,
+                                        description='Unique identifier for the order.',
+                                        example=403,
+                                    ),
+                                    'user': openapi.Schema(
+                                        type=openapi.TYPE_OBJECT,
+                                        description='User who owns the order.',
+                                        properties={
+                                            'id': openapi.Schema(
+                                                type=openapi.TYPE_INTEGER, example=10
+                                            ),
+                                            'username': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='admin'
+                                            ),
+                                            'email': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='admin@example.com'
+                                            ),
+                                            'full_name': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='admin'
+                                            ),
+                                        },
+                                    ),
+                                    'status': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Current status of the cart (e.g., paid, pending).',
+                                        example='paid',
+                                    ),
+                                    'created_at': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        format=openapi.FORMAT_DATETIME,
+                                        description='Timestamp when the cart was created.',
+                                        example='2025-11-04T10:26:35.237473Z',
+                                    ),
+                                    'items': openapi.Schema(
+                                        type=openapi.TYPE_ARRAY,
+                                        description='List of items included in the order.',
+                                        items=openapi.Schema(
+                                            type=openapi.TYPE_OBJECT,
+                                            properties={
+                                                'sku': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='F55ADB6'
+                                                ),
+                                                'title': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='Paid course 3'
+                                                ),
+                                                'description': openapi.Schema(type=openapi.TYPE_STRING, example=''),
+                                                'type': openapi.Schema(type=openapi.TYPE_STRING, example='paid_course'),
+                                                'currency': openapi.Schema(type=openapi.TYPE_STRING, example='SAR'),
+                                                'original_price': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='500.00'
+                                                ),
+                                                'discount_amount': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='0.00'
+                                                ),
+                                                'final_price': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='550.00'
+                                                ),
+                                                'coupon': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, nullable=True, example=None
+                                                ),
+                                                'details': openapi.Schema(
+                                                    type=openapi.TYPE_OBJECT,
+                                                    properties={
+                                                        'courses': openapi.Schema(
+                                                            type=openapi.TYPE_ARRAY,
+                                                            items=openapi.Schema(
+                                                                type=openapi.TYPE_OBJECT,
+                                                                properties={
+                                                                    'course_id': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING,
+                                                                        example='course-v1:nelp+333+33',
+                                                                    ),
+                                                                    'course_name': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING,
+                                                                        example='Robotics and AI',
+                                                                    ),
+                                                                    'course_image': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING,
+                                                                        format=openapi.FORMAT_URI,
+                                                                        example='http://nelp.com/asset-v1.jpg',
+                                                                    ),
+                                                                    'org': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING, example='nelp'
+                                                                    ),
+                                                                    'run': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING, example='33'
+                                                                    ),
+                                                                },
+                                                            ),
+                                                        ),
+                                                    },
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    'total': openapi.Schema(
+                                        type=openapi.TYPE_NUMBER,
+                                        format=openapi.FORMAT_FLOAT,
+                                        description='Total amount payable after discounts and taxes.',
+                                        example=550.0,
+                                    ),
+                                    'currency': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Currency used for the transaction.',
+                                        example='SAR',
+                                    ),
+                                    'invoice': openapi.Schema(
+                                        type=openapi.TYPE_OBJECT,
+                                        description='Invoice details (present only for paid orders).',
+                                        properties={
+                                            'invoice_number': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='DEV-100001'
+                                            ),
+                                            'currency': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='SAR'
+                                            ),
+                                            'paid_at': openapi.Schema(
+                                                type=openapi.TYPE_STRING,
+                                                format=openapi.FORMAT_DATETIME,
+                                                example='2025-11-04T10:30:30.859924Z',
+                                            ),
+                                        },
+                                    ),
+                                },
+                            ),
+                        ),
+                    },
+                ),
+            }
         ),
     },
 
