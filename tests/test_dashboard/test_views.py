@@ -32,7 +32,11 @@ from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
-from futurex_openedx_extensions.dashboard.views import ThemeConfigDraftView, UserRolesManagementView
+from futurex_openedx_extensions.dashboard.views import (
+    LearnersEnrollmentView,
+    ThemeConfigDraftView,
+    UserRolesManagementView,
+)
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.constants import ALLOWED_FILE_EXTENSIONS
@@ -1615,6 +1619,7 @@ class TestLearnersDetailsForCourseView(BaseTestViewMixin):
 
 
 @pytest.mark.usefixtures('base_data')
+@ddt.ddt
 class TestLearnersEnrollmentView(BaseTestViewMixin):
     """Tests for LearnersEnrollmentView"""
     VIEW_NAME = 'fx_dashboard:learners-enrollements'
@@ -1657,6 +1662,44 @@ class TestLearnersEnrollmentView(BaseTestViewMixin):
             set(user_data['user_id'] for user_data in response.data['results']),
             {15, 21}
         )
+
+    @ddt.data(
+        ('0', '1', 0.0, 1.0),
+        ('0.5', '0.9', 0.5, 0.9),
+        ('', '', -1.0, -1.0),
+        (None, None, -1.0, -1.0),
+        ('-1', '-1', -1.0, -1.0),
+        ('0', '', 0.0, -1.0),
+        ('', '0.8', -1.0, 0.8),
+    )
+    @ddt.unpack
+    def test_valid_progress_range(self, progress_min, progress_max, expected_min, expected_max):
+        """Verify that valid progress ranges are returned correctly"""
+        result = LearnersEnrollmentView.validate_progress_range(progress_min, progress_max)
+        self.assertEqual(result, (expected_min, expected_max))
+
+    def test_min_greater_than_max_raises(self):
+        """Verify that progress_min greater than progress_max raises FXCodedException"""
+        with self.assertRaises(FXCodedException) as ctx:
+            LearnersEnrollmentView.validate_progress_range('0.8', '0.5')
+
+        self.assertEqual(ctx.exception.code, FXExceptionCodes.INVALID_INPUT.value)
+        self.assertIn('progress_min cannot be greater than progress_max', str(ctx.exception))
+
+    @ddt.data(
+        ('abc', '0.5', 'progress_min'),
+        ('0.2', 'xyz', 'progress_max'),
+        ('1.01', '0.5', 'progress_min'),
+        ('0.2', '1.01', 'progress_max'),
+    )
+    @ddt.unpack
+    def test_invalid_number(self, progress_min, progress_max, variable_name):
+        """Verify that invalid progress values raise FXCodedException"""
+        with self.assertRaises(FXCodedException) as ctx:
+            LearnersEnrollmentView.validate_progress_range(progress_min, progress_max)
+
+        self.assertEqual(ctx.exception.code, FXExceptionCodes.INVALID_INPUT.value)
+        self.assertIn(variable_name, str(ctx.exception))
 
 
 class MockClickhouseQuery:

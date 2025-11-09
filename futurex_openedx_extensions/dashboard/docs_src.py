@@ -961,6 +961,18 @@ docs_src = {
                 str,
                 'A search text to filter results, matched against the course\'s ID and display name.',
             ),
+            query_parameter(
+                'progress_min',
+                int,
+                'Filter enrollments to include only those with progress greater than or equal to this value '
+                '(0-1). Negative values will disable this filter as if it was not provided.',
+            ),
+            query_parameter(
+                'progress_max',
+                int,
+                'Filter enrollments to include only those with progress less than or equal to this value '
+                '(0-1). Negative values will disable this filter as if it was not provided.',
+            ),
             common_parameters['include_staff'],
             get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::LearnerEnrollmentSerializer'),
             common_parameters['download'],

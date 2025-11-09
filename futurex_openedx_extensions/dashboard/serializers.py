@@ -316,13 +316,9 @@ class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
             self._get_user(obj), self._get_course_id(obj)
         ))
 
-    def get_progress(self, obj: Any) -> Any:
+    def get_progress(self, obj: Any) -> Any:  # pylint: disable=no-self-use
         """Return the certificate URL."""
-        progress_info = get_course_blocks_completion_summary(
-            self._get_course_id(obj), self._get_user(obj)
-        )
-        total = progress_info['complete_count'] + progress_info['incomplete_count'] + progress_info['locked_count']
-        return round(progress_info['complete_count'] / total, 4) if total else 0.0
+        return getattr(obj, 'progress', 0.0) or 0.0
 
     def get_exam_scores(self, obj: Any) -> Dict[str, Tuple[float, float] | None]:
         """Return exam scores."""

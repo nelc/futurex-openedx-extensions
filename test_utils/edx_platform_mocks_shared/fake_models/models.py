@@ -341,3 +341,11 @@ class SAMLProviderConfig(ConfigurationModel):  # pylint: disable=feature-toggle-
     class Meta:
         app_label = 'fake_models'
         db_table = 'third_party_auth_samlproviderconfig'
+
+
+class Aggregator(models.Model):
+    """Mock"""
+    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
+    course_key = CourseKeyField(max_length=255)
+    aggregation_name = models.CharField(max_length=255)
+    percent = models.FloatField()
