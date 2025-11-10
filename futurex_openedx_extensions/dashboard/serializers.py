@@ -52,6 +52,7 @@ from futurex_openedx_extensions.helpers.converters import (
     dt_to_str,
     relative_url_to_absolute_url,
 )
+from futurex_openedx_extensions.helpers.course_categories import CourseCategories
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_csv import get_exported_file_url
 from futurex_openedx_extensions.helpers.extractors import (
@@ -605,13 +606,14 @@ class CourseDetailsBaseSerializer(serializers.ModelSerializer):
         return dt_to_str(obj.end)
 
 
-class CourseDetailsSerializer(CourseDetailsBaseSerializer):
+class CourseDetailsSerializer(ModelSerializerOptionalFields, CourseDetailsBaseSerializer):
     """Serializer for course details."""
     rating = serializers.SerializerMethodField()
     enrolled_count = serializers.IntegerField()
     active_count = serializers.IntegerField()
     certificates_count = serializers.IntegerField()
     completion_rate = serializers.FloatField()
+    categories = SerializerOptionalMethodField(field_tags=['categories'])
 
     class Meta:
         model = CourseOverview
@@ -621,11 +623,35 @@ class CourseDetailsSerializer(CourseDetailsBaseSerializer):
             'active_count',
             'certificates_count',
             'completion_rate',
+            'categories',
         ]
+
+    def __init__(self, instance=None, data=empty, **kwargs):
+        """Initialize the serializer."""
+        super().__init__(instance, data, **kwargs)
+        self._tenant_categories = {}
+
+    def get_tenant_categories(self, obj: CourseOverview) -> Any:
+        """Return the tenant categories."""
+        tenant_id = get_org_to_tenant_map().get(obj.org.lower(), [None])[0]
+
+        if not tenant_id:
+            return None
+        if tenant_id not in self._tenant_categories:
+            self._tenant_categories[tenant_id] = CourseCategories(tenant_id)
+
+        return self._tenant_categories[tenant_id]
 
     def get_rating(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """Return the course rating."""
         return round(obj.rating_total / obj.rating_count if obj.rating_count else 0, 1)
+
+    def get_categories(self, obj: CourseOverview) -> Any:
+        """Return the course categories."""
+        tenant_categories = self.get_tenant_categories(obj)
+        if not tenant_categories:
+            return []
+        return tenant_categories.get_categories_for_course(str(obj.id)).keys()
 
 
 class CourseCreateSerializer(serializers.Serializer):

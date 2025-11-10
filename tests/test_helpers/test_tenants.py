@@ -1,9 +1,11 @@
 """Tests for tenants helpers."""
 # pylint: disable=too-many-lines
+from typing import OrderedDict
 from unittest.mock import ANY, MagicMock, Mock, patch
 
 import pytest
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
+from deepdiff import DeepDiff
 from django.conf import settings
 from django.contrib.sites.models import Site
 from django.core.cache import cache
@@ -1056,3 +1058,111 @@ def test_set_request_domain_by_org_sets_first_site():
         tenants.set_request_domain_by_org(the_request, org)
         mock_site_get.assert_called_once_with(domain='s1.sample.com')
         assert the_request.site.domain == 's1.sample.com'
+
+
+@patch('futurex_openedx_extensions.helpers.tenants.get_tenant_config')
+def test_get_tenant_config_value_success(mock_get_tenant_config):
+    """Verify get_tenant_config_value returns the correct value when key exists."""
+    mock_get_tenant_config.return_value = {
+        'values': {
+            'desired_key': 'expected_value',
+            'other_key': 'other_value',
+        },
+        'bad_keys': [],
+        'not_permitted': [],
+    }
+
+    result = tenants.get_tenant_config_value(tenant_id=1, config_key='desired_key')
+    assert result == 'expected_value'
+    mock_get_tenant_config.assert_called_once_with(tenant_id=1, keys=['desired_key'], published_only=True)
+
+
+@patch('futurex_openedx_extensions.helpers.tenants.get_tenant_config')
+def test_get_tenant_config_value_key_not_found(mock_get_tenant_config):
+    """Verify get_tenant_config_value raises exception when key does not exist."""
+    mock_get_tenant_config.return_value = {
+        'values': {
+            'other_key': 'other_value',
+        },
+        'bad_keys': ['desired_key'],
+        'not_permitted': [],
+    }
+
+    with pytest.raises(FXCodedException) as exc_info:
+        tenants.get_tenant_config_value(tenant_id=1, config_key='desired_key')
+
+    assert exc_info.value.code == FXExceptionCodes.CONFIG_KEY_NOT_FOUND.value
+    assert str(exc_info.value) == 'Config key (desired_key) not found for tenant id: 1'
+    mock_get_tenant_config.assert_called_once_with(tenant_id=1, keys=['desired_key'], published_only=True)
+
+
+@patch('futurex_openedx_extensions.helpers.tenants.get_tenant_config')
+def test_get_tenant_config_value_not_permitted(mock_get_tenant_config):
+    """Verify get_tenant_config_value raises exception when key is not permitted."""
+    mock_get_tenant_config.return_value = {
+        'values': {},
+        'bad_keys': [],
+        'not_permitted': ['restricted_key'],
+    }
+
+    with pytest.raises(FXCodedException) as exc_info:
+        tenants.get_tenant_config_value(tenant_id=1, config_key='restricted_key')
+
+    assert exc_info.value.code == FXExceptionCodes.CONFIG_KEY_NOT_PERMITTED.value
+    assert str(exc_info.value) == 'Config key (restricted_key) not permitted for tenant id: 1'
+    mock_get_tenant_config.assert_called_once_with(tenant_id=1, keys=['restricted_key'], published_only=True)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control')
+def test_set_tenant_config_value_success(mock_access, base_data):  # pylint: disable=unused-argument
+    """Verify set_tenant_config_value works correctly as expected."""
+    config_key = 'test_key'
+    mock_access.return_value = {
+        config_key: {'path': 'test_path.test_path2'},
+    }
+    tenant = TenantConfig.objects.get(id=1)
+    tenant.lms_configs = {
+        'some_key': 'something',
+        'test_path': 'not a dictionary. should be forced to dictionary when setting the value.',
+    }
+    tenant.save()
+
+    new_value = {
+        'sub_key1': 'value1',
+        'sub_key2': 2,
+    }
+    tenants.set_tenant_config_value(tenant_id=1, config_key=config_key, value=new_value)
+
+    tenant.refresh_from_db()
+    assert not DeepDiff(
+        tenant.lms_configs,
+        {'some_key': 'something', 'test_path': {'test_path2': new_value}},
+        ignore_type_in_groups=[(dict, OrderedDict)],
+    )
+
+
+@pytest.mark.django_db
+def test_set_tenant_config_value_tenant_not_found(base_data):  # pylint: disable=unused-argument
+    """Verify set_tenant_config_value raises exception when tenant is not found."""
+    with pytest.raises(FXCodedException) as exc_info:
+        tenants.set_tenant_config_value(tenant_id=999, config_key='dummy', value='dummy')
+
+    assert exc_info.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
+    assert str(exc_info.value) == 'Unable to find tenant with id: 999'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control')
+def test_set_tenant_config_value_key_not_found(mock_access, base_data):  # pylint: disable=unused-argument
+    """Verify set_tenant_config_value raises exception when key is not found."""
+    config_key = 'non_existent_key'
+    mock_access.return_value = {
+        'some_other_key': {'path': 'some.path'},
+    }
+
+    with pytest.raises(FXCodedException) as exc_info:
+        tenants.set_tenant_config_value(tenant_id=1, config_key=config_key, value='new_value')
+
+    assert exc_info.value.code == FXExceptionCodes.CONFIG_KEY_NOT_FOUND.value
+    assert str(exc_info.value) == f'Config key ({config_key}) not found for tenant id: 1'

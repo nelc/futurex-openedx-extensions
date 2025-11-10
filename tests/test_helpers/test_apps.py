@@ -28,6 +28,8 @@ helpers_default_settings = [
             'external_id_extractor': 'path to function to be extracted using extractors.import_from_path'
         },
     }),
+    ('FX_COURSE_CATEGORY_CONFIG_KEY', 'course_categories'),
+    ('FX_COURSE_CATEGORY_NAME_MAX_LENGTH', 20),
 ]
 
 
