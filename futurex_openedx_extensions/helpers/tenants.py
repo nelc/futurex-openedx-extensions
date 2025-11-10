@@ -540,6 +540,68 @@ def get_tenant_config(tenant_id: int, keys: List[str], published_only: bool = Tr
     return details
 
 
+def get_tenant_config_value(tenant_id: int, config_key: str) -> Any:
+    """
+    Get a tenant configuration value.
+
+    :param tenant_id: The ID of the tenant.
+    :type tenant_id: int
+    :param config_key: The configuration key to retrieve.
+    :type config_key: str
+    :return: The configuration value.
+    rtype: Any
+    :raises FXCodedException: If the tenant or config key is not found.
+    """
+    result = get_tenant_config(tenant_id=tenant_id, keys=[config_key], published_only=True)
+
+    if config_key in result['not_permitted']:
+        raise FXCodedException(
+            code=FXExceptionCodes.CONFIG_KEY_NOT_PERMITTED,
+            message=f'Config key ({config_key}) not permitted for tenant id: {tenant_id}'
+        )
+
+    if config_key not in result['values']:
+        raise FXCodedException(
+            code=FXExceptionCodes.CONFIG_KEY_NOT_FOUND,
+            message=f'Config key ({config_key}) not found for tenant id: {tenant_id}'
+        )
+
+    return result['values'][config_key]
+
+
+def set_tenant_config_value(tenant_id: int, config_key: str, value: Any) -> None:
+    """
+    Set a tenant configuration value.
+
+    :param tenant_id: The ID of the tenant.
+    :type tenant_id: int
+    :param config_key: The configuration key to set.
+    :type config_key: str
+    :param value: The value to set.
+    :type value: Any
+    """
+    with transaction.atomic():
+        try:
+            tenant = TenantConfig.objects.select_for_update().get(id=tenant_id)
+        except TenantConfig.DoesNotExist as exc:
+            raise FXCodedException(
+                code=FXExceptionCodes.TENANT_NOT_FOUND,
+                message=f'Unable to find tenant with id: {tenant_id}',
+            ) from exc
+
+        config_path = get_config_access_control().get(config_key, {}).get('path')
+        if not config_path:
+            raise FXCodedException(
+                code=FXExceptionCodes.CONFIG_KEY_NOT_FOUND,
+                message=f'Config key ({config_key}) not found for tenant id: {tenant_id}',
+            )
+        lms_configs = copy.deepcopy(tenant.lms_configs)
+        dot_separated_path_force_set_value(lms_configs, config_path, value)
+        tenant.lms_configs = lms_configs
+        tenant.save()
+        invalidate_cache(cache_name_tenant_readable_lms_configs(tenant_id))
+
+
 def get_config_current_request(keys: List[str]) -> dict | None:
     """
     Retrieve tenant configuration details for the given request.
