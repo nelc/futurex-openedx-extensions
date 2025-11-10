@@ -27,6 +27,22 @@ urlpatterns = [
     re_path(r'^api/fx/courses/v1/courses/$', views.CoursesView.as_view(), name='courses'),
     re_path(r'^api/fx/libraries/v1/libraries/$', views.LibraryView.as_view(), name='libraries'),
     re_path(r'^api/fx/courses/v1/feedback/$', views.CoursesFeedbackView.as_view(), name='courses-feedback'),
+    re_path(r'^api/fx/courses/v1/categories/$', views.CategoriesView.as_view(), name='courses-categories'),
+    re_path(
+        r'^api/fx/courses/v1/categories/(?P<category_id>[^/]+)/$',
+        views.CategoryDetailView.as_view(),
+        name='courses-category-detail',
+    ),
+    re_path(
+        r'^api/fx/courses/v1/categories_order/$',
+        views.CategoriesOrderView.as_view(),
+        name='courses-categories-order',
+    ),
+    re_path(
+        fr'^api/fx/courses/v1/course_categories/{COURSE_ID_REGX}/$',
+        views.CourseCategoriesView.as_view(),
+        name='courses-course-categories',
+    ),
 
     re_path(r'^api/fx/export/v1/', include(export_router.urls)),
     re_path(r'^api/fx/learners/v1/learners/$', views.LearnersView.as_view(), name='learners'),

@@ -90,3 +90,17 @@ def plugin_settings(settings: Any) -> None:
         'FX_TENANTS_BASE_DOMAIN',
         'nelp.gov.sa',
     )
+
+    # Course Categories Key
+    settings.FX_COURSE_CATEGORY_CONFIG_KEY = getattr(
+        settings,
+        'FX_COURSE_CATEGORY_CONFIG_KEY',
+        'course_categories',
+    )
+
+    # Course Category Name Max Length
+    settings.FX_COURSE_CATEGORY_MAX_COUNT = getattr(
+        settings,
+        'FX_COURSE_CATEGORY_MAX_COUNT',
+        20,
+    )
