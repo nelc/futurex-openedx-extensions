@@ -6,7 +6,7 @@ from celery import shared_task
 from celery_utils.logged_task import LoggedTask
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
-from futurex_openedx_extensions.helpers.export_csv import export_data_to_csv
+from futurex_openedx_extensions.helpers.export_csv import export_data_to_csv, log_export_task
 from futurex_openedx_extensions.helpers.models import DataExportTask
 
 log = logging.getLogger(__name__)
@@ -35,7 +35,8 @@ def export_data_to_csv_task(
                     'query_params', 'kwargs', 'path', 'start_page', 'end_page', 'site_domain'
                 ]
             }
-            export_data_to_csv_task.delay(fx_task_id, url, next_view_data, fx_permission_info, filename)
+            async_task = export_data_to_csv_task.delay(fx_task_id, url, next_view_data, fx_permission_info, filename)
+            log_export_task(fx_task_id, async_task, continue_job=True)
 
     except FXCodedException as exc:
         if exc.code == FXExceptionCodes.EXPORT_CSV_TASK_NOT_FOUND.value:

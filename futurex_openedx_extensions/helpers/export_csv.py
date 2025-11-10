@@ -368,3 +368,24 @@ def get_exported_file_url(fx_task: DataExportTask) -> Optional[str]:
             return generate_file_url(storage_path)
         log.warning('CSV Export: file not found for completed task %s: %s', fx_task.id, storage_path)
     return None
+
+
+def log_export_task(fx_task_id: int, async_task: Any, continue_job: bool = False) -> None:
+    """Log export task details"""
+    msg = 'continuation' if continue_job else 'initial'
+    if async_task.status != 'FAILURE':
+        log.info(
+            'CSV Export: %s task %s scheduled as celery task %s. Now [%s]',
+            msg,
+            fx_task_id,
+            async_task.id,
+            async_task.status,
+        )
+    else:
+        log.error(
+            'CSV Export: %s task %s scheduling failed as celery task %s. Error: %s',
+            msg,
+            fx_task_id,
+            async_task.id,
+            str(async_task.result),
+        )
