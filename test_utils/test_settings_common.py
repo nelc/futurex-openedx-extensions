@@ -36,6 +36,7 @@ INSTALLED_APPS = (
     'futurex_openedx_extensions.helpers',
     'eox_tenant',
     'common',
+    'completion_aggregator',
     'fake_models',
     'openedx',
     'organizations',

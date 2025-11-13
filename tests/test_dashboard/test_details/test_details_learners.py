@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from common.djangoapps.student.models import CourseEnrollment
+from completion_aggregator.models import Aggregator
 from django.contrib.auth import get_user_model
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
@@ -319,7 +320,7 @@ def test_get_learners_enrollments_queryset_for_course_and_user_filters(
     fx_permission_info['view_allowed_full_access_orgs'] = ['org1', 'org2']
     if expected_error:
         with pytest.raises(FXCodedException) as exc_info:
-            queryset = get_learners_enrollments_queryset(
+            get_learners_enrollments_queryset(
                 fx_permission_info=fx_permission_info,
                 course_ids=filter_course_ids,
                 user_ids=filter_user_ids,
@@ -334,3 +335,57 @@ def test_get_learners_enrollments_queryset_for_course_and_user_filters(
             usernames=filter_usernames,
         )
         assert queryset.count() == expected_count, f'unexpected enrollment queryset count for case: {usecase}'
+
+
+@pytest.mark.django_db
+def test_get_learners_enrollments_queryset_default_progress(
+    base_data, fx_permission_info,
+):  # pylint: disable=unused-argument
+    """Verify default progress annotation is -1 when progress_filter is disabled."""
+    queryset = get_learners_enrollments_queryset(
+        fx_permission_info=fx_permission_info,
+        course_ids=['course-v1:ORG1+5+5'],
+        user_ids=[15],
+    )
+    assert queryset.count() == 1, 'unexpected test data count for default progress'
+    enrollment = queryset[0]
+    assert enrollment.progress == -1, 'progress should be -1 when no progress_filter is applied'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'progress_filter, aggregator_percent, expected_count, test_case',
+    [
+        ((0.5, -1), 0.67, 1, 'only min bound should include enrollment'),
+        ((-1, 0.5), 0.67, 0, 'only max bound should exclude enrollment'),
+        ((0.5, 1.0), 0.67, 1, 'min and max bounds should include enrollment'),
+    ],
+)
+def test_get_learners_enrollments_queryset_progress_filter_bounds(
+    progress_filter, aggregator_percent, expected_count, test_case,
+    base_data, fx_permission_info,
+):  # pylint: disable=unused-argument, too-many-arguments
+    """Verify progress_filter applies lower and upper bounds correctly using Aggregator."""
+    user = get_user_model().objects.get(id=15)
+    course_id = 'course-v1:ORG1+5+5'
+
+    Aggregator.objects.create(
+        aggregation_name='course',
+        user=user,
+        course_key=course_id,
+        percent=aggregator_percent,
+    )
+
+    queryset = get_learners_enrollments_queryset(
+        fx_permission_info=fx_permission_info,
+        course_ids=[course_id],
+        user_ids=[user.id],
+        progress_filter=progress_filter,
+    )
+
+    assert queryset.count() == expected_count, f'unexpected count for case: {test_case}'
+    if expected_count == 1:
+        enrollment = queryset[0]
+        assert enrollment.progress == pytest.approx(
+            aggregator_percent,
+        ), f'progress should match Aggregator.percent for case: {test_case}'

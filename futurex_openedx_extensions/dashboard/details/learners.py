@@ -4,8 +4,21 @@ from __future__ import annotations
 from datetime import timedelta
 
 from common.djangoapps.student.models import CourseEnrollment
+from completion_aggregator.models import Aggregator
 from django.contrib.auth import get_user_model
-from django.db.models import BooleanField, Case, Count, Exists, IntegerField, OuterRef, Q, Subquery, Value, When
+from django.db.models import (
+    BooleanField,
+    Case,
+    Count,
+    Exists,
+    FloatField,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.utils import timezone
@@ -300,16 +313,20 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     learner_search: str | None = None,
     course_search: str | None = None,
     include_staff: bool = False,
+    progress_filter: tuple[float, float] = (-1, -1),
 ) -> QuerySet:
     """
     Get the enrollment details. If no course_ids or user_ids are provided,
     all relevant data will be processed.
 
+    :param fx_permission_info: Dictionary containing permission information.
     :param course_ids: List of course IDs to filter by (optional).
     :param user_ids: List of user IDs to filter by (optional).
+    :param usernames: List of usernames to filter by (optional).
     :param learner_search: Text to search enrollments by user (username, email or national_id) (optional).
-    :param course_search: Text to search enrollments by course (dispaly name, id) (optional).
+    :param course_search: Text to search enrollments by course (display name, id) (optional).
     :param include_staff: Flag to include staff users (default: False).
+    :param progress_filter: Tuple containing min and max progress percentage to filter by. -1 means no filter.
     :return: List of dictionaries containing user and course details.
     """
     accessible_users = get_permitted_learners_queryset(
@@ -365,6 +382,35 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
         )
     ).select_related('user', 'user__profile')
 
-    update_removable_annotations(queryset, removable=['certificate_available', 'course_score', 'active_in_course'])
+    progress_filter_qs = Q()
+    if progress_filter[0] > 0:
+        progress_filter_qs = Q(
+            progress__gte=progress_filter[0],
+        )
+    if progress_filter[1] > 0:
+        progress_filter_qs &= Q(
+            Q(progress__lte=progress_filter[1]) | Q(progress__isnull=True),
+        )
+
+    if progress_filter_qs != Q():
+        queryset = queryset.annotate(
+            progress=Subquery(
+                Aggregator.objects.filter(
+                    user=OuterRef('user'),
+                    course_key=OuterRef('course_id'),
+                ).order_by().values('percent')[:1],
+                output_field=FloatField()
+            )
+        ).filter(
+            progress_filter_qs
+        )
+    else:
+        queryset = queryset.annotate(
+            progress=Value(-1, output_field=FloatField())
+        )
+
+    update_removable_annotations(queryset, removable=[
+        'certificate_available', 'course_score', 'active_in_course', 'progress',
+    ])
 
     return queryset

@@ -923,11 +923,60 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     fx_view_description = 'api/fx/learners/v1/enrollments: Get the list of enrollments'
     is_single_course_requested = False
 
+    @staticmethod
+    def validate_progress_range(progress_min_str: str, progress_max_str: str) -> tuple[float, float]:
+        """
+        Validates that the input strings from query parameters are valid float numbers between 0 and 100.
+
+        :param progress_min_str: The minimum progress value as a string
+        :param progress_max_str: The maximum progress value as a string
+        :return: Tuple of (min_progress, max_progress) as floats
+        :raises: FXCodedException if validation fails
+        """
+        def raise_error(var_name: str) -> None:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'{var_name} must be a valid number between 0.0 and 1.0 (inclusive). Or a negative value'
+                        ' to ignore it.'
+            )
+
+        min_progress: float = -1
+        max_progress: float = -1
+
+        try:
+            min_progress = float(progress_min_str or -1)
+        except ValueError:
+            raise_error('progress_min')
+
+        if min_progress > 1:
+            raise_error('progress_min')
+
+        try:
+            max_progress = float(progress_max_str or -1)
+        except ValueError:
+            raise_error('progress_max')
+
+        if max_progress > 1:
+            raise_error('progress_max')
+
+        if min_progress >= 0 and 0 <= max_progress < min_progress:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message='progress_min cannot be greater than progress_max.'
+            )
+
+        return min_progress, max_progress
+
     def get_queryset(self, *args: Any, **kwargs: Any) -> QuerySet:
         """Get the list of learners for a course"""
         course_ids = self.request.query_params.get('course_ids', '')
         user_ids = self.request.query_params.get('user_ids', '')
         usernames = self.request.query_params.get('usernames', '')
+
+        progress_min_str = self.request.query_params.get('progress_min', '-1')
+        progress_max__str = self.request.query_params.get('progress_max', '-1')
+        progress_min, progress_max = self.validate_progress_range(progress_min_str, progress_max__str)
+
         course_ids_list = [
             course.strip() for course in course_ids.split(',')
         ] if course_ids else None
@@ -949,6 +998,7 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             learner_search=self.request.query_params.get('learner_search'),
             course_search=self.request.query_params.get('course_search'),
             include_staff=self.request.query_params.get('include_staff', '0') == '1',
+            progress_filter=(progress_min, progress_max),
         )
 
     def get_serializer_context(self) -> Dict[str, Any]:

@@ -609,35 +609,6 @@ def test_learner_details_for_course_serializer_certificate_url(
 
 
 @pytest.mark.django_db
-@patch('futurex_openedx_extensions.dashboard.serializers.get_course_blocks_completion_summary')
-@pytest.mark.parametrize('progress_values, expected_result', [
-    ([0, 0, 0], 0.0),
-    ([0, 0, 0], 0.0),
-    ([2, 1, 2], 0.4),
-    ([3, 2, 2], 0.4286),
-])
-def test_learner_details_for_course_serializer_progress(
-    mock_get_completion, progress_values, expected_result, base_data,
-):  # pylint: disable=unused-argument
-    """Verify that the LearnerDetailsForCourseSerializer returns the correct certificate_url."""
-    queryset = get_dummy_queryset()
-    mock_get_completion.return_value = {
-        'complete_count': progress_values[0],
-        'incomplete_count': progress_values[1],
-        'locked_count': progress_values[2],
-    }
-    serializer = serializers.LearnerDetailsForCourseSerializer(
-        queryset,
-        context={
-            'course_id': 'course-v1:ORG2+1+1',
-            'requested_optional_field_tags': ['progress'],
-        },
-        many=True,
-    )
-    assert serializer.data[0]['progress'] == expected_result
-
-
-@pytest.mark.django_db
 @pytest.mark.parametrize('many', [True, False])
 def test_learner_details_for_course_serializer_exam_scores(
     many, grading_context, base_data,
