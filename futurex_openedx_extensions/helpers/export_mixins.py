@@ -2,6 +2,7 @@
 This module contains a mixin for exporting data to CSV format and related helpers.
 """
 import copy
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -12,10 +13,13 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from futurex_openedx_extensions.helpers.constants import CSV_TASK_LIMIT_PER_USER as TASK_LIMIT
+from futurex_openedx_extensions.helpers.export_csv import log_export_task
 from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.tasks import export_data_to_csv_task
 
 User = get_user_model()
+
+log = logging.getLogger(__name__)
 
 
 class ExportCSVMixin:
@@ -81,7 +85,10 @@ class ExportCSVMixin:
             tenant=TenantConfig.objects.get(id=tenant_id),
             related_id=self.get_related_id()  # type: ignore[func-returns-value]
         )
-        export_data_to_csv_task.delay(fx_task.id, view_url, view_data, fx_permission_info, exported_filename)
+        async_task = export_data_to_csv_task.delay(
+            fx_task.id, view_url, view_data, fx_permission_info, exported_filename,
+        )
+        log_export_task(fx_task.id, async_task)
         return {
             'success': f'Task initiated successfully with id: {fx_task.id}',
             'export_task_id': fx_task.id
@@ -123,7 +130,7 @@ class ExportCSVMixin:
 
             if self.get_existing_incompleted_task_count() >= TASK_LIMIT:
                 return Response(
-                    {'detail': 'CSV task limit reached. User can only run up to {TASK_LIMIT} tasks simultaneously.'},
+                    {'detail': f'CSV task limit reached. User can only run up to {TASK_LIMIT} tasks simultaneously.'},
                     status=http_status.HTTP_429_TOO_MANY_REQUESTS
                 )
 

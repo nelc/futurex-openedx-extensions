@@ -27,6 +27,7 @@ from futurex_openedx_extensions.helpers.export_csv import (
     export_data_to_csv,
     generate_file_url,
     get_exported_file_url,
+    log_export_task,
 )
 from futurex_openedx_extensions.helpers.models import DataExportTask
 
@@ -715,3 +716,35 @@ def test_combine_partial_files_success(
             mock_os_remove.assert_called_once_with(temp_file.name)
 
     assert not os_rm_failure or 'CSV Export: failed to remove temporary combined file for task' in caplog.text
+
+
+@pytest.mark.parametrize(
+    'status,continue_job,expected_log_method,expected_msg_part,test_case',
+    [
+        ('PENDING', False, 'info', 'initial', 'non-failure initial'),
+        ('SUCCESS', True, 'info', 'continuation', 'non-failure continuation'),
+        ('FAILURE', False, 'error', 'initial', 'failure initial'),
+        ('FAILURE', True, 'error', 'continuation', 'failure continuation'),
+    ],
+)
+def test_log_export_task_logs_correctly(status, continue_job, expected_log_method, expected_msg_part, test_case):
+    """Verify log_export_task logs correct message and uses correct log level depending on task status."""
+    async_task = MagicMock()
+    async_task.status = status
+    async_task.id = 'abc123'
+    async_task.result = Exception('boom')
+
+    with patch('futurex_openedx_extensions.helpers.export_csv.log') as mock_log:
+        log_export_task(42, async_task, continue_job=continue_job)
+
+    if expected_log_method == 'info':
+        mock_log.info.assert_called_once()
+        mock_log.error.assert_not_called()
+        args, _ = mock_log.info.call_args
+        assert str(async_task.status) in args, test_case
+    else:
+        mock_log.error.assert_called_once()
+        mock_log.info.assert_not_called()
+        args, _ = mock_log.error.call_args
+        assert 'boom' in args[4], test_case
+    assert expected_msg_part in args[1], test_case
