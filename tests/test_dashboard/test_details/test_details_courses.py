@@ -12,6 +12,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 
 from futurex_openedx_extensions.dashboard.details.courses import (
     annotate_courses_rating_queryset,
+    get_courses_orders_queryset,
     get_courses_queryset,
     get_learner_courses_info_queryset,
 )
@@ -224,3 +225,71 @@ def test_get_learner_courses_info_queryset_not_permitted(
         get_learner_courses_info_queryset(fx_permission_info, user_id)
     assert exc_info.value.code == FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value
     assert str(exc_info.value) == 'error!'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.details.courses.get_orders_queryset')
+@patch('futurex_openedx_extensions.dashboard.details.courses.get_accessible_users_and_courses')
+def test_get_courses_orders_queryset(  # pylint: disable=too-many-locals
+    mock_get_users_and_courses,
+    mock_get_orders_queryset,
+):
+    """Verify that get_courses_orders_queryset calls dependencies with correct params"""
+    fx_permission_info = {'tenant_id': 'tenant_123'}
+    user_ids = [1, 2]
+    course_ids = ['course-v1:Demo+T101+2025']
+    usernames = ['alice', 'bob']
+    learner_search = 'alice'
+    course_search = 'Demo'
+    sku_search = 'SKU-123'
+    include_staff = True
+    include_invoice = True
+    include_user_details = True
+    status = 'paid'
+    item_type = 'paid_course'
+    mock_accessible_users = Mock(name='UsersQS')
+    mock_accessible_courses = Mock(name='CoursesQS')
+    mock_get_users_and_courses.return_value = (
+        mock_accessible_users,
+        mock_accessible_courses,
+    )
+    mock_orders_qs = Mock(name='OrdersQS')
+    mock_get_orders_queryset.return_value = mock_orders_qs
+
+    result = get_courses_orders_queryset(
+        fx_permission_info=fx_permission_info,
+        course_ids=course_ids,
+        usernames=usernames,
+        sku_search=sku_search,
+        include_staff=include_staff,
+        course_search=course_search,
+        include_invoice=include_invoice,
+        include_user_details=include_user_details,
+        status=status,
+        user_ids=user_ids,
+        item_type=item_type,
+        learner_search=learner_search,
+    )
+
+    mock_get_users_and_courses.assert_called_once_with(
+        fx_permission_info=fx_permission_info,
+        course_ids=course_ids,
+        learner_search=learner_search,
+        usernames=usernames,
+        course_search=course_search,
+        include_staff=include_staff,
+        user_ids=user_ids,
+
+    )
+
+    mock_get_orders_queryset.assert_called_once_with(
+        filtered_courses_qs=mock_accessible_courses,
+        filtered_users_qs=mock_accessible_users,
+        sku_search=sku_search,
+        status=status,
+        item_type=item_type,
+        include_invoice=include_invoice,
+        include_user_details=include_user_details,
+    )
+
+    assert result == mock_orders_qs
