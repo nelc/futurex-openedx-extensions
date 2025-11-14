@@ -45,11 +45,8 @@ def sample_clickhouse_query():
 
 
 @pytest.fixture
-def get_client_mock(settings):
+def get_client_mock():
     """Mock clickhouse_get_client."""
-    settings.FX_CLICKHOUSE_USER = 'user'
-    settings.FX_CLICKHOUSE_PASSWORD = 'password'
-
     with patch('futurex_openedx_extensions.helpers.clickhouse_operations.clickhouse_get_client') as mocked:
         mocked.return_value = Mock(
             dummy_client=1,

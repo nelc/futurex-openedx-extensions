@@ -40,13 +40,17 @@ def get_client() -> Client:
     :rtype: Client
     """
     try:
-        username = settings.FX_CLICKHOUSE_USER
-        password = settings.FX_CLICKHOUSE_PASSWORD
+        clickhouse_username = settings.FX_CLICKHOUSE_USER
+        clickhouse_password = settings.FX_CLICKHOUSE_PASSWORD
+        clickhouse_hostname = settings.FX_CLICKHOUSE_HOSTNAME
+        clickhouse_port = settings.FX_CLICKHOUSE_PORT
     except AttributeError as exc:
         raise ClickhouseClientNotConfiguredError(f'Error getting Clickhouse credentials: {exc}') from exc
 
     try:
-        client = clickhouse_get_client(host='clickhouse', port=8123, username=username, password=password)
+        client = clickhouse_get_client(
+            host=clickhouse_hostname, port=clickhouse_port, username=clickhouse_username, password=clickhouse_password,
+        )
     except Exception as exc:
         raise ClickhouseClientConnectionError(f'Error getting Clickhouse client: {exc}') from exc
 
