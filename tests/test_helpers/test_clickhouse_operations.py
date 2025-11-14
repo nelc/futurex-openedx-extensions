@@ -10,11 +10,8 @@ SIMPLE_QUERY = 'SELECT * FROM table'
 
 
 @pytest.fixture
-def get_client_mock(settings):
+def get_client_mock():
     """Mock clickhouse_get_client."""
-    settings.FX_CLICKHOUSE_USER = 'user'
-    settings.FX_CLICKHOUSE_PASSWORD = 'password'
-
     with patch('futurex_openedx_extensions.helpers.clickhouse_operations.clickhouse_get_client') as mocked:
         mocked.return_value = Mock(dummy_client=1)
         yield mocked
@@ -29,20 +26,20 @@ def test_get_client(get_client_mock):  # pylint: disable=redefined-outer-name
     get_client_mock.assert_called_once()
 
 
-def test_get_client_user_settings_not_configured(get_client_mock, settings):  # pylint: disable=redefined-outer-name
-    """Verify that get_client raises ClickhouseClientNotConfiguredError when user settings are not configured."""
+@pytest.mark.parametrize('setting_to_delete, test_case', [
+    ('FX_CLICKHOUSE_USER', 'Missing user setting'),
+    ('FX_CLICKHOUSE_PASSWORD', 'Missing password setting'),
+    ('FX_CLICKHOUSE_HOSTNAME', 'Missing hostname setting'),
+    ('FX_CLICKHOUSE_PORT', 'Missing port setting'),
+])
+def test_get_client_settings_not_configured(
+    get_client_mock, settings, setting_to_delete, test_case,
+):  # pylint: disable=redefined-outer-name
+    """Verify that get_client raises ClickhouseClientNotConfiguredError when required settings are not configured."""
+    delattr(settings, setting_to_delete)
     with pytest.raises(ch.ClickhouseClientNotConfiguredError):
-        del settings.FX_CLICKHOUSE_USER
         ch.get_client()
-    get_client_mock.assert_not_called()
-
-
-def test_get_client_password_settings_not_configured(get_client_mock, settings):  # pylint: disable=redefined-outer-name
-    """Verify that get_client raises ClickhouseClientNotConfiguredError when password settings are not configured."""
-    with pytest.raises(ch.ClickhouseClientNotConfiguredError):
-        del settings.FX_CLICKHOUSE_PASSWORD
-        ch.get_client()
-    get_client_mock.assert_not_called()
+    assert get_client_mock.call_count == 0, test_case
 
 
 def test_get_client_failed_to_connect(get_client_mock):  # pylint: disable=redefined-outer-name
