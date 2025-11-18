@@ -988,7 +988,7 @@ class ConfigMirror(models.Model):
         super().save(*args, **kwargs)
 
     @classmethod
-    def sync_tenant(cls, tenant_id: int) -> None:
+    def sync_tenant_by_id(cls, tenant_id: int) -> None:
         """
         Synchronize the configuration mirrors for the given tenant.
 
@@ -1002,6 +1002,19 @@ class ConfigMirror(models.Model):
                 message=f'Tenant with ID {tenant_id} not found.'
             )
 
+        with transaction.atomic():
+            cls.sync_tenant(tenant)
+
+    @classmethod
+    def sync_tenant(cls, tenant: TenantConfig) -> None:
+        """
+        Synchronize the configuration mirrors for the given tenant.
+
+        Important: The call to this method should be wrapped in a transaction to ensure data integrity.
+
+        :param tenant: The tenant to synchronize.
+        :type tenant: TenantConfig
+        """
         records = cls.get_active_records()
         for record in records:
             exists, source_value = dot_separated_path_get_value(tenant.lms_configs, record.source_path)
@@ -1020,5 +1033,5 @@ class ConfigMirror(models.Model):
                 getattr(record, method_name)(configs=tenant.lms_configs)
 
         tenant.save()
-        invalidate_tenant_readable_lms_configs([tenant_id])
+        invalidate_tenant_readable_lms_configs([tenant.id])
         invalidate_cache()

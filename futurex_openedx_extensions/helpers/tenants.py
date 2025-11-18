@@ -695,16 +695,17 @@ def publish_tenant_config(tenant_id: int) -> None:
     """
     config_paths = list(DraftConfig.objects.filter(tenant_id=tenant_id).values_list('config_path', flat=True))
     if not config_paths:
-        ConfigMirror.sync_tenant(tenant_id=tenant_id)
+        ConfigMirror.sync_tenant_by_id(tenant_id=tenant_id)
         return
 
-    tenant_config = TenantConfig.objects.get(id=tenant_id)
-    lms_configs = copy.deepcopy(tenant_config.lms_configs)
-    DraftConfig.loads_into(tenant_id=tenant_id, config_paths=config_paths, dest=lms_configs)
-    tenant_config.lms_configs = lms_configs
-    tenant_config.save()
-    delete_draft_tenant_config(tenant_id)
-    ConfigMirror.sync_tenant(tenant_id=tenant_id)
+    with transaction.atomic():
+        tenant = TenantConfig.objects.select_for_update().get(id=tenant_id)
+        lms_configs = copy.deepcopy(tenant.lms_configs)
+        DraftConfig.loads_into(tenant_id=tenant_id, config_paths=config_paths, dest=lms_configs)
+        tenant.lms_configs = lms_configs
+        tenant.save()
+        delete_draft_tenant_config(tenant_id)
+        ConfigMirror.sync_tenant(tenant=tenant)
 
 
 def get_accessible_config_keys(
