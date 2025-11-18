@@ -35,6 +35,7 @@ from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import (
     LearnersEnrollmentView,
     ThemeConfigDraftView,
+    ThemeConfigPublishView,
     UserRolesManagementView,
 )
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
@@ -2778,6 +2779,15 @@ class TestThemeConfigPublishView(DraftConfigDataMixin, BaseTestViewMixin):
         }, format='json')
         self.assertEqual(response.status_code, expected_status)
         self.assertEqual(response.data.get('reason'), expected_error)
+
+    def test_dispatch_is_non_atomic(self):
+        """Verify that the view has the correct dispatch method"""
+        dispatch_method = ThemeConfigPublishView.dispatch
+        is_non_atomic = getattr(dispatch_method, '_non_atomic_requests', False)
+        self.assertTrue(
+            is_non_atomic,
+            'dispatch method should be decorated with non_atomic_requests. atomic is used internally when needed'
+        )
 
 
 @ddt.ddt
