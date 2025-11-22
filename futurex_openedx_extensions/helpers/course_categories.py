@@ -272,3 +272,4 @@ class CourseCategories:
         to_remove = set(current_category_names) - set(category_names)
         for category_name in to_remove:
             self.categories[category_name]['courses'].remove(course_id)
+

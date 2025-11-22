@@ -103,7 +103,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_tenant_config,
     get_tenants_info,
     publish_tenant_config,
-    update_draft_tenant_config,
+    update_draft_tenant_config, get_tenants_by_org,
 )
 from futurex_openedx_extensions.helpers.upload import get_storage_dir, upload_file
 from futurex_openedx_extensions.helpers.users import get_user_by_key
@@ -1828,3 +1828,186 @@ class SetThemePreviewCookieView(APIView):
             return redirect(next_url)
 
         return render(request, template_name='set_theme_preview.html', context={'next_url': next_url})
+
+
+@docs('CategoriesView.get')
+@docs('CategoriesView.post')
+class CategoriesView(FXViewRoleInfoMixin, APIView):
+    """View to manage course categories"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    fx_view_name = 'categories_management'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_default_read_write_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_allowed_write_methods = ['POST']
+    fx_view_description = 'api/fx/courses/v1/categories/: Manage course categories'
+
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/courses/v1/categories/"""
+        tenant_id = self.verify_one_tenant_id_provided(request)
+        include_courses = 'courses' in request.query_params.get('optional_field_tags', '').split(',')
+
+        category_manager = CourseCategories(tenant_id, open_as_read_only=True)
+
+        result = []
+        for category_name in category_manager.sorting:
+            category_data = category_manager.get_category(category_name)
+            item = {
+                'id': category_name,
+                'label': category_data['label'],
+            }
+            if include_courses:
+                item['courses'] = category_data['courses']
+            result.append(item)
+
+        return Response(result)
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """POST /api/fx/courses/v1/categories/"""
+        serializer = serializers.CategorySerializer(data=request.data, context={'request': request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+        try:
+            category = serializer.save()
+            return Response(category, status=http_status.HTTP_201_CREATED)
+        except FXCodedException as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+
+@docs('CategoryDetailView.patch')
+@docs('CategoryDetailView.delete')
+class CategoryDetailView(FXViewRoleInfoMixin, APIView):
+    """View to manage individual category"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    fx_view_name = 'category_detail'
+    fx_default_read_write_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_allowed_write_methods = ['PATCH', 'DELETE']
+    fx_view_description = 'api/fx/courses/v1/categories/<category_id>/: Manage individual category'
+
+    def patch(self, request: Any, category_id: str, *args: Any, **kwargs: Any) -> Response:
+        """PATCH /api/fx/courses/v1/categories/<category_id>/"""
+        tenant_id = self.verify_one_tenant_id_provided(request)
+
+        serializer = serializers.CategoryUpdateSerializer(data=request.data, context={'request': request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+        try:
+            category_manager = CourseCategories(tenant_id, open_as_read_only=False)
+            category_manager.verify_category_name_exists(category_id)
+
+            if 'label' in serializer.validated_data:
+                category_manager.categories[category_id]['label'] = serializer.validated_data['label']
+
+            if 'courses' in serializer.validated_data:
+                category_manager.set_courses_for_category(category_id, serializer.validated_data['courses'])
+
+            category_manager.save()
+            return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+        except FXCodedException as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+    def delete(self, request: Any, category_id: str, *args: Any, **kwargs: Any) -> Response:
+        """DELETE /api/fx/courses/v1/categories/<category_id>/"""
+        tenant_id = self.verify_one_tenant_id_provided(request)
+
+        try:
+            category_manager = CourseCategories(tenant_id, open_as_read_only=False)
+            category_manager.remove_category(category_id)
+            category_manager.save()
+            return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+        except FXCodedException as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+
+@docs('CategoriesOrderView.post')
+class CategoriesOrderView(FXViewRoleInfoMixin, APIView):
+    """View to update categories order"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    fx_view_name = 'categories_order'
+    fx_default_read_write_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_allowed_write_methods = ['POST']
+    fx_view_description = 'api/fx/courses/v1/categories_order/: Update categories order'
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """POST /api/fx/courses/v1/categories_order/"""
+        serializer = serializers.CategoriesOrderSerializer(data=request.data, context={'request': request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+        try:
+            tenant_id = serializer.validated_data['tenant_id']
+            categories = serializer.validated_data['categories']
+
+            category_manager = CourseCategories(tenant_id, open_as_read_only=False)
+            category_manager.set_categories_sorting(categories)
+            category_manager.save()
+
+            return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+        except FXCodedException as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+
+@docs('CourseCategoriesView.put')
+class CourseCategoriesView(FXViewRoleInfoMixin, APIView):
+    """View to assign categories to a course"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    fx_view_name = 'course_categories'
+    fx_default_read_write_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_allowed_write_methods = ['PUT']
+    fx_view_description = 'api/fx/courses/v1/course_categories/<course_id>/: Assign categories to a course'
+
+    def put(self, request: Any, course_id: str, *args: Any, **kwargs: Any) -> Response:
+        """PUT /api/fx/courses/v1/course_categories/<course_id>/"""
+        serializer = serializers.CourseCategoriesSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+        try:
+            course_org = course_id.split(':')[1].split('+')[0] if ':' in course_id else course_id.split('+')[0]
+            tenant_ids = get_tenants_by_org(course_org)
+
+            if not tenant_ids:
+                return Response(
+                    error_details_to_dictionary(reason=f'No tenant found for course: {course_id}'),
+                    status=http_status.HTTP_404_NOT_FOUND
+                )
+
+            tenant_id = tenant_ids[0]
+            if tenant_id not in self.fx_permission_info['view_allowed_tenant_ids_full_access']:
+                return Response(
+                    error_details_to_dictionary(reason=f'User does not have required access for tenant ({tenant_id})'),
+                    status=http_status.HTTP_403_FORBIDDEN
+                )
+
+            category_manager = CourseCategories(tenant_id, open_as_read_only=False)
+            category_manager.set_categories_for_course(course_id, serializer.validated_data['categories'])
+            category_manager.save()
+
+            return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+        except FXCodedException as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
