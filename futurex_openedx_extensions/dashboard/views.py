@@ -1831,8 +1831,8 @@ class SetThemePreviewCookieView(APIView):
         return render(request, template_name='set_theme_preview.html', context={'next_url': next_url})
 
 
-# @docs('CategoriesView.get')
-# @docs('CategoriesView.post')
+@docs('CategoriesView.get')
+@docs('CategoriesView.post')
 class CategoriesView(FXViewRoleInfoMixin, APIView):
     """View to manage course categories"""
     authentication_classes = default_auth_classes
@@ -1874,8 +1874,8 @@ class CategoriesView(FXViewRoleInfoMixin, APIView):
             )
 
 
-# # @docs('CategoryDetailView.patch')
-# # @docs('CategoryDetailView.delete')
+@docs('CategoryDetailView.patch')
+@docs('CategoryDetailView.delete')
 class CategoryDetailView(FXViewRoleInfoMixin, APIView):
     """View to manage individual category"""
     authentication_classes = default_auth_classes
@@ -1931,7 +1931,7 @@ class CategoryDetailView(FXViewRoleInfoMixin, APIView):
             )
 
 
-# @docs('CategoriesOrderView.post')
+@docs('CategoriesOrderView.post')
 class CategoriesOrderView(FXViewRoleInfoMixin, APIView):
     """View to update categories order"""
     authentication_classes = default_auth_classes
@@ -1964,7 +1964,7 @@ class CategoriesOrderView(FXViewRoleInfoMixin, APIView):
             )
 
 
-# @docs('CourseCategoriesView.put')
+@docs('CourseCategoriesView.put')
 class CourseCategoriesView(FXViewRoleInfoMixin, APIView):
     """View to assign categories to a course"""
     authentication_classes = default_auth_classes
