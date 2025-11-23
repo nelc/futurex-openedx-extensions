@@ -37,7 +37,9 @@ from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.exceptions import DuplicateCourseError
 
 from futurex_openedx_extensions.dashboard.custom_serializers import (
+    ListSerializerOptionalFields,
     ModelSerializerOptionalFields,
+    OptionalFieldsSerializerMixin,
     SerializerOptionalMethodField,
 )
 from futurex_openedx_extensions.helpers.certificates import get_certificate_date, get_certificate_url
@@ -59,6 +61,7 @@ from futurex_openedx_extensions.helpers.extractors import (
     extract_arabic_name_from_user,
     extract_full_name_from_user,
     import_from_path,
+    verify_course_ids,
 )
 from futurex_openedx_extensions.helpers.models import DataExportTask, TenantAsset
 from futurex_openedx_extensions.helpers.roles import (
@@ -1381,89 +1384,117 @@ class TenantConfigSerializer(ReadOnlySerializer):
         """Return the revision IDs as strings."""
         revision_ids = obj.get('revision_ids', {})
         return {key: str(value) for key, value in revision_ids.items()}
-#
-#
-# class CategorySerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
-#     """Serializer for course category."""
-#     id = serializers.CharField(read_only=True)
-#     tenant_id = serializers.IntegerField(write_only=True, required=False)
-#     label = serializers.DictField(child=serializers.CharField(), required=True)
-#     courses = serializers.ListField(child=serializers.CharField(), required=False, default=list)
-#
-#     def validate_tenant_id(self, value: int) -> int:
-#         """Validate tenant_id."""
-#         if value not in self.fx_permission_info['view_allowed_tenant_ids_full_access']:
-#             raise serializers.ValidationError(f'User does not have required access for tenant ({value}).')
-#         return value
-#
-#     def validate_label(self, value: dict) -> dict:
-#         """Validate label is a non-empty dict."""
-#         if not value or not isinstance(value, dict):
-#             raise serializers.ValidationError('Label must be a non-empty dictionary.')
-#         return value
-#
-#     def validate_courses(self, value: list) -> list:
-#         """Validate courses list."""
-#         from futurex_openedx_extensions.helpers.course_categories import CourseCategories
-#         return CourseCategories.validated_courses(value)
-#
-#     def create(self, validated_data: dict) -> dict:
-#         """Create a new category."""
-#         tenant_id = validated_data['tenant_id']
-#         label = validated_data['label']
-#         courses = validated_data.get('courses', [])
-#
-#         category_manager = CourseCategories(tenant_id, open_as_read_only=False)
-#         category_name = category_manager.add_category(label=label, courses=courses)
-#         category_manager.save()
-#
-#         return {
-#             'id': category_name,
-#             'tenant_id': tenant_id,
-#             'label': label,
-#             'courses': courses,
-#         }
-#
-#     def update(self, instance: dict, validated_data: dict) -> dict:
-#         """Update an existing category."""
-#         raise ValueError('This serializer does not support update. Use partial_update instead.')
-#
-#
-# class CategoryUpdateSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
-#     """Serializer for updating course category."""
-#     label = serializers.DictField(child=serializers.CharField(), required=False)
-#     courses = serializers.ListField(child=serializers.CharField(), required=False)
-#
-#     def validate_label(self, value: dict) -> dict:
-#         """Validate label is a non-empty dict."""
-#         if not value or not isinstance(value, dict):
-#             raise serializers.ValidationError('Label must be a non-empty dictionary.')
-#         return value
-#
-#     def validate_courses(self, value: list) -> list:
-#         """Validate courses list."""
-#         from futurex_openedx_extensions.helpers.course_categories import CourseCategories
-#         return CourseCategories.validated_courses(value)
-#
-#
-# class CategoriesOrderSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
-#     """Serializer for updating categories order."""
-#     tenant_id = serializers.IntegerField(required=True)
-#     categories = serializers.ListField(child=serializers.CharField(), required=True)
-#
-#     def validate_tenant_id(self, value: int) -> int:
-#         """Validate tenant_id."""
-#         if value not in self.fx_permission_info['view_allowed_tenant_ids_full_access']:
-#             raise serializers.ValidationError(f'User does not have required access for tenant ({value}).')
-#         return value
-#
-#     def validate_categories(self, value: list) -> list:
-#         """Validate categories is a non-empty list."""
-#         if not value or not isinstance(value, list):
-#             raise serializers.ValidationError('Categories must be a non-empty list.')
-#         return value
-#
-#
+
+
+class CategorySerializer(OptionalFieldsSerializerMixin, FxPermissionInfoSerializerMixin, serializers.Serializer):
+    """Serializer for course category."""
+    id = serializers.CharField(read_only=True)
+    label = serializers.DictField(child=serializers.CharField())
+    courses = SerializerOptionalMethodField(field_tags=['courses'])
+    tenant_id = serializers.IntegerField(write_only=True)
+
+    class Meta:
+        list_serializer_class = ListSerializerOptionalFields
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        """Initialize the serializer and validate context."""
+        super().__init__(*args, **kwargs)
+
+        request = self.context.get("request")
+        if request and request.method == "GET":
+            if 'categories' not in self.context:
+                raise serializers.ValidationError('categories dictionary is missing from context')
+
+    def get_courses(self, instance: dict) -> list:
+        """Get courses for the category."""
+        return self.context['categories'].get(instance['id'], {}).get('courses', [])
+
+    def to_representation(self, instance: Any) -> Any:
+        """Extract the category data from the context and serialize it."""
+        category_data = self.context["categories"].get(instance, {})
+
+        data = {"id": instance}
+        data.update(category_data)
+
+        return super().to_representation(data)
+
+    def validate_tenant_id(self, value: int) -> int:
+        """Validate tenant_id."""
+        if value not in self.fx_permission_info['view_allowed_tenant_ids_full_access']:
+            raise serializers.ValidationError(f'User does not have required access for tenant ({value}).')
+        return value
+
+    def validate_label(self, value: dict) -> dict:
+        """Validate label is a non-empty dict."""
+        if not value or not isinstance(value, dict):
+            raise serializers.ValidationError('Label must be a non-empty dictionary.')
+        return value
+
+    def create(self, validated_data: dict) -> dict:
+        """Create a new category."""
+        tenant_id = validated_data['tenant_id']
+        label = validated_data['label']
+
+        category_manager = CourseCategories(tenant_id, open_as_read_only=False)
+        category_name = category_manager.add_category(label=label, courses=[])
+        category_manager.save()
+
+        return {
+            'id': category_name,
+            'tenant_id': tenant_id,
+            'label': label,
+        }
+
+    def update(self, instance: dict, validated_data: dict) -> dict:
+        """Update an existing category."""
+        raise ValueError('This serializer does not support update. Use partial_update (PATCH) instead.')
+
+
+class CategoryUpdateSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
+    """Serializer for updating course category."""
+    label = serializers.DictField(child=serializers.CharField(), required=False)
+    courses = serializers.ListField(child=serializers.CharField(), required=False)
+
+    def validate_label(self, value: dict) -> dict:
+        """Validate label is a non-empty dict."""
+        if not value or not isinstance(value, dict):
+            raise serializers.ValidationError('Label must be a non-empty dictionary.')
+        return value
+
+    def validate_courses(self, value: list) -> list:
+        """Validate courses is a list."""
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise serializers.ValidationError('Courses must be a list of existing course IDs.')
+        verify_course_ids(value)
+
+        courses = CourseOverview.objects.filter(id__in=value).values_list('id', flat=True)
+        invalid_courses = []
+        for course_id in value:
+            if course_id not in courses:
+                invalid_courses.append(course_id)
+        if invalid_courses:
+            raise serializers.ValidationError(f'The following course IDs are invalid: {invalid_courses}.')
+        return value
+
+
+class CategoriesOrderSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
+    """Serializer for updating categories order."""
+    tenant_id = serializers.IntegerField(required=True)
+    categories = serializers.ListField(child=serializers.CharField(), required=True)
+
+    def validate_tenant_id(self, value: int) -> int:
+        """Validate tenant_id."""
+        if value not in self.fx_permission_info['view_allowed_tenant_ids_full_access']:
+            raise serializers.ValidationError(f'User does not have required access for tenant ({value}).')
+        return value
+
+    def validate_categories(self, value: list) -> list:
+        """Validate categories is a non-empty list."""
+        if not value or not isinstance(value, list):
+            raise serializers.ValidationError('Categories must be a non-empty list.')
+        return value
+
+
 # class CourseCategoriesSerializer(serializers.Serializer):
 #     """Serializer for assigning categories to a course."""
 #     categories = serializers.ListField(child=serializers.CharField(), required=True)

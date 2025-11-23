@@ -236,8 +236,8 @@ def test_get_category_missing(patched_config_loader):  # pylint: disable=redefin
 @pytest.mark.parametrize(
     'existing, expected, test_case',
     [
-        ({}, 'category_1', 'no categories'),
-        ({'category_1': {}, 'category_3': {}}, 'category_2', 'first missing'),
+        ({}, 'category1', 'no categories'),
+        ({'category1': {}, 'category3': {}}, 'category2', 'first missing'),
     ],
 )
 def test_get_new_category_name(

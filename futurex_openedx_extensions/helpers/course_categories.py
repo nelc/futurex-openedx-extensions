@@ -177,7 +177,7 @@ class CourseCategories:
             base_name = 'category'
             index = 1
             while index < settings.FX_COURSE_CATEGORY_NAME_MAX_LENGTH:
-                new_name = f'{base_name}_{index}'
+                new_name = f'{base_name}{index}'
                 if new_name not in self.categories:
                     return new_name
                 index += 1
@@ -199,13 +199,14 @@ class CourseCategories:
         """
         self.reformat_categories_and_sorting(categories=self.categories, sorting=self.sorting)
 
-        self.categories[self.get_new_category_name()] = {
+        new_category_name = self.get_new_category_name()
+        self.categories[new_category_name] = {
             'label': label,
             'courses': self.validated_courses(courses),
         }
-        self.sorting.append(self.get_new_category_name())
+        self.sorting.append(new_category_name)
 
-        return self.get_new_category_name()
+        return new_category_name
 
     def remove_category(self, category_name: str) -> None:
         """
