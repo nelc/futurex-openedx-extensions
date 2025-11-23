@@ -1833,12 +1833,12 @@ class SetThemePreviewCookieView(APIView):
 
 
 @docs('OrderView.get')
-class OrderView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
+class PaymentsOrdersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     """View to list payment orders."""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     pagination_class = DefaultPagination
-    fx_view_name = 'orders_list'
+    fx_view_name = 'payments_orders_list'
     serializer_class = CartSerializer
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/payments/v1/orders/: Get the list of orders'

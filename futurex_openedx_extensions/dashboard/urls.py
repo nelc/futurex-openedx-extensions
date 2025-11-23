@@ -77,7 +77,7 @@ urlpatterns = [
     re_path(r'^api/fx/file/v1/upload/$', views.FileUploadView.as_view(), name='file-upload'),
     re_path(r'^api/fx/assets/v1/', include(tenant_assets_router.urls)),
 
-    re_path(r'^api/fx/payments/v1/order/$', views.OrderView.as_view(), name='payment-orders'),
+    re_path(r'^api/fx/payments/v1/orders/$', views.OrderView.as_view(), name='payment-orders'),
 
     re_path(
         r'^api/fx/redirect/set_theme_preview/$',
