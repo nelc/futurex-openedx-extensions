@@ -2246,4 +2246,210 @@ docs_src = {
             remove=[400, 404]
         ),
     },
+
+    'CategoriesView.get': {
+        'summary': 'Get the list of course categories for a tenant',
+        'description': 'Get the list of course categories for a tenant.',
+        'parameters': [
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant IDs to retrieve the categories for.\n\n'
+                '**Note:** The caller must provide a single tenant ID to access the categories.',
+            ),
+        ],
+        'responses': responses(
+            overrides={
+                200: serializers.CategorySerializer(read_only=True, required=False),
+            },
+            remove=[404]
+        ),
+    },
+
+    'CategoriesView.post': {
+        'summary': 'Create a new course category',
+        'description': 'Create a new course category for a tenant. The caller must have staff or '
+        'org_course_creator_group access to the tenant.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'tenant_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='The tenant ID to create the category for.',
+                    example=1,
+                ),
+                'name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='The unique name/identifier for the category.',
+                    example='science',
+                ),
+                'label': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='The display label for the category.',
+                    example='Science Courses',
+                ),
+            },
+            required=['tenant_id', 'name', 'label']
+        ),
+        'responses': responses(
+            overrides={
+                201: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'name': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='The category name.',
+                        ),
+                        'label': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='The category label.',
+                        ),
+                        'courses': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_STRING),
+                            description='List of course IDs in this category.',
+                        ),
+                    },
+                ),
+                400: 'Unable to create category. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
+    'CategoryDetailView.patch': {
+        'summary': 'Update an existing course category',
+        'description': 'Update an existing course category. The caller must have staff or org_course_creator_group '
+        'access to the tenant. You can update the label and/or the courses assigned to the category.',
+        'parameters': [
+            path_parameter(
+                'category_id',
+                str,
+                'The unique name/identifier of the category to update.',
+            ),
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant IDs to update the category for.\n'
+                '**Note:** The caller must provide a single tenant ID.',
+            ),
+        ],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'label': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='The new display label for the category.',
+                    example='Updated Science Courses',
+                ),
+                'courses': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(type=openapi.TYPE_STRING),
+                    description='List of course IDs to assign to this category. This will replace the existing '
+                    'courses.',
+                    example=['course-v1:org+course+001', 'course-v1:org+course+002'],
+                ),
+            },
+        ),
+        'responses': responses(
+            overrides={
+                204: 'Category updated successfully.',
+                400: 'Unable to update category. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
+    'CategoryDetailView.delete': {
+        'summary': 'Delete a course category',
+        'description': 'Delete a course category. The caller must have staff or org_course_creator_group access to '
+        'the tenant. Deleting a category will not delete the courses, it will only remove them from the category.',
+        'parameters': [
+            path_parameter(
+                'category_id',
+                str,
+                'The unique name/identifier of the category to delete.',
+            ),
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant IDs to delete the category from.\n'
+                '**Note:** The caller must provide a single tenant ID.',
+            ),
+        ],
+        'responses': responses(
+            overrides={
+                204: 'Category deleted successfully.',
+                400: 'Unable to delete category. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
+    'CategoriesOrderView.post': {
+        'summary': 'Update the display order of categories',
+        'description': 'Update the display order of categories for a tenant. The caller must have staff or '
+        'org_course_creator_group access to the tenant.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'tenant_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='The tenant ID to update the categories order for.',
+                    example=1,
+                ),
+                'categories': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(type=openapi.TYPE_STRING),
+                    description='Ordered list of category names. The order in this list determines the display '
+                    'order.',
+                    example=['science', 'math', 'history'],
+                ),
+            },
+            required=['tenant_id', 'categories']
+        ),
+        'responses': responses(
+            overrides={
+                204: 'Categories order updated successfully.',
+                400: 'Unable to update categories order. The response will include a JSON object with the error '
+                'message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
+    'CourseCategoriesView.put': {
+        'summary': 'Assign categories to a course',
+        'description': 'Assign one or more categories to a course. The caller must have staff or '
+        'org_course_creator_group access to the tenant. This will replace any existing category assignments for '
+        'the course.',
+        'parameters': [
+            path_parameter(
+                'course_id',
+                str,
+                'The course ID to assign categories to.',
+            ),
+        ],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'categories': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(type=openapi.TYPE_STRING),
+                    description='List of category names to assign to the course. This will replace existing '
+                    'assignments.',
+                    example=['science', 'advanced'],
+                ),
+            },
+            required=['categories']
+        ),
+        'responses': responses(
+            overrides={
+                204: 'Categories assigned to course successfully.',
+                400: 'Unable to assign categories. The response will include a JSON object with the error message.',
+                404: 'Course not found or access denied.',
+            },
+            remove=[200],
+        ),
+    },
 }
