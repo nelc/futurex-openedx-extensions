@@ -74,18 +74,18 @@ class CourseCategories:
         :param sorting: List of category names in desired order.
         :type sorting: List[str]
         """
-        sorting = [cat for cat in sorting if cat in categories]
+        sanitized_sorting = [cat for cat in sorting if cat in categories]
         for cat in categories.keys():
-            if cat not in sorting:
-                sorting.append(cat)
-        self.sorting = sorting
+            if cat not in sanitized_sorting:
+                sanitized_sorting.append(cat)
+        self.sorting = sanitized_sorting
 
         for category_name, category_info in categories.items():
             courses = category_info.get('courses', [])
             if not isinstance(courses, list):
                 raise FXCodedException(
                     code=FXExceptionCodes.COURSE_CATEGORY_INVALID_SETTINGS,
-                    message=f'Courses for category {category_name} must be a list for tenant_id: {self.tenant_id}',
+                    message=f'Courses for category {category_name} must be a list. tenant_id: {self.tenant_id}',
                 )
 
             self.categories[category_name] = {
@@ -103,17 +103,10 @@ class CourseCategories:
                 message=f'"CourseCategories initialization failed: {str(exc)}"'
             ) from exc
 
-        try:
-            self.reformat_categories_and_sorting(
-                categories=category_config.get('categories', {}),
-                sorting=category_config.get('sorting', {}),
-            )
-
-        except (ValueError, KeyError, NameError) as exc:
-            raise FXCodedException(
-                code=FXExceptionCodes.COURSE_CATEGORY_INVALID_SETTINGS,
-                message=f'Invalid course categories configuration for tenant_id: {self.tenant_id}'
-            ) from exc
+        self.reformat_categories_and_sorting(
+            categories=category_config.get('categories', {}),
+            sorting=category_config.get('sorting', []),
+        )
 
     def save(self) -> None:
         """Save the current course categories to the tenant configuration."""

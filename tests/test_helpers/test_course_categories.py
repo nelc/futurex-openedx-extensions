@@ -124,7 +124,7 @@ def test_reformat_categories_raises_when_courses_not_list(
         course_cat.reformat_categories_and_sorting(categories, [])
 
     assert exc.value.code == FXExceptionCodes.COURSE_CATEGORY_INVALID_SETTINGS.value
-    assert 'must be a list' in str(exc.value)
+    assert str(exc.value) == 'Courses for category bad must be a list. tenant_id: 1'
 
 
 def test_init_raises_when_get_config_fails():
