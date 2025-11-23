@@ -1623,7 +1623,7 @@ class TestLearnersDetailsForCourseView(BaseTestViewMixin):
 @ddt.ddt
 class TestLearnersEnrollmentView(BaseTestViewMixin):
     """Tests for LearnersEnrollmentView"""
-    VIEW_NAME = 'fx_dashboard:learners-enrollements'
+    VIEW_NAME = 'fx_dashboard:learners-enrollments'
 
     def test_unauthorized(self):
         """Verify that the view returns 403 when the user is not authenticated"""

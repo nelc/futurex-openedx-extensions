@@ -7,7 +7,7 @@ from lms.djangoapps.static_template_view import views as static_template_views_v
 from rest_framework.routers import DefaultRouter
 
 from futurex_openedx_extensions.dashboard import views
-from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_QUERY_SLUG_PATTERN, COURSE_ID_REGX
+from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_QUERY_SLUG_PATTERN, COURSE_ID_REGX_EXACT
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery
 
 app_name = 'fx_dashboard'
@@ -31,11 +31,11 @@ urlpatterns = [
     re_path(r'^api/fx/export/v1/', include(export_router.urls)),
     re_path(r'^api/fx/learners/v1/learners/$', views.LearnersView.as_view(), name='learners'),
     re_path(
-        fr'^api/fx/learners/v1/learners/{COURSE_ID_REGX}/$',
+        fr'^api/fx/learners/v1/learners/{COURSE_ID_REGX_EXACT}/$',
         views.LearnersDetailsForCourseView.as_view(), name='learners-course'),
     re_path(
         r'^api/fx/learners/v1/enrollments/$',
-        views.LearnersEnrollmentView.as_view(), name='learners-enrollements'),
+        views.LearnersEnrollmentView.as_view(), name='learners-enrollments'),
     re_path(
         r'^api/fx/learners/v1/learner/' + settings.USERNAME_PATTERN + '/$',
         views.LearnerInfoView.as_view(),
