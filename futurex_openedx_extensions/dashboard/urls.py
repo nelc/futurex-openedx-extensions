@@ -35,7 +35,7 @@ urlpatterns = [
     ),
     re_path(r'^api/fx/courses/v1/categories_order/$', views.CategoriesOrderView.as_view(), name='categories-order'),
     re_path(
-        fr'^api/fx/courses/v1/course_categories/{COURSE_ID_REGX_}/$',
+        fr'^api/fx/courses/v1/course_categories/{COURSE_ID_REGX}/$',
         views.CourseCategoriesView.as_view(),
         name='course-categories'
     ),

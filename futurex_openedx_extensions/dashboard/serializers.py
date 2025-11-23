@@ -1495,13 +1495,13 @@ class CategoriesOrderSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
         return value
 
 
-# class CourseCategoriesSerializer(serializers.Serializer):
-#     """Serializer for assigning categories to a course."""
-#     categories = serializers.ListField(child=serializers.CharField(), required=True)
-#
-#     def validate_categories(self, value: list) -> list:
-#         """Validate categories list."""
-#         if not isinstance(value, list):
-#             raise serializers.ValidationError('Categories must be a list.')
-#         return value
-#
+class CourseCategoriesSerializer(serializers.Serializer):
+    """Serializer for assigning categories to a course."""
+    categories = serializers.ListField(child=serializers.CharField(), required=True)
+
+    def validate_categories(self, value: list) -> list:
+        """Validate categories list."""
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Categories must be a list.')
+        return value
+

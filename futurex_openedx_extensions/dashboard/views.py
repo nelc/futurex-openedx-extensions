@@ -69,8 +69,8 @@ from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUSES,
     FX_VIEW_DEFAULT_AUTH_CLASSES,
 )
-from futurex_openedx_extensions.helpers.course_categories import CourseCategories
 from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary
+from futurex_openedx_extensions.helpers.course_categories import CourseCategories
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
@@ -84,6 +84,7 @@ from futurex_openedx_extensions.helpers.permissions import (
     IsSystemStaff,
     get_tenant_limited_fx_permission_info,
 )
+from futurex_openedx_extensions.helpers.querysets import get_course_search_queryset
 from futurex_openedx_extensions.helpers.roles import (
     FXViewRoleInfoMixin,
     add_course_access_roles,
@@ -1963,47 +1964,51 @@ class CategoriesOrderView(FXViewRoleInfoMixin, APIView):
             )
 
 
-# # @docs('CourseCategoriesView.put')
-# class CourseCategoriesView(FXViewRoleInfoMixin, APIView):
-#     """View to assign categories to a course"""
-#     authentication_classes = default_auth_classes
-#     permission_classes = [FXHasTenantAllCoursesAccess]
-#     fx_view_name = 'course_categories'
-#     fx_default_read_write_roles = ['staff', 'org_course_creator_group']
-#     fx_allowed_write_methods = ['PUT']
-#     fx_view_description = 'api/fx/courses/v1/course_categories/<course_id>/: Assign categories to a course'
-#
-#     def put(self, request: Any, course_id: str, *args: Any, **kwargs: Any) -> Response:
-#         """PUT /api/fx/courses/v1/course_categories/<course_id>/"""
-#         serializer = serializers.CourseCategoriesSerializer(data=request.data)
-#         if not serializer.is_valid():
-#             return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
-#
-#         try:
-#             course_org = course_id.split(':')[1].split('+')[0] if ':' in course_id else course_id.split('+')[0]
-#             tenant_ids = get_tenants_by_org(course_org)
-#
-#             if not tenant_ids:
-#                 return Response(
-#                     error_details_to_dictionary(reason=f'No tenant found for course: {course_id}'),
-#                     status=http_status.HTTP_404_NOT_FOUND
-#                 )
-#
-#             tenant_id = tenant_ids[0]
-#             if tenant_id not in self.fx_permission_info['view_allowed_tenant_ids_full_access']:
-#                 return Response(
-#                     error_details_to_dictionary(reason=f'User does not have required access for tenant ({tenant_id})'),
-#                     status=http_status.HTTP_403_FORBIDDEN
-#                 )
-#
-#             category_manager = CourseCategories(tenant_id, open_as_read_only=False)
-#             category_manager.set_categories_for_course(course_id, serializer.validated_data['categories'])
-#             category_manager.save()
-#
-#             return Response(status=http_status.HTTP_204_NO_CONTENT)
-#
-#         except FXCodedException as exc:
-#             return Response(
-#                 error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
-#                 status=http_status.HTTP_400_BAD_REQUEST
-#             )
+# @docs('CourseCategoriesView.put')
+class CourseCategoriesView(FXViewRoleInfoMixin, APIView):
+    """View to assign categories to a course"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    fx_view_name = 'course_categories'
+    fx_default_read_write_roles = ['staff', 'org_course_creator_group']
+    fx_allowed_write_methods = ['PUT']
+    fx_view_description = 'api/fx/courses/v1/course_categories/<course_id>/: Assign categories to a course'
+
+    def put(self, request: Any, course_id: str, *args: Any, **kwargs: Any) -> Response:
+        """PUT /api/fx/courses/v1/course_categories/<course_id>/"""
+        serializer = serializers.CourseCategoriesSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+        accessible_course = get_course_search_queryset(
+            fx_permission_info=self.fx_permission_info,
+            course_ids=[course_id],
+        ).first()
+
+        if not accessible_course:
+            return Response(
+                error_details_to_dictionary(reason=f'Course not found or access denied: {course_id}'),
+                status=http_status.HTTP_404_NOT_FOUND
+            )
+
+        tenant_ids = get_tenants_by_org(accessible_course.org)
+        if len(tenant_ids) > 1:
+            return Response(
+                error_details_to_dictionary(
+                    reason=f'Multiple tenants found for course: {course_id}, unable to proceed.'
+                ),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            category_manager = CourseCategories(tenant_ids[0], open_as_read_only=False)
+            category_manager.set_categories_for_course(course_id, serializer.validated_data['categories'])
+            category_manager.save()
+
+        except FXCodedException as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
