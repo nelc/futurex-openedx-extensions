@@ -1874,6 +1874,7 @@ class CategoriesView(FXViewRoleInfoMixin, APIView):
             )
 
 
+@docs('CategoryDetailView.get')
 @docs('CategoryDetailView.patch')
 @docs('CategoryDetailView.delete')
 class CategoryDetailView(FXViewRoleInfoMixin, APIView):
@@ -1884,6 +1885,29 @@ class CategoryDetailView(FXViewRoleInfoMixin, APIView):
     fx_default_read_write_roles = ['staff', 'org_course_creator_group']
     fx_allowed_write_methods = ['PATCH', 'DELETE']
     fx_view_description = 'api/fx/courses/v1/categories/<category_id>/: Manage individual category'
+
+    def get(self, request: Any, category_id: str, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/courses/v1/categories/<category_id>/"""
+        tenant_id = self.verify_one_tenant_id_provided(request)
+
+        try:
+            category_manager = CourseCategories(tenant_id)
+            category_manager.verify_category_name_exists(category_id)
+
+            serialized = serializers.CategorySerializer(
+                instance=category_id,
+                context={
+                    'request': request,
+                    'categories': category_manager.categories,
+                },
+            )
+            return Response(serialized.data)
+
+        except FXCodedException as exc:
+            return Response(
+                error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
 
     def patch(self, request: Any, category_id: str, *args: Any, **kwargs: Any) -> Response:
         """PATCH /api/fx/courses/v1/categories/<category_id>/"""

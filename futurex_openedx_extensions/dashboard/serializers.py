@@ -1390,7 +1390,8 @@ class CategorySerializer(OptionalFieldsSerializerMixin, FxPermissionInfoSerializ
     """Serializer for course category."""
     id = serializers.CharField(read_only=True)
     label = serializers.DictField(child=serializers.CharField())
-    courses = SerializerOptionalMethodField(field_tags=['courses'])
+    courses = SerializerOptionalMethodField(field_tags=['courses', 'courses_display_names'])
+    courses_display_names = SerializerOptionalMethodField(field_tags=['courses', 'courses_display_names'])
     tenant_id = serializers.IntegerField(write_only=True)
 
     class Meta:
@@ -1408,6 +1409,24 @@ class CategorySerializer(OptionalFieldsSerializerMixin, FxPermissionInfoSerializ
     def get_courses(self, instance: dict) -> list:
         """Get courses for the category."""
         return self.context['categories'].get(instance['id'], {}).get('courses', [])
+
+    def get_courses_display_names(self, instance: dict) -> dict[str, str]:
+        """Get display names of courses for the category."""
+        course_ids = self.context['categories'].get(instance['id'], {}).get('courses', [])
+        disable_verify = self.context.get('disable_verify_course_ids', False)
+        if not disable_verify:
+            verify_course_ids(course_ids)
+
+        courses = CourseOverview.objects.filter(id__in=course_ids).values('id', 'display_name')
+        id_to_name = {str(course['id']): course['display_name'] for course in courses}
+        if not disable_verify:
+            non_existent_course_ids = set(course_ids) - set(id_to_name.keys())
+            if non_existent_course_ids:
+                raise serializers.ValidationError(
+                    f'The following course IDs does not exist: {list(non_existent_course_ids)}.'
+                )
+
+        return id_to_name
 
     def to_representation(self, instance: Any) -> Any:
         """Extract the category data from the context and serialize it."""

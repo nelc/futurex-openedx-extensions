@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from datetime import date
+from typing import OrderedDict
 from unittest.mock import ANY, Mock, patch
 
 import ddt
@@ -30,6 +31,7 @@ from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.test import APIRequestFactory, APITestCase
+from rest_framework.utils.serializer_helpers import ReturnList
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import (
@@ -58,6 +60,7 @@ from futurex_openedx_extensions.helpers.permissions import (
     IsAnonymousOrSystemStaff,
     IsSystemStaff,
 )
+from tests.base_test_data import expected_statistics
 from tests.fixture_helpers import d_t, get_all_orgs, get_test_data_dict, get_user1_fx_permission_info
 from tests.test_dashboard.test_mixins import MockPatcherMixin
 
@@ -3262,3 +3265,82 @@ class TestSetThemePreviewCookieView(APITestCase):
         self.client.cookies['theme-preview'] = 'yes'
         response = self.client.get(self.url, params)
         assert response.url == expected_redirect, f'Expected redirect to {expected_redirect}'
+
+
+@pytest.mark.usefixtures('base_data')
+class TestCategoriesView(BaseTestViewMixin):
+    """Tests for CategoriesView"""
+    VIEW_NAME = 'fx_dashboard:courses-categories'
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    @patch('futurex_openedx_extensions.dashboard.views.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.CategoriesView.verify_one_tenant_id_provided')
+    def test_get_success(self, mock_verify_one_tenant, mock_course_categories):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        mock_course_categories.return_value = Mock(
+            categories={'cat1': {'label': {}}, 'cat2': {'label': {}}, 'cat3': {'label': {}}},
+            sorting=['cat1', 'cat3', 'cat2'],
+        )
+        tenant_id = 1
+        mock_verify_one_tenant.return_value = tenant_id
+
+        response = self.client.get(self.url, {'tenant_ids': tenant_id})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert not DeepDiff(
+            response.data,
+            [{'id': 'cat1', 'label': {}}, {'id': 'cat3', 'label': {}}, {'id': 'cat2', 'label': {}}],
+            ignore_type_in_groups=[(dict, OrderedDict),(list, ReturnList)],
+            ignore_order=False,
+        )
+        mock_course_categories.assert_called_once_with(tenant_id)
+        mock_verify_one_tenant.assert_called_once()
+
+    @patch('futurex_openedx_extensions.dashboard.views.serializers.CategorySerializer')
+    def test_post_success(self, mock_category_serializer):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        payload = {
+            'label': {'en': 'New Category'},
+        }
+        expected_result = payload.copy()
+        expected_result['id'] = 'new-category'
+
+        mock_category_serializer.return_value = Mock(
+            is_valid=Mock(return_value=True),
+            save=Mock(return_value=expected_result),
+        )
+        response = self.client.post(self.url, data=payload, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_201_CREATED)
+        self.assertEqual(response.data, expected_result)
+
+    @patch('futurex_openedx_extensions.dashboard.views.serializers.CategorySerializer')
+    def test_post_not_valid(self, mock_category_serializer):
+        """Verify that post returns 400 when the serializer is not valid"""
+        self.login_user(self.staff_user)
+        mock_category_serializer.return_value = Mock(
+            is_valid=Mock(return_value=False),
+            errors=['list of errors'],
+        )
+        response = self.client.post(self.url, data='whatever', format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data, ['list of errors'])
+
+    @patch('futurex_openedx_extensions.dashboard.views.serializers.CategorySerializer')
+    def test_post_fail_save(self, mock_category_serializer):
+        """Verify that post returns 400 when the serializer save fails"""
+        self.login_user(self.staff_user)
+        mock_category_serializer.return_value = Mock(
+            is_valid=Mock(return_value=True),
+            save=Mock(side_effect=FXCodedException(
+                code=FXExceptionCodes.COURSE_CATEGORY_INVALID_SETTINGS,
+                message='some error message',
+            )),
+        )
+        response = self.client.post(self.url, data='whatever', format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data, {'reason': '(5100) some error message', 'details': {}})

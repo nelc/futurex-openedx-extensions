@@ -2362,6 +2362,50 @@ docs_src = {
         ),
     },
 
+    'CategoryDetailView.get': {
+        'summary': 'Get one categories for a tenant',
+        'description': 'Get one course categories for a tenant.',
+        'parameters': [
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant IDs to retrieve the category for.\n\n'
+                '**Note:** The caller must provide a single tenant ID to access the categories.',
+            ),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::CategorySerializer'),
+        ],
+        'responses': responses(
+            success_description='Returns contents of one category.',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'id': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description='The unique name/identifier of the category.',
+                    ),
+                    'label': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        description='The display labels for the category in different languages.',
+                        additional_properties=openapi.Schema(type=openapi.TYPE_STRING),
+                    ),
+                    'courses': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(type=openapi.TYPE_STRING),
+                        description='List of course IDs assigned to this category.',
+                    ),
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'id': 'category1',
+                    'label': {'ar': 'دورات العلوم', 'en': 'Science Courses'},
+                    'courses': ['course-v1:org+course+001', 'course-v1:org+course+002'],
+                },
+            },
+            remove=[404],
+        ),
+    },
+
     'CategoryDetailView.patch': {
         'summary': 'Update an existing course category',
         'description': 'Update an existing course category. It can update the label and/or the courses assigned to '
