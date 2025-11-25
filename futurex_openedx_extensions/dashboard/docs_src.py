@@ -2258,7 +2258,7 @@ docs_src = {
                 'Tenant IDs to retrieve the categories for.\n\n'
                 '**Note:** The caller must provide a single tenant ID to access the categories.',
             ),
-            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::CategorySerializer'),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.s2025::CategorySerializer'),
         ],
         'responses': responses(
             success_description='Returns a list of categories with their details in display order.',
@@ -2372,7 +2372,7 @@ docs_src = {
                 'Tenant IDs to retrieve the category for.\n\n'
                 '**Note:** The caller must provide a single tenant ID to access the categories.',
             ),
-            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::CategorySerializer'),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.s2025::CategorySerializer'),
         ],
         'responses': responses(
             success_description='Returns contents of one category.',

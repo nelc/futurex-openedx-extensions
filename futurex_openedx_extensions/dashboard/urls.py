@@ -6,7 +6,7 @@ from django.urls import include, re_path
 from lms.djangoapps.static_template_view import views as static_template_views_views
 from rest_framework.routers import DefaultRouter
 
-from futurex_openedx_extensions.dashboard import views
+from futurex_openedx_extensions.dashboard import views, v2025
 from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_QUERY_SLUG_PATTERN, COURSE_ID_REGX
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery
 
@@ -27,16 +27,16 @@ urlpatterns = [
     re_path(r'^api/fx/courses/v1/courses/$', views.CoursesView.as_view(), name='courses'),
     re_path(r'^api/fx/libraries/v1/libraries/$', views.LibraryView.as_view(), name='libraries'),
     re_path(r'^api/fx/courses/v1/feedback/$', views.CoursesFeedbackView.as_view(), name='courses-feedback'),
-    re_path(r'^api/fx/courses/v1/categories/$', views.CategoriesView.as_view(), name='courses-categories'),
+    re_path(r'^api/fx/courses/v1/categories/$', v2025.CategoriesView.as_view(), name='courses-categories'),
     re_path(
         r'^api/fx/courses/v1/categories/(?P<category_id>[^/]+)/$',
-        views.CategoryDetailView.as_view(),
+        v2025.CategoryDetailView.as_view(),
         name='courses-category-detail'
     ),
-    re_path(r'^api/fx/courses/v1/categories_order/$', views.CategoriesOrderView.as_view(), name='courses-categories-order'),
+    re_path(r'^api/fx/courses/v1/categories_order/$', v2025.CategoriesOrderView.as_view(), name='courses-categories-order'),
     re_path(
         fr'^api/fx/courses/v1/course_categories/{COURSE_ID_REGX}/$',
-        views.CourseCategoriesView.as_view(),
+        v2025.CourseCategoriesView.as_view(),
         name='courses-course-categories'
     ),
 
