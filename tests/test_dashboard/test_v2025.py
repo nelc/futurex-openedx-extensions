@@ -162,8 +162,7 @@ class TestCategoriesView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST, response.data)
         assert isinstance(response.data, dict)
         reason = response.data.get('reason') or response.data.get('detail') or ''
-        assert '(' in reason and ')' in reason
-        assert 'Some error' in reason
+        assert reason == '(0) Some error'
 
 
 @pytest.mark.usefixtures('base_data')
@@ -233,15 +232,14 @@ class TestCategoryDetailView(BaseTestViewMixin):
 
         error_code = FXExceptionCodes.UNKNOWN_ERROR.value if hasattr(FXExceptionCodes, 'UNKNOWN_ERROR') else 'E000'
         mock_manager = mock_course_categories.return_value
-        mock_manager.verify_category_name_exists.side_effect = FXCodedException(error_code, 'Category not found')
+        mock_manager.verify_category_name_exists.side_effect = FXCodedException(error_code, 'Some error')
 
         response = self.client.get(self.url, data={'optional_field_tags': 'courses'})
 
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         assert isinstance(response.data, dict)
         reason = response.data.get('reason') or response.data.get('detail') or ''
-        assert '(' in reason and ')' in reason
-        assert 'Category not found' in reason
+        assert reason == '(0) Some error'
 
     @patch('futurex_openedx_extensions.dashboard.v2025.CategoryDetailView.verify_one_tenant_id_provided')
     @patch('futurex_openedx_extensions.dashboard.v2025.CourseCategories')
@@ -289,8 +287,7 @@ class TestCategoryDetailView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         assert isinstance(response.data, dict)
         reason = response.data.get('reason') or response.data.get('detail') or ''
-        assert '(' in reason and ')' in reason, response.data
-        assert 'Some error' in reason
+        assert reason == '(0) Some error', response.data
 
     @patch('futurex_openedx_extensions.dashboard.v2025.CategoryDetailView.verify_one_tenant_id_provided')
     @patch('futurex_openedx_extensions.dashboard.v2025.CourseCategories')
@@ -322,5 +319,205 @@ class TestCategoryDetailView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         assert isinstance(response.data, dict)
         reason = response.data.get('reason') or response.data.get('detail') or ''
-        assert '(' in reason and ')' in reason
-        assert 'Some error' in reason
+        assert reason == '(0) Some error'
+
+
+@pytest.mark.usefixtures('base_data')
+@ddt.ddt
+class TestCategoriesOrderView(BaseTestViewMixin):
+    """Tests for CategoriesOrderView"""
+    VIEW_NAME = 'fx_dashboard:courses-categories-order'
+
+    default_test_data = {
+        'category1': {'label': {}, 'courses': []},
+        'category3': {'label': {}, 'courses': []},
+        'category4': {'label': {}, 'courses': []},
+    }
+    default_test_data_sorting = ['category1', 'category4', 'category3']
+    default_post_payload = {
+        'tenant_id': 1,
+        'categories': ['category3', 'category1', 'category4'],
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        """Initialize the test case"""
+        super().setUpTestData()
+        tenant = TenantConfig.objects.get(id=1)
+        tenant.lms_configs[settings.FX_COURSE_CATEGORY_CONFIG_KEY] = {
+            'categories': copy.deepcopy(cls.default_test_data),
+            'sorting': copy.deepcopy(cls.default_test_data_sorting),
+        }
+        tenant.save()
+        ConfigAccessControl.objects.create(
+            key_name=settings.FX_COURSE_CATEGORY_CONFIG_KEY,
+            path=settings.FX_COURSE_CATEGORY_CONFIG_KEY,
+            writable=True,
+        )
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.post(self.url, data=self.default_post_payload, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    @patch('futurex_openedx_extensions.dashboard.v2025.CourseCategories')
+    def test_post_success(self, mock_course_categories):
+        """Verify that POST updates the categories order successfully"""
+        self.login_user(self.staff_user)
+
+        mock_manager = mock_course_categories.return_value
+        mock_manager.set_categories_sorting.return_value = None
+
+        response = self.client.post(self.url, data=self.default_post_payload, format='json')
+
+        self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        mock_manager.set_categories_sorting.assert_called_once_with(['category3', 'category1', 'category4'])
+        mock_manager.save.assert_called_once()
+
+    @ddt.data('tenant_id', 'categories')
+    def test_post_not_valid_missing_payload_field(self, required_field_name):
+        """Verify that post returns 400 when a required field is missing"""
+        self.login_user(self.staff_user)
+
+        payload = copy.deepcopy(self.default_post_payload)
+        payload.pop(required_field_name)
+        response = self.client.post(self.url, data=payload, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(str(response.data[required_field_name][0]), 'This field is required.')
+
+    def test_post_invalid_categories_empty_list(self):
+        """Verify that post returns 400 when categories is an empty list"""
+        self.login_user(self.staff_user)
+        payload = copy.deepcopy(self.default_post_payload)
+        payload['categories'] = []
+
+        response = self.client.post(self.url, data=payload, format='json')
+
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST, response.data)
+        assert 'categories' in response.data
+        assert str(response.data['categories'][0]) == 'Categories must be a non-empty list.'
+
+    @patch('futurex_openedx_extensions.dashboard.v2025.CourseCategories')
+    def test_post_fx_coded_exception(self, mock_course_categories):
+        """Verify that POST surfaces FXCodedException in a formatted way"""
+        self.login_user(self.staff_user)
+
+        error_code = FXExceptionCodes.UNKNOWN_ERROR.value if hasattr(FXExceptionCodes, 'UNKNOWN_ERROR') else 'E000'
+        mock_manager = mock_course_categories.return_value
+        mock_manager.set_categories_sorting.side_effect = FXCodedException(error_code, 'Some error')
+
+        response = self.client.post(self.url, data=self.default_post_payload, format='json')
+
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        assert isinstance(response.data, dict)
+        reason = response.data.get('reason') or response.data.get('detail') or ''
+        assert reason == '(0) Some error'
+
+
+@pytest.mark.usefixtures('base_data')
+@ddt.ddt
+class TestCourseCategoriesView(BaseTestViewMixin):
+    """Tests for CourseCategoriesView"""
+    VIEW_NAME = 'fx_dashboard:courses-course-categories'
+
+    default_test_data = {
+        'category1': {'label': {}, 'courses': []},
+        'category3': {'label': {}, 'courses': []},
+        'category4': {'label': {}, 'courses': []},
+    }
+    default_test_data_sorting = ['category1', 'category4', 'category3']
+    default_put_payload = {
+        'categories': ['category1', 'category3'],
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        """Initialize the test case"""
+        super().setUpTestData()
+        tenant = TenantConfig.objects.get(id=1)
+        tenant.lms_configs[settings.FX_COURSE_CATEGORY_CONFIG_KEY] = {
+            'categories': copy.deepcopy(cls.default_test_data),
+            'sorting': copy.deepcopy(cls.default_test_data_sorting),
+        }
+        tenant.save()
+        ConfigAccessControl.objects.create(
+            key_name=settings.FX_COURSE_CATEGORY_CONFIG_KEY,
+            path=settings.FX_COURSE_CATEGORY_CONFIG_KEY,
+            writable=True,
+        )
+
+    def setUp(self):
+        """Ensure URL points to a specific course"""
+        super().setUp()
+        self.url_args = ['course-v1:ORG1+3+3']
+
+    def test_unauthorized(self):
+        """Verify that the view returns 403 when the user is not authenticated"""
+        response = self.client.put(self.url, data=self.default_put_payload, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    @patch('futurex_openedx_extensions.dashboard.v2025.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.v2025.get_tenants_by_org')
+    def test_put_success(self, mock_get_tenants_by_org, mock_course_categories):
+        """Verify that PUT assigns categories to a course successfully"""
+        self.login_user(self.staff_user)
+        mock_get_tenants_by_org.return_value = [1]
+
+        mock_manager = mock_course_categories.return_value
+        mock_manager.set_categories_for_course.return_value = None
+
+        response = self.client.put(self.url, data=self.default_put_payload, format='json')
+
+        self.assertEqual(response.status_code, http_status.HTTP_204_NO_CONTENT)
+        mock_manager.set_categories_for_course.assert_called_once_with('course-v1:ORG1+3+3', ['category1', 'category3'])
+        mock_manager.save.assert_called_once()
+
+    def test_put_course_not_found(self):
+        """Verify that PUT returns 404 when course is not found or not accessible"""
+        self.login_user(self.staff_user)
+        self.url_args = ['course-v1:INVALID+999+999']
+
+        response = self.client.put(self.url, data=self.default_put_payload, format='json')
+
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
+        assert 'Course not found or access denied' in str(response.data.get('reason') or response.data.get('detail'))
+
+    @patch('futurex_openedx_extensions.dashboard.v2025.get_tenants_by_org')
+    def test_put_multiple_tenants_error(self, mock_get_tenants_by_org):
+        """Verify that PUT returns 400 when multiple tenants are found for the course"""
+        self.login_user(self.staff_user)
+        mock_get_tenants_by_org.return_value = [1, 2]
+
+        response = self.client.put(self.url, data=self.default_put_payload, format='json')
+
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        assert 'Multiple tenants found' in str(response.data.get('reason') or response.data.get('detail'))
+
+    def test_put_invalid_categories_missing(self):
+        """Verify that PUT returns 400 when categories field is missing"""
+        self.login_user(self.staff_user)
+
+        response = self.client.put(self.url, data={}, format='json')
+
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        assert 'categories' in response.data
+        assert str(response.data['categories'][0]) == 'This field is required.'
+
+    @patch('futurex_openedx_extensions.dashboard.v2025.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.v2025.get_tenants_by_org')
+    def test_put_fx_coded_exception(self, mock_get_tenants_by_org, mock_course_categories):
+        """Verify that PUT surfaces FXCodedException in a formatted way"""
+        self.login_user(self.staff_user)
+        mock_get_tenants_by_org.return_value = [1]
+
+        error_code = FXExceptionCodes.UNKNOWN_ERROR.value if hasattr(FXExceptionCodes, 'UNKNOWN_ERROR') else 'E000'
+        mock_manager = mock_course_categories.return_value
+        mock_manager.set_categories_for_course.side_effect = FXCodedException(error_code, 'Some error')
+
+        response = self.client.put(self.url, data=self.default_put_payload, format='json')
+
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        assert isinstance(response.data, dict)
+        reason = response.data.get('reason') or response.data.get('detail') or ''
+        assert reason == '(0) Some error'
