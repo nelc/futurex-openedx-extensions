@@ -512,7 +512,6 @@ docs_src = {
         'responses': responses(
             overrides={
                 200: serializers.CourseDetailsSerializer(read_only=True, required=False),
-
             },
             remove=[400]
         ),
@@ -2258,7 +2257,7 @@ docs_src = {
                 'Tenant IDs to retrieve the categories for.\n\n'
                 '**Note:** The caller must provide a single tenant ID to access the categories.',
             ),
-            get_optional_parameter('futurex_openedx_extensions.dashboard.s2025::CategorySerializer'),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::CategorySerializer'),
         ],
         'responses': responses(
             success_description='Returns a list of categories with their details in display order.',
@@ -2372,7 +2371,7 @@ docs_src = {
                 'Tenant IDs to retrieve the category for.\n\n'
                 '**Note:** The caller must provide a single tenant ID to access the categories.',
             ),
-            get_optional_parameter('futurex_openedx_extensions.dashboard.s2025::CategorySerializer'),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::CategorySerializer'),
         ],
         'responses': responses(
             success_description='Returns contents of one category.',
@@ -2509,7 +2508,8 @@ docs_src = {
 
     'CourseCategoriesView.put': {
         'summary': 'Assign categories to a course',
-        'description': 'Assign one or more categories to a course.'
+        'description':
+            'Assign one or more categories to a course.'
             '\n\nFor categories already assigned to the course: nothing will change.'
             '\nFor categories not assigned yet: they course will take place as the last course in the category.'
             '\nThe course will be removed from all categories not included in the request.'

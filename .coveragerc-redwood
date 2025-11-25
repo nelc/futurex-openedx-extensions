@@ -8,20 +8,6 @@ omit =
     test_settings_teak.py
     */migrations/*
     */static/*
-    test*/*
-    futurex_openedx_extensions/helpers/*
-    futurex_openedx_extensions/upgrade/*
-    futurex_openedx_extensions/dashboard/details/*
-    futurex_openedx_extensions/dashboard/apps.py
-    futurex_openedx_extensions/dashboard/custom_serializers.py
-    futurex_openedx_extensions/dashboard/docs_src.py
-    futurex_openedx_extensions/dashboard/docs_utils.py
-    futurex_openedx_extensions/dashboard/middlewares.py
-    futurex_openedx_extensions/dashboard/serializers.py
-    futurex_openedx_extensions/dashboard/settings/*
-    futurex_openedx_extensions/dashboard/statistics/*
-    futurex_openedx_extensions/dashboard/urls.py
-    futurex_openedx_extensions/dashboard/views.py
     # Ignore mysql fucntions not supported by SQLITE i.e JSON_MERGE_PATCH
     futurex_openedx_extensions/helpers/mysql_functions.py
     # Ignore the models_switch.py file since it cannot be tested in all environments, so coverage will never be 100%

@@ -1729,3 +1729,55 @@ def test_create_organization_missing_raises_validation_error(
         match='Organization does not exist. Please add the organization before proceeding.'
     ):
         serializer.create(course_data)
+
+
+def test_category_serializer_category_context_missing():
+    """Verify that CategorySerializer raises error if 'categories' missing in context."""
+    with pytest.raises(ValidationError) as exc_info:
+        serializers.CategorySerializer(context={'request': MagicMock(method='GET')})
+    assert 'categories dictionary is missing from context' in str(exc_info)
+
+
+def test_category_serializer_no_full_access():
+    """Verify that CategorySerializer raises error if user lacks full access."""
+    request = Mock(fx_permission_info={
+        'view_allowed_tenant_ids_full_access': [],
+    })
+    serializer_context = {'request': request, 'categories': {}}
+
+    serializer = serializers.CategorySerializer(
+        data={
+            'label': {'en': 'Category 1'},
+            'tenant_id': 1,
+        },
+        context=serializer_context,
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        serializer.is_valid(raise_exception=True)
+    assert 'User does not have required access for tenant (1)' in str(exc_info)
+
+
+def test_category_serializer_update_not_implemented():
+    """Verify that CategorySerializer update() raises ValueError."""
+    serializer = serializers.CategorySerializer()
+    with pytest.raises(ValueError, match='This serializer does not support update.'):
+        serializer.update(instance=object(), validated_data={})
+
+
+def test_categories_order_serializer_no_full_access():
+    """Verify that CategoriesOrderSerializer raises error if user lacks full access."""
+    request = Mock(fx_permission_info={
+        'view_allowed_tenant_ids_full_access': [],
+    })
+    serializer_context = {'request': request, 'categories': {}}
+
+    serializer = serializers.CategoriesOrderSerializer(
+        data={
+            'label': {'en': 'Category 1'},
+            'tenant_id': 1,
+        },
+        context=serializer_context,
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        serializer.is_valid(raise_exception=True)
+    assert 'User does not have required access for tenant (1)' in str(exc_info)
