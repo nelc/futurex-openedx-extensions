@@ -1388,7 +1388,7 @@ class TenantConfigSerializer(ReadOnlySerializer):
 
 class CategorySerializer(OptionalFieldsSerializerMixin, FxPermissionInfoSerializerMixin, serializers.Serializer):
     """Serializer for course category."""
-    id = serializers.CharField(read_only=True)
+    id = serializers.CharField(read_only=True)  # pylint: disable=invalid-name
     label = serializers.DictField(child=serializers.CharField())
     courses = SerializerOptionalMethodField(field_tags=['courses', 'courses_display_names'])
     courses_display_names = SerializerOptionalMethodField(field_tags=['courses', 'courses_display_names'])
@@ -1444,7 +1444,7 @@ class CategorySerializer(OptionalFieldsSerializerMixin, FxPermissionInfoSerializ
             raise serializers.ValidationError(f'User does not have required access for tenant ({value}).')
         return value
 
-    def validate_label(self, value: dict) -> dict:
+    def validate_label(self, value: dict) -> dict:  # pylint: disable=no-self-use
         """Validate label is a non-empty dict."""
         if not value or not isinstance(value, dict):
             raise serializers.ValidationError('Label must be a non-empty dictionary.')
@@ -1470,18 +1470,18 @@ class CategorySerializer(OptionalFieldsSerializerMixin, FxPermissionInfoSerializ
         raise ValueError('This serializer does not support update. Use partial_update (PATCH) instead.')
 
 
-class CategoryUpdateSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
+class CategoryUpdateSerializer(FxPermissionInfoSerializerMixin, ReadOnlySerializer):
     """Serializer for updating course category."""
     label = serializers.DictField(child=serializers.CharField(), required=False)
     courses = serializers.ListField(child=serializers.CharField(), required=False)
 
-    def validate_label(self, value: dict) -> dict:
+    def validate_label(self, value: dict) -> dict:  # pylint: disable=no-self-use
         """Validate label is a non-empty dict."""
         if not value or not isinstance(value, dict):
             raise serializers.ValidationError('Label must be a non-empty dictionary.')
         return value
 
-    def validate_courses(self, value: list) -> list:
+    def validate_courses(self, value: list) -> list:  # pylint: disable=no-self-use
         """Validate courses is a list."""
         verify_course_ids(value)
 
@@ -1496,7 +1496,7 @@ class CategoryUpdateSerializer(FxPermissionInfoSerializerMixin, serializers.Seri
         return value
 
 
-class CategoriesOrderSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
+class CategoriesOrderSerializer(FxPermissionInfoSerializerMixin, ReadOnlySerializer):
     """Serializer for updating categories order."""
     tenant_id = serializers.IntegerField(required=True)
     categories = serializers.ListField(child=serializers.CharField(), required=True)
@@ -1507,13 +1507,13 @@ class CategoriesOrderSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
             raise serializers.ValidationError(f'User does not have required access for tenant ({value}).')
         return value
 
-    def validate_categories(self, value: list) -> list:
+    def validate_categories(self, value: list) -> list:  # pylint: disable=no-self-use
         """Validate categories is a non-empty list."""
         if not value or not isinstance(value, list):
             raise serializers.ValidationError('Categories must be a non-empty list.')
         return value
 
 
-class CourseCategoriesSerializer(serializers.Serializer):
+class CourseCategoriesSerializer(ReadOnlySerializer):
     """Serializer for assigning categories to a course."""
     categories = serializers.ListField(child=serializers.CharField(), required=True)

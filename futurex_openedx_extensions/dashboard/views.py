@@ -102,9 +102,10 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_draft_tenant_config,
     get_excluded_tenant_ids,
     get_tenant_config,
+    get_tenants_by_org,
     get_tenants_info,
     publish_tenant_config,
-    update_draft_tenant_config, get_tenants_by_org,
+    update_draft_tenant_config,
 )
 from futurex_openedx_extensions.helpers.upload import get_storage_dir, upload_file
 from futurex_openedx_extensions.helpers.users import get_user_by_key
@@ -1860,7 +1861,7 @@ class CategoriesView(FXViewRoleInfoMixin, APIView):
         )
         return Response(serialized.data)
 
-    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:  # pylint: disable=no-self-use
         """POST /api/fx/courses/v1/categories/"""
         serializer = serializers.CategorySerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
@@ -1969,7 +1970,7 @@ class CategoriesOrderView(FXViewRoleInfoMixin, APIView):
     fx_allowed_write_methods = ['POST']
     fx_view_description = 'api/fx/courses/v1/categories_order/: Update categories order'
 
-    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:  # pylint: disable=no-self-use
         """POST /api/fx/courses/v1/categories_order/"""
         serializer = serializers.CategoriesOrderSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():

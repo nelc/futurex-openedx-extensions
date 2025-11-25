@@ -836,7 +836,8 @@ def test_get_tenant_categories_returns_none_when_no_tenant(
     result = serializer.get_tenant_categories(course)
 
     assert result is None
-    assert serializer._tenant_categories == {}
+    assert isinstance(serializer._tenant_categories, dict)  # pylint: disable=protected-access
+    assert not serializer._tenant_categories  # pylint: disable=protected-access
     course_categories_mock.assert_not_called()
 
 
@@ -862,7 +863,7 @@ def test_get_tenant_categories_caches_per_tenant(
     assert result1 is course_categories_instance
     assert result2 is course_categories_instance
     course_categories_mock.assert_called_once_with(tenant_id)
-    assert serializer._tenant_categories == {
+    assert serializer._tenant_categories == {  # pylint: disable=protected-access
         tenant_id: course_categories_instance,
     }
 
@@ -877,17 +878,21 @@ def test_get_categories_returns_empty_list_when_no_tenant_categories(base_data):
 
     result = serializer.get_categories(course)
 
-    assert result == []
+    assert isinstance(result, list)
+    assert not result
 
 
 @pytest.mark.django_db
 def test_get_categories_returns_keys_and_uses_str_id(base_data,):  # pylint: disable=unused-argument
     """Verify get_categories calls get_categories_for_course with str(obj.id) and returns its keys."""
-    class FakeTenantCategories:
+    class FakeTenantCategories:  # pylint: disable=too-few-public-methods
+        """Fake CourseCategories for testing."""
         def __init__(self):
+            """Initialize."""
             self.called_with = None
 
         def get_categories_for_course(self, course_id_arg):
+            """Fake get_categories_for_course method."""
             self.called_with = course_id_arg
             return {
                 'cat_1': 'whatever',
@@ -1743,14 +1748,14 @@ def test_category_serializer_no_full_access():
     request = Mock(fx_permission_info={
         'view_allowed_tenant_ids_full_access': [],
     })
-    serializer_context = {'request': request, 'categories': {}}
+    bad_context = {'request': request, 'categories': {}}
 
     serializer = serializers.CategorySerializer(
         data={
             'label': {'en': 'Category 1'},
             'tenant_id': 1,
         },
-        context=serializer_context,
+        context=bad_context,
     )
     with pytest.raises(ValidationError) as exc_info:
         serializer.is_valid(raise_exception=True)
@@ -1769,14 +1774,14 @@ def test_categories_order_serializer_no_full_access():
     request = Mock(fx_permission_info={
         'view_allowed_tenant_ids_full_access': [],
     })
-    serializer_context = {'request': request, 'categories': {}}
+    bad_context = {'request': request, 'categories': {}}
 
     serializer = serializers.CategoriesOrderSerializer(
         data={
             'label': {'en': 'Category 1'},
             'tenant_id': 1,
         },
-        context=serializer_context,
+        context=bad_context,
     )
     with pytest.raises(ValidationError) as exc_info:
         serializer.is_valid(raise_exception=True)

@@ -16,3 +16,4 @@ function-rgx = ([a-z_][a-z0-9_]{2,50}|test_[a-z0-9_]+)$
 
 [SIMILARITIES]
 ignore-imports = yes
+z
