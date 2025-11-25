@@ -1486,7 +1486,8 @@ class CategoryUpdateSerializer(FxPermissionInfoSerializerMixin, serializers.Seri
             raise serializers.ValidationError('Courses must be a list of existing course IDs.')
         verify_course_ids(value)
 
-        courses = CourseOverview.objects.filter(id__in=value).values_list('id', flat=True)
+        courses_qs = CourseOverview.objects.filter(id__in=value).values_list('id', flat=True)
+        courses = [str(course_id) for course_id in courses_qs]
         invalid_courses = []
         for course_id in value:
             if course_id not in courses:
