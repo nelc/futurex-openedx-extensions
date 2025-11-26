@@ -2532,8 +2532,7 @@ docs_src = {
     'CategoriesView.post': {
         'summary': 'Create a new course category',
         'description': 'Create a new course category for a tenant. The category name (ID) must be unique within the '
-                       'tenant. And the number of categories per tenant is limited to '
-                       f'{settings.FX_COURSE_CATEGORY_MAX_COUNT}.',
+                       'tenant.',
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
