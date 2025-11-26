@@ -823,6 +823,96 @@ def test_course_details_serializer_rating(
 
 
 @pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseCategories')
+@patch('futurex_openedx_extensions.dashboard.serializers.get_tenants_by_org')
+def test_get_tenant_categories_returns_none_when_no_tenant(
+    get_tenants_by_org_mock, course_categories_mock, base_data,
+):  # pylint: disable=unused-argument
+    """Verify get_tenant_categories returns None and does not cache when no tenant id."""
+    get_tenants_by_org_mock.return_value = [None]
+
+    serializer = serializers.CourseDetailsSerializer()
+    course = CourseOverview.objects.first()
+    result = serializer.get_tenant_categories(course)
+
+    assert result is None
+    assert isinstance(serializer._tenant_categories, dict)  # pylint: disable=protected-access
+    assert not serializer._tenant_categories  # pylint: disable=protected-access
+    course_categories_mock.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseCategories')
+@patch('futurex_openedx_extensions.dashboard.serializers.get_tenants_by_org')
+def test_get_tenant_categories_caches_per_tenant(
+    get_tenants_by_org_mock, course_categories_mock, base_data,
+):  # pylint: disable=unused-argument
+    """Verify get_tenant_categories creates and reuses a cached CourseCategories per tenant."""
+    tenant_id = 'tenant-1'
+    get_tenants_by_org_mock.return_value = [tenant_id]
+
+    course_categories_instance = MagicMock(name='CourseCategoriesInstance')
+    course_categories_mock.return_value = course_categories_instance
+
+    serializer = serializers.CourseDetailsSerializer()
+    course = CourseOverview.objects.first()
+
+    result1 = serializer.get_tenant_categories(course)
+    result2 = serializer.get_tenant_categories(course)
+
+    assert result1 is course_categories_instance
+    assert result2 is course_categories_instance
+    course_categories_mock.assert_called_once_with(tenant_id)
+    assert serializer._tenant_categories == {  # pylint: disable=protected-access
+        tenant_id: course_categories_instance,
+    }
+
+
+@pytest.mark.django_db
+def test_get_categories_returns_empty_list_when_no_tenant_categories(base_data):  # pylint: disable=unused-argument
+    """Verify get_categories returns an empty list when tenant_categories is falsy."""
+    serializer = serializers.CourseDetailsSerializer()
+    course = CourseOverview.objects.first()
+
+    serializer.get_tenant_categories = MagicMock(return_value=None)
+
+    result = serializer.get_categories(course)
+
+    assert isinstance(result, list)
+    assert not result
+
+
+@pytest.mark.django_db
+def test_get_categories_returns_keys_and_uses_str_id(base_data,):  # pylint: disable=unused-argument
+    """Verify get_categories calls get_categories_for_course with str(obj.id) and returns its keys."""
+    class FakeTenantCategories:  # pylint: disable=too-few-public-methods
+        """Fake CourseCategories for testing."""
+        def __init__(self):
+            """Initialize."""
+            self.called_with = None
+
+        def get_categories_for_course(self, course_id_arg):
+            """Fake get_categories_for_course method."""
+            self.called_with = course_id_arg
+            return {
+                'cat_1': 'whatever',
+                'cat_2': 'whatever',
+            }
+
+    fake_tenant_categories = FakeTenantCategories()
+
+    serializer = serializers.CourseDetailsSerializer()
+    course = CourseOverview.objects.first()
+
+    serializer.get_tenant_categories = MagicMock(return_value=fake_tenant_categories)
+
+    result = serializer.get_categories(course)
+
+    assert fake_tenant_categories.called_with == str(course.id)
+    assert result == ['cat_1', 'cat_2']
+
+
+@pytest.mark.django_db
 def test_learner_courses_details_serializer(base_data):  # pylint: disable=unused-argument
     """Verify that the LearnerCoursesDetailsSerializer is correctly defined."""
     enrollment_date = (now() - timedelta(days=10)).astimezone(get_current_timezone())
@@ -1644,3 +1734,55 @@ def test_create_organization_missing_raises_validation_error(
         match='Organization does not exist. Please add the organization before proceeding.'
     ):
         serializer.create(course_data)
+
+
+def test_category_serializer_category_context_missing():
+    """Verify that CategorySerializer raises error if 'categories' missing in context."""
+    with pytest.raises(ValidationError) as exc_info:
+        serializers.CategorySerializer(context={'request': MagicMock(method='GET')})
+    assert 'categories dictionary is missing from context' in str(exc_info)
+
+
+def test_category_serializer_no_full_access():
+    """Verify that CategorySerializer raises error if user lacks full access."""
+    request = Mock(fx_permission_info={
+        'view_allowed_tenant_ids_full_access': [],
+    })
+    bad_context = {'request': request, 'categories': {}}
+
+    serializer = serializers.CategorySerializer(
+        data={
+            'label': {'en': 'Category 1'},
+            'tenant_id': 1,
+        },
+        context=bad_context,
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        serializer.is_valid(raise_exception=True)
+    assert 'User does not have required access for tenant (1)' in str(exc_info)
+
+
+def test_category_serializer_update_not_implemented():
+    """Verify that CategorySerializer update() raises ValueError."""
+    serializer = serializers.CategorySerializer()
+    with pytest.raises(ValueError, match='This serializer does not support update.'):
+        serializer.update(instance=object(), validated_data={})
+
+
+def test_categories_order_serializer_no_full_access():
+    """Verify that CategoriesOrderSerializer raises error if user lacks full access."""
+    request = Mock(fx_permission_info={
+        'view_allowed_tenant_ids_full_access': [],
+    })
+    bad_context = {'request': request, 'categories': {}}
+
+    serializer = serializers.CategoriesOrderSerializer(
+        data={
+            'label': {'en': 'Category 1'},
+            'tenant_id': 1,
+        },
+        context=bad_context,
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        serializer.is_valid(raise_exception=True)
+    assert 'User does not have required access for tenant (1)' in str(exc_info)
