@@ -472,3 +472,35 @@ def annotate_period(query_set: QuerySet, period: str, field_name: str) -> QueryS
     return query_set.annotate(
         period=period_function,
     )
+
+
+def get_accessible_users_and_courses(  # pylint: disable=too-many-arguments
+    fx_permission_info: dict,
+    user_ids: list = None,
+    course_ids: list = None,
+    usernames: list = None,
+    learner_search: str | None = None,
+    course_search: str | None = None,
+    include_staff: bool = False,
+) -> tuple[QuerySet, QuerySet]:
+    """
+    Utility to return accessible users and courses based on filters.
+    Used by multiple APIs (orders, enrollments, etc.).
+    """
+    accessible_users = get_permitted_learners_queryset(
+        queryset=get_learners_search_queryset(
+            search_text=learner_search,
+            user_ids=user_ids,
+            usernames=usernames,
+        ),
+        fx_permission_info=fx_permission_info,
+        include_staff=include_staff,
+    )
+
+    accessible_courses = get_course_search_queryset(
+        fx_permission_info=fx_permission_info,
+        search_text=course_search,
+        course_ids=course_ids,
+    )
+
+    return accessible_users, accessible_courses

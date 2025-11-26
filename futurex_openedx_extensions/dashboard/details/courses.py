@@ -28,9 +28,11 @@ from django.db.models.query import QuerySet
 from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from zeitlabs_payments.querysets import get_orders_queryset
 
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
+    get_accessible_users_and_courses,
     get_base_queryset_courses,
     get_course_search_queryset,
     get_one_user_queryset,
@@ -294,3 +296,64 @@ def get_courses_feedback_queryset(  # pylint: disable=too-many-arguments
 
     queryset = queryset.select_related('author__profile')
     return queryset
+
+
+def get_courses_orders_queryset(  # pylint: disable=too-many-arguments
+    fx_permission_info: dict,
+    user_ids: list = None,
+    course_ids: list = None,
+    usernames: list = None,
+    learner_search: str | None = None,
+    course_search: str | None = None,
+    sku_search: str | None = None,
+    include_staff: bool = False,
+    include_invoice: bool = False,
+    include_user_details: bool = False,
+    status: str | None = None,
+    item_type: str | None = None,
+) -> QuerySet:
+    """
+    Returns a filtered queryset of Cart Orders based on provided criteria.
+
+    :param fx_permission_info: Dictionary containing tenant or user permission info used to filter accessible courses.
+    :type fx_permission_info: dict
+    :param user_ids: List of user IDs to filter by (optional).
+    :type user_ids: list | None
+    :param course_ids: List of course IDs to filter by (optional).
+    :type course_ids: list | None
+    :param usernames: List of usernames to filter by (optional).
+    :type usernames: list | None
+    :param sku_search: Text to search enrollments by SKU (optional).
+    :type sku_search: str | None
+    :param include_staff: Flag to include staff users (default: False).
+    :type include_staff: bool
+    :param include_invoice: Flag to include invoice details (default: False).
+    :type include_invoice: bool
+    :param include_user_details: Flag to include user details (default: False).
+    :type include_user_details: bool
+    :param item_type: Item type to filter by (optional).
+    :type item_type: str | None
+    :return: A Django QuerySet of Cart objects matching the specified filters.
+    :rtype: QuerySet
+    """
+
+    # pylint: disable=duplicate-code
+    accessible_users, accessible_courses = get_accessible_users_and_courses(
+        fx_permission_info=fx_permission_info,
+        user_ids=user_ids,
+        course_ids=course_ids,
+        usernames=usernames,
+        learner_search=learner_search,
+        course_search=course_search,
+        include_staff=include_staff,
+    )
+
+    return get_orders_queryset(
+        filtered_courses_qs=accessible_courses,
+        filtered_users_qs=accessible_users,
+        sku_search=sku_search,
+        status=status,
+        item_type=item_type,
+        include_invoice=include_invoice,
+        include_user_details=include_user_details,
+    )
