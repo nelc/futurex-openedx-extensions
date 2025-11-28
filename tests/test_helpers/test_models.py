@@ -1396,13 +1396,13 @@ def test_draft_config_root_key():
 
 
 @pytest.mark.django_db
-def test_config_mirror_sync_tenant(config_mirror_fixture):
+def test_config_mirror_sync_tenant_by_id(config_mirror_fixture):
     """Verify that config_mirror_sync_tenant copies the configs correctly."""
     tenant, _ = config_mirror_fixture
     tenant.lms_configs['LMS_NAME'] = 'Tenant LMS'
     tenant.save()
 
-    ConfigMirror.sync_tenant(tenant.id)
+    ConfigMirror.sync_tenant_by_id(tenant.id)
     tenant.refresh_from_db()
     assert tenant.lms_configs['LMS_NAME'] == 'Dummy LMS', 'should be resynced from source'
     assert tenant.lms_configs['deep']['LMS_NAME'] == 'Dummy LMS', 'it is a source, should not change'
@@ -1410,7 +1410,7 @@ def test_config_mirror_sync_tenant(config_mirror_fixture):
     tenant.lms_configs['deep']['LMS_NAME'] = 'Tenant LMS'
     tenant.save()
 
-    ConfigMirror.sync_tenant(tenant.id)
+    ConfigMirror.sync_tenant_by_id(tenant.id)
     tenant.refresh_from_db()
     assert tenant.lms_configs['LMS_NAME'] == 'Tenant LMS', 'should be synced from source'
     assert tenant.lms_configs['deep']['LMS_NAME'] == 'Tenant LMS', 'it is a source, should not change'
@@ -1424,7 +1424,7 @@ def test_config_mirror_sync_tenant_calls_invalidate_cache(
 ):
     """Verify that config_mirror_sync_tenant calls invalidate_cache when there is something to change."""
     tenant, _ = config_mirror_fixture
-    ConfigMirror.sync_tenant(tenant.id)
+    ConfigMirror.sync_tenant_by_id(tenant.id)
     mock_readable_lms_configs.assert_called_once_with([tenant.id])
     mock_invalidate_cache.assert_called_once_with()
 
@@ -1443,7 +1443,7 @@ def test_config_mirror_sync_tenant_missing_source_action(action, config_mirror_f
 
     method_name = f'_handle_missing_source_{action}'
     with patch(f'futurex_openedx_extensions.helpers.models.ConfigMirror.{method_name}') as mock_handle_missing:
-        ConfigMirror.sync_tenant(tenant.id)
+        ConfigMirror.sync_tenant_by_id(tenant.id)
         mock_handle_missing.assert_called_once_with(configs=tenant.lms_configs)
 
 
@@ -1457,13 +1457,13 @@ def test_config_mirror_sync_tenant_missing_source_action_wrong(config_mirror_fix
     mirror.save()
 
     with pytest.raises(FXCodedException) as exc_info:
-        ConfigMirror.sync_tenant(tenant.id)
+        ConfigMirror.sync_tenant_by_id(tenant.id)
     assert exc_info.value.code == FXExceptionCodes.CONFIG_MIRROR_INVALID_ACTION.value
     assert str(exc_info.value) == f'Invalid missing source action: action_wrong in record {mirror.id}'
 
 
 def init_config_mirror_sync_tenant_action_test(tenant, mirror, action):
-    """Helper function to initialize the test for ConfigMirror.sync_tenant with a specific action."""
+    """Helper function to initialize the test for ConfigMirror.sync_tenant_by_id with a specific action."""
     dest_original = copy.deepcopy(tenant.lms_configs['LMS_NAME']) if tenant.lms_configs.get('LMS_NAME') else None
     source_copy = copy.deepcopy(tenant.lms_configs['deep'])
     source_copy.pop('LMS_NAME', None)
@@ -1580,9 +1580,9 @@ def test_config_mirror_enabled(config_mirror_fixture):
 
 @pytest.mark.django_db
 def test_config_mirror_sync_tenant_tenant_not_found():
-    """Verify that ConfigMirror.sync_tenant raises an error if tenant is not found."""
+    """Verify that ConfigMirror.sync_tenant_by_id raises an error if tenant is not found."""
     with pytest.raises(FXCodedException) as exc_info:
-        ConfigMirror.sync_tenant(9999)
+        ConfigMirror.sync_tenant_by_id(9999)
     assert exc_info.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
     assert str(exc_info.value) == 'Tenant with ID 9999 not found.'
 

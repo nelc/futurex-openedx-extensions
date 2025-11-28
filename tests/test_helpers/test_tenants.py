@@ -1,6 +1,6 @@
 """Tests for tenants helpers."""
 # pylint: disable=too-many-lines
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import ANY, MagicMock, Mock, patch
 
 import pytest
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
@@ -755,7 +755,7 @@ def test_publish_tenant_config_merges_lms_configs(base_data):
 
 
 @pytest.mark.django_db
-@patch('futurex_openedx_extensions.helpers.tenants.ConfigMirror.sync_tenant')
+@patch('futurex_openedx_extensions.helpers.tenants.ConfigMirror.sync_tenant_by_id')
 def test_publish_tenant_config_no_draft(mock_sync, base_data):  # pylint: disable=unused-argument
     """Verify that publish_tenant_config does nothing if no draft exists except syncing mirrors."""
     tenant_id = 1
@@ -778,7 +778,8 @@ def test_publish_tenant_config_calls_sync_tenant(mock_sync, base_data):  # pylin
         created_by_id=1, updated_by_id=1,
     )
     tenants.publish_tenant_config(tenant_id=tenant_id)
-    mock_sync.assert_called_once_with(tenant_id=tenant_id)
+    mock_sync.assert_called_once_with(tenant=ANY)
+    assert mock_sync.call_args[1]['tenant'].id == tenant_id
 
 
 @pytest.mark.django_db

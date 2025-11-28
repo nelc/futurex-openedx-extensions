@@ -20,6 +20,7 @@ from django.db import transaction
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.decorators import method_decorator
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg.utils import swagger_auto_schema
 from edx_api_doc_tools import exclude_schema_for
@@ -1045,6 +1046,7 @@ class GlobalRatingView(FXViewRoleInfoMixin, APIView):
 @docs('UserRolesManagementView.retrieve')
 @docs('UserRolesManagementView.update')
 @exclude_schema_for('partial_update')
+@method_decorator(transaction.non_atomic_requests, name='dispatch')
 class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # pylint: disable=too-many-ancestors
     """View to get the user roles"""
     authentication_classes = default_auth_classes
@@ -1059,10 +1061,6 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
     lookup_value_regex = '[^/]+'
     serializer_class = serializers.UserRolesSerializer
     pagination_class = DefaultPagination
-
-    @transaction.non_atomic_requests
-    def dispatch(self, *args: Any, **kwargs: Any) -> Response:
-        return super().dispatch(*args, **kwargs)
 
     def get_queryset(self) -> QuerySet:
         """Get the list of users"""
@@ -1555,6 +1553,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 
 
 @docs('ThemeConfigPublishView.post')
+@method_decorator(transaction.non_atomic_requests, name='dispatch')
 class ThemeConfigPublishView(FXViewRoleInfoMixin, APIView):
     """View to publish theme config"""
     authentication_classes = default_auth_classes
