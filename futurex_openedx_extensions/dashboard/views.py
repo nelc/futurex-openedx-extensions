@@ -28,7 +28,6 @@ from edx_api_doc_tools import exclude_schema_for
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.exceptions import ParseError, PermissionDenied
-from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
@@ -1038,49 +1037,24 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
             context={'request': request}
         )
 
-        if not serializer.is_valid():
+        serializer.is_valid(raise_exception=True)
+
+        course_key = serializer.validated_data['course_id']
+        accessible_courses = get_course_search_queryset(
+            fx_permission_info=self.fx_permission_info,
+            course_ids=[str(course_key)]
+        )
+
+        if not accessible_courses.exists():
             return Response(
                 error_details_to_dictionary(
-                    reason='Invalid request data',
-                    detail=serializer.errors
+                    reason='You do not have permission to unenroll learners from this course'
                 ),
-                status=http_status.HTTP_400_BAD_REQUEST
+                status=http_status.HTTP_403_FORBIDDEN
             )
 
-        try:
-            course_key = serializer.validated_data['course_id']
-            accessible_courses = get_course_search_queryset(
-                fx_permission_info=self.fx_permission_info,
-                course_ids=[str(course_key)]
-            )
-
-            if not accessible_courses.exists():
-                return Response(
-                    error_details_to_dictionary(
-                        reason='You do not have permission to unenroll learners from this course'
-                    ),
-                    status=http_status.HTTP_403_FORBIDDEN
-                )
-
-            result = serializer.unenroll()
-            return Response(result, status=http_status.HTTP_200_OK)
-
-        except DRFValidationError as exc:
-            return Response(
-                error_details_to_dictionary(reason=str(exc)),
-                status=http_status.HTTP_400_BAD_REQUEST
-            )
-        except FXCodedException as exc:
-            return Response(
-                error_details_to_dictionary(reason=str(exc)),
-                status=http_status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as exc:
-            logger.exception('Error unenrolling learner: %s', exc)
-            return Response(
-                error_details_to_dictionary(reason='An error occurred during unenrollment'),
-                status=http_status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        result = serializer.unenroll()
+        return Response(result, status=http_status.HTTP_200_OK)
 
 
 @docs('GlobalRatingView.get')

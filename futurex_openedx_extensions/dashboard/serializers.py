@@ -19,6 +19,7 @@ from lms.djangoapps.courseware.courses import get_course_blocks_completion_summa
 from lms.djangoapps.grades.api import CourseGradeFactory
 from lms.djangoapps.grades.context import grading_context_for_course
 from lms.djangoapps.grades.models import PersistentSubsectionGrade
+from opaque_keys import InvalidKeyError
 from opaque_keys.edx.locator import CourseLocator
 from openedx.core.djangoapps.content.block_structure.api import get_block_structure_manager
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
@@ -1381,13 +1382,8 @@ class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
         """Validate and convert course_id to CourseLocator."""
         try:
             course_key = CourseLocator.from_string(value)
-        except Exception as exc:
+        except InvalidKeyError as exc:
             raise serializers.ValidationError(f'Invalid course ID format: {value}') from exc
-
-        try:
-            CourseOverview.objects.get(id=course_key)
-        except CourseOverview.DoesNotExist as exc:
-            raise serializers.ValidationError(f'Course not found: {value}') from exc
 
         return course_key
 

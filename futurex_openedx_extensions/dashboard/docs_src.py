@@ -987,24 +987,18 @@ docs_src = {
 
     'LearnerUnenrollView.post': {
         'summary': 'Unenroll a learner from a course',
-        'description': 'Unenroll a learner from a specified course. The caller must have staff or instructor'
-        ' permissions for the course. Provide one of: user_id, username, or email to identify the learner.',
+        'description': (
+            'Unenroll a learner from a specified course. '
+            'Provide one of: user_id, username, or email to identify the learner.'
+        ),
         'parameters': [],
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
             required=['course_id'],
             properties={
-                'user_id': openapi.Schema(
+                'user_key': openapi.Schema(
                     type=openapi.TYPE_INTEGER,
-                    description='User ID of the learner (optional, use one of: user_id, username, or email)'
-                ),
-                'username': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description='Username of the learner (optional, use one of: user_id, username, or email)'
-                ),
-                'email': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description='Email of the learner (optional, use one of: user_id, username, or email)'
+                    description='User key of the learner (optional, use one of: user_id, username, or email)'
                 ),
                 'course_id': openapi.Schema(
                     type=openapi.TYPE_STRING,

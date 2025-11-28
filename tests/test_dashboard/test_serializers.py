@@ -18,6 +18,7 @@ from django.test import override_settings
 from django.utils import timezone
 from django.utils.timezone import get_current_timezone, now, timedelta
 from lms.djangoapps.grades.models import PersistentSubsectionGrade
+from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
@@ -1667,38 +1668,18 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         assert 'user_key' in serializer.errors
         assert 'This field is required' in str(serializer.errors)
 
-    def test_validate_only_one_user_identifier_allowed(self):
-        """Test that user_key accepts any identifier"""
-        # This test is no longer needed with single user_key field
-        # But let's test that user_key works with different types
-        data = {
-            'user_key': str(self.test_user.id),
-            'course_id': self.test_course_id,
-        }
-        serializer = serializers.LearnerUnenrollSerializer(data=data)
-        assert serializer.is_valid()
-
     def test_validate_course_id_invalid_format(self):
         """Test validation with invalid course ID format"""
         data = {
-            'username': self.test_user.username,
+            'user_key': self.test_user.username,
             'course_id': 'invalid-course-id',
         }
-        serializer = serializers.LearnerUnenrollSerializer(data=data)
-        assert not serializer.is_valid()
-        assert 'course_id' in serializer.errors
-        assert 'Invalid course ID format' in str(serializer.errors['course_id'])
-
-    def test_validate_course_id_not_found(self):
-        """Test validation when course doesn't exist"""
-        data = {
-            'username': self.test_user.username,
-            'course_id': 'course-v1:ORG1+999+999',
-        }
-        serializer = serializers.LearnerUnenrollSerializer(data=data)
-        assert not serializer.is_valid()
-        assert 'course_id' in serializer.errors
-        assert 'Course not found' in str(serializer.errors['course_id'])
+        with patch('futurex_openedx_extensions.dashboard.serializers.CourseLocator.from_string') as mock_from_string:
+            mock_from_string.side_effect = InvalidKeyError('invalid-course-id', 'Invalid key')
+            serializer = serializers.LearnerUnenrollSerializer(data=data)
+            assert not serializer.is_valid()
+            assert 'course_id' in serializer.errors
+            assert 'Invalid course ID format' in str(serializer.errors['course_id'])
 
     def test_validate_course_id_success(self):
         """Test successful course ID validation"""
@@ -1791,7 +1772,6 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
             'error_code': None,
             'error_message': None
         }
-        # Create active enrollment
         enrollment = CourseEnrollment.objects.create(
             user=self.test_user,
             course_id=self.test_course_id,
@@ -1812,7 +1792,6 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         assert result['username'] == self.test_user.username
         assert result['course_id'] == str(self.course_key)
 
-        # Verify enrollment is inactive
         enrollment.refresh_from_db()
         assert not enrollment.is_active
 
@@ -1843,7 +1822,6 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
             'error_code': None,
             'error_message': None
         }
-        # Create inactive enrollment
         CourseEnrollment.objects.create(
             user=self.test_user,
             course_id=self.test_course_id,
@@ -1869,7 +1847,6 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
             'error_code': None,
             'error_message': None
         }
-        # Create active enrollment
         enrollment = CourseEnrollment.objects.create(
             user=self.test_user,
             course_id=self.test_course_id,
@@ -1886,7 +1863,6 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         result = serializer.unenroll()
 
         assert result['success'] is True
-        # Verify enrollment is inactive
         enrollment.refresh_from_db()
         assert not enrollment.is_active
 
