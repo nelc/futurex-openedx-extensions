@@ -994,11 +994,11 @@ docs_src = {
         'parameters': [],
         'body': openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['course_id'],
+            required=['user_key', 'course_id'],
             properties={
                 'user_key': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description='User key of the learner (optional, use one of: user_id, username, or email)'
+                    type=openapi.TYPE_STRING,
+                    description='User key of the learner (use one of: user_id, username, or email)'
                 ),
                 'course_id': openapi.Schema(
                     type=openapi.TYPE_STRING,
