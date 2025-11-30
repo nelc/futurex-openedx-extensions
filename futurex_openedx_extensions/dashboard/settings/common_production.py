@@ -13,6 +13,13 @@ def plugin_settings(settings: Any) -> None:
         60 * 60 * 2,  # 2 hours
     )
 
+    # Cache timeout for course ratings per tenant
+    settings.FX_CACHE_TIMEOUT_COURSES_RATINGS = getattr(
+        settings,
+        'FX_CACHE_TIMEOUT_COURSES_RATINGS',
+        60 * 15,  # 15 minutes
+    )
+
     settings.FX_DISABLE_CONFIG_VALIDATIONS = getattr(
         settings,
         'FX_DISABLE_CONFIG_VALIDATIONS',

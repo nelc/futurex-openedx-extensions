@@ -73,7 +73,7 @@ from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUSES,
     FX_VIEW_DEFAULT_AUTH_CLASSES,
 )
-from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary
+from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary, ids_string_to_list
 from futurex_openedx_extensions.helpers.course_categories import CourseCategories
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
@@ -114,7 +114,9 @@ from futurex_openedx_extensions.helpers.tenants import (
 from futurex_openedx_extensions.helpers.upload import get_storage_dir, upload_file
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
+# Constants
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
+RATING_RANGE = range(1, 6)  # Ratings from 1 to 5 stars
 logger = logging.getLogger(__name__)
 
 
@@ -1064,28 +1066,59 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
 
 @docs('GlobalRatingView.get')
 class GlobalRatingView(FXViewRoleInfoMixin, APIView):
-    """View to get the global rating"""
+    """View to get the global rating for a single tenant"""
     authentication_classes = default_auth_classes
     permission_classes = [FXHasTenantCourseAccess]
     fx_view_name = 'global_rating'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
-    fx_view_description = 'api/fx/statistics/v1/rating/: Get the global rating for courses'
+    fx_view_description = 'api/fx/statistics/v1/rating/: Get the global rating for courses in a single tenant'
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
-        GET /api/fx/statistics/v1/rating/?tenant_ids=<tenantIds>
+        GET /api/fx/statistics/v1/rating/?tenant_ids=<tenantId>
 
-        <tenantIds> (optional): a comma-separated list of the tenant IDs to get the information for. If not provided,
-            the API will assume the list of all accessible tenants by the user
+        <tenantId> (required): a single tenant ID to get the rating information for.
+        Multiple tenant IDs are not supported - only one tenant ID must be provided.
         """
-        data_result = get_courses_ratings(fx_permission_info=self.fx_permission_info)
+        tenant_ids_string = request.GET.get('tenant_ids')
+        if not tenant_ids_string:
+            raise FXCodedException(
+                code=FXExceptionCodes.TENANT_ID_REQUIRED_AS_URL_ARG,
+                message='tenant_ids parameter is required'
+            )
+
+        try:
+            tenant_ids = ids_string_to_list(tenant_ids_string)
+        except ValueError as exc:
+            raise FXCodedException(
+                code=FXExceptionCodes.TENANT_NOT_FOUND,
+                message=f'Invalid tenant_ids provided: {str(exc)}'
+            ) from exc
+
+        if len(tenant_ids) != 1:
+            raise FXCodedException(
+                code=FXExceptionCodes.TENANT_ID_REQUIRED_AS_URL_ARG,
+                message=f'Exactly one tenant ID is required, got {len(tenant_ids)}'
+            )
+
+        tenant_id = tenant_ids[0]
+        accessible_tenant_ids = self.fx_permission_info.get('view_allowed_tenant_ids_any_access', [])
+        if tenant_id not in accessible_tenant_ids:
+            raise PermissionDenied(
+                detail=json.dumps({
+                    'reason': f'User does not have access to tenant {tenant_id}'
+                })
+            )
+
+        data_result = get_courses_ratings(tenant_id=tenant_id)
+        rating_counts = {str(i): data_result[f'rating_{i}_count'] for i in RATING_RANGE}
+        total_count = sum(rating_counts.values())
+
         result = {
             'total_rating': data_result['total_rating'],
-            'total_count': sum(data_result[f'rating_{index}_count'] for index in range(1, 6)),
+            'total_count': total_count,
             'courses_count': data_result['courses_count'],
-            'rating_counts': {
-                str(index): data_result[f'rating_{index}_count'] for index in range(1, 6)
-            },
+            'rating_counts': rating_counts,
         }
 
         return JsonResponse(result)
