@@ -992,6 +992,50 @@ docs_src = {
         ),
     },
 
+    'LearnerUnenrollView.post': {
+        'summary': 'Unenroll a learner from a course',
+        'description': (
+            'Unenroll a learner from a specified course. '
+            'Provide one of: user_id, username, or email to identify the learner.'
+        ),
+        'parameters': [],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['user_key', 'course_id'],
+            properties={
+                'user_key': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='User key of the learner (use one of: user_id, username, or email)'
+                ),
+                'course_id': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Course ID from which to unenroll the learner (required)'
+                ),
+                'reason': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Optional reason for unenrollment'
+                ),
+            },
+        ),
+        'responses': responses(
+            overrides={
+                200: openapi.Response(
+                    description='Successfully unenrolled the learner',
+                    schema=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'success': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                            'message': openapi.Schema(type=openapi.TYPE_STRING),
+                            'user_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'username': openapi.Schema(type=openapi.TYPE_STRING),
+                            'course_id': openapi.Schema(type=openapi.TYPE_STRING),
+                        },
+                    )
+                ),
+            }
+        ),
+    },
+
     'LearnerInfoView.get': {
         'summary': 'Get learner\'s information',
         'description': 'Get full information for a specific learner using the `username`. The caller must have access'

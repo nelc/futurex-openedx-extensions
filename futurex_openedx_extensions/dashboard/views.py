@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import uuid
@@ -114,6 +115,7 @@ from futurex_openedx_extensions.helpers.upload import get_storage_dir, upload_fi
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
+logger = logging.getLogger(__name__)
 
 
 @docs('TotalCountsView.get')
@@ -1015,6 +1017,49 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             context['course_id'] = str(self.get_queryset().first().course_id)
             context['omit_subsection_name'] = self.request.query_params.get('omit_subsection_name', '0')
         return context
+
+
+@docs('LearnerUnenrollView.post')
+class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
+    """View to unenroll a learner from a course"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'learner_unenroll'
+    fx_default_read_write_roles = ['staff', 'instructor', 'org_course_creator_group']
+    fx_view_description = 'api/fx/learners/v1/unenroll: Unenroll a learner from a course'
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """
+        POST /api/fx/learners/v1/unenroll/
+        Unenroll a learner from a course. Requires staff or instructor permissions.
+        Body parameters:
+        - user_key (required): User identifier (can be user ID, username, or email)
+        - course_id (required): Course ID from which to unenroll the learner
+        - reason (optional): Reason for unenrollment
+        """
+        serializer = serializers.LearnerUnenrollSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+
+        serializer.is_valid(raise_exception=True)
+
+        course_key = serializer.validated_data['course_id']
+        accessible_courses = get_course_search_queryset(
+            fx_permission_info=self.fx_permission_info,
+            course_ids=[str(course_key)]
+        )
+
+        if not accessible_courses.exists():
+            return Response(
+                error_details_to_dictionary(
+                    reason='You do not have permission to unenroll learners from this course'
+                ),
+                status=http_status.HTTP_403_FORBIDDEN
+            )
+
+        result = serializer.unenroll()
+        return Response(result, status=http_status.HTTP_200_OK)
 
 
 @docs('GlobalRatingView.get')
