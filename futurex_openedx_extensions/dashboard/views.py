@@ -1082,11 +1082,6 @@ class GlobalRatingView(FXViewRoleInfoMixin, APIView):
         """
         tenant_id = self.verify_one_tenant_id_provided(request)
 
-        accessible_tenant_ids = self.fx_permission_info.get('view_allowed_tenant_ids_any_access', [])
-        if tenant_id not in accessible_tenant_ids:
-            error_detail = json.dumps({'reason': f'User does not have access to tenant {tenant_id}'})
-            raise PermissionDenied(detail=error_detail)
-
         data_result = get_courses_ratings(tenant_id=tenant_id)
         rating_counts = {str(i): data_result[f'rating_{i}_count'] for i in RATING_RANGE}
         total_count = sum(rating_counts.values())

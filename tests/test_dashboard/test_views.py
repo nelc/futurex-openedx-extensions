@@ -1831,21 +1831,6 @@ class TestGlobalRatingView(BaseTestViewMixin):
         })
         mocked_calc.assert_called_once_with(tenant_id=1)
 
-    def test_tenant_access_denied(self):
-        """Verify that the view returns 403 when user doesn't have access to the requested tenant"""
-        self.login_user(self.staff_user)
-        with patch.object(
-            GlobalRatingView,
-            'fx_permission_info',
-            new_callable=PropertyMock,
-            return_value={'view_allowed_tenant_ids_any_access': [1]}
-        ):
-            response = self.client.get(f'{self.url}?tenant_ids=2')
-        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
-        data = json.loads(response.content)
-        self.assertIn('reason', data)
-        self.assertEqual(data['reason'], 'User does not have access to tenant 2')
-
 
 @ddt.ddt
 class TestMyRolesView(BaseTestViewMixin):
