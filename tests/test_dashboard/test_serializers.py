@@ -18,6 +18,7 @@ from django.test import override_settings
 from django.utils import timezone
 from django.utils.timezone import get_current_timezone, now, timedelta
 from lms.djangoapps.grades.models import PersistentSubsectionGrade
+from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.user_api.accounts.serializers import AccountLegacyProfileSerializer
@@ -1644,3 +1645,285 @@ def test_create_organization_missing_raises_validation_error(
         match='Organization does not exist. Please add the organization before proceeding.'
     ):
         serializer.create(course_data)
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures('base_data')
+class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outside-init
+    """Tests for LearnerUnenrollSerializer"""
+
+    def setup_method(self):
+        """Setup method for each test"""
+        self.test_user = get_user_model().objects.get(id=10)
+        self.test_course_id = 'course-v1:Org1+1+1'
+        self.course_key = CourseOverview.objects.get(id=self.test_course_id).id
+
+    def test_validate_at_least_one_user_identifier_required(self):
+        """Test that user_key is required"""
+        data = {
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert not serializer.is_valid()
+        assert 'user_key' in serializer.errors
+        assert 'This field is required' in str(serializer.errors)
+
+    def test_validate_course_id_invalid_format(self):
+        """Test validation with invalid course ID format"""
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': 'invalid-course-id',
+        }
+        with patch('futurex_openedx_extensions.dashboard.serializers.CourseLocator.from_string') as mock_from_string:
+            mock_from_string.side_effect = InvalidKeyError('invalid-course-id', 'Invalid key')
+            serializer = serializers.LearnerUnenrollSerializer(data=data)
+            assert not serializer.is_valid()
+            assert 'course_id' in serializer.errors
+            assert 'Invalid course ID format' in str(serializer.errors['course_id'])
+
+    def test_validate_course_id_success(self):
+        """Test successful course ID validation"""
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        assert serializer.validated_data['course_id'] == self.course_key
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_by_user_id(self, mock_get_user_by_key):
+        """Test getting user by user_id"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
+        data = {
+            'user_key': str(self.test_user.id),
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        user = serializer.get_user()
+        assert user.id == self.test_user.id
+        mock_get_user_by_key.assert_called_once_with(str(self.test_user.id))
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_by_username(self, mock_get_user_by_key):
+        """Test getting user by username"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        user = serializer.get_user()
+        assert user.username == self.test_user.username
+        mock_get_user_by_key.assert_called_once_with(self.test_user.username)
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_by_email(self, mock_get_user_by_key):
+        """Test getting user by email"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
+        data = {
+            'user_key': self.test_user.email,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        user = serializer.get_user()
+        assert user.email == self.test_user.email
+        mock_get_user_by_key.assert_called_once_with(self.test_user.email)
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_not_found(self, mock_get_user_by_key):
+        """Test error when user doesn't exist"""
+        mock_get_user_by_key.return_value = {
+            'user': None,
+            'error_code': 1001,
+            'error_message': 'User with username/email (nonexistent_user) does not exist!'
+        }
+        data = {
+            'user_key': 'nonexistent_user',
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        with pytest.raises(ValidationError) as exc_info:
+            serializer.get_user()
+        assert 'Invalid user' in str(exc_info.value)
+        mock_get_user_by_key.assert_called_once_with('nonexistent_user')
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_success(self, mock_get_user_by_key):
+        """Test successful unenrollment"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
+        enrollment = CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=self.test_course_id,
+            is_active=True
+        )
+
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        result = serializer.unenroll()
+
+        assert result['success'] is True
+        assert 'Successfully unenrolled' in result['message']
+        assert result['user_id'] == self.test_user.id
+        assert result['username'] == self.test_user.username
+        assert result['course_id'] == str(self.course_key)
+
+        enrollment.refresh_from_db()
+        assert not enrollment.is_active
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_user_not_enrolled(self, mock_get_user_by_key):
+        """Test error when user is not enrolled"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+
+        with pytest.raises(ValidationError) as exc_info:
+            serializer.unenroll()
+        assert 'not enrolled' in str(exc_info.value)
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_already_unenrolled(self, mock_get_user_by_key):
+        """Test error when user is already unenrolled"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
+        CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=self.test_course_id,
+            is_active=False
+        )
+
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+
+        with pytest.raises(ValidationError) as exc_info:
+            serializer.unenroll()
+        assert 'already unenrolled' in str(exc_info.value)
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_unenroll_with_reason(self, mock_get_user_by_key):
+        """Test unenrollment with reason provided"""
+        mock_get_user_by_key.return_value = {
+            'user': self.test_user,
+            'error_code': None,
+            'error_message': None
+        }
+        enrollment = CourseEnrollment.objects.create(
+            user=self.test_user,
+            course_id=self.test_course_id,
+            is_active=True
+        )
+
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+            'reason': 'Student requested withdrawal',
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        result = serializer.unenroll()
+
+        assert result['success'] is True
+        enrollment.refresh_from_db()
+        assert not enrollment.is_active
+
+    def test_create_not_implemented(self):
+        """Test that create method raises ValueError"""
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+
+        with pytest.raises(ValueError) as exc_info:
+            serializer.create({})
+        assert 'Use unenroll() method instead' in str(exc_info.value)
+
+    def test_update_not_implemented(self):
+        """Test that update method raises ValueError"""
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+
+        with pytest.raises(ValueError) as exc_info:
+            serializer.update(None, {})
+        assert 'This serializer does not support update' in str(exc_info.value)
+
+    def test_optional_reason_field(self):
+        """Test that reason field is optional"""
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+        assert 'reason' not in serializer.validated_data or serializer.validated_data.get('reason') in (None, '')
+
+    def test_reason_field_can_be_blank(self):
+        """Test that reason field can be blank"""
+        data = {
+            'user_key': self.test_user.username,
+            'course_id': self.test_course_id,
+            'reason': '',
+        }
+        serializer = serializers.LearnerUnenrollSerializer(data=data)
+        assert serializer.is_valid()
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
+    def test_get_user_no_identifier_provided(self, mock_get_user_by_key):
+        """Test get_user raises error when no identifier is provided (edge case)"""
+        mock_get_user_by_key.return_value = {
+            'user': None,
+            'error_code': 1001,
+            'error_message': 'Invalid user key type, expected int or str, but got NoneType'
+        }
+        serializer = serializers.LearnerUnenrollSerializer()
+        serializer._validated_data = {'course_id': self.test_course_id}  # pylint: disable=protected-access
+
+        with pytest.raises(ValidationError) as exc_info:
+            serializer.get_user()
+        assert 'Invalid user' in str(exc_info.value)
+        mock_get_user_by_key.assert_called_once_with(None)
