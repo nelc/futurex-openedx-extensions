@@ -1534,6 +1534,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
         data = request.data
         try:
             key = data['key']
+            sub_key = (data.get('sub_key') or '').strip()
             if not isinstance(key, str):
                 raise FXCodedException(
                     code=FXExceptionCodes.INVALID_INPUT, message='Key name must be a string.'
@@ -1557,17 +1558,17 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
 
             update_draft_tenant_config(
                 tenant_id=int(tenant_id),
-                config_path=key_access_info.path,
+                config_path=f'{key_access_info.path}.{sub_key}' if sub_key else key_access_info.path,
                 current_revision_id=int(current_revision_id),
                 new_value=new_value,
                 reset=reset,
                 user=request.user,
             )
 
-            data = get_tenant_config(tenant_id=int(tenant_id), keys=[key], published_only=False)
+            result_data = get_tenant_config(tenant_id=int(tenant_id), keys=[key], published_only=False)
             return Response(
                 status=http_status.HTTP_200_OK,
-                data=serializers.TenantConfigSerializer(data, context={'request': request}).data,
+                data=serializers.TenantConfigSerializer(result_data, context={'request': request}).data,
             )
 
         except KeyError as exc:

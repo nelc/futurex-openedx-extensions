@@ -605,6 +605,49 @@ def test_get_tenant_config(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('published_only, expected_revision_ids', [
+    (False, {
+        'pages_key': 123, 'pages_key.draft_page2': 567, 'courses_key': 345, 'courses_key.course1.chapters': 789,
+    }),
+    (True, {}),
+])
+def test_get_tenant_config_draft_sub_keys(
+    base_data, published_only, expected_revision_ids,
+):  # pylint: disable=unused-argument
+    """Verify get_tenant_config returns the revision IDs for all draft sub-keys."""
+    def _new_draft_config(config_path, config_value, revision_id):
+        """Helper to create a new draft config."""
+        draft_config = DraftConfig.objects.create(
+            tenant_id=1, config_path=config_path, config_value=config_value,
+            created_by_id=1, updated_by_id=1,
+        )
+        draft_config.revision_id = revision_id
+        draft_config.save()
+
+    draft_config_template = {
+        'pages': {'draft_page1': {'value': 'test1'}, 'draft_page2': {'value': 'test2'}},
+        'courses': {'course1': {'chapters': {'c1': 'chapter1'}}, 'course2': {'chapters': {'c2': 'chapter2'}}},
+        'something': {'else': {'val': 'val'}},
+    }
+    assert DraftConfig.objects.count() == 0, 'bad test data, DraftConfig should be empty before the test'
+
+    _new_draft_config('pages', draft_config_template['pages'], 123)
+    _new_draft_config('courses', draft_config_template['courses'], 345)
+    _new_draft_config('something', draft_config_template['something'], 555)
+    _new_draft_config('pages.draft_page2', draft_config_template['pages']['draft_page2'], 567)
+    _new_draft_config('courses.course1.chapters', draft_config_template['courses']['course1']['chapters'], 789)
+    _new_draft_config('something.else', draft_config_template['something']['else'], 888)
+
+    ConfigAccessControl.objects.create(key_name='pages_key', path='pages', key_type='dict')
+    ConfigAccessControl.objects.create(key_name='courses_key', path='courses', key_type='dict')
+    ConfigAccessControl.objects.create(key_name='something_key', path='something', key_type='dict')
+
+    assert tenants.get_tenant_config(
+        1, ['pages_key', 'courses_key'], published_only,
+    )['revision_ids'] == expected_revision_ids
+
+
+@pytest.mark.django_db
 def test_get_tenant_config_for_non_exist_tenant():
     """Test the get_tenant_config for non exist tenant_id."""
     not_exist_tenant_id = 100000
