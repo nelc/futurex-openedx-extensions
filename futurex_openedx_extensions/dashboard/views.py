@@ -72,6 +72,7 @@ from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
     FX_VIEW_DEFAULT_AUTH_CLASSES,
+    RATING_RANGE,
 )
 from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary, ids_string_to_list
 from futurex_openedx_extensions.helpers.course_categories import CourseCategories
@@ -116,7 +117,6 @@ from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 # Constants
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
-RATING_RANGE = range(1, 6)  # Ratings from 1 to 5 stars
 logger = logging.getLogger(__name__)
 
 

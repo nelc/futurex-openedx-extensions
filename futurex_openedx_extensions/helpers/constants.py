@@ -53,6 +53,7 @@ COURSE_STATUSES = {
 
 COURSE_STATUS_SELF_PREFIX = 'self_'
 
+RATING_RANGE = range(1, 6)  # Course ratings from 1 to 5 stars
 
 COURSE_CREATOR_ROLE_TENANT = 'org_course_creator_group'
 COURSE_CREATOR_ROLE_GLOBAL = 'course_creator_group'

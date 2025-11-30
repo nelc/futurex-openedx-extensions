@@ -12,7 +12,7 @@ from django.utils.timezone import now
 
 from futurex_openedx_extensions.dashboard.details.courses import annotate_courses_rating_queryset
 from futurex_openedx_extensions.helpers.caching import cache_dict
-from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
+from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES, RATING_RANGE
 from futurex_openedx_extensions.helpers.extractors import get_valid_duration
 from futurex_openedx_extensions.helpers.permissions import build_fx_permission_info
 from futurex_openedx_extensions.helpers.querysets import (
@@ -20,8 +20,6 @@ from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_base_queryset_courses,
 )
-
-RATING_RANGE = range(1, 6)
 
 
 def get_courses_count(
