@@ -840,14 +840,22 @@ docs_src = {
     },
 
     'GlobalRatingView.get': {
-        'summary': 'Get global rating statistics for the tenants',
-        'description': 'Get global rating statistics for the tenants. The response will include the average rating and'
-        ' the total number of ratings for the selected tenants, plus the number of ratings for each rating value from'
-        ' 0 to 5 (inclusive).\n'
-        '\n**Note:** the count includes only visible courses.\n'
+        'summary': 'Get global rating statistics for a single tenant',
+        'description': 'Get global rating statistics for a single tenant. The response will include the average rating'
+        ' and the total number of ratings for the tenant, plus the number of ratings for each rating value from'
+        ' 1 to 5 (inclusive).\n'
+        '\n**Important:** This endpoint requires exactly **one** tenant ID. Multiple tenant IDs are not supported.\n'
+        '\n**Note:** The count includes only visible courses.\n'
         f'{repeated_descriptions["visible_course_definition"]}',
         'parameters': [
-            common_parameters['tenant_ids'],
+            openapi.Parameter(
+                'tenant_ids',
+                ParameterLocation.QUERY,
+                required=True,
+                type=openapi.TYPE_INTEGER,
+                description='A single tenant ID to get the rating information for. **Required.** Multiple tenant IDs'
+                ' are not supported - exactly one tenant ID must be provided.',
+            ),
         ],
         'responses': responses(
             overrides={
@@ -881,8 +889,18 @@ docs_src = {
                         }
                     }
                 ),
+                400: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'reason': openapi.Schema(type=openapi.TYPE_STRING),
+                    },
+                    description='Bad Request - Missing tenant_ids parameter, invalid format, or multiple tenant IDs'
+                    ' provided when only one is required.',
+                    example={
+                        'reason': 'tenant_ids parameter is required',
+                    }
+                ),
             },
-            remove=[400]
         ),
     },
 

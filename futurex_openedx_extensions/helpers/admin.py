@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any, List, Tuple
 
-import yaml  # type: ignore
+import yaml  # type: ignore[import-untyped]
 from common.djangoapps.student.admin import CourseAccessRoleForm
 from django import forms
 from django.conf import settings
