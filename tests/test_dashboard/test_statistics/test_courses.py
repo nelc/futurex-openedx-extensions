@@ -89,7 +89,7 @@ def test_get_courses_ratings(base_data, fx_permission_info):  # pylint: disable=
                 rating_content=rate,
             )
 
-    result = courses.get_courses_ratings(fx_permission_info)
+    result = courses.get_courses_ratings(tenant_id=1)
     assert result['total_rating'] == 114
     assert result['courses_count'] == 3
     assert result['rating_1_count'] == 3
@@ -105,7 +105,7 @@ def test_get_courses_ratings_no_rating(base_data, fx_permission_info):  # pylint
     expected_keys = ['total_rating', 'courses_count'] + [
         f'rating_{i}_count' for i in range(1, 6)
     ]
-    result = courses.get_courses_ratings(fx_permission_info)
+    result = courses.get_courses_ratings(tenant_id=1)
     assert set(result.keys()) == set(expected_keys)
     assert all(result[key] is not None for key in expected_keys)
     assert all(result[key] == 0 for key in expected_keys)

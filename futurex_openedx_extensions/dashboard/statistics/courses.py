@@ -260,7 +260,6 @@ def get_courses_ratings(
 
         q_set = annotate_courses_rating_queryset(q_set).filter(rating_count__gt=0)
 
-        # Annotate each rating level count (1-5 stars)
         q_set = q_set.annotate(**{
             f'course_rating_{rate_value}_count': Count(
                 'feedbackcourse',
@@ -268,7 +267,6 @@ def get_courses_ratings(
             ) for rate_value in RATING_RANGE
         })
 
-        # Aggregate total ratings and counts per rating level
         return q_set.aggregate(
             total_rating=Coalesce(Sum('rating_total'), 0),
             courses_count=Coalesce(Count('id'), 0),
