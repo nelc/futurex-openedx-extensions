@@ -29,8 +29,8 @@ from lms.djangoapps.grades.models import PersistentCourseGrade
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
+    get_accessible_users_and_courses,
     get_base_queryset_courses,
-    get_course_search_queryset,
     get_learners_search_queryset,
     get_one_user_queryset,
     get_permitted_learners_queryset,
@@ -329,20 +329,14 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     :param progress_filter: Tuple containing min and max progress percentage to filter by. -1 means no filter.
     :return: List of dictionaries containing user and course details.
     """
-    accessible_users = get_permitted_learners_queryset(
-        queryset=get_learners_search_queryset(
-            search_text=learner_search,
-            user_ids=user_ids,
-            usernames=usernames,
-        ),
+    accessible_users, accessible_courses = get_accessible_users_and_courses(
         fx_permission_info=fx_permission_info,
-        include_staff=include_staff,
-    )
-
-    accessible_courses = get_course_search_queryset(
-        fx_permission_info=fx_permission_info,
-        search_text=course_search,
+        user_ids=user_ids,
         course_ids=course_ids,
+        usernames=usernames,
+        learner_search=learner_search,
+        course_search=course_search,
+        include_staff=include_staff,
     )
 
     queryset = CourseEnrollment.objects.filter(

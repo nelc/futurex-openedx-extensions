@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from django.conf import settings
 from drf_yasg import openapi
 from edx_api_doc_tools import ParameterLocation, path_parameter, query_parameter
+from zeitlabs_payments.models import Cart, CatalogueItem
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.helpers.extractors import (
@@ -115,6 +116,36 @@ def get_optional_parameter(path: str) -> Any:
 
 
 common_parameters = {
+    'course_ids': query_parameter(
+        'course_ids',
+        str,
+        'a comma separated list of course ids to filter the results by. If not provided, the system will '
+        'assume all courses that are accessible to the caller.'
+    ),
+    'user_ids': query_parameter(
+        'user_ids',
+        str,
+        'a comma separated list of learner user ids to filter the results by. If not provided, the system '
+        'will assume all users that are accessible to the caller.'
+    ),
+    'usernames': query_parameter(
+        'usernames',
+        str,
+        'a comma separated list of learner usernames to filter the results by. If not provided, the system '
+        'will assume all users that are accessible to the caller.'
+    ),
+    'learner_search': query_parameter(
+        'learner_search',
+        str,
+        'A search text to filter results, matched against the user\'s full name, username, national ID, and '
+        'email address.'
+    ),
+    'course_search': query_parameter(
+        'course_search',
+        str,
+        'a comma separated list of learner usernames to filter the results by. If not provided, the system '
+        'will assume all users that are accessible to the caller.'
+    ),
     'include_staff': openapi.Parameter(
         'include_staff',
         ParameterLocation.QUERY,
@@ -507,11 +538,11 @@ docs_src = {
             ),
             common_parameters['include_staff'],
             common_parameters['download'],
+            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::CourseDetailsSerializer'),
         ],
         'responses': responses(
             overrides={
                 200: serializers.CourseDetailsSerializer(read_only=True, required=False),
-
             },
             remove=[400]
         ),
@@ -932,35 +963,12 @@ docs_src = {
         ' least one enrollment in any course.',
         'parameters': [
             common_parameters['tenant_ids'],
-            query_parameter(
-                'course_ids',
-                str,
-                'a comma separated list of course ids to filter the results by. If not provided, the system will '
-                'assume all courses that are accessible to the caller.',
-            ),
-            query_parameter(
-                'user_ids',
-                str,
-                'a comma separated list of learner user ids to filter the results by. If not provided, the system '
-                'will assume all users that are accessible to the caller.',
-            ),
-            query_parameter(
-                'usernames',
-                str,
-                'a comma separated list of learner usernames to filter the results by. If not provided, the system '
-                ' will assume all users that are accessible to the caller.',
-            ),
-            query_parameter(
-                'learner_search',
-                str,
-                'A search text to filter results, matched against the user\'s full name, username, national ID, and '
-                ' email address.',
-            ),
-            query_parameter(
-                'course_search',
-                str,
-                'A search text to filter results, matched against the course\'s ID and display name.',
-            ),
+            common_parameters['user_ids'],
+            common_parameters['usernames'],
+            common_parameters['course_ids'],
+            common_parameters['learner_search'],
+            common_parameters['course_search'],
+            common_parameters['include_staff'],
             query_parameter(
                 'progress_min',
                 int,
@@ -973,7 +981,6 @@ docs_src = {
                 'Filter enrollments to include only those with progress less than or equal to this value '
                 '(0-1). Negative values will disable this filter as if it was not provided.',
             ),
-            common_parameters['include_staff'],
             get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::LearnerEnrollmentSerializer'),
             common_parameters['download'],
             common_parameters['omit_subsection_name'],
@@ -1607,6 +1614,212 @@ docs_src = {
             overrides={
                 200: common_schemas['role'],
             },
+        ),
+    },
+
+    'PaymentOrdersView.get': {
+        'summary': 'Get the list of cart orders',
+        'description': 'Get the list of orders in the tenants.',
+        'parameters': [
+            common_parameters['tenant_ids'],
+            common_parameters['user_ids'],
+            common_parameters['usernames'],
+            common_parameters['course_ids'],
+            common_parameters['learner_search'],
+            common_parameters['course_search'],
+            query_parameter(
+                'sku_search',
+                str,
+                'A search text to filter results, matched against the item sku.',
+            ),
+            openapi.Parameter(
+                'include_invoice',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=['1', '0'],
+                description=(
+                    '- `include_invoice=0`: (**default**) The API will not return any invoice data.\n'
+                    '- `include_invoice=1`: The API will include invoice data for paid carts only. '
+                    'Carts with any other status will have invoice null.'
+                )
+            ),
+            openapi.Parameter(
+                'include_user_details',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=['1', '0'],
+                description=(
+                    '- `include_user_details=0`: (**default**) The API will only return user_id.\n'
+                    '- `include_user_details=1`: The API will return user details like name, email.'
+                )
+            ),
+            openapi.Parameter(
+                'status',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=Cart.valid_statuses(),
+                description=(
+                    'to filter carts of specific status.'
+                )
+            ),
+            openapi.Parameter(
+                'item_type',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=CatalogueItem.valid_item_types(),
+                description=(
+                    'to filter carts containing specific item types.\n'
+                    'Note: right now only paid_course is implemented.'
+                )
+            ),
+            common_parameters['include_staff'],
+            common_parameters['download'],
+        ],
+        'responses': responses(
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            description='List of payment orders.',
+                            items=openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    'id': openapi.Schema(
+                                        type=openapi.TYPE_INTEGER,
+                                        description='Unique identifier for the order.',
+                                        example=403,
+                                    ),
+                                    'user': openapi.Schema(
+                                        type=openapi.TYPE_OBJECT,
+                                        description='User who owns the order.',
+                                        properties={
+                                            'id': openapi.Schema(
+                                                type=openapi.TYPE_INTEGER, example=10
+                                            ),
+                                            'username': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='admin'
+                                            ),
+                                            'email': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='admin@example.com'
+                                            ),
+                                            'full_name': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='admin'
+                                            ),
+                                        },
+                                    ),
+                                    'status': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Current status of the cart (e.g., paid, pending).',
+                                        example='paid',
+                                    ),
+                                    'created_at': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        format=openapi.FORMAT_DATETIME,
+                                        description='Timestamp when the cart was created.',
+                                        example='2025-11-04T10:26:35.237473Z',
+                                    ),
+                                    'items': openapi.Schema(
+                                        type=openapi.TYPE_ARRAY,
+                                        description='List of items included in the order.',
+                                        items=openapi.Schema(
+                                            type=openapi.TYPE_OBJECT,
+                                            properties={
+                                                'sku': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='F55ADB6'
+                                                ),
+                                                'title': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='Paid course 3'
+                                                ),
+                                                'description': openapi.Schema(type=openapi.TYPE_STRING, example=''),
+                                                'type': openapi.Schema(type=openapi.TYPE_STRING, example='paid_course'),
+                                                'currency': openapi.Schema(type=openapi.TYPE_STRING, example='SAR'),
+                                                'original_price': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='500.00'
+                                                ),
+                                                'discount_amount': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='0.00'
+                                                ),
+                                                'final_price': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, example='550.00'
+                                                ),
+                                                'coupon': openapi.Schema(
+                                                    type=openapi.TYPE_STRING, nullable=True, example=None
+                                                ),
+                                                'details': openapi.Schema(
+                                                    type=openapi.TYPE_OBJECT,
+                                                    properties={
+                                                        'courses': openapi.Schema(
+                                                            type=openapi.TYPE_ARRAY,
+                                                            items=openapi.Schema(
+                                                                type=openapi.TYPE_OBJECT,
+                                                                properties={
+                                                                    'course_id': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING,
+                                                                        example='course-v1:nelp+333+33',
+                                                                    ),
+                                                                    'course_name': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING,
+                                                                        example='Robotics and AI',
+                                                                    ),
+                                                                    'course_image': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING,
+                                                                        format=openapi.FORMAT_URI,
+                                                                        example='http://nelp.com/asset-v1.jpg',
+                                                                    ),
+                                                                    'org': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING, example='nelp'
+                                                                    ),
+                                                                    'run': openapi.Schema(
+                                                                        type=openapi.TYPE_STRING, example='33'
+                                                                    ),
+                                                                },
+                                                            ),
+                                                        ),
+                                                    },
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                    'total': openapi.Schema(
+                                        type=openapi.TYPE_NUMBER,
+                                        format=openapi.FORMAT_FLOAT,
+                                        description='Total amount payable after discounts and taxes.',
+                                        example=550.0,
+                                    ),
+                                    'currency': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        description='Currency used for the transaction.',
+                                        example='SAR',
+                                    ),
+                                    'invoice': openapi.Schema(
+                                        type=openapi.TYPE_OBJECT,
+                                        description='Invoice details (present only for paid orders).',
+                                        properties={
+                                            'invoice_number': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='DEV-100001'
+                                            ),
+                                            'currency': openapi.Schema(
+                                                type=openapi.TYPE_STRING, example='SAR'
+                                            ),
+                                            'paid_at': openapi.Schema(
+                                                type=openapi.TYPE_STRING,
+                                                format=openapi.FORMAT_DATETIME,
+                                                example='2025-11-04T10:30:30.859924Z',
+                                            ),
+                                        },
+                                    ),
+                                },
+                            ),
+                        ),
+                    },
+                ),
+            }
         ),
     },
 
@@ -2288,6 +2501,325 @@ docs_src = {
                 200: serializers.TenantAssetSerializer(include_write_only=False),
             },
             remove=[400, 404]
+        ),
+    },
+
+    'CategoriesView.get': {
+        'summary': 'Get the list of course categories for a tenant',
+        'description': 'Get the list of course categories for a tenant.',
+        'parameters': [
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant IDs to retrieve the categories for.\n\n'
+                '**Note:** The caller must provide a single tenant ID to access the categories.',
+            ),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::CategorySerializer'),
+            openapi.Parameter(
+                'verify_course_ids',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_INTEGER,
+                enum=[1, 0],
+                description='(1, 0) flag to verify if the course IDs assigned to categories exist in the system. the '
+                            'default is 1 (verify and return 400 if any course_id is invalid). Set to 0 to skip '
+                            'the verification.',
+            ),
+        ],
+        'responses': responses(
+            success_description='Returns a list of categories with their details in display order.',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_ARRAY,
+                items=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'id': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='The unique name/identifier of the category.',
+                        ),
+                        'label': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            description='The display labels for the category in different languages.',
+                            additional_properties=openapi.Schema(type=openapi.TYPE_STRING),
+                        ),
+                        'courses': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_STRING),
+                            description='List of course IDs assigned to this category.',
+                        ),
+                    },
+                ),
+            ),
+            success_examples={
+                'application/json': [
+                    {
+                        'id': 'category1',
+                        'label': {'ar': 'دورات العلوم', 'en': 'Science Courses'},
+                        'courses': ['course-v1:org+course+001', 'course-v1:org+course+002'],
+                    },
+                    {
+                        'id': 'category2',
+                        'label': {'ar': 'الرياضيات', 'en': 'Mathematics'},
+                        'courses': ['course-v1:org+math+001'],
+                    },
+                    {
+                        'id': 'category3',
+                        'label': {'ar': 'دورات التاريخ', 'en': 'History Courses'},
+                        'courses': [],
+                    },
+                ],
+            },
+            remove=[404],
+        ),
+    },
+
+    'CategoriesView.post': {
+        'summary': 'Create a new course category',
+        'description': 'Create a new course category for a tenant. The category name (ID) must be unique within the '
+                       'tenant.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'tenant_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='The tenant ID to create the category for.',
+                    example=1,
+                ),
+                'label': openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    description='The display labels for the category in different languages (e.g., ar, en).',
+                    additional_properties=openapi.Schema(type=openapi.TYPE_STRING),
+                    example={'ar': 'دورات العلوم', 'en': 'Science Courses'},
+                ),
+            },
+            required=['tenant_id', 'label']
+        ),
+        'responses': responses(
+            success_description='Category created successfully. Returns the created category details.',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'id': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description='The category name.',
+                    ),
+                    'tenant_id': openapi.Schema(
+                        type=openapi.TYPE_INTEGER,
+                        description='The tenant ID to create the category for.',
+                        example=1,
+                    ),
+                    'label': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        description='The category labels in different languages.',
+                        additional_properties=openapi.Schema(type=openapi.TYPE_STRING),
+                    ),
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'id': 'category1',
+                    'tenant_id': 1,
+                    'label': {'ar': 'دورات العلوم', 'en': 'Science Courses'},
+                },
+            },
+            overrides={
+                400: 'Unable to create category. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
+    'CategoryDetailView.get': {
+        'summary': 'Get one category for a tenant',
+        'description': 'Get one course category for a tenant.',
+        'parameters': [
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant IDs to retrieve the category for.\n\n'
+                '**Note:** The caller must provide a single tenant ID to access the categories.',
+            ),
+            get_optional_parameter('futurex_openedx_extensions.dashboard.serializers::CategorySerializer'),
+            openapi.Parameter(
+                'verify_course_ids',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_INTEGER,
+                enum=[1, 0],
+                description='(1, 0) flag to verify if the course IDs assigned to categories exist in the system. the '
+                            'default is 1 (verify and return 400 if any course_id is invalid). Set to 0 to skip '
+                            'the verification.',
+            ),
+        ],
+        'responses': responses(
+            success_description='Returns contents of one category.',
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'id': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description='The unique name/identifier of the category.',
+                    ),
+                    'label': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        description='The display labels for the category in different languages.',
+                        additional_properties=openapi.Schema(type=openapi.TYPE_STRING),
+                    ),
+                    'courses': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(type=openapi.TYPE_STRING),
+                        description='List of course IDs assigned to this category.',
+                    ),
+                },
+            ),
+            success_examples={
+                'application/json': {
+                    'id': 'category1',
+                    'label': {'ar': 'دورات العلوم', 'en': 'Science Courses'},
+                    'courses': ['course-v1:org+course+001', 'course-v1:org+course+002'],
+                },
+            },
+            remove=[404],
+        ),
+    },
+
+    'CategoryDetailView.patch': {
+        'summary': 'Update an existing course category',
+        'description': 'Update an existing course category. It can update the label and/or the courses assigned to '
+                       'the category. The API will always verify that the provided course IDs exist in the system '
+                       'before updating the category.',
+        'parameters': [
+            path_parameter(
+                'category_id',
+                str,
+                'The unique name/identifier of the category to update.',
+            ),
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant IDs to update the category for.\n\n'
+                '**Note:** The caller must provide a single tenant ID.',
+            ),
+        ],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'label': openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    description='The new display labels for the category in different languages.',
+                    additional_properties=openapi.Schema(type=openapi.TYPE_STRING),
+                    example={'ar': 'دورات العلوم المحدثة', 'en': 'Updated Science Courses'},
+                ),
+                'courses': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(type=openapi.TYPE_STRING),
+                    description='List of course IDs to assign to this category. This will replace the existing '
+                    'courses.',
+                    example=['course-v1:org+course+001', 'course-v1:org+course+002'],
+                ),
+            },
+        ),
+        'responses': responses(
+            overrides={
+                204: 'Category updated successfully.',
+                400: 'Unable to update category. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
+    'CategoryDetailView.delete': {
+        'summary': 'Delete a course category',
+        'description': 'Delete a course category. Deleting a category will not delete the courses, it will only '
+                       'remove them from the category.',
+        'parameters': [
+            path_parameter(
+                'category_id',
+                str,
+                'The unique name/identifier of the category to delete.',
+            ),
+            query_parameter(
+                'tenant_ids',
+                str,
+                'Tenant IDs to delete the category from.\n\n'
+                '**Note:** The caller must provide a single tenant ID.',
+            ),
+        ],
+        'responses': responses(
+            overrides={
+                204: 'Category deleted successfully.',
+                400: 'Unable to delete category. The response will include a JSON object with the error message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
+    'CategoriesOrderView.post': {
+        'summary': 'Update the display order of categories',
+        'description': 'Update the display order of categories for a tenant.',
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'tenant_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='The tenant ID to update the categories order for.',
+                    example=1,
+                ),
+                'categories': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(type=openapi.TYPE_STRING),
+                    description='Ordered list of category names. The order in this list determines the display '
+                    'order.',
+                    example=['category1', 'category3', 'category2'],
+                ),
+            },
+            required=['tenant_id', 'categories']
+        ),
+        'responses': responses(
+            overrides={
+                204: 'Categories order updated successfully.',
+                400: 'Unable to update categories order. The response will include a JSON object with the error '
+                'message.',
+            },
+            remove=[200, 404],
+        ),
+    },
+
+    'CourseCategoriesView.put': {
+        'summary': 'Assign categories to a course',
+        'description':
+            'Assign one or more categories to a course.'
+            '\n\nFor categories already assigned to the course: nothing will change.'
+            '\nFor categories not assigned yet: the course will take place as the last course in the category.'
+            '\nThe course will be removed from all categories not included in the request.'
+            '\n\n**Note:** Categories must exist before they can be assigned to a course.',
+        'parameters': [
+            path_parameter(
+                'course_id',
+                str,
+                'The course ID to assign categories to.',
+            ),
+        ],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'categories': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(type=openapi.TYPE_STRING),
+                    description='List of category names to assign to the course. This will replace existing '
+                    'assignments.',
+                    example=['category1', 'category3'],
+                ),
+            },
+            required=['categories']
+        ),
+        'responses': responses(
+            overrides={
+                204: 'Categories assigned to course successfully.',
+                400: 'Unable to assign categories. The response will include a JSON object with the error message.',
+                404: 'Course not found or access denied.',
+            },
+            remove=[200],
         ),
     },
 }
