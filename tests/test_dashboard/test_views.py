@@ -6,7 +6,7 @@ import json
 import os
 from collections import OrderedDict
 from datetime import date
-from unittest.mock import ANY, MagicMock, Mock, PropertyMock, patch
+from unittest.mock import ANY, MagicMock, Mock, patch
 
 import ddt
 import pytest
@@ -28,7 +28,7 @@ from eox_tenant.models import Route, TenantConfig
 from opaque_keys.edx.locator import CourseLocator, LibraryLocator
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
-from rest_framework.exceptions import ParseError, PermissionDenied
+from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.test import APIRequestFactory, APITestCase
@@ -36,7 +36,6 @@ from rest_framework.utils.serializer_helpers import ReturnList
 
 from futurex_openedx_extensions.dashboard import serializers, urls, views
 from futurex_openedx_extensions.dashboard.views import (
-    GlobalRatingView,
     LearnersEnrollmentView,
     ThemeConfigDraftView,
     ThemeConfigPublishView,

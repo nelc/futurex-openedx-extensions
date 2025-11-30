@@ -74,7 +74,7 @@ from futurex_openedx_extensions.helpers.constants import (
     FX_VIEW_DEFAULT_AUTH_CLASSES,
     RATING_RANGE,
 )
-from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary, ids_string_to_list
+from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary
 from futurex_openedx_extensions.helpers.course_categories import CourseCategories
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin

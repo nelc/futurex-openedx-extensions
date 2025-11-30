@@ -210,7 +210,11 @@ def get_courses_count_by_status(
     return q_set
 
 
-def _cache_key_courses_ratings(tenant_id: int, visible_filter: bool | None, active_filter: bool | None) -> str:
+def _cache_key_courses_ratings(
+    tenant_id: int,
+    visible_filter: bool | None = True,
+    active_filter: bool | None = None,
+) -> str:
     """
     Generate cache key for get_courses_ratings
 
@@ -226,6 +230,10 @@ def _cache_key_courses_ratings(tenant_id: int, visible_filter: bool | None, acti
     return f'fx_courses_ratings_t{tenant_id}_v{visible_filter}_a{active_filter}'
 
 
+@cache_dict(
+    timeout='FX_CACHE_TIMEOUT_COURSES_RATINGS',
+    key_generator_or_name=_cache_key_courses_ratings
+)
 def get_courses_ratings(
     tenant_id: int,
     visible_filter: bool | None = True,
@@ -243,35 +251,25 @@ def get_courses_ratings(
     :return: Dictionary containing the total rating, courses count, and rating count per rating value
     :rtype: Dict[str, int]
     """
-    @cache_dict(
-        timeout='FX_CACHE_TIMEOUT_COURSES_RATINGS',
-        key_generator_or_name=_cache_key_courses_ratings
+    fx_permission_info = build_fx_permission_info(tenant_id)
+    q_set = get_base_queryset_courses(
+        fx_permission_info, visible_filter=visible_filter, active_filter=active_filter
     )
-    def _get_ratings(t_id: int, v_filter: bool | None, a_filter: bool | None) -> Dict[str, int]:
-        """
-        Inner function to compute ratings with caching
-        """
-        fx_permission_info = build_fx_permission_info(t_id)
-        q_set = get_base_queryset_courses(
-            fx_permission_info, visible_filter=v_filter, active_filter=a_filter
-        )
 
-        q_set = annotate_courses_rating_queryset(q_set).filter(rating_count__gt=0)
+    q_set = annotate_courses_rating_queryset(q_set).filter(rating_count__gt=0)
 
-        q_set = q_set.annotate(**{
-            f'course_rating_{rate_value}_count': Count(
-                'feedbackcourse',
-                filter=Q(feedbackcourse__rating_content=rate_value)
-            ) for rate_value in RATING_RANGE
-        })
+    q_set = q_set.annotate(**{
+        f'course_rating_{rate_value}_count': Count(
+            'feedbackcourse',
+            filter=Q(feedbackcourse__rating_content=rate_value)
+        ) for rate_value in RATING_RANGE
+    })
 
-        return q_set.aggregate(
-            total_rating=Coalesce(Sum('rating_total'), 0),
-            courses_count=Coalesce(Count('id'), 0),
-            **{
-                f'rating_{rate_value}_count': Coalesce(Sum(f'course_rating_{rate_value}_count'), 0)
-                for rate_value in RATING_RANGE
-            }
-        )
-
-    return _get_ratings(tenant_id, visible_filter, active_filter)
+    return q_set.aggregate(
+        total_rating=Coalesce(Sum('rating_total'), 0),
+        courses_count=Coalesce(Count('id'), 0),
+        **{
+            f'rating_{rate_value}_count': Coalesce(Sum(f'course_rating_{rate_value}_count'), 0)
+            for rate_value in RATING_RANGE
+        }
+    )
