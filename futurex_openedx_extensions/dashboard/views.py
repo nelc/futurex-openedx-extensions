@@ -1080,35 +1080,12 @@ class GlobalRatingView(FXViewRoleInfoMixin, APIView):
         <tenantId> (required): a single tenant ID to get the rating information for.
         Multiple tenant IDs are not supported - only one tenant ID must be provided.
         """
-        tenant_ids_string = request.GET.get('tenant_ids')
-        if not tenant_ids_string:
-            raise FXCodedException(
-                code=FXExceptionCodes.TENANT_ID_REQUIRED_AS_URL_ARG,
-                message='tenant_ids parameter is required'
-            )
+        tenant_id = self.verify_one_tenant_id_provided(request)
 
-        try:
-            tenant_ids = ids_string_to_list(tenant_ids_string)
-        except ValueError as exc:
-            raise FXCodedException(
-                code=FXExceptionCodes.TENANT_NOT_FOUND,
-                message=f'Invalid tenant_ids provided: {str(exc)}'
-            ) from exc
-
-        if len(tenant_ids) != 1:
-            raise FXCodedException(
-                code=FXExceptionCodes.TENANT_ID_REQUIRED_AS_URL_ARG,
-                message=f'Exactly one tenant ID is required, got {len(tenant_ids)}'
-            )
-
-        tenant_id = tenant_ids[0]
         accessible_tenant_ids = self.fx_permission_info.get('view_allowed_tenant_ids_any_access', [])
         if tenant_id not in accessible_tenant_ids:
-            raise PermissionDenied(
-                detail=json.dumps({
-                    'reason': f'User does not have access to tenant {tenant_id}'
-                })
-            )
+            error_detail = json.dumps({'reason': f'User does not have access to tenant {tenant_id}'})
+            raise PermissionDenied(detail=error_detail)
 
         data_result = get_courses_ratings(tenant_id=tenant_id)
         rating_counts = {str(i): data_result[f'rating_{i}_count'] for i in RATING_RANGE}

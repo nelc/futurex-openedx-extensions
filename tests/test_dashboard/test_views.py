@@ -6,7 +6,7 @@ import json
 import os
 from collections import OrderedDict
 from datetime import date
-from unittest.mock import ANY, MagicMock, Mock, patch
+from unittest.mock import ANY, MagicMock, Mock, PropertyMock, patch
 
 import ddt
 import pytest
@@ -1831,77 +1831,20 @@ class TestGlobalRatingView(BaseTestViewMixin):
         })
         mocked_calc.assert_called_once_with(tenant_id=1)
 
-    def test_missing_tenant_ids(self):
-        """Verify that the view returns 400 when tenant_ids parameter is missing"""
+    def test_tenant_access_denied(self):
+        """Verify that the view returns 403 when user doesn't have access to the requested tenant"""
         self.login_user(self.staff_user)
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        data = json.loads(response.content)
-        self.assertIn('reason', data)
-        self.assertIn('tenant_ids parameter is required', data['reason'])
-
-    def test_multiple_tenant_ids(self):
-        """Verify that the view returns 400 when multiple tenant_ids are provided"""
-        self.login_user(self.staff_user)
-        response = self.client.get(f'{self.url}?tenant_ids=1,2')
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        data = json.loads(response.content)
-        self.assertIn('reason', data)
-        self.assertIn('Exactly one tenant ID is required', data['reason'])
-
-    def test_invalid_tenant_id_format(self):
-        """Verify that the view returns 403 when tenant_ids has invalid format"""
-        self.login_user(self.staff_user)
-        response = self.client.get(f'{self.url}?tenant_ids=invalid')
+        with patch.object(
+            GlobalRatingView,
+            'fx_permission_info',
+            new_callable=PropertyMock,
+            return_value={'view_allowed_tenant_ids_any_access': [1]}
+        ):
+            response = self.client.get(f'{self.url}?tenant_ids=2')
         self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
         data = json.loads(response.content)
         self.assertIn('reason', data)
-
-    def test_unauthorized_tenant_access(self):
-        """Verify that the view returns 403 when user doesn't have access to the tenant"""
-        self.login_user(self.staff_user)
-        response = self.client.get(f'{self.url}?tenant_ids=999')
-        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
-
-    def test_direct_call_invalid_tenant_format(self):
-        """Test ValueError handler when ids_string_to_list raises ValueError (bypassing middleware)"""
-        self.login_user(self.staff_user)
-        factory = APIRequestFactory()
-        request = factory.get(f'{self.url}?tenant_ids=invalid_format')
-        request.user = self.staff_user
-        request.fx_permission_info = {
-            'user': self.staff_user,
-            'view_allowed_tenant_ids_any_access': [1, 2],
-        }
-
-        view = GlobalRatingView()
-        view.request = request
-
-        with patch('futurex_openedx_extensions.dashboard.views.ids_string_to_list') as mock_ids:
-            mock_ids.side_effect = ValueError('Invalid format')
-            with self.assertRaises(FXCodedException) as context:
-                view.get(request)
-            self.assertEqual(context.exception.code, FXExceptionCodes.TENANT_NOT_FOUND.value)
-            self.assertIn('Invalid tenant_ids provided', str(context.exception))
-
-    def test_direct_call_unauthorized_tenant(self):
-        """Test PermissionDenied when tenant_id not in accessible list (bypassing middleware)"""
-        self.login_user(self.staff_user)
-        factory = APIRequestFactory()
-        request = factory.get(f'{self.url}?tenant_ids=999')
-        request.user = self.staff_user
-        request.fx_permission_info = {
-            'user': self.staff_user,
-            'view_allowed_tenant_ids_any_access': [1, 2],
-        }
-
-        view = GlobalRatingView()
-        view.request = request
-
-        with self.assertRaises(PermissionDenied) as context:
-            view.get(request)
-        error_detail = json.loads(context.exception.detail)
-        self.assertIn('User does not have access to tenant 999', error_detail['reason'])
+        self.assertEqual(data['reason'], 'User does not have access to tenant 2')
 
 
 @ddt.ddt
