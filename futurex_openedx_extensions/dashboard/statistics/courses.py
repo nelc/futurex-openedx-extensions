@@ -9,8 +9,8 @@ from django.db.models import Case, CharField, Count, Q, Sum, Value, When
 from django.db.models.functions import Coalesce, Lower
 from django.db.models.query import QuerySet
 from django.utils.timezone import now
+from eox_nelp.course_experience.models import FeedbackCourse
 
-from futurex_openedx_extensions.dashboard.details.courses import annotate_courses_rating_queryset
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES, RATING_RANGE
@@ -253,24 +253,31 @@ def get_courses_ratings(
     :rtype: Dict[str, int]
     """
     fx_permission_info = build_fx_permission_info(tenant_id)
-    q_set = get_base_queryset_courses(
-        fx_permission_info, visible_filter=visible_filter, active_filter=active_filter
+
+    accessible_course_ids = list(
+        get_base_queryset_courses(fx_permission_info, visible_filter=visible_filter, active_filter=active_filter)
+        .values_list('id', flat=True)
     )
 
-    q_set = annotate_courses_rating_queryset(q_set).filter(rating_count__gt=0)
-
-    q_set = q_set.annotate(**{
-        f'course_rating_{rate_value}_count': Count(
-            'feedbackcourse',
-            filter=Q(feedbackcourse__rating_content=rate_value)
-        ) for rate_value in RATING_RANGE
-    })
-
-    return q_set.aggregate(
-        total_rating=Coalesce(Sum('rating_total'), 0),
-        courses_count=Coalesce(Count('id'), 0),
-        **{
-            f'rating_{rate_value}_count': Coalesce(Sum(f'course_rating_{rate_value}_count'), 0)
-            for rate_value in RATING_RANGE
-        }
+    feedbacks_qs = FeedbackCourse.objects.filter(
+        course_id__in=accessible_course_ids,
+        rating_content__isnull=False,
+        rating_content__gt=0,
     )
+
+    rating_groups = feedbacks_qs.values('rating_content').annotate(count=Count('id'))
+
+    rating_map = {int(item['rating_content']): int(item['count']) for item in rating_groups}
+
+    total_rating_agg = feedbacks_qs.aggregate(total_rating=Coalesce(Sum('rating_content'), 0))
+    courses_count_agg = feedbacks_qs.aggregate(courses_count=Coalesce(Count('course_id', distinct=True), 0))
+
+    result: Dict[str, int] = {
+        'total_rating': int(total_rating_agg.get('total_rating', 0)),
+        'courses_count': int(courses_count_agg.get('courses_count', 0)),
+    }
+
+    for rate_value in RATING_RANGE:
+        result[f'rating_{rate_value}_count'] = int(rating_map.get(rate_value, 0))
+
+    return result
