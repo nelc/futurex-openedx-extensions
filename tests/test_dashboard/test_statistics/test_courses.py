@@ -89,7 +89,7 @@ def test_get_courses_ratings(base_data, fx_permission_info):  # pylint: disable=
                 rating_content=rate,
             )
 
-    result = courses.get_courses_ratings(fx_permission_info)
+    result = courses.get_courses_ratings(tenant_id=1)
     assert result['total_rating'] == 114
     assert result['courses_count'] == 3
     assert result['rating_1_count'] == 3
@@ -105,7 +105,7 @@ def test_get_courses_ratings_no_rating(base_data, fx_permission_info):  # pylint
     expected_keys = ['total_rating', 'courses_count'] + [
         f'rating_{i}_count' for i in range(1, 6)
     ]
-    result = courses.get_courses_ratings(fx_permission_info)
+    result = courses.get_courses_ratings(tenant_id=1)
     assert set(result.keys()) == set(expected_keys)
     assert all(result[key] is not None for key in expected_keys)
     assert all(result[key] == 0 for key in expected_keys)
@@ -223,3 +223,21 @@ def test_get_enrollments_count_aggregated_result(
         date_from, date_to = date_to, date_from
     assert calculated_from == datetime.combine(date_from, datetime.min.time())
     assert calculated_to == datetime.combine(date_to, datetime.max.time())
+
+
+@pytest.mark.django_db
+def testcache_name_courses_rating():
+    """Verify that cache key generation works correctly with different parameters."""
+    key1 = courses.cache_name_courses_rating(1, True, True)
+    key2 = courses.cache_name_courses_rating(1, True, False)
+    key3 = courses.cache_name_courses_rating(1, False, True)
+    key4 = courses.cache_name_courses_rating(2, True, True)
+    key5 = courses.cache_name_courses_rating(1, None, None)
+    keys = [key1, key2, key3, key4, key5]
+    assert len(keys) == len(set(keys)), 'Cache keys should be unique for different parameters'
+
+    assert key1 == 'fx_courses_ratings_t1_vTrue_aTrue'
+    assert key2 == 'fx_courses_ratings_t1_vTrue_aFalse'
+    assert key3 == 'fx_courses_ratings_t1_vFalse_aTrue'
+    assert key4 == 'fx_courses_ratings_t2_vTrue_aTrue'
+    assert key5 == 'fx_courses_ratings_t1_vNone_aNone'

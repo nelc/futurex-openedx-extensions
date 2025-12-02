@@ -11,8 +11,11 @@ from django.db.models.query import QuerySet
 from django.utils.timezone import now
 
 from futurex_openedx_extensions.dashboard.details.courses import annotate_courses_rating_queryset
-from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
+from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.caching import cache_dict
+from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES, RATING_RANGE
 from futurex_openedx_extensions.helpers.extractors import get_valid_duration
+from futurex_openedx_extensions.helpers.permissions import build_fx_permission_info
 from futurex_openedx_extensions.helpers.querysets import (
     annotate_period,
     check_staff_exist_queryset,
@@ -208,16 +211,40 @@ def get_courses_count_by_status(
     return q_set
 
 
+def cache_name_courses_rating(
+    tenant_id: int,
+    visible_filter: bool | None = True,
+    active_filter: bool | None = None,
+) -> str:
+    """
+    Generate cache key for get_courses_ratings
+
+    :param tenant_id: Tenant ID
+    :type tenant_id: int
+    :param visible_filter: Value to filter courses on catalog visibility
+    :type visible_filter: bool | None
+    :param active_filter: Value to filter courses on active status
+    :type active_filter: bool | None
+    :return: Cache key string
+    :rtype: str
+    """
+    return f'{cs.CACHE_NAME_COURSES_RATINGS}_t{tenant_id}_v{visible_filter}_a{active_filter}'
+
+
+@cache_dict(
+    timeout='FX_CACHE_TIMEOUT_COURSES_RATINGS',
+    key_generator_or_name=cache_name_courses_rating
+)
 def get_courses_ratings(
-    fx_permission_info: dict,
+    tenant_id: int,
     visible_filter: bool | None = True,
     active_filter: bool | None = None,
 ) -> Dict[str, int]:
     """
-    Get the average rating of courses in the given tenants
+    Get the average rating of courses for a single tenant. Results are cached per tenant.
 
-    :param fx_permission_info: Dictionary containing permission information
-    :type fx_permission_info: dict
+    :param tenant_id: Tenant ID to get ratings for
+    :type tenant_id: int
     :param visible_filter: Value to filter courses on catalog visibility. None means no filter
     :type visible_filter: bool | None
     :param active_filter: Value to filter courses on active status. None means no filter (according to dates)
@@ -225,6 +252,7 @@ def get_courses_ratings(
     :return: Dictionary containing the total rating, courses count, and rating count per rating value
     :rtype: Dict[str, int]
     """
+    fx_permission_info = build_fx_permission_info(tenant_id)
     q_set = get_base_queryset_courses(
         fx_permission_info, visible_filter=visible_filter, active_filter=active_filter
     )
@@ -235,7 +263,7 @@ def get_courses_ratings(
         f'course_rating_{rate_value}_count': Count(
             'feedbackcourse',
             filter=Q(feedbackcourse__rating_content=rate_value)
-        ) for rate_value in range(1, 6)
+        ) for rate_value in RATING_RANGE
     })
 
     return q_set.aggregate(
@@ -243,6 +271,6 @@ def get_courses_ratings(
         courses_count=Coalesce(Count('id'), 0),
         **{
             f'rating_{rate_value}_count': Coalesce(Sum(f'course_rating_{rate_value}_count'), 0)
-            for rate_value in range(1, 6)
+            for rate_value in RATING_RANGE
         }
     )

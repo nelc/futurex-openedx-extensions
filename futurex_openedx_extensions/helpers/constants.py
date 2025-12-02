@@ -10,6 +10,7 @@ CACHE_NAME_USER_COURSE_ACCESS_ROLES = 'fx_user_course_access_roles'
 CACHE_NAME_LIVE_STATISTICS_PER_TENANT = 'fx_live_statistics_per_tenant'
 CACHE_NAME_CONFIG_ACCESS_CONTROL = 'fx_config_access_control'
 CACHE_NAME_TENANT_READABLE_LMS_CONFIG = 'fx_config_tenant_lms_config'
+CACHE_NAME_COURSES_RATINGS = 'fx_courses_ratings'
 
 CACHE_NAMES = {
     CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST: {
@@ -53,6 +54,7 @@ COURSE_STATUSES = {
 
 COURSE_STATUS_SELF_PREFIX = 'self_'
 
+RATING_RANGE = range(1, 6)  # Course ratings from 1 to 5 stars
 
 COURSE_CREATOR_ROLE_TENANT = 'org_course_creator_group'
 COURSE_CREATOR_ROLE_GLOBAL = 'course_creator_group'

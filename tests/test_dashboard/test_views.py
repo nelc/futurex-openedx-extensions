@@ -1748,6 +1748,7 @@ class MockClickhouseQuery:
         )
 
 
+@pytest.mark.usefixtures('base_data')
 class TestGlobalRatingView(BaseTestViewMixin):
     """Tests for GlobalRatingView"""
     VIEW_NAME = 'fx_dashboard:statistics-rating'
@@ -1793,10 +1794,11 @@ class TestGlobalRatingView(BaseTestViewMixin):
 
         with patch('futurex_openedx_extensions.dashboard.views.get_courses_ratings') as mocked_calc:
             mocked_calc.return_value = test_data
-            response = self.client.get(self.url)
+            response = self.client.get(f'{self.url}?tenant_ids=1')
         data = json.loads(response.content)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(data, expected_result)
+        mocked_calc.assert_called_once_with(tenant_id=1)
 
     def test_success_no_rating(self):
         """Verify that the view returns the correct response when there are no ratings"""
@@ -1811,7 +1813,7 @@ class TestGlobalRatingView(BaseTestViewMixin):
                 'rating_4_count': 0,
                 'rating_5_count': 0,
             }
-            response = self.client.get(self.url)
+            response = self.client.get(f'{self.url}?tenant_ids=1')
         data = json.loads(response.content)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(data, {
@@ -1826,6 +1828,7 @@ class TestGlobalRatingView(BaseTestViewMixin):
                 '5': 0,
             },
         })
+        mocked_calc.assert_called_once_with(tenant_id=1)
 
 
 @ddt.ddt
