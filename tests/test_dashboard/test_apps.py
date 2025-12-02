@@ -10,6 +10,7 @@ from futurex_openedx_extensions.dashboard.settings import common_production
 helpers_default_settings = [
     ('FX_CACHE_TIMEOUT_LIVE_STATISTICS_PER_TENANT', 60 * 60 * 2),  # 2 hours
     ('FX_ALLOWED_COURSE_LANGUAGE_CODES', ['en', 'ar', 'fr']),
+    ('FX_CACHE_TIMEOUT_COURSES_RATINGS', 60 * 60),  # 1 hour
 ]
 
 

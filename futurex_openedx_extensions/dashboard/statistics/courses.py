@@ -11,6 +11,7 @@ from django.db.models.query import QuerySet
 from django.utils.timezone import now
 
 from futurex_openedx_extensions.dashboard.details.courses import annotate_courses_rating_queryset
+from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES, RATING_RANGE
 from futurex_openedx_extensions.helpers.extractors import get_valid_duration
@@ -210,7 +211,7 @@ def get_courses_count_by_status(
     return q_set
 
 
-def _cache_key_courses_ratings(
+def cache_name_courses_rating(
     tenant_id: int,
     visible_filter: bool | None = True,
     active_filter: bool | None = None,
@@ -227,12 +228,12 @@ def _cache_key_courses_ratings(
     :return: Cache key string
     :rtype: str
     """
-    return f'fx_courses_ratings_t{tenant_id}_v{visible_filter}_a{active_filter}'
+    return f'{cs.CACHE_NAME_COURSES_RATINGS}_t{tenant_id}_v{visible_filter}_a{active_filter}'
 
 
 @cache_dict(
     timeout='FX_CACHE_TIMEOUT_COURSES_RATINGS',
-    key_generator_or_name=_cache_key_courses_ratings
+    key_generator_or_name=cache_name_courses_rating
 )
 def get_courses_ratings(
     tenant_id: int,

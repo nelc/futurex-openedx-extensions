@@ -226,13 +226,13 @@ def test_get_enrollments_count_aggregated_result(
 
 
 @pytest.mark.django_db
-def test_cache_key_courses_ratings():
+def testcache_name_courses_rating():
     """Verify that cache key generation works correctly with different parameters."""
-    key1 = courses._cache_key_courses_ratings(1, True, True)  # pylint: disable=protected-access
-    key2 = courses._cache_key_courses_ratings(1, True, False)  # pylint: disable=protected-access
-    key3 = courses._cache_key_courses_ratings(1, False, True)  # pylint: disable=protected-access
-    key4 = courses._cache_key_courses_ratings(2, True, True)  # pylint: disable=protected-access
-    key5 = courses._cache_key_courses_ratings(1, None, None)  # pylint: disable=protected-access
+    key1 = courses.cache_name_courses_rating(1, True, True)
+    key2 = courses.cache_name_courses_rating(1, True, False)
+    key3 = courses.cache_name_courses_rating(1, False, True)
+    key4 = courses.cache_name_courses_rating(2, True, True)
+    key5 = courses.cache_name_courses_rating(1, None, None)
     keys = [key1, key2, key3, key4, key5]
     assert len(keys) == len(set(keys)), 'Cache keys should be unique for different parameters'
 

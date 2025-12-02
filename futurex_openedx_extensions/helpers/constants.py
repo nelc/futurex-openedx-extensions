@@ -10,6 +10,7 @@ CACHE_NAME_USER_COURSE_ACCESS_ROLES = 'fx_user_course_access_roles'
 CACHE_NAME_LIVE_STATISTICS_PER_TENANT = 'fx_live_statistics_per_tenant'
 CACHE_NAME_CONFIG_ACCESS_CONTROL = 'fx_config_access_control'
 CACHE_NAME_TENANT_READABLE_LMS_CONFIG = 'fx_config_tenant_lms_config'
+CACHE_NAME_COURSES_RATINGS = 'fx_courses_ratings'
 
 CACHE_NAMES = {
     CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST: {

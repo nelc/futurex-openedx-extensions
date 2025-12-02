@@ -17,7 +17,7 @@ def plugin_settings(settings: Any) -> None:
     settings.FX_CACHE_TIMEOUT_COURSES_RATINGS = getattr(
         settings,
         'FX_CACHE_TIMEOUT_COURSES_RATINGS',
-        60 * 15,  # 15 minutes
+        60 * 60,  # 1 hour
     )
 
     settings.FX_DISABLE_CONFIG_VALIDATIONS = getattr(
