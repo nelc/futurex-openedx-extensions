@@ -22,6 +22,11 @@ class Command(BaseCommand):
     help = 'Add ConfigAccessControl entries for dashboard theme editor access'
 
     CONFIG_ACCESS_DATA = {
+        'course_categories': {
+            'key_type': 'dict',
+            'path': 'theme_v2.course_categories',
+            'writable': True
+        },
         'custom_pages': {
             'key_type': 'list',
             'path': 'theme_v2.custom_pages',
@@ -180,6 +185,16 @@ class Command(BaseCommand):
         },
     ]
 
+    def log_success(self, processed: int, created: int, updated: int) -> None:
+        """Log the summary of processed entries."""
+        self.stdout.write('')
+        self.stdout.write(self.style.SUCCESS(
+            f'Successfully processed {processed} entries:'
+        ))
+        self.stdout.write(f'  - Created: {created}')
+        self.stdout.write(f'  - Updated: {updated}')
+        self.stdout.write('')
+
     def handle(self, *args: Any, **options: Any) -> None:
         """Execute the command to create ConfigAccessControl entries."""
         self.stdout.write(self.style.MIGRATE_HEADING('Creating ConfigAccessControl entries...'))
@@ -210,13 +225,11 @@ class Command(BaseCommand):
                     )
                     updated_count += 1
 
-        self.stdout.write('')
-        self.stdout.write(self.style.SUCCESS(
-            f'Successfully processed {len(self.CONFIG_ACCESS_DATA)} entries:'
-        ))
-        self.stdout.write(f'  - Created: {created_count}')
-        self.stdout.write(f'  - Updated: {updated_count}')
-        self.stdout.write('')
+        self.log_success(
+            processed=len(self.CONFIG_ACCESS_DATA),
+            created=created_count,
+            updated=updated_count
+        )
 
         self.stdout.write(self.style.MIGRATE_HEADING('Creating ConfigMirror entries...'))
         self.stdout.write('')
@@ -250,10 +263,8 @@ class Command(BaseCommand):
                     )
                     updated_mirror_count += 1
 
-        self.stdout.write('')
-        self.stdout.write(self.style.SUCCESS(
-            f'Successfully processed {len(self.CONFIG_MIRROR_DATA)} mirror entries:'
-        ))
-        self.stdout.write(f'  - Created: {created_mirror_count}')
-        self.stdout.write(f'  - Updated: {updated_mirror_count}')
-        self.stdout.write('')
+        self.log_success(
+            processed=len(self.CONFIG_MIRROR_DATA),
+            created=created_mirror_count,
+            updated=updated_mirror_count
+        )
