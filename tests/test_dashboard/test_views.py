@@ -229,13 +229,13 @@ class TestAggregatedCountsView(BaseTestViewMixin):
         (
             'day',
             'invalid', '2024-01-02',
-            'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
+            'Invalid date_from. You must provide a valid date formated as YYYY-MM-DD'
         ),
         (
             'day',
             '2024-01-01',
             'invalid',
-            'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
+            'Invalid date_to. You must provide a valid date formated as YYYY-MM-DD'
         ),
         ('day', '2024-01-03', '2024-01-02', None),
     )

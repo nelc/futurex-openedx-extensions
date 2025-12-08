@@ -4,9 +4,10 @@ from datetime import date, datetime
 from unittest.mock import Mock, patch
 
 import pytest
+from rest_framework.exceptions import ParseError
 
 from futurex_openedx_extensions.helpers import converters
-from futurex_openedx_extensions.helpers.converters import DateMethods
+from futurex_openedx_extensions.helpers.converters import DateMethods, date_str_to_date_obj
 
 
 @pytest.mark.parametrize('ids_string, expected', [
@@ -200,3 +201,32 @@ def test_to_arabic_numerals(input_text, expected_output, test_case):
 def test_to_indian_numerals(input_text, expected_output, test_case):
     """Verify that to_indian_numerals returns correct data"""
     assert converters.to_indian_numerals(input_text) == expected_output, f'Failed: {test_case}'
+
+
+@pytest.mark.parametrize(
+    'usecase,input_value,expected,should_raise',
+    [
+        ('Valid date', '2025-01-01', date(2025, 1, 1), False),
+        ('Empty string returns None', '', None, False),
+        ('None input returns None', None, None, False),
+        ('Wrong format', '01-01-2025', None, True),
+        ('Wrong separator', '2025/01/01', None, True),
+        ('Invalid month >12', '2025-13-01', None, True),
+        ('Invalid day 0', '2025-01-00', None, True),
+        ('Random string', 'abcd-ef-gh', None, True),
+        ('Integer input', 12345, None, True),
+    ],
+)
+def test_date_str_to_date_obj(usecase, input_value, expected, should_raise):
+    """Test date_str_to_date_obj with valid and invalid inputs."""
+    if should_raise:
+        with pytest.raises(ParseError) as exc_info:
+            date_str_to_date_obj(input_value, 'date_from')
+        assert 'Invalid date_from' in str(exc_info.value), (
+            f"Failed usecase '{usecase}': input={repr(input_value)}, exception={repr(exc_info.value)}"
+        )
+    else:
+        result = date_str_to_date_obj(input_value, 'date_from')
+        assert result == expected, (
+            f"Failed usecase '{usecase}': input={repr(input_value)}, expected={repr(expected)}, got={repr(result)}"
+        )

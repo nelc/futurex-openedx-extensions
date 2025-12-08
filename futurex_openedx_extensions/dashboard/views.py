@@ -74,7 +74,11 @@ from futurex_openedx_extensions.helpers.constants import (
     FX_VIEW_DEFAULT_AUTH_CLASSES,
     RATING_RANGE,
 )
-from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary
+from futurex_openedx_extensions.helpers.converters import (
+    date_str_to_date_obj,
+    dict_to_hash,
+    error_details_to_dictionary,
+)
 from futurex_openedx_extensions.helpers.course_categories import CourseCategories
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
@@ -308,13 +312,8 @@ class AggregatedCountsView(TotalCountsView):  # pylint: disable=too-many-instanc
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
 
-        try:
-            self.date_from = datetime.strptime(date_from, '%Y-%m-%d').date() if date_from else None
-            self.date_to = datetime.strptime(date_to, '%Y-%m-%d').date() if date_to else None
-        except (ValueError, TypeError) as exc:
-            raise ParseError(
-                'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
-            ) from exc
+        self.date_from = date_str_to_date_obj(date_from, 'date_from')
+        self.date_to = date_str_to_date_obj(date_to, 'date_to')
 
     def _get_certificates_count_data(self, one_tenant_permission_info: dict) -> int:
         """Get the count of certificates for the given tenant"""
@@ -1915,6 +1914,8 @@ class PaymentOrdersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
         course_ids = self.request.query_params.get('course_ids', '')
         user_ids = self.request.query_params.get('user_ids', '')
         usernames = self.request.query_params.get('usernames', '')
+        date_from = self.request.query_params.get('date_from', '')
+        date_to = self.request.query_params.get('date_to', '')
         course_ids_list = [
             course.strip() for course in course_ids.split(',')
         ] if course_ids else None
@@ -1952,6 +1953,8 @@ class PaymentOrdersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             include_user_details=self.request.query_params.get('include_user_details', '0') == '1',
             status=status,
             item_type=item_type,
+            date_from=date_str_to_date_obj(date_from, 'date_from'),
+            date_to=date_str_to_date_obj(date_to, 'date_to'),
         )
         self._cached_course_map = getattr(qs, 'courses_map', {})
         return qs

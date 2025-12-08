@@ -1694,6 +1694,22 @@ docs_src = {
                     'Note: right now only paid_course is implemented.'
                 )
             ),
+            query_parameter(
+                'date_from',
+                str,
+                description=(
+                    'The start date of the range for filtering results. Must be provided in `YYYY-MM-DD` format. '
+                    'Can be used together with `date_to` to limit results within a specific date range.'
+                ),
+            ),
+            query_parameter(
+                'date_to',
+                str,
+                description=(
+                    'The end date of the range for filtering results. Must be provided in `YYYY-MM-DD` format. '
+                    'Can be used together with `date_from` to limit results within a specific date range.'
+                ),
+            ),
             common_parameters['include_staff'],
             common_parameters['download'],
         ],

@@ -1,6 +1,7 @@
 """Courses details collectors"""
 from __future__ import annotations
 
+from datetime import date
 from typing import List
 
 from common.djangoapps.student.models import CourseEnrollment
@@ -298,7 +299,7 @@ def get_courses_feedback_queryset(  # pylint: disable=too-many-arguments
     return queryset
 
 
-def get_courses_orders_queryset(  # pylint: disable=too-many-arguments
+def get_courses_orders_queryset(  # pylint: disable=too-many-arguments, too-many-locals
     fx_permission_info: dict,
     user_ids: list = None,
     course_ids: list = None,
@@ -311,6 +312,8 @@ def get_courses_orders_queryset(  # pylint: disable=too-many-arguments
     include_user_details: bool = False,
     status: str | None = None,
     item_type: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> QuerySet:
     """
     Returns a filtered queryset of Cart Orders based on provided criteria.
@@ -356,4 +359,6 @@ def get_courses_orders_queryset(  # pylint: disable=too-many-arguments
         item_type=item_type,
         include_invoice=include_invoice,
         include_user_details=include_user_details,
+        date_from=date_from,
+        date_to=date_to,
     )
