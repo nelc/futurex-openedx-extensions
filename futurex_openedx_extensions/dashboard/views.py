@@ -305,16 +305,10 @@ class AggregatedCountsView(TotalCountsView):  # pylint: disable=too-many-instanc
 
         self.fill_missing_periods = request.query_params.get('fill_missing_periods', '1') == '1'
 
-        date_from = request.query_params.get('date_from')
-        date_to = request.query_params.get('date_to')
-
-        try:
-            self.date_from = datetime.strptime(date_from, '%Y-%m-%d').date() if date_from else None
-            self.date_to = datetime.strptime(date_to, '%Y-%m-%d').date() if date_to else None
-        except (ValueError, TypeError) as exc:
-            raise ParseError(
-                'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
-            ) from exc
+        date_serializer = serializers.ReportDateFilterSerializer(data=self.request.query_params)
+        date_serializer.is_valid(raise_exception=True)
+        self.date_from = date_serializer.validated_data.get('date_from')
+        self.date_to = date_serializer.validated_data.get('date_to')
 
     def _get_certificates_count_data(self, one_tenant_permission_info: dict) -> int:
         """Get the count of certificates for the given tenant"""
@@ -1939,6 +1933,9 @@ class PaymentOrdersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
                 message=f'Invalid item_type: {item_type}, must be one of {CatalogueItem.valid_item_types()}.'
             )
 
+        date_serializer = serializers.ReportDateFilterSerializer(data=self.request.query_params)
+        date_serializer.is_valid(raise_exception=True)
+
         qs = get_courses_orders_queryset(
             fx_permission_info=self.fx_permission_info,
             user_ids=user_ids_list,
@@ -1952,6 +1949,8 @@ class PaymentOrdersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             include_user_details=self.request.query_params.get('include_user_details', '0') == '1',
             status=status,
             item_type=item_type,
+            date_from=date_serializer.validated_data.get('date_from'),
+            date_to=date_serializer.validated_data.get('date_to'),
         )
         self._cached_course_map = getattr(qs, 'courses_map', {})
         return qs

@@ -218,30 +218,32 @@ class TestAggregatedCountsView(BaseTestViewMixin):
 
     @patch('futurex_openedx_extensions.dashboard.views.AggregatedCountsView._construct_result')
     @ddt.data(
-        (None, '2024-01-01', '2024-01-01', 'Invalid aggregate_period: None'),
-        ('day', '2024-01-01', '2024-01-01', None),
-        ('day', '2024-01-01', '2024-01-02', None),
-        ('day', '2024-01-02', '2024-01-01', None),
-        ('day', None, '2024-01-01', None),
-        ('day', '2024-01-02', None, None),
-        ('day', None, None, None),
-        ('invalid', '2024-01-01', '2024-01-02', 'Invalid aggregate_period: invalid'),
+        (None, '2024-01-01', '2024-01-01', 'Invalid aggregate_period: None', None),
+        ('day', '2024-01-01', '2024-01-01', None, None),
+        ('day', '2024-01-01', '2024-01-02', None, None),
+        ('day', '2024-01-02', '2024-01-01', None, None),
+        ('day', None, '2024-01-01', None, None),
+        ('day', '2024-01-02', None, None, None),
+        ('day', None, None, None, None),
+        ('invalid', '2024-01-01', '2024-01-02', 'Invalid aggregate_period: invalid', None),
         (
             'day',
             'invalid', '2024-01-02',
-            'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
+            'Date has wrong format. Use one of these formats instead: YYYY-MM-DD.',
+            'date_from'
         ),
         (
             'day',
             '2024-01-01',
             'invalid',
-            'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
+            'Date has wrong format. Use one of these formats instead: YYYY-MM-DD.',
+            'date_to'
         ),
-        ('day', '2024-01-03', '2024-01-02', None),
+        ('day', '2024-01-03', '2024-01-02', None, None),
     )
     @ddt.unpack
     def test_load_query_params(
-        self, aggregate_period, date_from, date_to, error_message, mock_construct_result,
+        self, aggregate_period, date_from, date_to, error_message, error_date_field, mock_construct_result
     ):  # pylint: disable=too-many-arguments
         """Verify that _load_query_params works as expected"""
         mock_construct_result.return_value = {
@@ -268,7 +270,10 @@ class TestAggregatedCountsView(BaseTestViewMixin):
         response = self.client.get(url)
         if error_message:
             self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-            self.assertEqual(str(response.data['detail']), error_message)
+            if error_date_field:
+                self.assertEqual(str(response.data[error_date_field][0]), error_message)
+            else:
+                self.assertEqual(str(response.data['detail']), error_message)
         else:
             self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 

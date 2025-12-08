@@ -1601,3 +1601,18 @@ class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
     def update(self, instance: Any, validated_data: Any) -> Any:
         """Not implemented: Update an existing object."""
         raise ValueError('This serializer does not support update.')
+
+
+class ReportDateFilterSerializer(ReadOnlySerializer):
+    """
+    Serializer for date filter.
+    Ensures date_from and date_to follow YYYY-MM-DD format and are parsed into Python date objects.
+    """
+    date_from = serializers.DateField(
+        required=False,
+        input_formats=['%Y-%m-%d'],
+    )
+    date_to = serializers.DateField(
+        required=False,
+        input_formats=['%Y-%m-%d'],
+    )
