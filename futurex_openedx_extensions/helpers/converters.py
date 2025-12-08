@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List
 from urllib.parse import urljoin
 
 from dateutil.relativedelta import relativedelta
+from rest_framework.exceptions import ParseError
 
 from futurex_openedx_extensions.helpers import constants as cs
 
@@ -281,3 +282,15 @@ def to_indian_numerals(text: str) -> str:
     :return: The text with Arabic numerals converted to Indian numerals.
     """
     return _text_translate(text, '0123456789', '٠١٢٣٤٥٦٧٨٩')
+
+
+def date_str_to_date_obj(date_str: str, field_name: str) -> date | None:
+    """Convert date of format (YYYY-MM-DD) to a Python date"""
+    if not date_str:
+        return None
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError) as exc:
+        raise ParseError(
+            f'Invalid {field_name}. You must provide a valid date formated as YYYY-MM-DD'
+        ) from exc

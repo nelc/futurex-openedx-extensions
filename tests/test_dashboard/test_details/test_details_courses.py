@@ -1,4 +1,5 @@
 """Tests for courses details collectors"""
+from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest
@@ -247,6 +248,7 @@ def test_get_courses_orders_queryset(  # pylint: disable=too-many-locals
     include_user_details = True
     status = 'paid'
     item_type = 'paid_course'
+    date_from = datetime.strptime('2025-01-01', '%Y-%m-%d').date()
     mock_accessible_users = Mock(name='UsersQS')
     mock_accessible_courses = Mock(name='CoursesQS')
     mock_get_users_and_courses.return_value = (
@@ -269,6 +271,8 @@ def test_get_courses_orders_queryset(  # pylint: disable=too-many-locals
         user_ids=user_ids,
         item_type=item_type,
         learner_search=learner_search,
+        date_from=date_from,
+        date_to=None,
     )
 
     mock_get_users_and_courses.assert_called_once_with(
@@ -290,6 +294,8 @@ def test_get_courses_orders_queryset(  # pylint: disable=too-many-locals
         item_type=item_type,
         include_invoice=include_invoice,
         include_user_details=include_user_details,
+        date_from=date_from,
+        date_to=None,
     )
 
     assert result == mock_orders_qs
