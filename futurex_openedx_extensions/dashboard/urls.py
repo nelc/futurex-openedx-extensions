@@ -97,6 +97,8 @@ urlpatterns = [
     re_path(r'^api/fx/assets/v1/', include(tenant_assets_router.urls)),
 
     re_path(r'^api/fx/payments/v1/orders/$', views.PaymentOrdersView.as_view(), name='payments-orders'),
+    re_path(r'^api/fx/statistics/v1/payments/$', views.PaymentStatisticsView.as_view(), name='payment-statistics'),
+
 
     re_path(
         r'^api/fx/redirect/set_theme_preview/$',

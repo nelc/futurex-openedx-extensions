@@ -957,6 +957,51 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
 
 
 @pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_certificate_url')
+def test_learner_courses_details_serializer_get_certificate_url(
+    mock_get_certificate_url, base_data
+):  # pylint: disable=unused-argument
+    """Verify that LearnerCoursesDetailsSerializer.get_certificate_url works without mocking"""
+    course = CourseOverview.objects.first()
+    course.related_user_id = 44
+
+    mock_get_certificate_url.return_value = 'https://example.com/certificate/url'
+    request = Mock()
+
+    serializer = serializers.LearnerCoursesDetailsSerializer(course, context={'request': request})
+    result = serializer.get_certificate_url(course)
+
+    user = get_user_model().objects.get(id=44)
+    mock_get_certificate_url.assert_called_once_with(request, user, course.id)
+    assert result == 'https://example.com/certificate/url'
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.relative_url_to_absolute_url')
+@patch('futurex_openedx_extensions.dashboard.serializers.set_request_domain_by_org')
+def test_learner_courses_details_serializer_get_progress_url(
+    mock_set_domain, mock_relative_url, base_data
+):  # pylint: disable=unused-argument
+    """Verify that LearnerCoursesDetailsSerializer.get_progress_url works without mocking"""
+    course = CourseOverview.objects.first()
+    course.related_user_id = 44
+    course.org = 'TestOrg'
+
+    mock_relative_url.return_value = 'https://example.com/learning/course/progress'
+    request = Mock()
+
+    serializer = serializers.LearnerCoursesDetailsSerializer(course, context={'request': request})
+    result = serializer.get_progress_url(course)
+
+    mock_set_domain.assert_called_once_with(request, 'TestOrg')
+    mock_relative_url.assert_called_once_with(
+        f'/learning/course/{course.id}/progress/{course.related_user_id}/',
+        request
+    )
+    assert result == 'https://example.com/learning/course/progress'
+
+
+@pytest.mark.django_db
 def test_user_roles_serializer_init(
     base_data, serializer_context
 ):  # pylint: disable=unused-argument, redefined-outer-name
@@ -1372,6 +1417,102 @@ def test_library_serializer_update_raises_error():
     serializer = serializers.LibrarySerializer()
     with pytest.raises(ValueError, match='This serializer does not support update.'):
         serializer.update(instance=object(), validated_data={})
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+def test_library_serializer_validate_tenant_id_not_exist(mock_get_tenants_info):
+    """Test LibrarySerializer.validate_tenant_id with non-existent tenant"""
+    mock_get_tenants_info.return_value = {
+        'default_org_per_tenant': {1: 'org1', 2: 'org2'}
+    }
+    serializer = serializers.LibrarySerializer()
+
+    with pytest.raises(
+        ValidationError,
+        match='Invalid tenant_id: "999". This tenant does not exist or is not configured properly.'
+    ):
+        serializer.validate_tenant_id(999)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+def test_library_serializer_validate_tenant_id_no_default_org(mock_get_tenants_info):
+    """Test LibrarySerializer.validate_tenant_id with no default org configured"""
+    mock_get_tenants_info.return_value = {
+        'default_org_per_tenant': {1: 'org1', 2: None}
+    }
+    serializer = serializers.LibrarySerializer()
+
+    with pytest.raises(
+        ValidationError,
+        match='No default organization configured for tenant_id: "2".'
+    ):
+        serializer.validate_tenant_id(2)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.get_org_to_tenant_map')
+@patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+def test_library_serializer_validate_tenant_id_invalid_org_mapping(mock_get_tenants_info, mock_get_org_map):
+    """Test LibrarySerializer.validate_tenant_id with invalid org mapping"""
+    mock_get_tenants_info.return_value = {
+        'default_org_per_tenant': {1: 'org1', 2: 'org2'}
+    }
+    mock_get_org_map.return_value = {
+        'org1': [1],
+        'org2': [3]  # org2 is mapped to tenant 3, not tenant 2
+    }
+    serializer = serializers.LibrarySerializer()
+
+    with pytest.raises(
+        ValidationError,
+        match='Invalid default organization "org2" configured for tenant ID "2". '
+              'This organization is not associated with the tenant.'
+    ):
+        serializer.validate_tenant_id(2)
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseInstructorRole')
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseStaffRole')
+@patch('futurex_openedx_extensions.dashboard.serializers.add_users')
+@patch('futurex_openedx_extensions.dashboard.serializers.get_org_to_tenant_map')
+@patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+@patch('futurex_openedx_extensions.dashboard.serializers.modulestore')
+def test_library_serializer_create_duplicate_error(
+    mock_modulestore, mock_get_tenants_info, mock_get_org_map,
+    mock_add_users, mock_staff_role, mock_instructor_role, base_data
+):  # pylint: disable=unused-argument,too-many-arguments
+    """Test LibrarySerializer.create with DuplicateCourseError"""
+    mock_get_tenants_info.return_value = {
+        'default_org_per_tenant': {1: 'org1'}
+    }
+    mock_get_org_map.return_value = {'org1': [1]}
+
+    # Mock modulestore to raise DuplicateCourseError
+    mock_store = Mock()
+    mock_store.create_library.side_effect = DuplicateCourseError()
+    mock_store.default_store.return_value.__enter__ = Mock(return_value=None)
+    mock_store.default_store.return_value.__exit__ = Mock(return_value=False)
+    mock_modulestore.return_value = mock_store
+
+    user = get_user_model().objects.get(id=1)
+    request = Mock()
+    request.user = user
+
+    serializer = serializers.LibrarySerializer(
+        data={'tenant_id': 1, 'display_name': 'Test Lib', 'number': 'lib1'},
+        context={'request': request}
+    )
+
+    assert serializer.is_valid()
+
+    with pytest.raises(
+        ValidationError,
+        match='Library with org: org1 and number: lib1 already exists.'
+    ):
+        serializer.save()
 
 
 @pytest.mark.parametrize('input_data, expected_output, test_case', [
