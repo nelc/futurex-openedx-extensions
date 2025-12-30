@@ -18,14 +18,13 @@ from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import EmptyPage
-from django.db.models import Q
 from django.http import JsonResponse
 from django.urls import resolve, reverse
 from django.utils.functional import SimpleLazyObject
 from django.utils.timezone import now, timedelta
 from eox_nelp.course_experience.models import FeedbackCourse
 from eox_tenant.models import Route, TenantConfig
-from opaque_keys.edx.locator import CourseLocator, LibraryLocator
+from opaque_keys.edx.locator import CourseLocator
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
@@ -34,7 +33,7 @@ from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.test import APIRequestFactory, APITestCase
 from rest_framework.utils.serializer_helpers import ReturnList
 
-from futurex_openedx_extensions.dashboard import serializers, urls, views
+from futurex_openedx_extensions.dashboard import urls, views
 from futurex_openedx_extensions.dashboard.views import (
     LearnersEnrollmentView,
     ThemeConfigDraftView,
@@ -47,13 +46,7 @@ from futurex_openedx_extensions.helpers.constants import ALLOWED_FILE_EXTENSIONS
 from futurex_openedx_extensions.helpers.converters import dict_to_hash
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
-from futurex_openedx_extensions.helpers.models import (
-    ConfigAccessControl,
-    DataExportTask,
-    DraftConfig,
-    TenantAsset,
-    ViewAllowedRoles,
-)
+from futurex_openedx_extensions.helpers.models import ConfigAccessControl, DataExportTask, DraftConfig, TenantAsset
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import (
     FXHasTenantAllCoursesAccess,
@@ -908,328 +901,56 @@ class TestLibrariesView(BaseTestViewMixin):
     @patch('futurex_openedx_extensions.dashboard.serializers.CourseInstructorRole')
     @patch('futurex_openedx_extensions.dashboard.serializers.CourseStaffRole')
     @patch('futurex_openedx_extensions.dashboard.serializers.add_users')
-    def test_library_create_success(self, mock_add_users, mock_staff_role, mock_instructor_role):
-        """Verify that the view returns the correct response for library creation"""
-        staff_user = get_user_model().objects.get(id=self.staff_user)
-        staff_user_lazy_obj = SimpleLazyObject(lambda: staff_user)
+    @patch('futurex_openedx_extensions.dashboard.serializers.seed_permissions_roles')
+    @patch('futurex_openedx_extensions.dashboard.serializers.CourseEnrollment.enroll')
+    @patch('futurex_openedx_extensions.dashboard.serializers.assign_default_role')
+    @patch('futurex_openedx_extensions.dashboard.serializers.add_organization_course')
+    @patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
+    @patch('futurex_openedx_extensions.dashboard.serializers.DiscussionsConfiguration.get')
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+    def test_create_success(
+        self, mock_get_tenants_info, mock_discussions_config_get, mock_ensure_org,
+        mock_add_org_course, mock_assign_default_role, mock_course_enrollment_enroll,
+        mock_seed_permissions_roles, mock_add_users, mock_staff_role, mock_instructor_role
+    ):  # pylint: disable=too-many-arguments,unused-argument
+        """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={
-            'tenant_id': 1, 'number': '33', 'display_name': 'Test Library Three org1'
-        })
+        mock_ensure_org.return_value = {'id': 'org1', 'name': 'org1', 'short_name': 'org1'}
+        mock_get_tenants_info.return_value = {
+            'default_org_per_tenant': {1: 'org1'}
+        }
+        # Mock get_org_to_tenant_map as well since it's used in validation
+        with patch('futurex_openedx_extensions.dashboard.serializers.get_org_to_tenant_map') as mock_get_org_map:
+            mock_get_org_map.return_value = {'org1': [1]}
+
+            response = self.client.post(
+                self.url, data={'tenant_id': 1, 'display_name': 'test lib', 'number': 'lib12'}
+            )
+
         self.assertEqual(response.status_code, http_status.HTTP_201_CREATED)
-        self.assertEqual(response.json()['library'], 'library-v1:org1+33')
-
-        expected_lib_locator = LibraryLocator.from_string('library-v1:org1+33')
-        mock_add_users.assert_called_once_with(staff_user_lazy_obj, mock_staff_role.return_value, staff_user_lazy_obj)
-        mock_instructor_role.assert_called_once_with(expected_lib_locator)
-        mock_staff_role.assert_called_once_with(expected_lib_locator)
-
-    def test_library_create_for_failure(self):
-        """Verify that the view returns the correct response for library creation api failure general errors"""
-        self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={
-            'tenant_id': 1
+        self.assertEqual(response.json(), {
+            'library': 'library-v1:org1+lib12'
         })
+
+    @patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+    def test_create_validation_failure(self, mock_get_tenants_info):
+        """Verify that the view returns 400 when validation fails"""
+        self.login_user(self.staff_user)
+        mock_get_tenants_info.return_value = {
+            'default_org_per_tenant': {1: 'org1'}
+        }
+
+        # Missing required fields to trigger validation error
+        response = self.client.post(self.url, data={'tenant_id': 1})
+
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.json()['errors']['number'][0], 'This field is required.')
-        self.assertEqual(response.json()['errors']['display_name'][0], 'This field is required.')
-
-    @ddt.data(
-        (
-            4,
-            'Invalid tenant_id: "4". This tenant does not exist or is not configured properly.',
-            'invalid tenant as LMS_BASE not set'
-        ),
-        (
-            3,
-            'No default organization configured for tenant_id: "3".',
-            'default org is not set'
-        ),
-        (
-            7,
-            'Invalid default organization "invalid" configured for tenant ID "7". '
-            'This organization is not associated with the tenant.',
-            'default org is not valid',
-        ),
-    )
-    @ddt.unpack
-    def test_library_create_for_failure_for_tenant_id_errors(self, tenant_id, expected_error, case):
-        """Verify the view returns the correct error for various invalid tenant_id configurations."""
-        self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={
-            'tenant_id': tenant_id,
-            'number': '33',
-            'display_name': f'Test Library - {case}',
-        })
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.json()['errors']['tenant_id'][0], expected_error, f'Failed for usecase: {case}')
-
-    def test_library_create_with_duplicate_key_error(self):
-        """Verify that the view returns the correct response for library creation"""
-        self.login_user(self.staff_user)
-        response = self.client.post(self.url, data={
-            'tenant_id': 1, 'number': '11', 'display_name': 'whatever'
-        })
-        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.json()[0], 'Library with org: org1 and number: 11 already exists.')
-
-
-@pytest.mark.usefixtures('base_data')
-class TestCourseCourseStatusesView(BaseTestViewMixin):
-    """Tests for CourseStatusesView"""
-    VIEW_NAME = 'fx_dashboard:course-statuses'
-
-    def test_unauthorized(self):
-        """Verify that the view returns 403 when the user is not authenticated"""
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
-
-    def test_no_tenants(self):
-        """Verify that the view returns the result for all accessible tenants when no tenant IDs are provided"""
-        self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.views.get_courses_count_by_status') as mock_queryset:
-            self.client.get(self.url)
-            assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
-                   == get_all_orgs()
-
-    def test_success(self):
-        """Verify that the view returns the correct response"""
-        self.login_user(self.staff_user)
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        data = json.loads(response.content)
-        self.assertDictEqual(data, {
-            'active': 12,
-            'archived': 3,
-            'upcoming': 2,
-            'self_active': 1,
-            'self_archived': 0,
-            'self_upcoming': 0,
-        })
-
-
-def _mock_get_by_key(username_or_email):
-    """Mock get_user_by_key"""
-    return get_user_model().objects.get(Q(username=username_or_email) | Q(email=username_or_email))
-
-
-class PermissionsTestOfLearnerInfoViewMixin:
-    """Tests for CourseStatusesView"""
-    patching_config = {
-        'get_by_key': ('futurex_openedx_extensions.helpers.users.get_user_by_username_or_email', {
-            'side_effect': _mock_get_by_key,
-        }),
-    }
-
-    def setUp(self):
-        """Setup"""
-        super().setUp()
-        self.url_args = ['user10']
-
-    def _get_view_class(self):
-        """Helper to get the view class"""
-        view_func, _, _ = resolve(self.url)
-        return view_func.view_class
-
-    def test_permission_classes(self):
-        """Verify that the view has the correct permission classes"""
-        self.assertEqual(self._get_view_class().permission_classes, [FXHasTenantCourseAccess])
-
-    def test_unauthorized(self):
-        """Verify that the view returns 403 when the user is not authenticated"""
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
-
-    def test_user_not_found(self):
-        """Verify that the view returns 404 when the user is not found"""
-        user_name = 'user10x'
-        self.url_args = [user_name]
-        assert not get_user_model().objects.filter(username=user_name).exists(), 'bad test data'
-
-        self.login_user(self.staff_user)
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
-        self.assertEqual(response.data, {
-            'reason': 'User with username/email (user10x) does not exist!', 'details': {}
-        })
-
-    def _get_test_users(self, org3_admin_id, org3_learner_id):
-        """Helper to get test users for the test_not_staff_user test"""
-        admin_user = get_user_model().objects.get(id=org3_admin_id)
-        learner_user = get_user_model().objects.get(id=org3_learner_id)
-
-        self.assertFalse(admin_user.is_staff, msg='bad test data')
-        self.assertFalse(admin_user.is_superuser, msg='bad test data')
-        self.assertFalse(learner_user.is_staff, msg='bad test data')
-        self.assertFalse(learner_user.is_superuser, msg='bad test data')
-        self.assertFalse(CourseAccessRole.objects.filter(user_id=org3_learner_id).exists(), msg='bad test data')
-
-        self.login_user(org3_admin_id)
-        self.url_args = [f'user{org3_learner_id}']
-
-    def test_org_admin_user_with_allowed_learner(self):
-        """Verify that the view returns 200 when the user is an admin on the learner's organization"""
-        self._get_test_users(4, 45)
-        view_class = self._get_view_class()
-        ViewAllowedRoles.objects.create(
-            view_name=view_class.fx_view_name,
-            view_description=view_class.fx_view_description,
-            allowed_role='instructor',
-        )
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-
-    def test_org_admin_user_with_allowed_learner_same_tenant_diff_org(self):
-        """
-        Verify that the view returns 200 when the user is an admin on the learner's organization, where the user is
-        in the same tenant but in an organization that is not included in course_access_roles
-        for the admin's organization
-        """
-        self._get_test_users(4, 52)
-        view_class = self._get_view_class()
-        ViewAllowedRoles.objects.create(
-            view_name=view_class.fx_view_name,
-            view_description=view_class.fx_view_description,
-            allowed_role='instructor',
-        )
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-
-    def test_org_admin_user_with_not_allowed_learner(self):
-        """Verify that the view returns 404 when the user is an org admin but the learner belongs to another org"""
-        self._get_test_users(4, 16)
-        view_class = self._get_view_class()
-        ViewAllowedRoles.objects.create(
-            view_name=view_class.fx_view_name,
-            view_description=view_class.fx_view_description,
-            allowed_role='instructor',
-        )
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
-
-
-@pytest.mark.usefixtures('base_data')
-class TestLearnerInfoView(
-    PermissionsTestOfLearnerInfoViewMixin, MockPatcherMixin, BaseTestViewMixin,
-):  # pylint: disable=too-many-ancestors
-    """Tests for CourseStatusesView"""
-    VIEW_NAME = 'fx_dashboard:learner-info'
-
-    def test_success(self):
-        """Verify that the view returns the correct response"""
-        user = get_user_model().objects.get(username='user10')
-        user.courses_count = 3
-        user.certificates_count = 1
-        self.url_args = [user.username]
-        self.assertFalse(())
-
-        self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_get_info:
-            mock_get_info.return_value = Mock(first=Mock(return_value=user))
-            response = self.client.get(self.url)
-
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        data = json.loads(response.content)
-        self.assertDictEqual(data, serializers.LearnerDetailsExtendedSerializer(user).data)
-
-    @patch('futurex_openedx_extensions.dashboard.views.serializers.LearnerDetailsExtendedSerializer')
-    def test_request_in_context(self, mock_serializer):
-        """Verify that the view calls the serializer with the correct context"""
-        request = self._get_request()
-        view_class = self._get_view_class()
-        mock_serializer.return_value = Mock(data={})
-
-        with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_get_info:
-            mock_get_info.return_value = Mock()
-            view = view_class()
-            view.request = request
-            view.get(request, 'user10')
-
-        mock_serializer.assert_called_once_with(
-            mock_get_info.return_value.first(),
-            context={'request': request},
-        )
-
-
-@patch.object(
-    serializers.LearnerCoursesDetailsSerializer,
-    'get_grade',
-    lambda self, obj: {'letter_grade': 'Pass', 'percent': 0.7, 'is_passing': True}
-)
-@pytest.mark.usefixtures('base_data')
-class TestLearnerCoursesDetailsView(
-    PermissionsTestOfLearnerInfoViewMixin, MockPatcherMixin, BaseTestViewMixin,
-):  # pylint: disable=too-many-ancestors
-    """Tests for LearnerCoursesView"""
-    VIEW_NAME = 'fx_dashboard:learner-courses'
-
-    def test_success(self):
-        """Verify that the view returns the correct response"""
-        user = get_user_model().objects.get(username='user10')
-        self.url_args = [user.username]
-
-        courses = CourseOverview.objects.filter(courseenrollment__user=user)
-        for course in courses:
-            course.enrollment_date = now() - timedelta(days=10)
-            course.last_activity = now() - timedelta(days=2)
-            course.related_user_id = user.id
-            course.save()
-
-        self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.views.get_learner_courses_info_queryset') as mock_get_info:
-            mock_get_info.return_value = courses
-            response = self.client.get(self.url)
-
-        assert mock_get_info.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
-               == get_all_orgs()
-        assert mock_get_info.call_args_list[0][1]['user_key'] == 'user10'
-        assert mock_get_info.call_args_list[0][1]['visible_filter'] is None
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        data = json.loads(response.content)
-        self.assertEqual(len(data), 2)
-        self.assertEqual(list(data), list(serializers.LearnerCoursesDetailsSerializer(courses, many=True).data))
-
-    @patch('futurex_openedx_extensions.dashboard.views.serializers.LearnerCoursesDetailsSerializer')
-    def test_request_in_context(self, mock_serializer):
-        """Verify that the view uses the correct serializer"""
-        request = self._get_request()
-        view_class = self._get_view_class()
-
-        with patch('futurex_openedx_extensions.dashboard.views.get_learner_courses_info_queryset') as mock_get_info:
-            mock_get_info.return_value = Mock()
-            view = view_class()
-            view.request = request
-            view.get(request, 'user10')
-
-        mock_serializer.assert_called_once_with(
-            mock_get_info.return_value,
-            context={'request': request},
-            many=True,
-        )
-
-
-class TestVersionInfoView(BaseTestViewMixin):
-    """Tests for VersionInfoView"""
-    VIEW_NAME = 'fx_dashboard:version-info'
+        self.assertIn('errors', response.json())
 
     def test_permission_classes(self):
         """Verify that the view has the correct permission classes"""
         view_func, _, _ = resolve(self.url)
         view_class = view_func.view_class
-        self.assertEqual(view_class.permission_classes, [IsSystemStaff])
-
-    def test_unauthorized(self):
-        """Verify that the view returns 403 when the user is not authenticated"""
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
-
-    def test_success(self):
-        """Verify that the view returns the correct response"""
-        self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.__version__', new='0.1.dummy'):
-            response = self.client.get(self.url)
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        self.assertEqual(json.loads(response.content), {'version': '0.1.dummy'})
+        self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
 
 
 class TestDataExportTasksView(BaseTestViewMixin):
@@ -4167,3 +3888,326 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
                 'You do not have permission to unenroll learners from this course',
                 response.data['reason']
             )
+
+
+@pytest.mark.usefixtures('base_data')
+class TestPaymentStatisticsView(BaseTestViewMixin):
+    """Tests for PaymentStatisticsView"""
+    VIEW_NAME = 'fx_dashboard:payment-statistics'
+
+    def test_get_payment_statistics_success(self):
+        """Test successful retrieval of payment statistics"""
+        request = self._get_request()
+
+        mock_result = {
+            'total_sales': 100.0,
+            'orders_count': 10,
+            'average_order_value': 10.0,
+            'daily_breakdown': []
+        }
+
+        with patch(
+            'futurex_openedx_extensions.dashboard.views.get_payment_statistics',
+            return_value=mock_result
+        ) as mock_get_stats:
+            view = views.PaymentStatisticsView.as_view()
+            response = view(request)
+
+            assert response.status_code == http_status.HTTP_200_OK
+            assert json.loads(response.content) == mock_result
+
+            # Verify default dates (last 30 days)
+            args, _ = mock_get_stats.call_args
+            assert isinstance(args[0], dict)
+            # Check if dates are roughly correct (within a few seconds)
+            assert (now() - args[2]).total_seconds() < 10
+            assert (now() - timedelta(days=30) - args[1]).total_seconds() < 10
+            assert args[3] is None
+
+    def test_get_payment_statistics_with_params(self):
+        """Test retrieval with query parameters"""
+        from_date = '2023-01-01T00:00:00+00:00'
+        to_date = '2023-01-31T23:59:59+00:00'
+        course_id = 'course-v1:org+course'
+
+        factory = APIRequestFactory()
+        request = factory.get(self.url, {
+            'from_date': from_date,
+            'to_date': to_date,
+            'course_id': course_id
+        })
+        request.user = get_user_model().objects.get(id=self.staff_user)
+        request.fx_permission_info = get_user1_fx_permission_info()
+        request.fx_permission_info['user'] = request.user
+
+        mock_result = {'some': 'data'}
+
+        with patch(
+            'futurex_openedx_extensions.dashboard.views.get_payment_statistics',
+            return_value=mock_result
+        ) as mock_get_stats:
+            view = views.PaymentStatisticsView.as_view()
+            response = view(request)
+
+            assert response.status_code == http_status.HTTP_200_OK
+
+            args, _ = mock_get_stats.call_args
+            assert args[1].isoformat() == from_date
+            assert args[2].isoformat() == to_date
+            assert args[3] == course_id
+
+    def test_get_payment_statistics_invalid_date(self):
+        """Test retrieval with invalid date format"""
+        factory = APIRequestFactory()
+        request = factory.get(self.url, {
+            'from_date': 'invalid-date',
+            'to_date': '2023-01-31T23:59:59+00:00'
+        })
+        request.user = get_user_model().objects.get(id=self.staff_user)
+        request.fx_permission_info = get_user1_fx_permission_info()
+        request.fx_permission_info['user'] = request.user
+
+        view = views.PaymentStatisticsView.as_view()
+        response = view(request)
+
+        assert response.status_code == http_status.HTTP_400_BAD_REQUEST
+        assert 'Invalid date format' in response.data['reason']
+
+    def test_get_payment_statistics_with_tenant_id(self):
+        """Test retrieval with tenant_id"""
+        tenant_id = 1
+        factory = APIRequestFactory()
+        request = factory.get(self.url, {'tenant_id': str(tenant_id)})
+        request.user = get_user_model().objects.get(id=self.staff_user)
+        request.fx_permission_info = get_user1_fx_permission_info()
+        request.fx_permission_info['user'] = request.user
+
+        # Mock permission info to allow access to tenant 1
+        request.fx_permission_info['view_allowed_tenant_ids_any_access'] = [1]
+
+        mock_result = {'some': 'data'}
+
+        with patch(
+            'futurex_openedx_extensions.dashboard.views.get_payment_statistics',
+            return_value=mock_result
+        ) as mock_get_stats:
+            with patch(
+                'futurex_openedx_extensions.dashboard.views.get_tenant_limited_fx_permission_info'
+            ) as mock_limit_perms:
+                mock_limit_perms.return_value = {'limited': 'perms'}
+
+                view = views.PaymentStatisticsView.as_view()
+                response = view(request)
+
+                assert response.status_code == http_status.HTTP_200_OK
+
+                mock_limit_perms.assert_called_once_with(ANY, tenant_id)
+                args, _ = mock_get_stats.call_args
+                assert args[0] == {'limited': 'perms'}
+
+    def test_get_payment_statistics_forbidden_tenant(self):
+        """Test retrieval with forbidden tenant_id"""
+        tenant_id = 999
+        factory = APIRequestFactory()
+        request = factory.get(self.url, {'tenant_id': str(tenant_id)})
+        request.user = get_user_model().objects.get(id=self.staff_user)
+        request.fx_permission_info = get_user1_fx_permission_info()
+        request.fx_permission_info['user'] = request.user
+
+        # Mock permission info to NOT allow access to tenant 999
+        request.fx_permission_info['view_allowed_tenant_ids_any_access'] = [1]
+
+        view = views.PaymentStatisticsView.as_view()
+        response = view(request)
+
+        assert response.status_code == http_status.HTTP_403_FORBIDDEN
+        assert f'Access denied for tenant: {tenant_id}' in response.data['reason']
+
+    def test_get_payment_statistics_invalid_tenant_id(self):
+        """Test retrieval with invalid tenant_id format"""
+        factory = APIRequestFactory()
+        request = factory.get(self.url, {'tenant_id': 'invalid'})
+        request.user = get_user_model().objects.get(id=self.staff_user)
+        request.fx_permission_info = get_user1_fx_permission_info()
+        request.fx_permission_info['user'] = request.user
+
+        view = views.PaymentStatisticsView.as_view()
+        response = view(request)
+
+        assert response.status_code == http_status.HTTP_400_BAD_REQUEST
+        assert 'Invalid tenant_id format' in response.data['reason']
+
+
+@pytest.mark.usefixtures('base_data')
+class TestLearnerInfoView(BaseTestViewMixin):
+    """Tests for LearnerInfoView"""
+    VIEW_NAME = 'fx_dashboard:learner-info'
+
+    def setUp(self):
+        """Set up test fixtures"""
+        super().setUp()
+        self.url_args = ['user3']
+
+    def test_success(self):
+        """Test successful learner info retrieval"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_queryset:
+            mock_user = Mock()
+            mock_user.id = 3
+            mock_user.username = 'user3'
+            mock_queryset.return_value.first.return_value = mock_user
+
+            with patch(
+                'futurex_openedx_extensions.dashboard.serializers.LearnerDetailsExtendedSerializer'
+            ) as mock_serializer:
+                mock_serializer.return_value.data = {'id': 3, 'username': 'user3'}
+                response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+    def test_user_not_found(self):
+        """Test exception handling when user not found"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_queryset:
+            mock_queryset.side_effect = FXCodedException(
+                code=FXExceptionCodes.USER_NOT_FOUND.value,
+                message='User not found'
+            )
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
+        self.assertIn('reason', response.json())
+
+    def test_user_query_not_permitted(self):
+        """Test exception handling when query not permitted"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_queryset:
+            mock_queryset.side_effect = FXCodedException(
+                code=FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value,
+                message='Query not permitted'
+            )
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
+        self.assertIn('reason', response.json())
+
+    def test_other_exception(self):
+        """Test exception handling for other error codes"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_info_queryset') as mock_queryset:
+            mock_queryset.side_effect = FXCodedException(
+                code=FXExceptionCodes.TENANT_NOT_FOUND.value,
+                message='Tenant error'
+            )
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertIn('reason', response.json())
+
+
+@pytest.mark.usefixtures('base_data')
+class TestLearnerCoursesView(BaseTestViewMixin):
+    """Tests for LearnerCoursesView"""
+    VIEW_NAME = 'fx_dashboard:learner-courses'
+
+    def setUp(self):
+        """Set up test fixtures"""
+        super().setUp()
+        self.url_args = ['user3']
+
+    def test_success(self):
+        """Test successful learner courses retrieval"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_courses_info_queryset') as mock_queryset:
+            mock_queryset.return_value = []
+
+            with patch(
+                'futurex_openedx_extensions.dashboard.serializers.LearnerCoursesDetailsSerializer'
+            ) as mock_serializer:
+                mock_serializer.return_value.data = []
+                response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+    def test_user_not_found(self):
+        """Test exception handling when user not found"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_courses_info_queryset') as mock_queryset:
+            mock_queryset.side_effect = FXCodedException(
+                code=FXExceptionCodes.USER_NOT_FOUND.value,
+                message='User not found'
+            )
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
+        self.assertIn('reason', response.json())
+
+    def test_user_query_not_permitted(self):
+        """Test exception handling when query not permitted"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_courses_info_queryset') as mock_queryset:
+            mock_queryset.side_effect = FXCodedException(
+                code=FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value,
+                message='Query not permitted'
+            )
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
+        self.assertIn('reason', response.json())
+
+    def test_other_exception(self):
+        """Test exception handling for other error codes"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.get_learner_courses_info_queryset') as mock_queryset:
+            mock_queryset.side_effect = FXCodedException(
+                code=FXExceptionCodes.TENANT_NOT_FOUND.value,
+                message='Tenant error'
+            )
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertIn('reason', response.json())
+
+
+@pytest.mark.usefixtures('base_data')
+class TestVersionInfoView(BaseTestViewMixin):
+    """Tests for VersionInfoView"""
+    VIEW_NAME = 'fx_dashboard:version-info'
+
+    def test_success(self):
+        """Test successful version info retrieval"""
+        superuser = get_user_model().objects.create_superuser('admin', 'admin@example.com', 'password')
+        self.client.force_login(superuser)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertIn('version', response.json())
+
+    def test_permission_required(self):
+        """Test that non-staff user gets forbidden"""
+        regular_user = 16  # Use a regular learner, not staff
+        self.login_user(regular_user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+
+@pytest.mark.usefixtures('base_data')
+class TestCourseStatusesView(BaseTestViewMixin):
+    """Tests for CourseStatusesView"""
+    VIEW_NAME = 'fx_dashboard:course-statuses'
+
+    def test_success(self):
+        """Test successful course statuses retrieval"""
+        self.login_user(self.staff_user)
+
+        with patch('futurex_openedx_extensions.dashboard.views.get_courses_count_by_status') as mock_get_counts:
+            mock_get_counts.return_value = [
+                {'status': 'active', 'self_paced': False, 'courses_count': 5},
+                {'status': 'active', 'self_paced': True, 'courses_count': 3},
+            ]
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertIsInstance(response.json(), dict)

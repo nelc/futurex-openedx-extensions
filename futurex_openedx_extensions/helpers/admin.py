@@ -257,6 +257,18 @@ class CacheInvalidatorAdmin(admin.ModelAdmin):
     change_list_template = 'cache_invalidator_change_list.html'
     change_list_title = 'Cache Invalidator'
 
+    # def has_add_permission(self, request: Any) -> bool:  # pylint: disable=unused-argument
+    #     """Disable add permission for CacheInvalidator."""
+    #     return False
+
+    # def has_change_permission(self, request: Any, obj: Any = None) -> bool:  # pylint: disable=unused-argument
+    #     """Disable change permission for CacheInvalidator."""
+    #     return False
+
+    # def has_delete_permission(self, request: Any, obj: Any = None) -> bool:  # pylint: disable=unused-argument
+    #     """Disable delete permission for CacheInvalidator."""
+    #     return False
+
     def changelist_view(self, request: Any, extra_context: dict | None = None) -> Response:
         """Override the default changelist_view to add cache info."""
         now_datetime = timezone.now()

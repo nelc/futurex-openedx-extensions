@@ -1,5 +1,6 @@
 """PyTest fixtures for tests."""
 import datetime
+import gc
 from unittest.mock import patch
 
 import pytest
@@ -346,3 +347,10 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
         _create_sites()
 
     return _base_data
+
+
+@pytest.fixture(autouse=True, scope='function')
+def gc_collect():
+    """Force garbage collection after each test to reduce memory pressure and mitigate segfaults."""
+    yield
+    gc.collect()

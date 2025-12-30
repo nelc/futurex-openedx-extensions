@@ -21,7 +21,9 @@ from django.db import transaction
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.dateparse import parse_datetime
 from django.utils.decorators import method_decorator
+from django.utils.timezone import now
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg.utils import swagger_auto_schema
 from edx_api_doc_tools import exclude_schema_for
@@ -61,6 +63,7 @@ from futurex_openedx_extensions.dashboard.statistics.courses import (
     get_enrollments_count_aggregated,
 )
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
+from futurex_openedx_extensions.dashboard.statistics.payments import get_payment_statistics
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
     ALLOWED_FILE_EXTENSIONS,
@@ -2174,3 +2177,54 @@ class CourseCategoriesView(FXViewRoleInfoMixin, APIView):
             )
 
         return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+
+@docs('PaymentStatisticsView.get')
+class PaymentStatisticsView(FXViewRoleInfoMixin, APIView):
+    """View to get payment statistics"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantCourseAccess]
+    fx_view_name = 'payment_statistics'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = 'api/fx/statistics/v1/payments/: Get payment statistics'
+
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
+        """
+        GET /api/fx/statistics/v1/payments/?from_date=<date>&to_date=<date>&course_id=<course_id>&tenant_id=<tenant_id>
+        """
+        from_date_str = request.query_params.get('from_date')
+        to_date_str = request.query_params.get('to_date')
+        course_id = request.query_params.get('course_id')
+        tenant_id = request.query_params.get('tenant_id')
+
+        if not from_date_str or not to_date_str:
+            to_date = now()
+            from_date = to_date - timedelta(days=30)
+        else:
+            from_date = parse_datetime(from_date_str)
+            to_date = parse_datetime(to_date_str)
+
+            if not from_date or not to_date:
+                return Response(
+                    error_details_to_dictionary(reason='Invalid date format. Use ISO 8601 format.'),
+                    status=http_status.HTTP_400_BAD_REQUEST
+                )
+
+        fx_permission_info = self.fx_permission_info
+        if tenant_id:
+            try:
+                tenant_id = int(tenant_id)
+                if tenant_id not in fx_permission_info['view_allowed_tenant_ids_any_access']:
+                    return Response(
+                        error_details_to_dictionary(reason=f'Access denied for tenant: {tenant_id}'),
+                        status=http_status.HTTP_403_FORBIDDEN
+                    )
+                fx_permission_info = get_tenant_limited_fx_permission_info(fx_permission_info, tenant_id)
+            except ValueError:
+                return Response(
+                    error_details_to_dictionary(reason='Invalid tenant_id format. Must be an integer.'),
+                    status=http_status.HTTP_400_BAD_REQUEST
+                )
+
+        result = get_payment_statistics(fx_permission_info, from_date, to_date, course_id)
+        return JsonResponse(result)

@@ -244,6 +244,7 @@ repeated_descriptions = {
     ' following are the available tags along with the fields they include:\n'
     '| tag | mapped fields |\n'
     '|-----|---------------|\n'
+
 }
 
 common_schemas = {
@@ -2838,6 +2839,56 @@ docs_src = {
                 404: 'Course not found or access denied.',
             },
             remove=[200],
+        ),
+    },
+
+    'PaymentStatisticsView.get': {
+        'summary': 'Get payment statistics',
+        'description': 'Get payment statistics for the given date range. '
+                       'Results are filtered by courses accessible to the user.',
+        'parameters': [
+            query_parameter(
+                'from_date',
+                str,
+                'Start date for the statistics (ISO 8601 format). Default: 30 days ago.',
+            ),
+            query_parameter(
+                'to_date',
+                str,
+                'End date for the statistics (ISO 8601 format). Default: now.',
+            ),
+            query_parameter(
+                'course_id',
+                str,
+                'Optional course ID to filter by.',
+            ),
+            query_parameter(
+                'tenant_id',
+                int,
+                'Optional tenant ID to filter by. If provided, results will be limited to this tenant.',
+            ),
+        ],
+        'responses': responses(
+            success_schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'total_sales': openapi.Schema(type=openapi.TYPE_NUMBER),
+                    'orders_count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                    'average_order_value': openapi.Schema(type=openapi.TYPE_NUMBER),
+                    'daily_breakdown': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'date': openapi.Schema(type=openapi.TYPE_STRING),
+                                'total_sales': openapi.Schema(type=openapi.TYPE_NUMBER),
+                                'orders_count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'average_order_value': openapi.Schema(type=openapi.TYPE_NUMBER),
+                            }
+                        )
+                    ),
+                }
+            )
         ),
     },
 }
