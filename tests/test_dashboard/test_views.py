@@ -229,13 +229,13 @@ class TestAggregatedCountsView(BaseTestViewMixin):
         (
             'day',
             'invalid', '2024-01-02',
-            'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
+            'Invalid dates. date_from and date_to must be formated as YYYY-MM-DD when provided.',
         ),
         (
             'day',
             '2024-01-01',
             'invalid',
-            'Invalid dates. You must provide a valid date_from and date_to formated as YYYY-MM-DD'
+            'Invalid dates. date_from and date_to must be formated as YYYY-MM-DD when provided.',
         ),
         ('day', '2024-01-03', '2024-01-02', None),
     )
@@ -268,6 +268,7 @@ class TestAggregatedCountsView(BaseTestViewMixin):
         response = self.client.get(url)
         if error_message:
             self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+            print(response.data)
             self.assertEqual(str(response.data['detail']), error_message)
         else:
             self.assertEqual(response.status_code, http_status.HTTP_200_OK)
@@ -3303,7 +3304,7 @@ class TestPaymentOrdersView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
 
     @patch('futurex_openedx_extensions.dashboard.views.get_courses_orders_queryset')
-    def test_success_witchout_cached_course_map(self, mock_qs):
+    def test_success_without_cached_course_map(self, mock_qs):
         """Verify that the view returns the correct response"""
         mock_qs.return_value = []
         self.login_user(self.staff_user)
@@ -3330,6 +3331,16 @@ class TestPaymentOrdersView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+    def test_invalid_date(self):
+        """Verify that the view returns the correct response"""
+        self.login_user(self.staff_user)
+        response = self.client.get(f'{self.url}?date_from=invalid-date')
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data['detail'],
+            'Invalid dates. date_from and date_to must be formated as YYYY-MM-DD when provided.',
+        )
 
 
 @ddt.ddt
