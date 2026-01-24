@@ -1,11 +1,12 @@
 """Signals for the futurex_openedx_extensions app"""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, UserProfile
 from django.core.cache import cache
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from futurex_openedx_extensions.helpers import constants as cs
@@ -16,6 +17,8 @@ from futurex_openedx_extensions.helpers.roles import (
     cache_name_user_course_access_roles,
 )
 from futurex_openedx_extensions.helpers.tenants import get_all_tenant_ids, get_all_tenants_info
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=CourseAccessRole)
@@ -90,3 +93,28 @@ def refresh_tenant_info_cache_on_delete_template_asset(
     template_tenant_id = get_all_tenants_info()['template_tenant']['tenant_id']
     if template_tenant_id and instance.tenant_id == template_tenant_id:
         invalidate_cache()
+
+
+@receiver(pre_save, sender=UserProfile)
+def fix_profile_gender_issues(
+    sender: Any, instance: UserProfile, **kwargs: Any,  # pylint: disable=unused-argument
+) -> None:
+    """Receiver to fix profile.gender values when a user profile is saved"""
+    values_map = {
+        'male': 'm',
+        'female': 'f',
+    }
+    if instance.gender not in ['m', 'f', '']:
+        user_id_str = f'id: {str(instance.user_id)}' if instance.user_id else f'username: {instance.username}'
+        try:
+            original_value = instance.gender
+            new_value = values_map.get(original_value.lower(), '')
+            instance.gender = new_value
+            logging.warning(
+                'UserProfile.gender updated for user %s from "%s" to "%s"',
+                user_id_str,
+                original_value,
+                new_value,
+            )
+        except Exception as exc:
+            logger.error('Error updating gender for user %s: %s', user_id_str, str(exc))

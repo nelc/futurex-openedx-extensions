@@ -1,8 +1,10 @@
 """Tests for the signals module of the helpers app"""
+
+import logging
 from unittest.mock import patch
 
 import pytest
-from common.djangoapps.student.models import CourseAccessRole
+from common.djangoapps.student.models import CourseAccessRole, UserProfile
 from django.core.cache import cache
 
 from futurex_openedx_extensions.helpers import constants as cs
@@ -166,3 +168,48 @@ def test_refresh_tenant_info_cache_on_delete_template_asset(
         mock_invalidate.assert_called_once()
     else:
         mock_invalidate.assert_not_called()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'original, expected, expect_warning',
+    [
+        ('male', 'm', True),
+        ('Male', 'm', True),
+        ('female', 'f', True),
+        ('FEMALE', 'f', True),
+        ('m', 'm', False),
+        ('f', 'f', False),
+        ('', '', False),
+        ('M', '', True),
+        ('other', '', True),
+    ],
+)
+def test_fix_profile_gender_issues_on_create(original, expected, expect_warning, caplog):
+    """Verify that creating a UserProfile normalizes gender and logs when changed."""
+    caplog.set_level(logging.WARNING)
+    user_id = 10
+    profile = UserProfile.objects.create(user_id=user_id, gender=original)
+    profile.refresh_from_db()
+    assert profile.gender == expected
+
+    if expect_warning:
+        assert any(
+            (str(original) in rec.getMessage() and str(expected) in rec.getMessage())
+            for rec in caplog.records
+        )
+    else:
+        assert not any('UserProfile.gender updated for user' in rec.getMessage() for rec in caplog.records)
+
+
+@pytest.mark.django_db
+def test_fix_profile_gender_issues_on_update(caplog):
+    """Verify that updating an existing UserProfile triggers normalization on save."""
+    caplog.set_level(logging.WARNING)
+    user_id = 11
+    profile = UserProfile.objects.create(user_id=user_id, gender='')
+    profile.gender = 'Male'
+    profile.save()
+    profile.refresh_from_db()
+    assert profile.gender == 'm'
+    assert any('UserProfile.gender updated for user' in rec.getMessage() for rec in caplog.records)
