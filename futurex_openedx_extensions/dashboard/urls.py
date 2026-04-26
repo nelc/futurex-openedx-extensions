@@ -7,6 +7,7 @@ from lms.djangoapps.static_template_view import views as static_template_views_v
 from rest_framework.routers import DefaultRouter
 
 from futurex_openedx_extensions.dashboard import viewz
+from futurex_openedx_extensions.dashboard.views.clickhouse import ClickhouseQueryView
 from futurex_openedx_extensions.dashboard.views.admin import (
     AccessibleTenantsInfoView,
     AccessibleTenantsInfoViewV2,
@@ -115,7 +116,7 @@ urlpatterns = [
     re_path(r'^api/fx/tenants/v1/info/(?P<tenant_id>\d+)/$', viewz.TenantInfoView.as_view(), name='tenant-info'),
     re_path(
         fr'^api/fx/query/v1/(?P<scope>{QUERY_ALLOWED_SCOPES})/(?P<slug>{CLICKHOUSE_QUERY_SLUG_PATTERN})/$',
-        viewz.ClickhouseQueryView.as_view(),
+        ClickhouseQueryView.as_view(),
         name='clickhouse-query'
     ),
     re_path(r'^api/fx/version/v1/info/$', VersionInfoView.as_view(), name='version-info'),
