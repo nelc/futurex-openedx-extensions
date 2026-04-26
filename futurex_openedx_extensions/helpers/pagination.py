@@ -1,4 +1,4 @@
-"""Pagination helpers and classes for the API viewz."""
+"""Pagination helpers and classes for the API views."""
 from django.core.paginator import Paginator
 from django.db.models.query import QuerySet
 from django.utils.functional import cached_property
@@ -8,7 +8,7 @@ from futurex_openedx_extensions.helpers.querysets import verify_queryset_removab
 
 
 class DefaultPaginator(Paginator):
-    """Default paginator settings for the API viewz."""
+    """Default paginator settings for the API views."""
     @cached_property
     def count(self) -> int:
         """Return the total number of objects, across all pages."""
@@ -25,7 +25,7 @@ class DefaultPaginator(Paginator):
 
 
 class DefaultPagination(PageNumberPagination):
-    """Default pagination settings for the API viewz."""
+    """Default pagination settings for the API views."""
     page_size: int = 20
     page_size_query_param: str = 'page_size'
     max_page_size: int = 100

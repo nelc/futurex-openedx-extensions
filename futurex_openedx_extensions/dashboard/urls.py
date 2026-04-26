@@ -6,13 +6,6 @@ from django.urls import include, re_path
 from lms.djangoapps.static_template_view import views as static_template_views_views
 from rest_framework.routers import DefaultRouter
 
-from futurex_openedx_extensions.dashboard import viewz
-from futurex_openedx_extensions.dashboard.views.clickhouse import ClickhouseQueryView
-from futurex_openedx_extensions.dashboard.views.statistics import (
-    AggregatedCountsView,
-    GlobalRatingView,
-    TotalCountsView,
-)
 from futurex_openedx_extensions.dashboard.views.admin import (
     AccessibleTenantsInfoView,
     AccessibleTenantsInfoViewV2,
@@ -26,6 +19,7 @@ from futurex_openedx_extensions.dashboard.views.categories import (
     CategoryDetailView,
     CourseCategoriesView,
 )
+from futurex_openedx_extensions.dashboard.views.clickhouse import ClickhouseQueryView
 from futurex_openedx_extensions.dashboard.views.configs import (
     ConfigEditableInfoView,
     ThemeConfigDraftView,
@@ -47,8 +41,19 @@ from futurex_openedx_extensions.dashboard.views.learners import (
     LearnersView,
     LearnerUnenrollView,
 )
+from futurex_openedx_extensions.dashboard.views.misc import (
+    DataExportManagementView,
+    FileUploadView,
+    SetThemePreviewCookieView,
+    TenantInfoView,
+)
 from futurex_openedx_extensions.dashboard.views.payments import PaymentOrdersView
 from futurex_openedx_extensions.dashboard.views.roles import MyRolesView, UserRolesManagementView
+from futurex_openedx_extensions.dashboard.views.statistics import (
+    AggregatedCountsView,
+    GlobalRatingView,
+    TotalCountsView,
+)
 from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_QUERY_SLUG_PATTERN, COURSE_ID_REGX
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery
 
@@ -59,7 +64,7 @@ QUERY_ALLOWED_SCOPES = '|'.join(ClickhouseQuery.allowed_scopes())
 roles_router = DefaultRouter()
 roles_router.register(r'user_roles', UserRolesManagementView, basename='user-roles')
 export_router = DefaultRouter()
-export_router.register(r'tasks', viewz.DataExportManagementView, basename='data-export-tasks')
+export_router.register(r'tasks', DataExportManagementView, basename='data-export-tasks')
 tenant_assets_router = DefaultRouter()
 tenant_assets_router.register(r'tenant_assets', TenantAssetsManagementView, basename='tenant-assets')
 
@@ -118,7 +123,7 @@ urlpatterns = [
         name='aggregated-counts',
     ),
     re_path(r'^api/fx/tenants/v1/excluded', ExcludedTenantsView.as_view(), name='excluded-tenants'),
-    re_path(r'^api/fx/tenants/v1/info/(?P<tenant_id>\d+)/$', viewz.TenantInfoView.as_view(), name='tenant-info'),
+    re_path(r'^api/fx/tenants/v1/info/(?P<tenant_id>\d+)/$', TenantInfoView.as_view(), name='tenant-info'),
     re_path(
         fr'^api/fx/query/v1/(?P<scope>{QUERY_ALLOWED_SCOPES})/(?P<slug>{CLICKHOUSE_QUERY_SLUG_PATTERN})/$',
         ClickhouseQueryView.as_view(),
@@ -135,14 +140,14 @@ urlpatterns = [
     re_path(r'^api/fx/config/v1/publish/$', ThemeConfigPublishView.as_view(), name='theme-config-publish'),
     re_path(r'^api/fx/config/v1/values/$', ThemeConfigRetrieveView.as_view(), name='theme-config-values'),
     re_path(r'^api/fx/config/v1/tenant/$', ThemeConfigTenantView.as_view(), name='theme-config-tenant'),
-    re_path(r'^api/fx/file/v1/upload/$', viewz.FileUploadView.as_view(), name='file-upload'),
+    re_path(r'^api/fx/file/v1/upload/$', FileUploadView.as_view(), name='file-upload'),
     re_path(r'^api/fx/assets/v1/', include(tenant_assets_router.urls)),
 
     re_path(r'^api/fx/payments/v1/orders/$', PaymentOrdersView.as_view(), name='payments-orders'),
 
     re_path(
         r'^api/fx/redirect/set_theme_preview/$',
-        viewz.SetThemePreviewCookieView.as_view(),
+        SetThemePreviewCookieView.as_view(),
         name='set-theme-preview',
     ),
 

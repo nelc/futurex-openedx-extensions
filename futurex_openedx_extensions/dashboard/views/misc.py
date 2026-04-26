@@ -1,4 +1,6 @@
-"""Views for the dashboard app"""
+"""Views for the dashboard app - misc feature"""
+# pylint: disable=duplicate-code
+
 from __future__ import annotations
 
 import logging
@@ -29,15 +31,11 @@ from futurex_openedx_extensions.helpers.converters import error_details_to_dicti
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
 from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
-from futurex_openedx_extensions.helpers.permissions import (
-    FXHasTenantAllCoursesAccess,
-    FXHasTenantCourseAccess,
-)
+from futurex_openedx_extensions.helpers.permissions import FXHasTenantAllCoursesAccess, FXHasTenantCourseAccess
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
 from futurex_openedx_extensions.helpers.tenants import get_all_tenants_info
 from futurex_openedx_extensions.helpers.upload import get_storage_dir, upload_file
 
-# Constants
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
 logger = logging.getLogger(__name__)
 

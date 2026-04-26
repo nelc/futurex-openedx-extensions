@@ -34,10 +34,12 @@ from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.test import APIRequestFactory, APITestCase
 from rest_framework.utils.serializer_helpers import ReturnList
 
-from futurex_openedx_extensions.dashboard import serializers, urls, viewz
+from futurex_openedx_extensions.dashboard import serializers, urls
+from futurex_openedx_extensions.dashboard.views.clickhouse import ClickhouseQueryView
 from futurex_openedx_extensions.dashboard.views.configs import ThemeConfigDraftView, ThemeConfigPublishView
+from futurex_openedx_extensions.dashboard.views.learners import LearnersEnrollmentView, LearnerUnenrollView
 from futurex_openedx_extensions.dashboard.views.roles import UserRolesManagementView
-from futurex_openedx_extensions.dashboard.viewz import LearnersEnrollmentView
+from futurex_openedx_extensions.dashboard.views.statistics import AggregatedCountsView
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.constants import ALLOWED_FILE_EXTENSIONS
@@ -198,7 +200,7 @@ class TestAggregatedCountsView(BaseTestViewMixin):
     def setUp(self):
         """Setup"""
         super().setUp()
-        self.view = viewz.AggregatedCountsView()
+        self.view = AggregatedCountsView()
         self.view.request = self._get_request()
 
     def test_unauthorized(self):
@@ -213,7 +215,7 @@ class TestAggregatedCountsView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(str(response.data['detail']), "Invalid stats type: ['invalid']")
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.AggregatedCountsView._construct_result')
+    @patch('futurex_openedx_extensions.dashboard.views.statistics.AggregatedCountsView._construct_result')
     @ddt.data(
         (None, '2024-01-01', '2024-01-01', 'Invalid aggregate_period: None'),
         ('day', '2024-01-01', '2024-01-01', None),
@@ -362,7 +364,7 @@ class TestAggregatedCountsView(BaseTestViewMixin):
         }
         return expected_result
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.AggregatedCountsView.get_data_with_missing_periods')
+    @patch('futurex_openedx_extensions.dashboard.views.statistics.AggregatedCountsView.get_data_with_missing_periods')
     @ddt.data(True, False)
     def test_all_stats(self, fill_missing_periods, mock_missing_periods):
         """Test get method"""
@@ -516,7 +518,7 @@ class TestLearnersView(BaseTestViewMixin):
     def test_no_tenants(self):
         """Verify that the view returns the result for all accessible tenants when no tenant IDs are provided"""
         self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_learners_queryset') as mock_queryset:
+        with patch('futurex_openedx_extensions.dashboard.views.learners.get_learners_queryset') as mock_queryset:
             self.client.get(self.url)
             mock_queryset.assert_called_once()
             assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
@@ -526,7 +528,7 @@ class TestLearnersView(BaseTestViewMixin):
     def test_search(self):
         """Verify that the view filters the learners by search text"""
         self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_learners_queryset') as mock_queryset:
+        with patch('futurex_openedx_extensions.dashboard.views.learners.get_learners_queryset') as mock_queryset:
             self.client.get(self.url + '?tenant_ids=1&search_text=user')
             assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_tenant_ids_any_access'] == [1]
             assert mock_queryset.call_args_list[0][1]['search_text'] == 'user'
@@ -539,7 +541,7 @@ class TestLearnersView(BaseTestViewMixin):
         self.assertEqual(response.data['count'], 37)
         self.assertGreater(len(response.data['results']), 0)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_learners_queryset')
+    @patch('futurex_openedx_extensions.dashboard.views.learners.get_learners_queryset')
     def test_enrollments_filter(self, mock_get_learners_queryset):
         """Verify that the view filters the learners by enrollments"""
         self.login_user(self.staff_user)
@@ -1122,7 +1124,7 @@ class TestLearnerInfoView(
         self.assertFalse(())
 
         self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_learner_info_queryset') as mock_get_info:
+        with patch('futurex_openedx_extensions.dashboard.views.learners.get_learner_info_queryset') as mock_get_info:
             mock_get_info.return_value = Mock(first=Mock(return_value=user))
             response = self.client.get(self.url)
 
@@ -1130,14 +1132,14 @@ class TestLearnerInfoView(
         data = json.loads(response.content)
         self.assertDictEqual(data, serializers.LearnerDetailsExtendedSerializer(user).data)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.serializers.LearnerDetailsExtendedSerializer')
+    @patch('futurex_openedx_extensions.dashboard.views.learners.serializers.LearnerDetailsExtendedSerializer')
     def test_request_in_context(self, mock_serializer):
         """Verify that the view calls the serializer with the correct context"""
         request = self._get_request()
         view_class = self._get_view_class()
         mock_serializer.return_value = Mock(data={})
 
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_learner_info_queryset') as mock_get_info:
+        with patch('futurex_openedx_extensions.dashboard.views.learners.get_learner_info_queryset') as mock_get_info:
             mock_get_info.return_value = Mock()
             view = view_class()
             view.request = request
@@ -1174,7 +1176,8 @@ class TestLearnerCoursesDetailsView(
             course.save()
 
         self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_learner_courses_info_queryset') as mock_get_info:
+        patch_path = 'futurex_openedx_extensions.dashboard.views.learners.get_learner_courses_info_queryset'
+        with patch(patch_path) as mock_get_info:
             mock_get_info.return_value = courses
             response = self.client.get(self.url)
 
@@ -1187,13 +1190,14 @@ class TestLearnerCoursesDetailsView(
         self.assertEqual(len(data), 2)
         self.assertEqual(list(data), list(serializers.LearnerCoursesDetailsSerializer(courses, many=True).data))
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.serializers.LearnerCoursesDetailsSerializer')
+    @patch('futurex_openedx_extensions.dashboard.views.learners.serializers.LearnerCoursesDetailsSerializer')
     def test_request_in_context(self, mock_serializer):
         """Verify that the view uses the correct serializer"""
         request = self._get_request()
         view_class = self._get_view_class()
 
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_learner_courses_info_queryset') as mock_get_info:
+        patch_path = 'futurex_openedx_extensions.dashboard.views.learners.get_learner_courses_info_queryset'
+        with patch(patch_path) as mock_get_info:
             mock_get_info.return_value = Mock()
             view = view_class()
             view.request = request
@@ -1477,7 +1481,7 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
         view_class = view_func.view_class
         self.assertEqual(view_class.permission_classes, [IsAnonymousOrSystemStaff])
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_user_by_username_or_email')
+    @patch('futurex_openedx_extensions.dashboard.views.admin.get_user_by_username_or_email')
     def test_success(self, mock_get_user):
         """Verify that the view returns the correct response"""
         mock_get_user.return_value = get_user_model().objects.get(username='user4')
@@ -1502,7 +1506,7 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
             },
         })
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_user_by_username_or_email')
+    @patch('futurex_openedx_extensions.dashboard.views.admin.get_user_by_username_or_email')
     def test_no_username_or_email(self, mock_get_user):
         """Verify that the view returns the correct response"""
         mock_get_user.side_effect = get_user_model().DoesNotExist()
@@ -1529,7 +1533,7 @@ class TestAccessibleTenantsInfoViewV2(BaseTestViewMixin):
         view_class = view_func.view_class
         self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_user_by_username_or_email')
+    @patch('futurex_openedx_extensions.dashboard.views.admin.get_user_by_username_or_email')
     def test_success(self, mock_get_user):
         """Verify that the view returns the correct response"""
         mock_get_user.return_value = get_user_model().objects.get(username='user4')
@@ -1563,7 +1567,7 @@ class TestAccessibleTenantsInfoViewV2(BaseTestViewMixin):
             f'Expected 403 for non staf users, but got {response.status_code}'
         )
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_user_by_username_or_email')
+    @patch('futurex_openedx_extensions.dashboard.views.admin.get_user_by_username_or_email')
     def test_no_username_or_email(self, mock_get_user):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
@@ -1790,7 +1794,7 @@ class TestGlobalRatingView(BaseTestViewMixin):
             assert expected_result['rating_counts'][str(value)] == test_data[f'rating_{value}_count']
         assert expected_result['total_count'] == sum(expected_result['rating_counts'].values())
 
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_courses_ratings') as mocked_calc:
+        with patch('futurex_openedx_extensions.dashboard.views.statistics.get_courses_ratings') as mocked_calc:
             mocked_calc.return_value = test_data
             response = self.client.get(f'{self.url}?tenant_ids=1')
         data = json.loads(response.content)
@@ -1801,7 +1805,7 @@ class TestGlobalRatingView(BaseTestViewMixin):
     def test_success_no_rating(self):
         """Verify that the view returns the correct response when there are no ratings"""
         self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_courses_ratings') as mocked_calc:
+        with patch('futurex_openedx_extensions.dashboard.views.statistics.get_courses_ratings') as mocked_calc:
             mocked_calc.return_value = {
                 'total_rating': 0,
                 'courses_count': 0,
@@ -2234,10 +2238,10 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     VIEW_NAME = 'fx_dashboard:clickhouse-query'
 
     patching_config = {
-        'get_query_record': ('futurex_openedx_extensions.dashboard.viewz.ClickhouseQuery.get_query_record', {
+        'get_query_record': ('futurex_openedx_extensions.dashboard.views.clickhouse.ClickhouseQuery.get_query_record', {
             'side_effect': MockClickhouseQuery.get_query_record,
         }),
-        'parse_query': ('futurex_openedx_extensions.dashboard.viewz.ClickhouseQuery.fix_param_types', {
+        'parse_query': ('futurex_openedx_extensions.dashboard.views.clickhouse.ClickhouseQuery.fix_param_types', {
             'side_effect': MockClickhouseQuery.fix_param_types,
         }),
         'get_client': ('futurex_openedx_extensions.helpers.clickhouse_operations.get_client', {}),
@@ -2245,7 +2249,7 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
             'return_value': (100, 2, Mock(column_names=['col_name'], result_rows=[[1]])),
         }),
         'get_usernames_with_access_roles': (
-            'futurex_openedx_extensions.dashboard.viewz.get_usernames_with_access_roles',
+            'futurex_openedx_extensions.dashboard.views.clickhouse.get_usernames_with_access_roles',
             {'return_value': []}
         ),
     }
@@ -2315,7 +2319,7 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
         if expected_result:
             expected_result = f'http://testserver/api/fx/query/v1/course/test-query/{expected_result}'
 
-        self.assertEqual(viewz.ClickhouseQueryView.get_page_url_with_page(url, new_page_no), expected_result)
+        self.assertEqual(ClickhouseQueryView.get_page_url_with_page(url, new_page_no), expected_result)
 
     @ddt.data(
         ({}, True, (1, DefaultPagination.page_size)),
@@ -2332,7 +2336,7 @@ class TestClickhouseQueryView(MockPatcherMixin, BaseTestViewMixin):
     @ddt.unpack
     def test_pop_out_page_params(self, params, paginated, expected_result):
         """Verify that pop_out_page_params returns the correct page number and page size"""
-        self.assertEqual(viewz.ClickhouseQueryView.pop_out_page_params(params, paginated), expected_result)
+        self.assertEqual(ClickhouseQueryView.pop_out_page_params(params, paginated), expected_result)
 
     def _assert_not_ok_response(self, status_code, reason):
         """Helper to assert that the response is not OK"""
@@ -2953,8 +2957,8 @@ class FileUploadView(BaseTestViewMixin):
     """Tests for FileUploadView"""
     VIEW_NAME = 'fx_dashboard:file-upload'
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.uuid.uuid4')
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_storage_dir')
+    @patch('futurex_openedx_extensions.dashboard.views.misc.uuid.uuid4')
+    @patch('futurex_openedx_extensions.dashboard.views.misc.get_storage_dir')
     def test_success(self, mocked_storage_dir, mocked_uuid4):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
@@ -2975,7 +2979,7 @@ class FileUploadView(BaseTestViewMixin):
         assert default_storage.exists(expected_storage_path)
         default_storage.delete(expected_storage_path)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_storage_dir')
+    @patch('futurex_openedx_extensions.dashboard.views.misc.get_storage_dir')
     def test_failure(self, mocked_storage_dir):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
@@ -3018,8 +3022,8 @@ class FileUploadView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['reason'], f'Invalid file type. Allowed types are {ALLOWED_FILE_EXTENSIONS}.')
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.uuid.uuid4')
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_storage_dir')
+    @patch('futurex_openedx_extensions.dashboard.views.misc.uuid.uuid4')
+    @patch('futurex_openedx_extensions.dashboard.views.misc.get_storage_dir')
     def test_file_upload_for_tenant_permission(self, mocked_storage_dir, mocked_uuid4):
         """Verify that the view returns the correct response"""
         self.login_user(1)
@@ -3363,7 +3367,7 @@ class TestCategoriesView(MockPatcherMixin, BaseTestViewMixin):
 
     patching_config = {
         'one_tenant': (
-            'futurex_openedx_extensions.dashboard.viewz.FXViewRoleInfoMixin.verify_one_tenant_id_provided', {
+            'futurex_openedx_extensions.dashboard.views.categories.FXViewRoleInfoMixin.verify_one_tenant_id_provided', {
                 'return_value': 1,
             }
         ),
@@ -3495,7 +3499,7 @@ class TestCategoryDetailView(MockPatcherMixin, BaseTestViewMixin):
 
     patching_config = {
         'one_tenant': (
-            'futurex_openedx_extensions.dashboard.viewz.FXViewRoleInfoMixin.verify_one_tenant_id_provided', {
+            'futurex_openedx_extensions.dashboard.views.categories.FXViewRoleInfoMixin.verify_one_tenant_id_provided', {
                 'return_value': 1,
             }
         ),
@@ -4049,12 +4053,12 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
 
     def test_view_has_correct_permissions(self):
         """Test that the view has correct permission classes"""
-        view = viewz.LearnerUnenrollView()
+        view = LearnerUnenrollView()
         self.assertIn(FXHasTenantCourseAccess, view.permission_classes)
 
     def test_view_configuration(self):
         """Test view configuration"""
-        view = viewz.LearnerUnenrollView()
+        view = LearnerUnenrollView()
         self.assertEqual(view.fx_view_name, 'learner_unenroll')
         self.assertEqual(view.fx_default_read_write_roles, ['staff', 'instructor', 'org_course_creator_group'])
         self.assertEqual(view.fx_view_description, 'api/fx/learners/v1/unenroll: Unenroll a learner from a course')
@@ -4068,7 +4072,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
             course_id=test_course,
             is_active=True
         )
-        original_post = viewz.LearnerUnenrollView.post
+        original_post = LearnerUnenrollView.post
 
         def patched_post(view_self, request, *args, **kwargs):
             request.fx_permission_info['view_allowed_full_access_orgs'] = [
@@ -4076,7 +4080,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
             ]
             return original_post(view_self, request, *args, **kwargs)
 
-        with patch.object(viewz.LearnerUnenrollView, 'post', patched_post):
+        with patch.object(LearnerUnenrollView, 'post', patched_post):
             data = {
                 'user_key': self.test_user.username,
                 'course_id': test_course,  # ORG1 not in allowed list
@@ -4089,7 +4093,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
             )
 
     @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_course_search_queryset')
+    @patch('futurex_openedx_extensions.dashboard.views.learners.get_course_search_queryset')
     def test_unenroll_with_course_specific_staff_access(self, mock_course_search, mock_get_user_by_key):
         """Test that user with course-specific staff access can unenroll learners"""
         mock_get_user_by_key.return_value = {
@@ -4116,7 +4120,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
         self.assertIn('Successfully unenrolled', response.data['message'])
 
     @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_course_search_queryset')
+    @patch('futurex_openedx_extensions.dashboard.views.learners.get_course_search_queryset')
     def test_unenroll_with_course_specific_instructor_access(self, mock_course_search, mock_get_user_by_key):
         """Test that user with course-specific instructor access can unenroll learners"""
         mock_get_user_by_key.return_value = {
@@ -4152,7 +4156,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
             course_id=test_course,
             is_active=True
         )
-        original_post = viewz.LearnerUnenrollView.post
+        original_post = LearnerUnenrollView.post
 
         def patched_post(view_self, request, *args, **kwargs):
             request.fx_permission_info['view_allowed_full_access_orgs'] = []
@@ -4164,7 +4168,7 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
             }
             return original_post(view_self, request, *args, **kwargs)
 
-        with patch.object(viewz.LearnerUnenrollView, 'post', patched_post):
+        with patch.object(LearnerUnenrollView, 'post', patched_post):
             data = {
                 'user_key': self.test_user.username,
                 'course_id': test_course,
