@@ -1,4 +1,4 @@
-"""Filters helpers and classes for the API views."""
+"""Filters helpers and classes for the API viewz."""
 from rest_framework.filters import OrderingFilter, SearchFilter
 
 

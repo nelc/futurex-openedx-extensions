@@ -507,7 +507,7 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
     @cache_dict(timeout='FX_CACHE_TIMEOUT_VIEW_ROLES', key_generator_or_name=cs.CACHE_NAME_ALL_VIEW_ROLES)
     def get_allowed_roles_all_views() -> Dict[str, List[str]]:
         """
-        Get the allowed roles for all views.
+        Get the allowed roles for all viewz.
 
         :return: The allowed roles for all views
         :rtype: dict

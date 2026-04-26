@@ -740,7 +740,7 @@ def test_fx_view_role_mixin_get_allowed_roles_with_existing_roles(db):  # pylint
 def test_fx_view_role_mixin_get_allowed_roles_with_nonexistent_view(db):  # pylint: disable=unused-argument
     """
     Verify that get_allowed_roles_all_views returns the expected dictionary after removing records
-    for nonexistent views.
+    for nonexistent viewz.
     """
     FXViewRoleInfoMetaClass._fx_views_with_roles = {  # pylint: disable=protected-access
         '_all_view_names': {'View1': None, 'View2': None},

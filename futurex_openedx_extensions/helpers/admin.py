@@ -405,7 +405,7 @@ class ConfigMirrorAdmin(SimpleHistoryAdmin):
 
 
 def register_admins() -> None:
-    """Register the admin views."""
+    """Register the admin viewz."""
     CacheInvalidator._meta.abstract = False  # to be able to register the admin view
 
     admin.site.register(CacheInvalidator, CacheInvalidatorAdmin)
