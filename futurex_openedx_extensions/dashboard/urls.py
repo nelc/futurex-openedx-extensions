@@ -33,6 +33,14 @@ from futurex_openedx_extensions.dashboard.views.courses import (
     CoursesView,
     LibraryView,
 )
+from futurex_openedx_extensions.dashboard.views.learners import (
+    LearnerCoursesView,
+    LearnerInfoView,
+    LearnersDetailsForCourseView,
+    LearnersEnrollmentView,
+    LearnersView,
+    LearnerUnenrollView,
+)
 from futurex_openedx_extensions.dashboard.views.payments import PaymentOrdersView
 from futurex_openedx_extensions.dashboard.views.roles import MyRolesView, UserRolesManagementView
 from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_QUERY_SLUG_PATTERN, COURSE_ID_REGX
@@ -73,24 +81,24 @@ urlpatterns = [
     ),
 
     re_path(r'^api/fx/export/v1/', include(export_router.urls)),
-    re_path(r'^api/fx/learners/v1/learners/$', viewz.LearnersView.as_view(), name='learners'),
+    re_path(r'^api/fx/learners/v1/learners/$', LearnersView.as_view(), name='learners'),
     re_path(
         fr'^api/fx/learners/v1/learners/{COURSE_ID_REGX}/$',
-        viewz.LearnersDetailsForCourseView.as_view(), name='learners-course'),
+        LearnersDetailsForCourseView.as_view(), name='learners-course'),
     re_path(
         r'^api/fx/learners/v1/enrollments/$',
-        viewz.LearnersEnrollmentView.as_view(), name='learners-enrollements'),
+        LearnersEnrollmentView.as_view(), name='learners-enrollements'),
     re_path(
         r'^api/fx/learners/v1/unenroll/$',
-        viewz.LearnerUnenrollView.as_view(), name='learners-unenroll'),
+        LearnerUnenrollView.as_view(), name='learners-unenroll'),
     re_path(
         r'^api/fx/learners/v1/learner/' + settings.USERNAME_PATTERN + '/$',
-        viewz.LearnerInfoView.as_view(),
+        LearnerInfoView.as_view(),
         name='learner-info'
     ),
     re_path(
         r'^api/fx/learners/v1/learner_courses/' + settings.USERNAME_PATTERN + '/$',
-        viewz.LearnerCoursesView.as_view(),
+        LearnerCoursesView.as_view(),
         name='learner-courses'
     ),
     re_path(r'^api/fx/roles/v1/my_roles/$', MyRolesView.as_view(), name='my-roles'),
