@@ -8,6 +8,11 @@ from rest_framework.routers import DefaultRouter
 
 from futurex_openedx_extensions.dashboard import viewz
 from futurex_openedx_extensions.dashboard.views.clickhouse import ClickhouseQueryView
+from futurex_openedx_extensions.dashboard.views.statistics import (
+    AggregatedCountsView,
+    GlobalRatingView,
+    TotalCountsView,
+)
 from futurex_openedx_extensions.dashboard.views.admin import (
     AccessibleTenantsInfoView,
     AccessibleTenantsInfoViewV2,
@@ -105,11 +110,11 @@ urlpatterns = [
     re_path(r'^api/fx/roles/v1/my_roles/$', MyRolesView.as_view(), name='my-roles'),
     re_path(r'^api/fx/roles/v1/', include(roles_router.urls)),
     re_path(r'^api/fx/statistics/v1/course_statuses/$', CourseStatusesView.as_view(), name='course-statuses'),
-    re_path(r'^api/fx/statistics/v1/rating/$', viewz.GlobalRatingView.as_view(), name='statistics-rating'),
-    re_path(r'^api/fx/statistics/v1/total_counts/$', viewz.TotalCountsView.as_view(), name='total-counts'),
+    re_path(r'^api/fx/statistics/v1/rating/$', GlobalRatingView.as_view(), name='statistics-rating'),
+    re_path(r'^api/fx/statistics/v1/total_counts/$', TotalCountsView.as_view(), name='total-counts'),
     re_path(
         r'^api/fx/statistics/v1/aggregated_counts/$',
-        viewz.AggregatedCountsView.as_view(),
+        AggregatedCountsView.as_view(),
         name='aggregated-counts',
     ),
     re_path(r'^api/fx/tenants/v1/excluded', ExcludedTenantsView.as_view(), name='excluded-tenants'),
