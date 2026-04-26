@@ -13,6 +13,13 @@ from futurex_openedx_extensions.dashboard.views.categories import (
     CategoryDetailView,
     CourseCategoriesView,
 )
+from futurex_openedx_extensions.dashboard.views.configs import (
+    ConfigEditableInfoView,
+    ThemeConfigDraftView,
+    ThemeConfigPublishView,
+    ThemeConfigRetrieveView,
+    ThemeConfigTenantView,
+)
 from futurex_openedx_extensions.dashboard.views.courses import (
     CoursesFeedbackView,
     CourseStatusesView,
@@ -97,15 +104,15 @@ urlpatterns = [
     ),
     re_path(r'^api/fx/version/v1/info/$', viewz.VersionInfoView.as_view(), name='version-info'),
 
-    re_path(r'^api/fx/config/v1/editable/$', viewz.ConfigEditableInfoView.as_view(), name='config-editable-info'),
+    re_path(r'^api/fx/config/v1/editable/$', ConfigEditableInfoView.as_view(), name='config-editable-info'),
     re_path(
         r'^api/fx/config/v1/draft/(?P<tenant_id>\d+)/$',
-        viewz.ThemeConfigDraftView.as_view(),
+        ThemeConfigDraftView.as_view(),
         name='theme-config-draft'
     ),
-    re_path(r'^api/fx/config/v1/publish/$', viewz.ThemeConfigPublishView.as_view(), name='theme-config-publish'),
-    re_path(r'^api/fx/config/v1/values/$', viewz.ThemeConfigRetrieveView.as_view(), name='theme-config-values'),
-    re_path(r'^api/fx/config/v1/tenant/$', viewz.ThemeConfigTenantView.as_view(), name='theme-config-tenant'),
+    re_path(r'^api/fx/config/v1/publish/$', ThemeConfigPublishView.as_view(), name='theme-config-publish'),
+    re_path(r'^api/fx/config/v1/values/$', ThemeConfigRetrieveView.as_view(), name='theme-config-values'),
+    re_path(r'^api/fx/config/v1/tenant/$', ThemeConfigTenantView.as_view(), name='theme-config-tenant'),
     re_path(r'^api/fx/file/v1/upload/$', viewz.FileUploadView.as_view(), name='file-upload'),
     re_path(r'^api/fx/assets/v1/', include(tenant_assets_router.urls)),
 

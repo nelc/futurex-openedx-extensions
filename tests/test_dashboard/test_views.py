@@ -35,12 +35,9 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from rest_framework.utils.serializer_helpers import ReturnList
 
 from futurex_openedx_extensions.dashboard import serializers, urls, viewz
+from futurex_openedx_extensions.dashboard.views.configs import ThemeConfigDraftView, ThemeConfigPublishView
 from futurex_openedx_extensions.dashboard.views.roles import UserRolesManagementView
-from futurex_openedx_extensions.dashboard.viewz import (
-    LearnersEnrollmentView,
-    ThemeConfigDraftView,
-    ThemeConfigPublishView,
-)
+from futurex_openedx_extensions.dashboard.viewz import LearnersEnrollmentView
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.constants import ALLOWED_FILE_EXTENSIONS
@@ -2418,7 +2415,7 @@ class TestConfigEditableInfoView(BaseTestViewMixin):
         """Verify that ConfigEditableInfoView calls verify_one_tenant_id_provided."""
         self.login_user(self.staff_user)
         with patch(
-            'futurex_openedx_extensions.dashboard.viewz.ConfigEditableInfoView.verify_one_tenant_id_provided'
+            'futurex_openedx_extensions.dashboard.views.configs.ConfigEditableInfoView.verify_one_tenant_id_provided'
         ) as mock_verify_one_tenant:
             mock_verify_one_tenant.return_value = 1
             response = self.client.get(self.url, data={'tenant_ids': '1'})
@@ -2555,8 +2552,8 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
         ConfigAccessControl.objects.create(key_name='platform_name', path=config_path, writable=True)
         assert DraftConfig.objects.filter(tenant_id=tenant_id, config_path=config_path).count() == 0, 'bad test data'
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.ThemeConfigDraftView.validate_input')
-    @patch('futurex_openedx_extensions.dashboard.viewz.update_draft_tenant_config')
+    @patch('futurex_openedx_extensions.dashboard.views.configs.ThemeConfigDraftView.validate_input')
+    @patch('futurex_openedx_extensions.dashboard.views.configs.update_draft_tenant_config')
     def test_draft_config_update(self, mock_update_draft, mocked_validate_input):
         """Verify that the view returns the correct response"""
         def _update_draft(**kwargs):
@@ -2611,8 +2608,8 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
         )
         mocked_validate_input.assert_called_once_with('456')
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.ThemeConfigDraftView.validate_input')
-    @patch('futurex_openedx_extensions.dashboard.viewz.update_draft_tenant_config')
+    @patch('futurex_openedx_extensions.dashboard.views.configs.ThemeConfigDraftView.validate_input')
+    @patch('futurex_openedx_extensions.dashboard.views.configs.update_draft_tenant_config')
     @ddt.data(
         (None, False),
         ('not boolean', False),
@@ -2684,7 +2681,7 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
             '(13003) Failed to update all the specified draft config paths.',
         )
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.update_draft_tenant_config')
+    @patch('futurex_openedx_extensions.dashboard.views.configs.update_draft_tenant_config')
     def test_draft_config_update_fails(self, mock_update_draft):
         """
         Verify that if the update_draft_tenant_config fails for any reason other than FXExceptionCodes.UPDATE_FAILED
@@ -2737,7 +2734,7 @@ class TestThemeConfigPublishView(DraftConfigDataMixin, BaseTestViewMixin):
     """Tests for ThemeConfigPublishView"""
     VIEW_NAME = 'fx_dashboard:theme-config-publish'
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.publish_tenant_config')
+    @patch('futurex_openedx_extensions.dashboard.views.configs.publish_tenant_config')
     def test_success(self, mocked_publish_config):
         """Verify that the view returns the correct response"""
         ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', key_type='string')
@@ -2841,7 +2838,7 @@ class ThemeConfigRetrieveViewTest(DraftConfigDataMixin, BaseTestViewMixin):
         """Verify that ThemeConfigRetrieveView calls verify_one_tenant_id_provided."""
         self.login_user(8)
         with patch(
-            'futurex_openedx_extensions.dashboard.viewz.ThemeConfigRetrieveView.verify_one_tenant_id_provided'
+            'futurex_openedx_extensions.dashboard.views.configs.ThemeConfigRetrieveView.verify_one_tenant_id_provided'
         ) as mock_verify_one_tenant:
             mock_verify_one_tenant.return_value = 1
             response = self.client.get(self.url, data={
@@ -2918,7 +2915,7 @@ class ThemeConfigTenantView(BaseTestViewMixin):
 
     @pytest.mark.django_db
     @patch('futurex_openedx_extensions.helpers.tenants.generate_tenant_config')
-    @patch('futurex_openedx_extensions.dashboard.viewz.add_course_access_roles')
+    @patch('futurex_openedx_extensions.dashboard.views.configs.add_course_access_roles')
     @ddt.data(True, False)
     def test_success(self, owner_id_passed, mock_add_course_access_roles, mock_generate_config):
         """Verify that the view returns the correct response"""
