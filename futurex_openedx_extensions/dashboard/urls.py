@@ -7,6 +7,13 @@ from lms.djangoapps.static_template_view import views as static_template_views_v
 from rest_framework.routers import DefaultRouter
 
 from futurex_openedx_extensions.dashboard import viewz
+from futurex_openedx_extensions.dashboard.views.admin import (
+    AccessibleTenantsInfoView,
+    AccessibleTenantsInfoViewV2,
+    ExcludedTenantsView,
+    TenantAssetsManagementView,
+    VersionInfoView,
+)
 from futurex_openedx_extensions.dashboard.views.categories import (
     CategoriesOrderView,
     CategoriesView,
@@ -40,11 +47,11 @@ roles_router.register(r'user_roles', UserRolesManagementView, basename='user-rol
 export_router = DefaultRouter()
 export_router.register(r'tasks', viewz.DataExportManagementView, basename='data-export-tasks')
 tenant_assets_router = DefaultRouter()
-tenant_assets_router.register(r'tenant_assets', viewz.TenantAssetsManagementView, basename='tenant-assets')
+tenant_assets_router.register(r'tenant_assets', TenantAssetsManagementView, basename='tenant-assets')
 
 urlpatterns = [
-    re_path(r'^api/fx/accessible/v1/info/$', viewz.AccessibleTenantsInfoView.as_view(), name='accessible-info'),
-    re_path(r'^api/fx/accessible/v2/info/$', viewz.AccessibleTenantsInfoViewV2.as_view(), name='accessible-info-v2'),
+    re_path(r'^api/fx/accessible/v1/info/$', AccessibleTenantsInfoView.as_view(), name='accessible-info'),
+    re_path(r'^api/fx/accessible/v2/info/$', AccessibleTenantsInfoViewV2.as_view(), name='accessible-info-v2'),
     re_path(r'^api/fx/courses/v1/courses/$', CoursesView.as_view(), name='courses'),
     re_path(r'^api/fx/libraries/v1/libraries/$', LibraryView.as_view(), name='libraries'),
     re_path(r'^api/fx/courses/v1/feedback/$', CoursesFeedbackView.as_view(), name='courses-feedback'),
@@ -96,14 +103,14 @@ urlpatterns = [
         viewz.AggregatedCountsView.as_view(),
         name='aggregated-counts',
     ),
-    re_path(r'^api/fx/tenants/v1/excluded', viewz.ExcludedTenantsView.as_view(), name='excluded-tenants'),
+    re_path(r'^api/fx/tenants/v1/excluded', ExcludedTenantsView.as_view(), name='excluded-tenants'),
     re_path(r'^api/fx/tenants/v1/info/(?P<tenant_id>\d+)/$', viewz.TenantInfoView.as_view(), name='tenant-info'),
     re_path(
         fr'^api/fx/query/v1/(?P<scope>{QUERY_ALLOWED_SCOPES})/(?P<slug>{CLICKHOUSE_QUERY_SLUG_PATTERN})/$',
         viewz.ClickhouseQueryView.as_view(),
         name='clickhouse-query'
     ),
-    re_path(r'^api/fx/version/v1/info/$', viewz.VersionInfoView.as_view(), name='version-info'),
+    re_path(r'^api/fx/version/v1/info/$', VersionInfoView.as_view(), name='version-info'),
 
     re_path(r'^api/fx/config/v1/editable/$', ConfigEditableInfoView.as_view(), name='config-editable-info'),
     re_path(
