@@ -27,19 +27,12 @@ def upload_file(storage_path: str, file: str | File, is_private: bool = False) -
     :returns uploaded file URL
     """
     if isinstance(file, str):
-        # local file to upload
         with open(file, 'rb') as f:
-            content_file = ContentFile(f.read())
-            default_storage.save(storage_path, content_file)
+            file_content = ContentFile(f.read())
     else:
-        # file object to upload
-        directory = os.path.dirname(storage_path)
-        if not default_storage.exists(directory):
-            default_storage.save(directory + '/.empty', ContentFile(''))
-        with default_storage.open(storage_path, 'wb') as f:
-            for chunk in file.chunks():
-                f.write(chunk)
-        default_storage.delete(directory + '/.empty')
+        file_content = ContentFile(file.read())
+
+    default_storage.save(storage_path, file_content)
 
     if is_private and isinstance(default_storage, S3Boto3Storage):
         default_storage.bucket.Object(storage_path).Acl().put(ACL='private')
