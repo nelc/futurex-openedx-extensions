@@ -35,11 +35,11 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from rest_framework.utils.serializer_helpers import ReturnList
 
 from futurex_openedx_extensions.dashboard import serializers, urls, viewz
+from futurex_openedx_extensions.dashboard.views.roles import UserRolesManagementView
 from futurex_openedx_extensions.dashboard.viewz import (
     LearnersEnrollmentView,
     ThemeConfigDraftView,
     ThemeConfigPublishView,
-    UserRolesManagementView,
 )
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers import constants as cs
@@ -1955,7 +1955,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
             7: {'tenant_roles': ['instructor'], 'course_roles': {'course-v1:ORG3+1+1': ['staff']}}
         }
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.add_course_access_roles')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.add_course_access_roles')
     def test_post_success(self, mock_add_users):
         """Verify that the view returns 201 for POST"""
         self.set_action('list')
@@ -1981,7 +1981,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(json.loads(response.content), mock_add_users.return_value)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.add_course_access_roles')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.add_course_access_roles')
     @ddt.data(
         ('tenant_ids', 'not list', True, 'tenant_ids must be a list of integers'),
         ('tenant_ids', [1, 'not int'], True, 'tenant_ids must be a list of integers'),
@@ -2022,7 +2022,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data, {'reason': error_message, 'details': {}})
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.add_course_access_roles')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.add_course_access_roles')
     def test_post_add_validation_error(self, mock_add_users):
         """Verify that the view returns 400 for POST when the payload is invalid"""
         self.set_action('list')
@@ -2058,8 +2058,8 @@ class TestUserRolesManagementView(BaseTestViewMixin):
             'reason': '(1001) User with username/email (invalid_username) does not exist!', 'details': {}
         })
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.update_course_access_roles')
-    @patch('futurex_openedx_extensions.dashboard.viewz.UserRolesManagementView.verify_username')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.update_course_access_roles')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.UserRolesManagementView.verify_username')
     def test_put_failed(self, mock_verify_username, mock_update_users):
         """Verify that the view returns 400 when the fails for any reason"""
         self.set_action('detail')
@@ -2082,8 +2082,8 @@ class TestUserRolesManagementView(BaseTestViewMixin):
             'reason': '(999) the error message', 'details': {}
         })
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.update_course_access_roles')
-    @patch('futurex_openedx_extensions.dashboard.viewz.UserRolesManagementView.verify_username')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.update_course_access_roles')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.UserRolesManagementView.verify_username')
     def test_put_success(self, mock_verify_username, mock_update_users):
         """Verify that the view returns 204 for PUT"""
         self.set_action('detail')
@@ -2103,7 +2103,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(response.data['user_id'], 4)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_user_by_key')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.get_user_by_key')
     def test_delete_bad_username(self, mock_get_user):
         """Verify that the view returns 400 when the user tries to delete their own roles"""
         self.set_action('detail')
@@ -2121,7 +2121,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
         self.assertEqual(response.data, {'reason': '(999) the error message', 'details': {}})
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_user_by_key')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.get_user_by_key')
     def test_delete_missing_required_parameter(self, _):
         """Verify that the view returns 400 when there is a missing required-parameter"""
         self.set_action('detail')
@@ -2131,8 +2131,8 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data, {'reason': "Missing required parameter: 'tenant_ids'", 'details': {}})
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_user_by_key')
-    @patch('futurex_openedx_extensions.dashboard.viewz.delete_course_access_roles')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.get_user_by_key')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.delete_course_access_roles')
     def test_delete_success(self, mock_delete_user, mock_get_user):
         """Verify that the view returns 400 when the user tries to delete their own roles"""
         self.set_action('detail')
@@ -2151,8 +2151,8 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         mock_delete_user.call_args_list[0][1].pop('caller')
         mock_delete_user.assert_called_once_with(tenant_ids=[1, 2], user=mock_get_user.return_value['user'])
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_user_by_key')
-    @patch('futurex_openedx_extensions.dashboard.viewz.delete_course_access_roles')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.get_user_by_key')
+    @patch('futurex_openedx_extensions.dashboard.views.roles.delete_course_access_roles')
     def test_delete_no_roles_found_for_user(self, mock_delete_user, mock_get_user):
         """Verify that the view returns 404 when no roles are found for the user"""
         self.set_action('detail')

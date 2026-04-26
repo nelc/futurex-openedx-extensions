@@ -13,6 +13,7 @@ from futurex_openedx_extensions.dashboard.views.categories import (
     CategoryDetailView,
     CourseCategoriesView,
 )
+from futurex_openedx_extensions.dashboard.views.roles import MyRolesView, UserRolesManagementView
 from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_QUERY_SLUG_PATTERN, COURSE_ID_REGX
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery
 
@@ -21,7 +22,7 @@ app_name = 'fx_dashboard'
 QUERY_ALLOWED_SCOPES = '|'.join(ClickhouseQuery.allowed_scopes())
 
 roles_router = DefaultRouter()
-roles_router.register(r'user_roles', viewz.UserRolesManagementView, basename='user-roles')
+roles_router.register(r'user_roles', UserRolesManagementView, basename='user-roles')
 export_router = DefaultRouter()
 export_router.register(r'tasks', viewz.DataExportManagementView, basename='data-export-tasks')
 tenant_assets_router = DefaultRouter()
@@ -71,7 +72,7 @@ urlpatterns = [
         viewz.LearnerCoursesView.as_view(),
         name='learner-courses'
     ),
-    re_path(r'^api/fx/roles/v1/my_roles/$', viewz.MyRolesView.as_view(), name='my-roles'),
+    re_path(r'^api/fx/roles/v1/my_roles/$', MyRolesView.as_view(), name='my-roles'),
     re_path(r'^api/fx/roles/v1/', include(roles_router.urls)),
     re_path(r'^api/fx/statistics/v1/course_statuses/$', viewz.CourseStatusesView.as_view(), name='course-statuses'),
     re_path(r'^api/fx/statistics/v1/rating/$', viewz.GlobalRatingView.as_view(), name='statistics-rating'),
