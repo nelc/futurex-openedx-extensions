@@ -588,7 +588,7 @@ class TestCoursesView(BaseTestViewMixin):
     def test_list_no_tenants(self):
         """Verify that the view returns the result for all accessible tenants when no tenant IDs are provided"""
         self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_courses_queryset') as mock_queryset:
+        with patch('futurex_openedx_extensions.dashboard.views.courses.get_courses_queryset') as mock_queryset:
             self.client.get(self.url)
             assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
                    == get_all_orgs()
@@ -598,7 +598,7 @@ class TestCoursesView(BaseTestViewMixin):
     def test_list_search(self):
         """Verify that the view filters the courses by search text"""
         self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_courses_queryset') as mock_queryset:
+        with patch('futurex_openedx_extensions.dashboard.views.courses.get_courses_queryset') as mock_queryset:
             self.client.get(self.url + '?tenant_ids=1&search_text=course')
             assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_tenant_ids_any_access'] == [1]
             assert mock_queryset.call_args_list[0][1]['search_text'] == 'course'
@@ -988,7 +988,7 @@ class TestCourseCourseStatusesView(BaseTestViewMixin):
     def test_no_tenants(self):
         """Verify that the view returns the result for all accessible tenants when no tenant IDs are provided"""
         self.login_user(self.staff_user)
-        with patch('futurex_openedx_extensions.dashboard.viewz.get_courses_count_by_status') as mock_queryset:
+        with patch('futurex_openedx_extensions.dashboard.views.courses.get_courses_count_by_status') as mock_queryset:
             self.client.get(self.url)
             assert mock_queryset.call_args_list[0][1]['fx_permission_info']['view_allowed_full_access_orgs'] \
                    == get_all_orgs()

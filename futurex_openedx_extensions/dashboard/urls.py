@@ -13,6 +13,12 @@ from futurex_openedx_extensions.dashboard.views.categories import (
     CategoryDetailView,
     CourseCategoriesView,
 )
+from futurex_openedx_extensions.dashboard.views.courses import (
+    CoursesFeedbackView,
+    CourseStatusesView,
+    CoursesView,
+    LibraryView,
+)
 from futurex_openedx_extensions.dashboard.views.roles import MyRolesView, UserRolesManagementView
 from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_QUERY_SLUG_PATTERN, COURSE_ID_REGX
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery
@@ -31,9 +37,9 @@ tenant_assets_router.register(r'tenant_assets', viewz.TenantAssetsManagementView
 urlpatterns = [
     re_path(r'^api/fx/accessible/v1/info/$', viewz.AccessibleTenantsInfoView.as_view(), name='accessible-info'),
     re_path(r'^api/fx/accessible/v2/info/$', viewz.AccessibleTenantsInfoViewV2.as_view(), name='accessible-info-v2'),
-    re_path(r'^api/fx/courses/v1/courses/$', viewz.CoursesView.as_view(), name='courses'),
-    re_path(r'^api/fx/libraries/v1/libraries/$', viewz.LibraryView.as_view(), name='libraries'),
-    re_path(r'^api/fx/courses/v1/feedback/$', viewz.CoursesFeedbackView.as_view(), name='courses-feedback'),
+    re_path(r'^api/fx/courses/v1/courses/$', CoursesView.as_view(), name='courses'),
+    re_path(r'^api/fx/libraries/v1/libraries/$', LibraryView.as_view(), name='libraries'),
+    re_path(r'^api/fx/courses/v1/feedback/$', CoursesFeedbackView.as_view(), name='courses-feedback'),
     re_path(r'^api/fx/courses/v1/categories/$', CategoriesView.as_view(), name='courses-categories'),
     re_path(
         r'^api/fx/courses/v1/categories/(?P<category_id>[^/]+)/$',
@@ -74,7 +80,7 @@ urlpatterns = [
     ),
     re_path(r'^api/fx/roles/v1/my_roles/$', MyRolesView.as_view(), name='my-roles'),
     re_path(r'^api/fx/roles/v1/', include(roles_router.urls)),
-    re_path(r'^api/fx/statistics/v1/course_statuses/$', viewz.CourseStatusesView.as_view(), name='course-statuses'),
+    re_path(r'^api/fx/statistics/v1/course_statuses/$', CourseStatusesView.as_view(), name='course-statuses'),
     re_path(r'^api/fx/statistics/v1/rating/$', viewz.GlobalRatingView.as_view(), name='statistics-rating'),
     re_path(r'^api/fx/statistics/v1/total_counts/$', viewz.TotalCountsView.as_view(), name='total-counts'),
     re_path(
