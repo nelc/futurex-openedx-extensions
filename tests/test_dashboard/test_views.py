@@ -3571,7 +3571,7 @@ class TestCategoryDetailView(MockPatcherMixin, BaseTestViewMixin):
         )
         self.assertEqual(response.status_code, expected_status, response.data)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
     def test_get_fx_coded_exception(self, mock_course_categories):
         """Verify that GET surfaces FXCodedException in a formatted way"""
         self.login_user(self.staff_user)
@@ -3587,7 +3587,7 @@ class TestCategoryDetailView(MockPatcherMixin, BaseTestViewMixin):
         reason = response.data.get('reason') or response.data.get('detail') or ''
         assert reason == '(0) Some error'
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
     def test_patch_success(self, mock_course_categories):
         """Verify that PATCH updates the category label successfully"""
         self.login_user(self.staff_user)
@@ -3611,7 +3611,7 @@ class TestCategoryDetailView(MockPatcherMixin, BaseTestViewMixin):
         assert 'label' in response.data
         assert str(response.data['label'][0]) == 'Label must be a non-empty dictionary.'
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
     def test_patch_fx_coded_exception(self, mock_course_categories):
         """Verify that PATCH surfaces FXCodedException in a formatted way"""
         self.login_user(self.staff_user)
@@ -3639,7 +3639,7 @@ class TestCategoryDetailView(MockPatcherMixin, BaseTestViewMixin):
         assert 'courses' in response.data
         assert str(response.data['courses'][0]).startswith('The following course IDs are invalid: ')
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
     def test_delete_success(self, mock_course_categories):
         """Verify that DELETE removes the category successfully"""
         self.login_user(self.staff_user)
@@ -3652,7 +3652,7 @@ class TestCategoryDetailView(MockPatcherMixin, BaseTestViewMixin):
         mock_manager.remove_category.assert_called_once_with('category1')
         mock_manager.save.assert_called_once()
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
     def test_delete_fx_coded_exception(self, mock_course_categories):
         """Verify that DELETE surfaces FXCodedException in a formatted way"""
         self.login_user(self.staff_user)
@@ -3707,7 +3707,7 @@ class TestCategoriesOrderView(BaseTestViewMixin):
         response = self.client.post(self.url, data=self.default_post_payload, format='json')
         self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
     def test_post_success(self, mock_course_categories):
         """Verify that POST updates the categories order successfully"""
         self.login_user(self.staff_user)
@@ -3745,7 +3745,7 @@ class TestCategoriesOrderView(BaseTestViewMixin):
         assert 'categories' in response.data
         assert str(response.data['categories'][0]) == 'Categories must be a non-empty list.'
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
     def test_post_fx_coded_exception(self, mock_course_categories):
         """Verify that POST surfaces FXCodedException in a formatted way"""
         self.login_user(self.staff_user)
@@ -3804,8 +3804,8 @@ class TestCourseCategoriesView(BaseTestViewMixin):
         response = self.client.put(self.url, data=self.default_put_payload, format='json')
         self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CourseCategories')
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_tenants_by_org')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.get_tenants_by_org')
     def test_put_success(self, mock_get_tenants_by_org, mock_course_categories):
         """Verify that PUT assigns categories to a course successfully"""
         self.login_user(self.staff_user)
@@ -3830,7 +3830,7 @@ class TestCourseCategoriesView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
         assert 'Course not found or access denied' in str(response.data.get('reason') or response.data.get('detail'))
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_tenants_by_org')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.get_tenants_by_org')
     def test_put_multiple_tenants_error(self, mock_get_tenants_by_org):
         """Verify that PUT returns 400 when multiple tenants are found for the course"""
         self.login_user(self.staff_user)
@@ -3851,8 +3851,8 @@ class TestCourseCategoriesView(BaseTestViewMixin):
         assert 'categories' in response.data
         assert str(response.data['categories'][0]) == 'This field is required.'
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CourseCategories')
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_tenants_by_org')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
+    @patch('futurex_openedx_extensions.dashboard.views.categories.get_tenants_by_org')
     def test_put_fx_coded_exception(self, mock_get_tenants_by_org, mock_course_categories):
         """Verify that PUT surfaces FXCodedException in a formatted way"""
         self.login_user(self.staff_user)
