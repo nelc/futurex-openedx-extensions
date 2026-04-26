@@ -26,6 +26,7 @@ from futurex_openedx_extensions.dashboard.views.courses import (
     CoursesView,
     LibraryView,
 )
+from futurex_openedx_extensions.dashboard.views.payments import PaymentOrdersView
 from futurex_openedx_extensions.dashboard.views.roles import MyRolesView, UserRolesManagementView
 from futurex_openedx_extensions.helpers.constants import CLICKHOUSE_QUERY_SLUG_PATTERN, COURSE_ID_REGX
 from futurex_openedx_extensions.helpers.models import ClickhouseQuery
@@ -116,7 +117,7 @@ urlpatterns = [
     re_path(r'^api/fx/file/v1/upload/$', viewz.FileUploadView.as_view(), name='file-upload'),
     re_path(r'^api/fx/assets/v1/', include(tenant_assets_router.urls)),
 
-    re_path(r'^api/fx/payments/v1/orders/$', viewz.PaymentOrdersView.as_view(), name='payments-orders'),
+    re_path(r'^api/fx/payments/v1/orders/$', PaymentOrdersView.as_view(), name='payments-orders'),
 
     re_path(
         r'^api/fx/redirect/set_theme_preview/$',

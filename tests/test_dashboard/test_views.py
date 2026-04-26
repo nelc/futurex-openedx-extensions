@@ -3284,7 +3284,7 @@ class TestPaymentOrdersView(BaseTestViewMixin):
         view_class = view_func.view_class
         self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.Cart.valid_statuses')
+    @patch('futurex_openedx_extensions.dashboard.views.payments.Cart.valid_statuses')
     def test_invalid_status(self, cart_valid_statuses):
         """Verify that the view returns the correct response"""
         cart_valid_statuses.return_value = ['paid']
@@ -3292,7 +3292,7 @@ class TestPaymentOrdersView(BaseTestViewMixin):
         response = self.client.get(f'{self.url}?status=invalid')
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.CatalogueItem.valid_item_types')
+    @patch('futurex_openedx_extensions.dashboard.views.payments.CatalogueItem.valid_item_types')
     def test_invalid_item_type(self, item_valid_types):
         """Verify that the view returns the correct response"""
         item_valid_types.return_value = ['paid_course']
@@ -3300,7 +3300,7 @@ class TestPaymentOrdersView(BaseTestViewMixin):
         response = self.client.get(f'{self.url}?item_type=invalid')
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_courses_orders_queryset')
+    @patch('futurex_openedx_extensions.dashboard.views.payments.get_courses_orders_queryset')
     def test_success_without_cached_course_map(self, mock_qs):
         """Verify that the view returns the correct response"""
         mock_qs.return_value = []
@@ -3308,7 +3308,7 @@ class TestPaymentOrdersView(BaseTestViewMixin):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
 
-    @patch('futurex_openedx_extensions.dashboard.viewz.get_courses_orders_queryset')
+    @patch('futurex_openedx_extensions.dashboard.views.payments.get_courses_orders_queryset')
     def test_success_with_cached_course_map(self, mock_get_qs):
         """Verify that the view returns the correct response"""
         mock_cart1 = Mock(id=1, user_id=10, status='paid')
