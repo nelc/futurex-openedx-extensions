@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from common.djangoapps.student.models import CourseEnrollment
 from completion_aggregator.models import Aggregator
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import (
     BooleanField,
@@ -98,6 +99,9 @@ def get_certificates_count_for_learner_queryset(
     :return: Count of certificates
     :rtype: Coalesce
     """
+    if not settings.FX_CERTIFICATES_COUNT:
+        return Value(0, output_field=IntegerField())
+
     return Coalesce(Subquery(
         GeneratedCertificate.objects.filter(
             user_id=OuterRef('id'),
@@ -218,8 +222,8 @@ def get_learners_by_course_queryset(
             ~check_staff_exist_queryset('id', 'courseenrollment__course__org', Value(course_id)),
         )
 
-    queryset = queryset.annotate(
-        certificate_available=Exists(
+    if settings.FX_CERTIFICATES_COUNT:
+        certificate_available_expr = Exists(
             GeneratedCertificate.objects.filter(
                 user_id=OuterRef('id'),
                 user__is_active=True,
@@ -227,6 +231,11 @@ def get_learners_by_course_queryset(
                 status='downloadable'
             )
         )
+    else:
+        certificate_available_expr = Value(False, output_field=BooleanField())
+
+    queryset = queryset.annotate(
+        certificate_available=certificate_available_expr,
     ).annotate(
         course_score=Subquery(
             PersistentCourseGrade.objects.filter(
@@ -339,12 +348,8 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
         include_staff=include_staff,
     )
 
-    queryset = CourseEnrollment.objects.filter(
-        is_active=True,
-        course__in=Subquery(accessible_courses.values('id')),
-        user__in=Subquery(accessible_users.values('id'))
-    ).annotate(
-        certificate_available=Exists(
+    if settings.FX_CERTIFICATES_COUNT:
+        certificate_available_expr = Exists(
             GeneratedCertificate.objects.filter(
                 user_id=OuterRef('user_id'),
                 user__is_active=True,
@@ -352,6 +357,15 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
                 status='downloadable'
             )
         )
+    else:
+        certificate_available_expr = Value(False, output_field=BooleanField())
+
+    queryset = CourseEnrollment.objects.filter(
+        is_active=True,
+        course__in=Subquery(accessible_courses.values('id')),
+        user__in=Subquery(accessible_users.values('id'))
+    ).annotate(
+        certificate_available=certificate_available_expr,
     ).annotate(
         course_score=Subquery(
             PersistentCourseGrade.objects.filter(

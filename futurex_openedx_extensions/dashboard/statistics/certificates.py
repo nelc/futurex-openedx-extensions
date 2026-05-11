@@ -37,6 +37,9 @@ def get_certificates_count(
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
+    if not settings.FX_CERTIFICATES_COUNT:
+        return {}
+
     if include_staff:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))
     else:
@@ -89,6 +92,8 @@ def get_learning_hours_count(
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
+    if not settings.FX_CERTIFICATES_COUNT:
+        return 0
 
     def parse_course_effort(effort: str, course_id: str) -> float:
         """Parses course effort in HH:MM format and returns total hours as a float."""
