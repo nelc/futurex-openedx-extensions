@@ -170,7 +170,7 @@ def get_courses_queryset(
             certificates_count=Value(0, output_field=IntegerField()),
         )
 
-    if settings.FX_COMPLETION_RATE:
+    if settings.FX_CERTIFICATES_COUNT and settings.FX_COMPLETION_RATE:
         queryset = queryset.annotate(
             completion_rate=Case(
                 When(enrolled_count=0, then=Value(0.0)),
