@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict
 
-import yaml  # type: ignore
+import yaml
 from clickhouse_connect import get_client as clickhouse_get_client
 from clickhouse_connect.driver.httpclient import Client
 from clickhouse_connect.driver.query import QueryResult

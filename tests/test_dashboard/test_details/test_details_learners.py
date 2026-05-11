@@ -5,6 +5,7 @@ import pytest
 from common.djangoapps.student.models import CourseEnrollment
 from completion_aggregator.models import Aggregator
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
 from futurex_openedx_extensions.dashboard.details.learners import (
@@ -44,11 +45,15 @@ def test_count_for_learner_queryset(
         fnc = get_courses_count_for_learner_queryset
     else:
         fnc = get_certificates_count_for_learner_queryset
-    queryset = get_user_model().objects.filter(username=username).annotate(
-        result=fnc(fx_permission_info)
-    )
 
-    assert queryset.first().result == expected_count, f'{assert_error_message}. Check the test data for details.'
+    for certificate_count_enabled in [True, False] if function_to_test == 'certificates' else [True]:
+        with override_settings(FX_CERTIFICATES_COUNT=certificate_count_enabled):
+            queryset = get_user_model().objects.filter(username=username).annotate(
+                result=fnc(fx_permission_info)
+            )
+            if function_to_test == 'certificates':
+                expected_count = expected_count if certificate_count_enabled else 0
+            assert queryset.first().result == expected_count, f'{assert_error_message}. Check test data for details.'
 
 
 @pytest.mark.django_db
@@ -216,20 +221,24 @@ def test_test_get_learners_queryset_enrollments_filter(
 
 
 @pytest.mark.django_db
-def test_get_learners_by_course_queryset(base_data):  # pylint: disable=unused-argument
+@pytest.mark.parametrize('certificate_count_enabled', [True, False])
+def test_get_learners_by_course_queryset(base_data, certificate_count_enabled):  # pylint: disable=unused-argument
     """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
-    PersistentCourseGrade.objects.create(user_id=15, course_id='course-v1:ORG1+5+5', percent_grade=0.67)
-    queryset = get_learners_by_course_queryset('course-v1:ORG1+5+5')
+    PersistentCourseGrade.objects.create(user_id=40, course_id='course-v1:ORG1+5+5', percent_grade=0.67)
+    with override_settings(FX_CERTIFICATES_COUNT=certificate_count_enabled):
+        queryset = get_learners_by_course_queryset('course-v1:ORG1+5+5')
     assert queryset.count() == 3, 'unexpected test data'
 
-    user15 = queryset.filter(id=15).first()
-    assert user15.certificate_available is not None, 'certificate_available should be in the queryset'
-    assert user15.course_score == 0.67, \
-        'course_score should be in the queryset with value 0.67 for the first record (user15)'
-    assert user15.active_in_course is False, \
-        'active_in_course should be in the queryset with value True for the first record (user15)'
+    user40 = queryset.filter(id=40).first()
+    assert user40.certificate_available is not None, 'certificate_available should be in the queryset'
+    assert user40.certificate_available == certificate_count_enabled, \
+        f'certificate_available should be {certificate_count_enabled} for user40'
+    assert user40.course_score == 0.67, \
+        'course_score should be in the queryset with value 0.67 for the first record (user40)'
+    assert user40.active_in_course is False, \
+        'active_in_course should be in the queryset with value True for the first record (user40)'
 
-    user15.courseenrollment_set.update(is_active=False)
+    user40.courseenrollment_set.update(is_active=False)
     assert get_learners_by_course_queryset('course-v1:ORG1+5+5').count() == 2, 'inactive enrollments should be counted'
 
 
@@ -244,18 +253,22 @@ def test_get_learners_by_course_queryset_include_staff(base_data):  # pylint: di
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('certificate_count_enabled', [True, False])
 def test_get_learners_enrollments_queryset_annotations(
-    base_data, fx_permission_info
+    base_data, fx_permission_info, certificate_count_enabled,
 ):  # pylint: disable=unused-argument
     """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
-    PersistentCourseGrade.objects.create(user_id=15, course_id='course-v1:ORG1+5+5', percent_grade=0.67)
-    queryset = get_learners_enrollments_queryset(
-        fx_permission_info=fx_permission_info,
-        course_ids=['course-v1:ORG1+5+5'],
-        user_ids=[15]
-    )
+    PersistentCourseGrade.objects.create(user_id=40, course_id='course-v1:ORG1+5+5', percent_grade=0.67)
+    with override_settings(FX_CERTIFICATES_COUNT=certificate_count_enabled):
+        queryset = get_learners_enrollments_queryset(
+            fx_permission_info=fx_permission_info,
+            course_ids=['course-v1:ORG1+5+5'],
+            user_ids=[40]
+        )
     assert queryset.count() == 1, 'unexpected test data'
     assert queryset[0].certificate_available is not None, 'certificate_available should be in the queryset'
+    assert queryset[0].certificate_available == certificate_count_enabled, \
+        f'certificate_available should be {certificate_count_enabled} for user40'
     assert queryset[0].course_score == 0.67, \
         'course_score should be in the queryset with value 0.67'
     assert queryset[0].active_in_course is False, \
@@ -267,7 +280,7 @@ def test_get_learners_enrollments_queryset_annotations(
     assert get_learners_enrollments_queryset(
         fx_permission_info=fx_permission_info,
         course_ids=['course-v1:ORG1+5+5'],
-        user_ids=[15],
+        user_ids=[40],
     ).count() == 0, 'only active enrollments should be filtered'
 
 

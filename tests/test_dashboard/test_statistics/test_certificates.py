@@ -53,6 +53,14 @@ def test_get_certificates_count_not_downloadable(base_data, fx_permission_info):
     assert result == {'org1': 1, 'org2': 9}, f'Wrong certificates result. expected: {result}'
 
 
+@override_settings(FX_CERTIFICATES_COUNT=False)
+def test_get_certificates_count_disabled():
+    """Verify the get_certificates_count function with a disabled setting."""
+    result = certificates.get_certificates_count({})
+    assert not result
+    assert isinstance(result, dict)
+
+
 @pytest.mark.django_db
 @override_settings(FX_DEFAULT_COURSE_EFFORT=10)
 @pytest.mark.parametrize('tenant_ids, expected_result, expected_result_with_staff', [
@@ -115,3 +123,11 @@ def test_get_learning_hours_count_for_different_course_effort_not_set(
     result = certificates.get_learning_hours_count(fx_permission_info)
     assert result == 10 * 2
     assert 'Invalid course-effort for course course-v1:ORG8+1+1. Assuming default value' not in caplog.text
+
+
+@override_settings(FX_CERTIFICATES_COUNT=False)
+def test_get_learning_hours_count_when_certificate_count_is_disabled():
+    """Verify the get_learning_hours_count function with a disabled setting."""
+    result = certificates.get_learning_hours_count({})
+    assert not result
+    assert isinstance(result, int)
