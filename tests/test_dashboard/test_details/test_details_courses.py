@@ -6,6 +6,7 @@ import pytest
 from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.utils.timezone import now, timedelta
 from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
@@ -70,6 +71,7 @@ def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_inf
 
 
 @pytest.mark.django_db
+@override_settings(FX_COMPLETION_RATE=True)
 def test_get_courses_queryset_result_for_completion_rate(
     base_data, fx_permission_info
 ):  # pylint: disable=unused-argument

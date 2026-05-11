@@ -11,6 +11,8 @@ helpers_default_settings = [
     ('FX_CACHE_TIMEOUT_LIVE_STATISTICS_PER_TENANT', 60 * 60 * 2),  # 2 hours
     ('FX_ALLOWED_COURSE_LANGUAGE_CODES', ['en', 'ar', 'fr']),
     ('FX_CACHE_TIMEOUT_COURSES_RATINGS', 60 * 60),  # 1 hour
+    ('FX_CERTIFICATES_COUNT', False),
+    ('FX_COMPLETION_RATE', True),
 ]
 
 
