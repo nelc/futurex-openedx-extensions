@@ -31,3 +31,18 @@ def plugin_settings(settings: Any) -> None:
         'FX_ALLOWED_COURSE_LANGUAGE_CODES',
         ['en', 'ar', 'fr'],
     )
+
+    # Enable per-course certificates_count annotation on the courses listing.
+    # Disabled by default because the underlying subquery is slow.
+    settings.FX_CERTIFICATES_COUNT = getattr(
+        settings,
+        'FX_CERTIFICATES_COUNT',
+        False,
+    )
+
+    # Enable per-course completion_rate annotation on the courses listing.
+    settings.FX_COMPLETION_RATE = getattr(
+        settings,
+        'FX_COMPLETION_RATE',
+        True,
+    )

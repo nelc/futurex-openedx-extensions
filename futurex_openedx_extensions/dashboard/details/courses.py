@@ -6,6 +6,7 @@ from typing import List
 
 from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import (
     BooleanField,
@@ -145,28 +146,42 @@ def get_courses_queryset(
             ).values('course_id').annotate(count=Count('id')).values('count'),
             output_field=IntegerField(),
         ), 0)
-    ).annotate(
-        certificates_count=Coalesce(Subquery(
-            GeneratedCertificate.objects.filter(
-                course_id=OuterRef('id'),
-                status='downloadable',
-                user__is_active=True,
-            ).annotate(
-                course__org=Subquery(
-                    CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')
-                )
-            ).filter(
-                ~is_staff_queryset
-            ).values('course_id').annotate(count=Count('id')).values('count'),
-            output_field=IntegerField(),
-        ), 0),
-    ).annotate(
-        completion_rate=Case(
-            When(enrolled_count=0, then=Value(0.0)),
-            default=F('certificates_count') * 1.0 / F('enrolled_count'),
-            output_field=FloatField(),
-        )
     )
+
+    if settings.FX_CERTIFICATES_COUNT:
+        queryset = queryset.annotate(
+            certificates_count=Coalesce(Subquery(
+                GeneratedCertificate.objects.filter(
+                    course_id=OuterRef('id'),
+                    status='downloadable',
+                    user__is_active=True,
+                ).annotate(
+                    course__org=Subquery(
+                        CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')
+                    )
+                ).filter(
+                    ~is_staff_queryset
+                ).values('course_id').annotate(count=Count('id')).values('count'),
+                output_field=IntegerField(),
+            ), 0),
+        )
+    else:
+        queryset = queryset.annotate(
+            certificates_count=Value(0, output_field=IntegerField()),
+        )
+
+    if settings.FX_COMPLETION_RATE:
+        queryset = queryset.annotate(
+            completion_rate=Case(
+                When(enrolled_count=0, then=Value(0.0)),
+                default=F('certificates_count') * 1.0 / F('enrolled_count'),
+                output_field=FloatField(),
+            )
+        )
+    else:
+        queryset = queryset.annotate(
+            completion_rate=Value(0.0, output_field=FloatField()),
+        )
 
     update_removable_annotations(queryset, removable=[
         'enrolled_count', 'active_count', 'certificates_count', 'completion_rate',
