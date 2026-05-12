@@ -189,7 +189,7 @@ class TestTenantAssetsManagementView(BaseTestViewMixin):
         response = self.client.post(self.url, data, format='multipart')
         created_asset = TenantAsset.objects.get(slug='test-slug', tenant=1)
         self.assertEqual(response.status_code, http_status.HTTP_201_CREATED)
-        self.assertEqual(response.data['file_url'], default_storage.url(expected_storage_path))
+        self.assertEqual(response.data['file_url'], '/api/fx/assets/v1/serve/1/test-slug-12345678.png')
         self.assertEqual(response.data['slug'], 'test-slug')
         self.assertEqual(response.data['updated_by'], 3)
         self.assertEqual(response.data['tenant_id'], 1)
@@ -210,7 +210,7 @@ class TestTenantAssetsManagementView(BaseTestViewMixin):
             1,
             'Failed, adding another file with existing slug should not create a new db record.'
         )
-        self.assertEqual(response.data['file_url'], default_storage.url(storage_path_file2))
+        self.assertEqual(response.data['file_url'], '/api/fx/assets/v1/serve/1/test-slug-11223344.png')
         self.assertTrue(default_storage.exists(storage_path_file2))
 
     def test_create_failure(self):

@@ -12,6 +12,7 @@ from common.djangoapps.student.models import CourseEnrollment
 from common.djangoapps.student.roles import CourseInstructorRole, CourseStaffRole
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 from django.utils.timezone import now
 from eox_nelp.course_experience.models import FeedbackCourse
 from eox_tenant.models import TenantConfig
@@ -1355,8 +1356,12 @@ class TenantAssetSerializer(FxPermissionInfoSerializerMixin, serializers.ModelSe
         return slug
 
     def get_file_url(self, obj: TenantAsset) -> Any:  # pylint: disable=no-self-use
-        """Return file url."""
-        return obj.file.url
+        """Return the relative serve URL for this asset's current file."""
+        filename = os.path.basename(obj.file.name)
+        return reverse(
+            'fx_dashboard:tenant-asset-serve',
+            kwargs={'tenant_id': obj.tenant_id, 'filename': filename},
+        )
 
     def create(self, validated_data: dict) -> TenantAsset:
         """
