@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.docs_utils import docs
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.course_categories import CourseCategories
@@ -36,6 +37,7 @@ class CategoriesView(FXViewRoleInfoMixin, APIView):
     fx_allowed_write_methods = ['POST']
     fx_view_description = 'api/fx/courses/v1/categories/: Manage course categories'
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """GET /api/fx/courses/v1/categories/"""
         tenant_id = self.verify_one_tenant_id_provided(request)
@@ -81,6 +83,7 @@ class CategoryDetailView(FXViewRoleInfoMixin, APIView):
     fx_allowed_write_methods = ['PATCH', 'DELETE']
     fx_view_description = 'api/fx/courses/v1/categories/<category_id>/: Manage individual category'
 
+    @use_read_replica_if_available
     def get(self, request: Any, category_id: str, *args: Any, **kwargs: Any) -> Response:
         """GET /api/fx/courses/v1/categories/<category_id>/"""
         tenant_id = self.verify_one_tenant_id_provided(request)
