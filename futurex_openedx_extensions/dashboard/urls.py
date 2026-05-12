@@ -33,6 +33,7 @@ from futurex_openedx_extensions.dashboard.views.courses import (
     CoursesView,
     LibraryView,
 )
+from futurex_openedx_extensions.dashboard.views.files import TenantAssetServeView
 from futurex_openedx_extensions.dashboard.views.learners import (
     LearnerCoursesView,
     LearnerInfoView,
@@ -141,6 +142,11 @@ urlpatterns = [
     re_path(r'^api/fx/config/v1/values/$', ThemeConfigRetrieveView.as_view(), name='theme-config-values'),
     re_path(r'^api/fx/config/v1/tenant/$', ThemeConfigTenantView.as_view(), name='theme-config-tenant'),
     re_path(r'^api/fx/file/v1/upload/$', FileUploadView.as_view(), name='file-upload'),
+    re_path(
+        r'^api/fx/assets/v1/serve/(?P<tenant_id>\d+)/(?P<filename>[^/]+)$',
+        TenantAssetServeView.as_view(),
+        name='tenant-asset-serve',
+    ),
     re_path(r'^api/fx/assets/v1/', include(tenant_assets_router.urls)),
 
     re_path(r'^api/fx/payments/v1/orders/$', PaymentOrdersView.as_view(), name='payments-orders'),
