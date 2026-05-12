@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.docs_utils import docs
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
 from futurex_openedx_extensions.helpers.models import TenantAsset
@@ -39,6 +40,7 @@ class ExcludedTenantsView(APIView):
     authentication_classes = default_auth_classes
     permission_classes = [IsSystemStaff]
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
         """Get the list of excluded tenants"""
         return JsonResponse(get_excluded_tenant_ids())
@@ -49,6 +51,7 @@ class AccessibleTenantsInfoView(APIView):
     """View to get the list of accessible tenants"""
     permission_classes = [IsAnonymousOrSystemStaff]
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
         """
         GET /api/fx/accessible/v1/info/?username_or_email=<usernameOrEmail>
@@ -74,6 +77,7 @@ class AccessibleTenantsInfoViewV2(FXViewRoleInfoMixin, APIView):
     fx_view_name = 'accessible_info'
     fx_view_description = 'api/fx/accessible/v2/info/: Get accessible tenants'
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
         """
         GET /api/fx/accessible/v1/info/?username_or_email=<usernameOrEmail>
@@ -96,6 +100,7 @@ class VersionInfoView(APIView):
     """View to get the version information"""
     permission_classes = [IsSystemStaff]
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
         """
         GET /api/fx/version/v1/info/

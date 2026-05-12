@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.docs_utils import docs
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import COURSE_ACCESS_ROLES_STAFF_EDITOR, FX_VIEW_DEFAULT_AUTH_CLASSES
 from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -48,6 +49,7 @@ class ConfigEditableInfoView(FXViewRoleInfoMixin, APIView):
     fx_default_read_write_roles = ['staff', 'fx_api_access_global']
     fx_default_read_only_roles = ['staff', 'fx_api_access_global']
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/config/v1/editable/
@@ -82,6 +84,7 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
     fx_default_read_only_roles = ['staff', 'fx_api_access_global']
     fx_tenant_id_url_arg_name: str = 'tenant_id'
 
+    @use_read_replica_if_available
     def get(self, request: Any, tenant_id: int) -> Response | JsonResponse:  # pylint: disable=no-self-use
         """Get draft config"""
         updated_fields = get_draft_tenant_config(tenant_id=int(tenant_id))
@@ -265,6 +268,7 @@ class ThemeConfigRetrieveView(FXViewRoleInfoMixin, APIView):
 
         return get_accessible_config_keys(user_id=self.request.user.id, tenant_id=tenant_id)
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """
         GET /api/fx/config/v1/values/

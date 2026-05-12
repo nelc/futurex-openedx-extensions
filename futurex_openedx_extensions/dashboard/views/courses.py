@@ -16,6 +16,7 @@ from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_courses_feedback_queryset, get_courses_queryset
 from futurex_openedx_extensions.dashboard.docs_utils import docs
 from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count_by_status
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
@@ -62,6 +63,11 @@ class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             include_staff=include_staff,
         )
 
+    @use_read_replica_if_available
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/courses/v1/courses/"""
+        return super().get(request, *args, **kwargs)
+
     def post(self, request: Any) -> Response | JsonResponse:  # pylint: disable=no-self-use
         """POST /api/fx/courses/v1/courses/"""
         serializer = serializers.CourseCreateSerializer(data=request.data, context={'request': request})
@@ -89,6 +95,7 @@ class LibraryView(ExportCSVMixin, FXViewRoleInfoMixin, APIView):
     fx_default_read_only_roles = ['staff', 'instructor', 'library_user', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/libraries/v1/libraries/: Get the list of libraries'
 
+    @use_read_replica_if_available
     def get(self, request: Any) -> Response:
         """
         GET /api/fx/libraries/v1/libraries/?tenant_ids=<tenantIds>
@@ -142,6 +149,7 @@ class CourseStatusesView(FXViewRoleInfoMixin, APIView):
             dict_result[status] = item['courses_count']
         return dict_result
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/statistics/v1/course_statuses/?tenant_ids=<tenantIds>
@@ -210,3 +218,8 @@ class CoursesFeedbackView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             rating_content_filter=self.validate_rating_list('rating_content'),
             rating_instructors_filter=self.validate_rating_list('rating_instructors')
         )
+
+    @use_read_replica_if_available
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/courses/v1/feedback/"""
+        return super().get(request, *args, **kwargs)

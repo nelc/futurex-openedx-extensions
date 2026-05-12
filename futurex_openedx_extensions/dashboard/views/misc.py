@@ -21,6 +21,7 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.docs_utils import docs
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import (
     ALLOWED_FILE_EXTENSIONS,
     CONFIG_FILES_UPLOAD_DIR,
@@ -83,6 +84,7 @@ class TenantInfoView(FXViewRoleInfoMixin, APIView):
     fx_default_read_only_roles = COURSE_ACCESS_ROLES_SUPPORTED_READ.copy()
     fx_view_description = 'api/fx/tenants/v1/info/<tenant_id>/: tenant basic information'
 
+    @use_read_replica_if_available
     def get(
         self, request: Any, tenant_id: str, *args: Any, **kwargs: Any,
     ) -> JsonResponse | Response:

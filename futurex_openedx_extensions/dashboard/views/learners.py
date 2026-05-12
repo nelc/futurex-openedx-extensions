@@ -21,6 +21,7 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_queryset,
 )
 from futurex_openedx_extensions.dashboard.docs_utils import docs
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -64,6 +65,11 @@ class LearnersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             enrollments_filter=(min_enrollments_count, max_enrollments_count),
         )
 
+    @use_read_replica_if_available
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/learners/v1/learners/"""
+        return super().get(request, *args, **kwargs)
+
 
 @docs('LearnerInfoView.get')
 class LearnerInfoView(FXViewRoleInfoMixin, APIView):
@@ -74,6 +80,7 @@ class LearnerInfoView(FXViewRoleInfoMixin, APIView):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learner/: Get the information of a learner'
 
+    @use_read_replica_if_available
     def get(self, request: Any, username: str, *args: Any, **kwargs: Any) -> JsonResponse | Response:
         """
         GET /api/fx/learners/v1/learner/<username>/
@@ -111,6 +118,7 @@ class LearnerCoursesView(FXViewRoleInfoMixin, APIView):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learner_courses/: Get the list of courses for a learner'
 
+    @use_read_replica_if_available
     def get(self, request: Any, username: str, *args: Any, **kwargs: Any) -> JsonResponse | Response:
         """
         GET /api/fx/learners/v1/learner_courses/<username>/
@@ -174,6 +182,11 @@ class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIV
         context['course_id'] = self.kwargs.get('course_id')
         context['omit_subsection_name'] = self.request.query_params.get('omit_subsection_name', '0')
         return context
+
+    @use_read_replica_if_available
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/learners/v1/learners/<course-id>/"""
+        return super().get(request, *args, **kwargs)
 
 
 @docs('LearnersEnrollmentView.get')
@@ -273,6 +286,11 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             context['course_id'] = str(self.get_queryset().first().course_id)
             context['omit_subsection_name'] = self.request.query_params.get('omit_subsection_name', '0')
         return context
+
+    @use_read_replica_if_available
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/learners/v1/enrollments/"""
+        return super().get(request, *args, **kwargs)
 
 
 @docs('LearnerUnenrollView.post')
