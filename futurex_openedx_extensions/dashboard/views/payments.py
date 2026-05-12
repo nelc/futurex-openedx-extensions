@@ -8,12 +8,14 @@ from typing import Any, Dict
 from django.db.models.query import QuerySet
 from rest_framework.exceptions import ParseError
 from rest_framework.generics import ListAPIView
+from rest_framework.response import Response
 from zeitlabs_payments.models import Cart, CatalogueItem
 from zeitlabs_payments.serializers import CartSerializer
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_courses_orders_queryset
 from futurex_openedx_extensions.dashboard.docs_utils import docs
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
@@ -111,3 +113,8 @@ class PaymentOrdersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
         context['include_invoice'] = self.request.query_params.get('include_invoice', '0') == '1'
         context['include_user_details'] = self.request.query_params.get('include_user_details', '0') == '1'
         return context
+
+    @use_read_replica_if_available
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/payments/v1/orders/"""
+        return super().get(request, *args, **kwargs)

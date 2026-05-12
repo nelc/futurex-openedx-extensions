@@ -19,6 +19,7 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.docs_utils import docs
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import (
     COURSE_ACCESS_ROLES_SUPPORTED_READ,
     FX_VIEW_DEFAULT_AUTH_CLASSES,
@@ -218,6 +219,7 @@ class MyRolesView(FXViewRoleInfoMixin, APIView):
 
     serializer_class = serializers.UserRolesSerializer
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """Get the list of users"""
         data = serializers.UserRolesSerializer(self.fx_permission_info['user'], context={'request': request}).data

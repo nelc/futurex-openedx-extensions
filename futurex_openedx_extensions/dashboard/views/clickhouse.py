@@ -14,6 +14,7 @@ from rest_framework import status as http_status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
     CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS,
@@ -99,6 +100,7 @@ class ClickhouseQueryView(FXViewRoleInfoMixin, APIView):
 
         return page, int(page_size_str)
 
+    @use_read_replica_if_available
     def get(self, request: Any, scope: str, slug: str) -> JsonResponse | Response:
         """
         GET /api/fx/query/v1/<scope>/<slug>/

@@ -27,6 +27,7 @@ from futurex_openedx_extensions.dashboard.statistics.courses import (
     get_enrollments_count_aggregated,
 )
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
+from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES, RATING_RANGE
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.permissions import (
@@ -166,6 +167,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
 
         return result
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
         """Returns the total count statistics for the selected tenants."""
         self._load_query_params(request)
@@ -411,6 +413,7 @@ class AggregatedCountsView(TotalCountsView):  # pylint: disable=too-many-instanc
 
         return result
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """Returns the total count statistics for the selected tenants."""
         self._load_query_params(request)
@@ -427,6 +430,7 @@ class GlobalRatingView(FXViewRoleInfoMixin, APIView):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/statistics/v1/rating/: Get the global rating for courses in a single tenant'
 
+    @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
         GET /api/fx/statistics/v1/rating/?tenant_ids=<tenantId>
