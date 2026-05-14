@@ -48,7 +48,7 @@ from futurex_openedx_extensions.dashboard.views.misc import (
     SetThemePreviewCookieView,
     TenantInfoView,
 )
-from futurex_openedx_extensions.dashboard.views.payments import PaymentOrdersView
+from futurex_openedx_extensions.dashboard.views.payments import PaymentOrdersView, PaymentOrdersViewV2
 from futurex_openedx_extensions.dashboard.views.roles import MyRolesView, UserRolesManagementView
 from futurex_openedx_extensions.dashboard.views.statistics import (
     AggregatedCountsView,
@@ -150,6 +150,7 @@ urlpatterns = [
     re_path(r'^api/fx/assets/v1/', include(tenant_assets_router.urls)),
 
     re_path(r'^api/fx/payments/v1/orders/$', PaymentOrdersView.as_view(), name='payments-orders'),
+    re_path(r'^api/fx/payments/v2/orders/$', PaymentOrdersViewV2.as_view(), name='payments-orders-v2'),
 
     re_path(
         r'^api/fx/redirect/set_theme_preview/$',

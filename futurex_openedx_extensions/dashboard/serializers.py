@@ -37,6 +37,7 @@ from xmodule.course_block import CourseFields
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.exceptions import DuplicateCourseError
+from zeitlabs_payments.models import Cart
 
 from futurex_openedx_extensions.dashboard.custom_serializers import (
     ListSerializerOptionalFields,
@@ -120,8 +121,13 @@ class DataExportTaskSerializer(ModelSerializerOptionalFields):
         return get_exported_file_url(obj)
 
 
-class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
-    """Serializer for learner's basic details."""
+class LearnerFieldsMixin(serializers.Serializer):
+    """Mixin providing the learner-derived SerializerMethodFields and their helpers.
+
+    Inherits from ``serializers.Serializer`` so DRF's metaclass collects the field
+    declarations into ``_declared_fields``; subclasses then inherit them via MRO.
+    Override ``_get_user(obj)`` when ``obj`` is not itself the user (e.g. a Cart).
+    """
     user_id = serializers.SerializerMethodField(help_text='User ID in edx-platform')
     full_name = serializers.SerializerMethodField(help_text='Full name of the user')
     alternative_full_name = serializers.SerializerMethodField(help_text='Arabic name (if available)')
@@ -136,23 +142,6 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
         help_text='Date when the user was registered in the platform regardless of which tenant',
     )
     last_login = serializers.SerializerMethodField(help_text='Date when the user last logged in')
-
-    class Meta:
-        model = get_user_model()
-        fields = [
-            'user_id',
-            'full_name',
-            'alternative_full_name',
-            'username',
-            'national_id',
-            'email',
-            'mobile_no',
-            'year_of_birth',
-            'gender',
-            'gender_display',
-            'date_joined',
-            'last_login',
-        ]
 
     def _get_user(self, obj: Any = None) -> get_user_model | None:  # pylint: disable=no-self-use
         """
@@ -224,6 +213,27 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
     def get_year_of_birth(self, obj: get_user_model) -> Any:
         """Return year of birth."""
         return self._get_profile_field(obj, 'year_of_birth')
+
+
+class LearnerBasicDetailsSerializer(LearnerFieldsMixin, ModelSerializerOptionalFields):
+    """Serializer for learner's basic details."""
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'user_id',
+            'full_name',
+            'alternative_full_name',
+            'username',
+            'national_id',
+            'email',
+            'mobile_no',
+            'year_of_birth',
+            'gender',
+            'gender_display',
+            'date_joined',
+            'last_login',
+        ]
 
 
 class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
@@ -1618,3 +1628,75 @@ class ReportDateFilterSerializer(ReadOnlySerializer):
         required=False,
         input_formats=['%Y-%m-%d'],
     )
+
+
+class PaymentOrderV2Serializer(LearnerFieldsMixin, ModelSerializerOptionalFields):
+    """Flat Cart-based serializer for payment orders v2.
+
+    Inlines learner fields (via `LearnerFieldsMixin`) on each order and exposes
+    invoice details as `invoice_id` / `invoice_url`.
+    """
+    created_at = serializers.SerializerMethodField()
+    total = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    invoice_id = serializers.SerializerMethodField()
+    invoice_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Cart
+        fields = [
+            'id',
+            'user_id',
+            'full_name',
+            'alternative_full_name',
+            'username',
+            'national_id',
+            'email',
+            'mobile_no',
+            'status',
+            'created_at',
+            'total',
+            'currency',
+            'invoice_id',
+            'invoice_url',
+        ]
+
+    def _get_user(self, obj: Any = None) -> Any:
+        """Return the User attached to the Cart."""
+        return obj.user if obj is not None else None
+
+    def _get_invoice(self, obj: Any) -> Any:  # pylint: disable=no-self-use
+        """Return the latest invoice attached to the Cart, or None."""
+        invoices = getattr(obj, 'invoices', None)
+        if invoices is None:
+            return None
+        try:
+            return invoices.first()
+        except (AttributeError, TypeError):
+            return None
+
+    def get_created_at(self, obj: Any) -> Any:  # pylint: disable=no-self-use
+        """Return ISO-formatted created_at."""
+        return dt_to_str(obj.created_at)
+
+    def get_total(self, obj: Any) -> Any:  # pylint: disable=no-self-use
+        """Return the cart total as a float."""
+        total = obj.total
+        return float(total) if total is not None else None
+
+    def get_currency(self, obj: Any) -> Any:
+        """Return the currency from the cart's invoice."""
+        invoice = self._get_invoice(obj)
+        return invoice.currency if invoice else None
+
+    def get_invoice_id(self, obj: Any) -> Any:
+        """Return the invoice number, or None when no invoice is attached."""
+        invoice = self._get_invoice(obj)
+        return invoice.invoice_number if invoice else None
+
+    def get_invoice_url(self, obj: Any) -> Any:
+        """Build the invoice URL as a tenant-relative path."""
+        invoice_id = self.get_invoice_id(obj)
+        if not invoice_id:
+            return None
+        return f'/payment/v1/invoice/{invoice_id}/'

@@ -118,3 +118,73 @@ class PaymentOrdersView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """GET /api/fx/payments/v1/orders/"""
         return super().get(request, *args, **kwargs)
+
+
+@docs('PaymentOrdersViewV2.get')
+class PaymentOrdersViewV2(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
+    """View to list payment orders (v2) with a flat shape including learner fields and invoice URL."""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantCourseAccess]
+    pagination_class = DefaultPagination
+    fx_view_name = 'orders_list_v2'
+    serializer_class = serializers.PaymentOrderV2Serializer
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = 'api/fx/payments/v2/orders/: Get the list of orders (flat shape)'
+
+    def get_queryset(self) -> QuerySet:
+        """Get the list of payment orders for v2."""
+        course_ids = self.request.query_params.get('course_ids', '')
+        user_ids = self.request.query_params.get('user_ids', '')
+        usernames = self.request.query_params.get('usernames', '')
+
+        date_serializer = serializers.ReportDateFilterSerializer(data=self.request.query_params)
+        if not date_serializer.is_valid(raise_exception=False):
+            raise ParseError(
+                'Invalid dates. date_from and date_to must be formated as YYYY-MM-DD when provided.',
+            )
+
+        course_ids_list = [
+            course.strip() for course in course_ids.split(',')
+        ] if course_ids else None
+        user_ids_list = [
+            int(user.strip()) for user in user_ids.split(',') if user.strip().isdigit()
+        ] if user_ids else None
+        usernames_list = [
+            username.strip() for username in usernames.split(',')
+        ] if usernames else None
+
+        status = self.request.query_params.get('status')
+        if status and status not in Cart.valid_statuses():
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'Invalid status: {status}, must be one of {Cart.valid_statuses()}.'
+            )
+
+        item_type = self.request.query_params.get('item_type')
+        if item_type and item_type not in CatalogueItem.valid_item_types():
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT,
+                message=f'Invalid item_type: {item_type}, must be one of {CatalogueItem.valid_item_types()}.'
+            )
+
+        return get_courses_orders_queryset(
+            fx_permission_info=self.fx_permission_info,
+            user_ids=user_ids_list,
+            course_ids=course_ids_list,
+            usernames=usernames_list,
+            learner_search=self.request.query_params.get('learner_search'),
+            course_search=self.request.query_params.get('course_search'),
+            sku_search=self.request.query_params.get('sku_search'),
+            include_staff=self.request.query_params.get('include_staff', '0') == '1',
+            include_invoice=True,
+            include_user_details=True,
+            status=status,
+            item_type=item_type,
+            date_from=date_serializer.validated_data.get('date_from'),
+            date_to=date_serializer.validated_data.get('date_to'),
+        )
+
+    @use_read_replica_if_available
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/payments/v2/orders/"""
+        return super().get(request, *args, **kwargs)

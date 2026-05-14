@@ -356,3 +356,42 @@ class Aggregator(models.Model):
     course_key = CourseKeyField(max_length=255)
     aggregation_name = models.CharField(max_length=255)
     percent = models.FloatField()
+
+
+class Cart(models.Model):
+    """Mock for zeitlabs_payments.Cart."""
+    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='carts')
+    status = models.CharField(max_length=20, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'zeitlabs_payments_cart'
+
+    @classmethod
+    def valid_statuses(cls):
+        """Return all valid status values."""
+        return ['pending', 'processing', 'paid', 'cancelled']
+
+    @property
+    def total(self):
+        """Mock of the real ``Cart.total`` property (sum of item final prices).
+
+        Items aren't modeled here; for tests we surface the most recent invoice's
+        total since the two are equal in the real flow.
+        """
+        invoice = self.invoices.first()
+        return invoice.total if invoice else 0
+
+
+class Invoice(models.Model):
+    """Mock for zeitlabs_payments.Invoice."""
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='invoices')
+    invoice_number = models.CharField(max_length=255, unique=True)
+    total = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'zeitlabs_payments_invoice'
