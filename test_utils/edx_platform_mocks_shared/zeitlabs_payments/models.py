@@ -1,11 +1,5 @@
 """fake zeitlabs_payments models"""
-
-
-class Cart:  # pylint: disable=too-few-public-methods
-    @classmethod
-    def valid_statuses(cls):
-        """Return all valid status values."""
-        return ['pending', 'paid']
+from fake_models.models import Cart, Invoice  # pylint: disable=unused-import
 
 
 class CatalogueItem:  # pylint: disable=too-few-public-methods

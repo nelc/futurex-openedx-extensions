@@ -1857,6 +1857,115 @@ docs_src = {
         ),
     },
 
+    'PaymentOrdersViewV2.get': {
+        'summary': 'Get the list of cart orders (v2 flat shape)',
+        'description': (
+            'Get the list of orders in the tenants with a flat shape. Learner fields are inlined on each '
+            'order (same logic as the learners API), and invoice details are exposed as `invoice_id` and '
+            '`invoice_url`. `include_user_details` and `include_invoice` from v1 are not accepted by v2.'
+        ),
+        'parameters': [
+            common_parameters['tenant_ids'],
+            common_parameters['user_ids'],
+            common_parameters['usernames'],
+            common_parameters['course_ids'],
+            common_parameters['learner_search'],
+            common_parameters['course_search'],
+            query_parameter(
+                'sku_search',
+                str,
+                'A search text to filter results, matched against the item sku.',
+            ),
+            openapi.Parameter(
+                'status',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=Cart.valid_statuses(),
+                description='to filter carts of specific status.'
+            ),
+            openapi.Parameter(
+                'item_type',
+                ParameterLocation.QUERY,
+                required=False,
+                type=openapi.TYPE_STRING,
+                enum=CatalogueItem.valid_item_types(),
+                description=(
+                    'to filter carts containing specific item types.\n'
+                    'Note: right now only paid_course is implemented.'
+                )
+            ),
+            query_parameter(
+                'date_from',
+                str,
+                description=(
+                    'The start date of the range for filtering results. Must be provided in `YYYY-MM-DD` format.'
+                ),
+            ),
+            query_parameter(
+                'date_to',
+                str,
+                description=(
+                    'The end date of the range for filtering results. Must be provided in `YYYY-MM-DD` format.'
+                ),
+            ),
+            common_parameters['include_staff'],
+            common_parameters['download'],
+        ],
+        'responses': responses(
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            description='List of payment orders (flat).',
+                            items=openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    'id': openapi.Schema(type=openapi.TYPE_INTEGER, example=369),
+                                    'user_id': openapi.Schema(type=openapi.TYPE_INTEGER, example=10397),
+                                    'full_name': openapi.Schema(type=openapi.TYPE_STRING, example='Full Name'),
+                                    'alternative_full_name': openapi.Schema(
+                                        type=openapi.TYPE_STRING, example='الاسم الكامل',
+                                    ),
+                                    'username': openapi.Schema(type=openapi.TYPE_STRING, example='learner1'),
+                                    'national_id': openapi.Schema(type=openapi.TYPE_STRING, example='1234567890'),
+                                    'email': openapi.Schema(type=openapi.TYPE_STRING, example='learner@example.com'),
+                                    'mobile_no': openapi.Schema(type=openapi.TYPE_STRING, example='+966xxxxxxxxx'),
+                                    'status': openapi.Schema(type=openapi.TYPE_STRING, example='paid'),
+                                    'created_at': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        format=openapi.FORMAT_DATETIME,
+                                        example='2025-11-23T18:39:39.750266+03:00',
+                                    ),
+                                    'total': openapi.Schema(
+                                        type=openapi.TYPE_NUMBER, format=openapi.FORMAT_FLOAT, example=750.0,
+                                    ),
+                                    'currency': openapi.Schema(type=openapi.TYPE_STRING, example='SAR'),
+                                    'paid_at': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        format=openapi.FORMAT_DATETIME,
+                                        nullable=True,
+                                        example='2025-11-23T18:39:39Z',
+                                    ),
+                                    'invoice_id': openapi.Schema(
+                                        type=openapi.TYPE_STRING, nullable=True, example='DEV-100001',
+                                    ),
+                                    'invoice_url': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        nullable=True,
+                                        example='/payment/v1/invoice/DEV-100001/',
+                                    ),
+                                },
+                            ),
+                        ),
+                    },
+                ),
+            }
+        ),
+    },
+
     'VersionInfoView.get': {
         'summary': 'Get fx-openedx-extentions running version',
         'description': 'Get fx-openedx-extentions running version. The caller must be a system staff.',

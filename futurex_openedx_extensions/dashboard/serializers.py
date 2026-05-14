@@ -37,6 +37,7 @@ from xmodule.course_block import CourseFields
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.exceptions import DuplicateCourseError
+from zeitlabs_payments.models import Cart
 
 from futurex_openedx_extensions.dashboard.custom_serializers import (
     ListSerializerOptionalFields,
@@ -1618,3 +1619,124 @@ class ReportDateFilterSerializer(ReadOnlySerializer):
         required=False,
         input_formats=['%Y-%m-%d'],
     )
+
+
+class PaymentOrderV2Serializer(ModelSerializerOptionalFields):
+    """Flat Cart-based serializer for payment orders v2.
+
+    Inlines learner fields on each order and exposes invoice details as
+    `invoice_id` / `invoice_url`.
+    """
+    user_id = serializers.SerializerMethodField(help_text='User ID in edx-platform')
+    full_name = serializers.SerializerMethodField(help_text='Full name of the user')
+    alternative_full_name = serializers.SerializerMethodField(help_text='Arabic name (if available)')
+    username = serializers.SerializerMethodField(help_text='Username of the user in edx-platform')
+    national_id = serializers.SerializerMethodField(help_text='National ID of the user (if available)')
+    email = serializers.SerializerMethodField(help_text='Email of the user in edx-platform')
+    mobile_no = serializers.SerializerMethodField(help_text='Mobile number of the user (if available)')
+    created_at = serializers.SerializerMethodField()
+    total = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    paid_at = serializers.SerializerMethodField()
+    invoice_id = serializers.SerializerMethodField()
+    invoice_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Cart
+        fields = [
+            'id',
+            'user_id',
+            'full_name',
+            'alternative_full_name',
+            'username',
+            'national_id',
+            'email',
+            'mobile_no',
+            'status',
+            'created_at',
+            'total',
+            'currency',
+            'paid_at',
+            'invoice_id',
+            'invoice_url',
+        ]
+
+    def _get_user(self, obj: Any = None) -> Any:  # pylint: disable=no-self-use
+        """Return the User attached to the Cart."""
+        return obj.user if obj is not None else None
+
+    def _get_profile_field(self: Any, obj: Any, field_name: str) -> Any:
+        """Get the profile field value."""
+        user = self._get_user(obj)
+        return getattr(user.profile, field_name) if hasattr(user, 'profile') and user.profile else None
+
+    def _get_extra_field(self: Any, obj: Any, field_name: str) -> Any:
+        """Get the extra field value."""
+        user = self._get_user(obj)
+        return getattr(user.extrainfo, field_name) if hasattr(user, 'extrainfo') and user.extrainfo else None
+
+    def get_user_id(self, obj: Any) -> int:
+        """Return user ID."""
+        return self._get_user(obj).id
+
+    def get_email(self, obj: Any) -> str:
+        """Return user email."""
+        return self._get_user(obj).email
+
+    def get_username(self, obj: Any) -> str:
+        """Return username."""
+        return self._get_user(obj).username
+
+    def get_national_id(self, obj: Any) -> Any:
+        """Return national ID."""
+        return self._get_extra_field(obj, 'national_id')
+
+    def get_full_name(self, obj: Any) -> Any:
+        """Return full name."""
+        return extract_full_name_from_user(self._get_user(obj))
+
+    def get_alternative_full_name(self, obj: Any) -> Any:
+        """Return alternative full name."""
+        return (
+            extract_arabic_name_from_user(self._get_user(obj)) or
+            extract_full_name_from_user(self._get_user(obj), alternative=True)
+        )
+
+    def get_mobile_no(self, obj: Any) -> Any:
+        """Return mobile number."""
+        return self._get_profile_field(obj, 'phone_number')
+
+    def _get_invoice(self, obj: Any) -> Any:  # pylint: disable=no-self-use
+        """Return the latest invoice attached to the Cart, or None."""
+        return obj.invoices.first()
+
+    def get_created_at(self, obj: Any) -> Any:  # pylint: disable=no-self-use
+        """Return ISO-formatted created_at."""
+        return dt_to_str(obj.created_at)
+
+    def get_total(self, obj: Any) -> Any:  # pylint: disable=no-self-use
+        """Return the cart total as a float."""
+        total = obj.total
+        return float(total) if total is not None else None
+
+    def get_currency(self, obj: Any) -> Any:
+        """Return the currency from the cart's invoice."""
+        invoice = self._get_invoice(obj)
+        return invoice.currency if invoice else None
+
+    def get_paid_at(self, obj: Any) -> Any:
+        """Return the invoice's paid date, or None when no invoice is attached."""
+        invoice = self._get_invoice(obj)
+        return dt_to_str(invoice.paid_at) if invoice else None
+
+    def get_invoice_id(self, obj: Any) -> Any:
+        """Return the invoice number, or None when no invoice is attached."""
+        invoice = self._get_invoice(obj)
+        return invoice.invoice_number if invoice else None
+
+    def get_invoice_url(self, obj: Any) -> Any:
+        """Build the invoice URL as a tenant-relative path."""
+        invoice_id = self.get_invoice_id(obj)
+        if not invoice_id:
+            return None
+        return f'/payment/v1/invoice/{invoice_id}/'
