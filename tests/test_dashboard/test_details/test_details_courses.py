@@ -6,11 +6,11 @@ import pytest
 from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
 from django.contrib.auth import get_user_model
-from django.test import override_settings
 from django.utils.timezone import now, timedelta
 from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.details.courses import (
     annotate_courses_rating_queryset,
@@ -43,7 +43,9 @@ def test_get_courses_queryset(
 
 
 @pytest.mark.django_db
-def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_info):  # pylint: disable=unused-argument
+def test_get_courses_queryset_result_excludes_staff(  # pylint: disable=unused-argument
+    base_data, fx_permission_info, heavy_q,
+):
     """Verify that get_courses_queryset excludes staff users from enrollment, but not from certificates."""
     expected_results = {
         'course-v1:Org1+1+1': [1, 0, 2, 0],
@@ -71,7 +73,6 @@ def test_get_courses_queryset_result_excludes_staff(base_data, fx_permission_inf
 
 
 @pytest.mark.django_db
-@override_settings(FX_COMPLETION_RATE=True)
 @pytest.mark.parametrize('certificate_count_enabled', [True, False])
 def test_get_courses_queryset_result_for_completion_rate(
     certificate_count_enabled, base_data, fx_permission_info,
@@ -80,7 +81,7 @@ def test_get_courses_queryset_result_for_completion_rate(
 
     course_id = 'course-v1:ORG1+2+2'
 
-    with override_settings(FX_CERTIFICATES_COUNT=certificate_count_enabled):
+    with override_flag('fx_dashboard.enable_heavy_queries', active=certificate_count_enabled):
         # Initial state: no enrollments, expect completion rate to be 0
         course = get_courses_queryset(fx_permission_info).get(id=course_id)
         assert course.enrolled_count == 0

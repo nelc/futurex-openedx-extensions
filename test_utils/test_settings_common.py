@@ -41,6 +41,7 @@ INSTALLED_APPS = (
     'openedx',
     'organizations',
     'social_django',
+    'waffle',
 )
 
 USE_TZ = True
@@ -143,6 +144,3 @@ FX_ALLOWED_COURSE_LANGUAGE_CODES = ['en', 'ar']
 
 FX_COURSE_CATEGORY_CONFIG_KEY = 'course_categories_dummy'
 FX_COURSE_CATEGORY_MAX_COUNT = 50
-
-FX_CERTIFICATES_COUNT = True
-FX_COMPLETION_RATE = False

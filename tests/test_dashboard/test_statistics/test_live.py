@@ -10,7 +10,7 @@ from futurex_openedx_extensions.helpers.permissions import build_fx_permission_i
 @patch('futurex_openedx_extensions.dashboard.statistics.live.build_fx_permission_info')
 @pytest.mark.django_db
 def test_get_live_statistics_valid_tenant_id(
-    mocked_build, base_data,
+    mocked_build, base_data, heavy_q,
 ):  # pylint: disable=unused-argument
     """Verify that the live statistics are returned correctly."""
     mocked_build.return_value = build_fx_permission_info(tenant_id=1)

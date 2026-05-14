@@ -6,7 +6,6 @@ from typing import List
 
 from common.djangoapps.student.models import CourseEnrollment
 from completion.models import BlockCompletion
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import (
     BooleanField,
@@ -32,6 +31,7 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from zeitlabs_payments.querysets import get_orders_queryset
 
+from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_accessible_users_and_courses,
@@ -148,7 +148,7 @@ def get_courses_queryset(
         ), 0)
     )
 
-    if settings.FX_CERTIFICATES_COUNT:
+    if is_heavy_queries_enabled():
         queryset = queryset.annotate(
             certificates_count=Coalesce(Subquery(
                 GeneratedCertificate.objects.filter(
@@ -164,14 +164,7 @@ def get_courses_queryset(
                 ).values('course_id').annotate(count=Count('id')).values('count'),
                 output_field=IntegerField(),
             ), 0),
-        )
-    else:
-        queryset = queryset.annotate(
-            certificates_count=Value(0, output_field=IntegerField()),
-        )
-
-    if settings.FX_CERTIFICATES_COUNT and settings.FX_COMPLETION_RATE:
-        queryset = queryset.annotate(
+        ).annotate(
             completion_rate=Case(
                 When(enrolled_count=0, then=Value(0.0)),
                 default=F('certificates_count') * 1.0 / F('enrolled_count'),
@@ -180,6 +173,8 @@ def get_courses_queryset(
         )
     else:
         queryset = queryset.annotate(
+            certificates_count=Value(0, output_field=IntegerField()),
+        ).annotate(
             completion_rate=Value(0.0, output_field=FloatField()),
         )
 

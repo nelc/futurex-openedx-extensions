@@ -10,6 +10,7 @@ from django.db.models.functions import Lower
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
+from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
 
@@ -37,7 +38,7 @@ def get_certificates_count(
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
-    if not settings.FX_CERTIFICATES_COUNT:
+    if not is_heavy_queries_enabled():
         return {}
 
     if include_staff:
@@ -92,7 +93,7 @@ def get_learning_hours_count(
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
-    if not settings.FX_CERTIFICATES_COUNT:
+    if not is_heavy_queries_enabled():
         return 0
 
     def parse_course_effort(effort: str, course_id: str) -> float:
