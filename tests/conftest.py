@@ -16,6 +16,7 @@ from eox_tenant.models import Route, TenantConfig
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from organizations.models import Organization
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.models import ConfigMirror, DraftConfig
@@ -346,3 +347,10 @@ def base_data(django_db_setup, django_db_blocker):  # pylint: disable=unused-arg
         _create_sites()
 
     return _base_data
+
+
+@pytest.fixture
+def heavy_q():
+    """Enable the fx_dashboard.enable_heavy_queries waffle flag for all tests by default."""
+    with override_flag('fx_dashboard.enable_heavy_queries', active=True):
+        yield

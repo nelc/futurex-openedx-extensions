@@ -5,8 +5,8 @@ import pytest
 from common.djangoapps.student.models import CourseEnrollment
 from completion_aggregator.models import Aggregator
 from django.contrib.auth import get_user_model
-from django.test import override_settings
 from lms.djangoapps.grades.models import PersistentCourseGrade
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.details.learners import (
     get_certificates_count_for_learner_queryset,
@@ -47,7 +47,7 @@ def test_count_for_learner_queryset(
         fnc = get_certificates_count_for_learner_queryset
 
     for certificate_count_enabled in [True, False] if function_to_test == 'certificates' else [True]:
-        with override_settings(FX_CERTIFICATES_COUNT=certificate_count_enabled):
+        with override_flag('fx_dashboard.enable_heavy_queries', active=certificate_count_enabled):
             queryset = get_user_model().objects.filter(username=username).annotate(
                 result=fnc(fx_permission_info)
             )
@@ -225,7 +225,7 @@ def test_test_get_learners_queryset_enrollments_filter(
 def test_get_learners_by_course_queryset(base_data, certificate_count_enabled):  # pylint: disable=unused-argument
     """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
     PersistentCourseGrade.objects.create(user_id=40, course_id='course-v1:ORG1+5+5', percent_grade=0.67)
-    with override_settings(FX_CERTIFICATES_COUNT=certificate_count_enabled):
+    with override_flag('fx_dashboard.enable_heavy_queries', active=certificate_count_enabled):
         queryset = get_learners_by_course_queryset('course-v1:ORG1+5+5')
     assert queryset.count() == 3, 'unexpected test data'
 
@@ -259,7 +259,7 @@ def test_get_learners_enrollments_queryset_annotations(
 ):  # pylint: disable=unused-argument
     """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
     PersistentCourseGrade.objects.create(user_id=40, course_id='course-v1:ORG1+5+5', percent_grade=0.67)
-    with override_settings(FX_CERTIFICATES_COUNT=certificate_count_enabled):
+    with override_flag('fx_dashboard.enable_heavy_queries', active=certificate_count_enabled):
         queryset = get_learners_enrollments_queryset(
             fx_permission_info=fx_permission_info,
             course_ids=['course-v1:ORG1+5+5'],

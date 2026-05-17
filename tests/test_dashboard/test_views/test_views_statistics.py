@@ -13,6 +13,7 @@ from django.urls import resolve
 from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.views.statistics import AggregatedCountsView
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -38,6 +39,7 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(str(response.data['detail']), "Invalid stats type: ['invalid']")
 
+    @override_flag('fx_dashboard.enable_heavy_queries', active=True)
     def test_all_stats(self):
         """Test get method"""
         self.login_user(self.staff_user)
@@ -72,6 +74,7 @@ class TestTotalCountsView(BaseTestViewMixin):
             'total_unique_learners': 37, 'limited_access': False
         })
 
+    @override_flag('fx_dashboard.enable_heavy_queries', active=True)
     def test_all_stats_with_include_staff(self):
         """Test get method"""
         self.login_user(self.staff_user)
@@ -101,6 +104,7 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(json.loads(response.content)['limited_access'], True)
 
+    @override_flag('fx_dashboard.enable_heavy_queries', active=True)
     def test_selected_tenants(self):
         """Test get method with selected tenants"""
         self.login_user(self.staff_user)

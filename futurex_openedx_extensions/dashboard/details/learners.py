@@ -5,7 +5,6 @@ from datetime import timedelta
 
 from common.djangoapps.student.models import CourseEnrollment
 from completion_aggregator.models import Aggregator
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import (
     BooleanField,
@@ -27,6 +26,7 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
+from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
@@ -99,7 +99,7 @@ def get_certificates_count_for_learner_queryset(
     :return: Count of certificates
     :rtype: Coalesce
     """
-    if not settings.FX_CERTIFICATES_COUNT:
+    if not is_heavy_queries_enabled():
         return Value(0, output_field=IntegerField())
 
     return Coalesce(Subquery(
@@ -222,7 +222,7 @@ def get_learners_by_course_queryset(
             ~check_staff_exist_queryset('id', 'courseenrollment__course__org', Value(course_id)),
         )
 
-    if settings.FX_CERTIFICATES_COUNT:
+    if is_heavy_queries_enabled():
         certificate_available_expr = Exists(
             GeneratedCertificate.objects.filter(
                 user_id=OuterRef('id'),
@@ -348,7 +348,7 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
         include_staff=include_staff,
     )
 
-    if settings.FX_CERTIFICATES_COUNT:
+    if is_heavy_queries_enabled():
         certificate_available_expr = Exists(
             GeneratedCertificate.objects.filter(
                 user_id=OuterRef('user_id'),

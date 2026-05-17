@@ -17,6 +17,7 @@ eox-tenant
 # edx-platform related requirements
 edx-api-doc-tools
 edx-opaque-keys[django]
+edx-toggles
 djangorestframework
 django-config-models
 django-filter
