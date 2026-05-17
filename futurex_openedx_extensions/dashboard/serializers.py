@@ -1667,13 +1667,7 @@ class PaymentOrderV2Serializer(LearnerFieldsMixin, ModelSerializerOptionalFields
 
     def _get_invoice(self, obj: Any) -> Any:  # pylint: disable=no-self-use
         """Return the latest invoice attached to the Cart, or None."""
-        invoices = getattr(obj, 'invoices', None)
-        if invoices is None:
-            return None
-        try:
-            return invoices.first()
-        except (AttributeError, TypeError):
-            return None
+        return obj.invoices.first()
 
     def get_created_at(self, obj: Any) -> Any:  # pylint: disable=no-self-use
         """Return ISO-formatted created_at."""
