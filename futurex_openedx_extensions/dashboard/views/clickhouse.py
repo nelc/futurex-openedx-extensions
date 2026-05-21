@@ -14,7 +14,6 @@ from rest_framework import status as http_status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers import clickhouse_operations as ch
 from futurex_openedx_extensions.helpers.constants import (
     CLICKHOUSE_FX_BUILTIN_CA_USERS_OF_TENANTS,
@@ -26,6 +25,7 @@ from futurex_openedx_extensions.helpers.models import ClickhouseQuery
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin, get_usernames_with_access_roles
+from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
 

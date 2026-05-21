@@ -5,6 +5,7 @@ import csv
 import logging
 import os
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 from urllib.parse import urlencode, urlparse
@@ -22,10 +23,21 @@ from storages.backends.s3boto3 import S3Boto3Storage
 from futurex_openedx_extensions.helpers.constants import CSV_EXPORT_UPLOAD_DIR
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import DataExportTask
+from futurex_openedx_extensions.helpers.routers import _use_replica_db
 from futurex_openedx_extensions.helpers.upload import get_storage_dir, upload_file
 
 log = logging.getLogger(__name__)
 User = get_user_model()
+
+
+@contextmanager
+def replica_read_context() -> Generator[None, None, None]:
+    """Context manager to route reads to the replica DB"""
+    token = _use_replica_db.set(True)
+    try:
+        yield
+    finally:
+        _use_replica_db.reset(token)
 
 
 def _get_user(user_id: Optional[int]) -> Any:
@@ -107,18 +119,19 @@ def _paginated_response_generator(
     processed_records = (page - 1) * view_data['page_size']
     url = f'{view_data["url"]}'
     start_time = datetime.now()
-    while url and not view_data['end_page']:
-        mocked_request = _get_mocked_request(url, fx_info, view_data['site'])
-        response = view_instance(mocked_request, **kwargs)
-        data, total_records = _get_response_data(response)
-        processed_records += len(data)
+    with replica_read_context():
+        while url and not view_data['end_page']:
+            mocked_request = _get_mocked_request(url, fx_info, view_data['site'])
+            response = view_instance(mocked_request, **kwargs)
+            data, total_records = _get_response_data(response)
+            processed_records += len(data)
 
-        progress = round(processed_records / total_records, 2) if total_records else 0
-        yield data, progress, processed_records
-        if _is_long_running_process(start_time):
-            view_data['end_page'] = page
-        page += 1
-        url = response.data.get('next')
+            progress = round(processed_records / total_records, 2) if total_records else 0
+            yield data, progress, processed_records
+            if _is_long_running_process(start_time):
+                view_data['end_page'] = page
+            page += 1
+            url = response.data.get('next')
 
 
 def _upload_file_to_storage(local_file_path: str, filename: str, tenant_id: int, partial_tag: int = 0) -> str:

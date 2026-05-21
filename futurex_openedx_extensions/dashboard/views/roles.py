@@ -19,7 +19,6 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.docs_utils import docs
-from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import (
     COURSE_ACCESS_ROLES_SUPPORTED_READ,
     FX_VIEW_DEFAULT_AUTH_CLASSES,
@@ -35,6 +34,7 @@ from futurex_openedx_extensions.helpers.roles import (
     get_course_access_roles_queryset,
     update_course_access_roles,
 )
+from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()

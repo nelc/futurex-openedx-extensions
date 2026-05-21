@@ -17,7 +17,6 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.docs_utils import docs
-from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter, DefaultSearchFilter
 from futurex_openedx_extensions.helpers.models import TenantAsset
@@ -29,6 +28,7 @@ from futurex_openedx_extensions.helpers.permissions import (
     IsSystemStaff,
 )
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin, get_accessible_tenant_ids
+from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.tenants import get_all_tenants_info, get_excluded_tenant_ids, get_tenants_info
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
