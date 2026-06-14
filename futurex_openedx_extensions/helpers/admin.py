@@ -14,7 +14,9 @@ from django.core.cache import cache
 from django.http import Http404, HttpResponseRedirect
 from django.urls import path
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.utils.translation.trans_null import gettext_lazy
+from django.views.decorators.http import require_POST
 from django_mysql.models import QuerySet
 from eox_tenant.models import TenantConfig
 from openedx.core.lib.api.authentication import BearerAuthentication
@@ -26,6 +28,7 @@ from futurex_openedx_extensions.helpers.models import (
     ClickhouseQuery,
     ConfigAccessControl,
     ConfigMirror,
+    CourseStat,
     DataExportTask,
     DraftConfig,
     TenantAsset,
@@ -33,6 +36,7 @@ from futurex_openedx_extensions.helpers.models import (
     ViewUserMapping,
 )
 from futurex_openedx_extensions.helpers.roles import get_fx_view_with_roles
+from futurex_openedx_extensions.helpers.stats import sync_course_stats
 
 
 class YesNoFilter(SimpleListFilter):
@@ -404,6 +408,36 @@ class ConfigMirrorAdmin(SimpleHistoryAdmin):
     ordering = ('-priority', 'id')
 
 
+class CourseStatAdmin(admin.ModelAdmin):
+    """Admin class of CourseStat model"""
+    change_list_template = 'coursestat_change_list.html'
+    list_display = (
+        'course_key', 'certificate_count_all', 'certificate_count_non_staff', 'last_updated',
+    )
+    ordering = ('-last_updated',)
+
+    def get_urls(self) -> list:
+        """Add a custom URL to manually trigger a course-stats sync."""
+        custom_urls = [
+            path(
+                'sync_now/',
+                self.admin_site.admin_view(self.sync_now),
+                name='fx_helpers_coursestat_sync_now',
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    @method_decorator(require_POST)
+    def sync_now(self, request: Any) -> HttpResponseRedirect:  # pylint: disable=no-self-use
+        """Run sync_course_stats synchronously, then return to the changelist."""
+        sync_course_stats(commit=True)
+
+        full_path = request.get_full_path()
+        full_path = full_path[:len(full_path) - 1]
+        one_step_back_path = full_path.rsplit('/', 1)[0]
+        return HttpResponseRedirect(one_step_back_path)
+
+
 def register_admins() -> None:
     """Register the admin views."""
     CacheInvalidator._meta.abstract = False  # to be able to register the admin view
@@ -417,6 +451,7 @@ def register_admins() -> None:
     admin.site.register(TenantAsset, TenantAssetAdmin)
     admin.site.register(DraftConfig, DraftConfigAdmin)
     admin.site.register(ConfigMirror, ConfigMirrorAdmin)
+    admin.site.register(CourseStat, CourseStatAdmin)
 
 
 register_admins()

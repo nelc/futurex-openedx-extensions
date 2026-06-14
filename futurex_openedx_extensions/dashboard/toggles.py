@@ -18,3 +18,19 @@ FX_HEAVY_QUERIES_FLAG = WaffleFlag(f'{WAFFLE_FLAG_NAMESPACE}.enable_heavy_querie
 def is_heavy_queries_enabled() -> bool:
     """Return True if the heavy-query waffle flag is active."""
     return FX_HEAVY_QUERIES_FLAG.is_enabled()
+
+
+# .. toggle_name: fx_dashboard.enable_learner_certificates
+# .. toggle_implementation: WaffleFlag
+# .. toggle_default: False
+# .. toggle_description: Enables the per-learner certificate queries (per-learner certificate
+#   counts and certificate_available). Disabled by default because these are per-user subqueries
+#   that the CourseStat cache cannot serve.
+# .. toggle_use_cases: open_edx
+# .. toggle_creation_date: 2026-06-15
+FX_LEARNER_CERTIFICATES_FLAG = WaffleFlag(f'{WAFFLE_FLAG_NAMESPACE}.enable_learner_certificates', __name__)
+
+
+def is_learner_certificates_enabled() -> bool:
+    """Return True if the per-learner certificate waffle flag is active."""
+    return FX_LEARNER_CERTIFICATES_FLAG.is_enabled()
