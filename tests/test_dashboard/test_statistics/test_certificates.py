@@ -6,6 +6,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.statistics import certificates
+from futurex_openedx_extensions.helpers.stats import sync_course_stats
 from tests.fixture_helpers import get_tenants_orgs
 
 
@@ -57,12 +58,28 @@ def test_get_certificates_count_not_downloadable(  # pylint: disable=unused-argu
 
 
 @pytest.mark.django_db
-@override_flag('fx_dashboard.enable_heavy_queries', active=False)
-def test_get_certificates_count_disabled():
-    """Verify get_certificates_count returns empty dict when heavy queries are disabled."""
-    result = certificates.get_certificates_count({})
-    assert not result
-    assert isinstance(result, dict)
+def test_get_certificates_count_uses_cache_when_disabled(  # pylint: disable=unused-argument
+    base_data, fx_permission_info,
+):
+    """When heavy queries are disabled, get_certificates_count reads the CourseStat cache."""
+    fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs([1])
+    fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs([1])
+
+    with override_flag('fx_dashboard.enable_heavy_queries', active=True):
+        live = certificates.get_certificates_count(fx_permission_info, include_staff=False)
+        live_with_staff = certificates.get_certificates_count(fx_permission_info, include_staff=True)
+
+    with override_flag('fx_dashboard.enable_heavy_queries', active=False):
+        # empty cache -> nothing to report
+        assert not certificates.get_certificates_count(fx_permission_info)
+
+        sync_course_stats()
+
+        # cached counts match what the live (heavy) query returns
+        assert certificates.get_certificates_count(fx_permission_info, include_staff=False) == live
+        assert certificates.get_certificates_count(fx_permission_info, include_staff=True) == live_with_staff
+
+    assert live and live_with_staff  # sanity: there is data behind the comparison
 
 
 @pytest.mark.django_db

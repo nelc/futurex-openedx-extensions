@@ -5,13 +5,14 @@ import logging
 from typing import Dict
 
 from django.conf import settings
-from django.db.models import BooleanField, Count, OuterRef, Q, Subquery, Value
+from django.db.models import BooleanField, Count, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Lower
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
 
 log = logging.getLogger(__name__)
@@ -39,7 +40,25 @@ def get_certificates_count(
     :rtype: Dict[str, int]
     """
     if not is_heavy_queries_enabled():
-        return {}
+        cached_certificates_count = 'certificate_count_all' if include_staff else 'certificate_count_non_staff'
+        cached_result = list(
+            CourseStat.objects.filter(
+                course_key__in=get_base_queryset_courses(
+                    fx_permission_info,
+                    visible_filter=visible_courses_filter,
+                    active_filter=active_courses_filter,
+                ),
+            ).annotate(
+                course_org=Subquery(
+                    CourseOverview.objects.filter(
+                        id=OuterRef('course_key')
+                    ).values(org_lower_case=Lower('org'))
+                )
+            ).values('course_org').annotate(
+                certificates_count=Sum(cached_certificates_count)
+            ).values_list('course_org', 'certificates_count')
+        )
+        return dict(cached_result)
 
     if include_staff:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))

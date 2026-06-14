@@ -32,6 +32,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from zeitlabs_payments.querysets import get_orders_queryset
 
 from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled
+from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_accessible_users_and_courses,
@@ -172,10 +173,20 @@ def get_courses_queryset(
             )
         )
     else:
+        cached_certificates_count = 'certificate_count_all' if include_staff else 'certificate_count_non_staff'
         queryset = queryset.annotate(
-            certificates_count=Value(0, output_field=IntegerField()),
+            certificates_count=Coalesce(Subquery(
+                CourseStat.objects.filter(
+                    course_key=OuterRef('id'),
+                ).values(cached_certificates_count)[:1],
+                output_field=IntegerField(),
+            ), 0),
         ).annotate(
-            completion_rate=Value(0.0, output_field=FloatField()),
+            completion_rate=Case(
+                When(enrolled_count=0, then=Value(0.0)),
+                default=F('certificates_count') * 1.0 / F('enrolled_count'),
+                output_field=FloatField(),
+            )
         )
 
     update_removable_annotations(queryset, removable=[

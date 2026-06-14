@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db.utils import IntegrityError
 from django.utils import timezone
+from opaque_keys.edx.keys import CourseKey
 
 from futurex_openedx_extensions.helpers.clickhouse_operations import ClickhouseBaseError
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -23,6 +24,7 @@ from futurex_openedx_extensions.helpers.model_helpers import NoUpdateQuerySet
 from futurex_openedx_extensions.helpers.models import (
     ClickhouseQuery,
     ConfigMirror,
+    CourseStat,
     DataExportTask,
     DraftConfig,
     ViewUserMapping,
@@ -1621,3 +1623,14 @@ def test_config_mirror_no_same_path(source_path, destination_path, allowed, conf
             f'ConfigMirror source path and destination path cannot share the same path. (source: '
             f'<{mirror.source_path}>, dest: <{mirror.destination_path}>).'
         )
+
+
+@pytest.mark.django_db
+def test_course_stat_str():
+    """Verify that CourseStat str method is working fine."""
+    stat = CourseStat.objects.create(
+        course_key=CourseKey.from_string('course-v1:2+2+2'),
+        certificate_count_all=5,
+        certificate_count_non_staff=3,
+    )
+    assert str(stat) == 'course-v1:2+2+2: all=5, non_staff=3'
