@@ -5,7 +5,7 @@ import logging
 from typing import Dict
 
 from django.conf import settings
-from django.db.models import BooleanField, Count, OuterRef, Q, Subquery, Sum, Value
+from django.db.models import BooleanField, Count, F, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Lower
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
@@ -111,9 +111,6 @@ def get_learning_hours_count(
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
-    if not is_heavy_queries_enabled():
-        return 0
-
     def parse_course_effort(effort: str, course_id: str) -> float:
         """Parses course effort in HH:MM format and returns total hours as a float."""
         try:
@@ -149,38 +146,55 @@ def get_learning_hours_count(
             )
             return settings.FX_DEFAULT_COURSE_EFFORT
 
-    queryset = GeneratedCertificate.objects.filter(
-        status='downloadable',
-        course_id__in=get_base_queryset_courses(
-            fx_permission_info,
-            visible_filter=visible_courses_filter,
-            active_filter=active_courses_filter,
-        ),
-        user__is_active=True,
-    )
-
-    if not include_staff:
-        queryset = queryset.annotate(
-            course_org=Subquery(
-                CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')
-            )
-        ).filter(
-            ~check_staff_exist_queryset(
-                ref_user_id='user_id', ref_org='course_org', ref_course_id='course_id',
-            )
+    if is_heavy_queries_enabled():
+        queryset = GeneratedCertificate.objects.filter(
+            status='downloadable',
+            course_id__in=get_base_queryset_courses(
+                fx_permission_info,
+                visible_filter=visible_courses_filter,
+                active_filter=active_courses_filter,
+            ),
+            user__is_active=True,
         )
 
-    result = list(
-        queryset.annotate(
-            course_effort=Subquery(
-                CourseOverview.objects.filter(
-                    id=OuterRef('course_id')
-                ).values('effort')
+        if not include_staff:
+            queryset = queryset.annotate(
+                course_org=Subquery(
+                    CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')
+                )
+            ).filter(
+                ~check_staff_exist_queryset(
+                    ref_user_id='user_id', ref_org='course_org', ref_course_id='course_id',
+                )
             )
-        ).annotate(
-            certificates_count=Count('id')
-        ).values('course_effort', 'certificates_count', 'course_id')
-    )
+
+        result = list(
+            queryset.annotate(
+                course_effort=Subquery(
+                    CourseOverview.objects.filter(
+                        id=OuterRef('course_id')
+                    ).values('effort')
+                )
+            ).annotate(
+                certificates_count=Count('id')
+            ).values('course_effort', 'certificates_count', 'course_id')
+        )
+    else:
+        result = list(
+            CourseStat.objects.filter(
+                course_key__in=get_base_queryset_courses(
+                    fx_permission_info,
+                    visible_filter=visible_courses_filter,
+                    active_filter=active_courses_filter,
+                ),
+            ).annotate(
+                course_effort=Subquery(
+                    CourseOverview.objects.filter(id=OuterRef('course_key')).values('effort')
+                ),
+                course_id=F('course_key'),
+                certificates_count=F('certificate_count_all'),
+            ).values('course_effort', 'certificates_count', 'course_id')
+        )
 
     return sum(
         parse_course_effort(
