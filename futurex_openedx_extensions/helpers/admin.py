@@ -34,6 +34,7 @@ from futurex_openedx_extensions.helpers.models import (
     ViewUserMapping,
 )
 from futurex_openedx_extensions.helpers.roles import get_fx_view_with_roles
+from futurex_openedx_extensions.helpers.stats import sync_course_stats
 
 
 class YesNoFilter(SimpleListFilter):
@@ -407,9 +408,32 @@ class ConfigMirrorAdmin(SimpleHistoryAdmin):
 
 class CourseStatAdmin(admin.ModelAdmin):
     """Admin class of CourseStat model"""
+    change_list_template = 'coursestat_change_list.html'
     list_display = (
-        'course_key', 'certificate_count_all', 'certificate_count_non_staff',
+        'course_key', 'certificate_count_all', 'certificate_count_non_staff', 'last_updated',
     )
+    ordering = ('-last_updated',)
+    list_per_page = 10
+
+    def get_urls(self) -> list:
+        """Add a custom URL to manually trigger a course-stats sync."""
+        custom_urls = [
+            path(
+                'sync_now/',
+                self.admin_site.admin_view(self.sync_now),
+                name='fx_helpers_coursestat_sync_now',
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def sync_now(self, request: Any) -> HttpResponseRedirect:  # pylint: disable=no-self-use
+        """Run sync_course_stats synchronously, then return to the changelist."""
+        sync_course_stats(commit=True)
+
+        full_path = request.get_full_path()
+        full_path = full_path[:len(full_path) - 1]
+        one_step_back_path = full_path.rsplit('/', 1)[0]
+        return HttpResponseRedirect(one_step_back_path)
 
 
 def register_admins() -> None:

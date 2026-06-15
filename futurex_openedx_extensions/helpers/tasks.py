@@ -8,8 +8,16 @@ from celery_utils.logged_task import LoggedTask
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_csv import export_data_to_csv, log_export_task
 from futurex_openedx_extensions.helpers.models import DataExportTask
+from futurex_openedx_extensions.helpers.stats import sync_course_stats
 
 log = logging.getLogger(__name__)
+
+
+@shared_task(base=LoggedTask)
+def sync_course_stats_task() -> None:
+    """Celery task to refresh the cached per-course certificate counts (CourseStat)."""
+    synced = sync_course_stats(commit=True)
+    log.info('sync_course_stats_task: synced certificate counts for %s course(s).', synced)
 
 
 @shared_task(base=LoggedTask)

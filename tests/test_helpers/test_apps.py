@@ -1,5 +1,6 @@
 """Tests for the apps module of the helpers app"""
 import copy
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -66,6 +67,29 @@ def test_common_production_plugin_settings_explicit(settings, setting_key, defau
     common_production.plugin_settings(settings)
     assert hasattr(settings, setting_key), f'Missing settings ({setting_key})!'
     assert getattr(settings, setting_key) == new_value, f'settings ({setting_key}) did not read from env correctly!'
+
+
+def test_plugin_settings_registers_daily_course_stats_beat(settings):
+    """Verify plugin_settings registers the daily sync_course_stats celery beat schedule."""
+    settings = copy.deepcopy(settings)
+    settings.CELERYBEAT_SCHEDULE = {}
+
+    common_production.plugin_settings(settings)
+
+    entry = settings.CELERYBEAT_SCHEDULE['fx-sync-course-stats']
+    assert entry['task'] == 'futurex_openedx_extensions.helpers.tasks.sync_course_stats_task'
+    assert entry['schedule'] == timedelta(days=1)
+
+
+def test_plugin_settings_keeps_existing_course_stats_beat(settings):
+    """Verify a deployment-defined schedule is not overwritten by the default."""
+    settings = copy.deepcopy(settings)
+    custom_entry = {'task': 'custom.task', 'schedule': timedelta(hours=6)}
+    settings.CELERYBEAT_SCHEDULE = {'fx-sync-course-stats': custom_entry}
+
+    common_production.plugin_settings(settings)
+
+    assert settings.CELERYBEAT_SCHEDULE['fx-sync-course-stats'] == custom_entry
 
 
 def test_ready_imports_signals():
