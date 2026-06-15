@@ -1,7 +1,6 @@
 """Common Settings"""
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Any
 
 
@@ -104,16 +103,4 @@ def plugin_settings(settings: Any) -> None:
         settings,
         'FX_COURSE_CATEGORY_MAX_COUNT',
         20,
-    )
-
-    # Daily Celery beat schedule that refreshes the CourseStat certificate-count cache.
-    # Deployments can override the timing by pre-defining the 'fx-sync-course-stats' entry
-    # in CELERYBEAT_SCHEDULE before this plugin's settings run.
-    settings.CELERYBEAT_SCHEDULE = getattr(settings, 'CELERYBEAT_SCHEDULE', {})
-    settings.CELERYBEAT_SCHEDULE.setdefault(
-        'fx-sync-course-stats',
-        {
-            'task': 'futurex_openedx_extensions.helpers.tasks.sync_course_stats_task',
-            'schedule': timedelta(days=1),  # run once a day
-        },
     )

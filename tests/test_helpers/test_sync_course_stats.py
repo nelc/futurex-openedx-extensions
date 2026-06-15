@@ -1,4 +1,6 @@
 """Tests for the sync_course_stats command and helper."""
+from unittest.mock import patch
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -125,3 +127,15 @@ class TestSyncCourseStatsCommand:
         call_command('sync_course_stats', commit=True)
 
         assert CourseStat.objects.get(course_key=CourseKey.from_string(BLUE_COURSE)).certificate_count_all == 2
+
+    def test_command_async_dispatches_task(self):  # pylint: disable=no-self-use
+        """With --async the command queues the Celery task instead of syncing synchronously."""
+        _make_cert(_make_user('learner_course_blue'), BLUE_COURSE)
+
+        with patch(
+            'futurex_openedx_extensions.helpers.management.commands.sync_course_stats.sync_course_stats_task'
+        ) as mock_task:
+            call_command('sync_course_stats', run_async=True)
+
+        mock_task.delay.assert_called_once_with()
+        assert not CourseStat.objects.exists()
