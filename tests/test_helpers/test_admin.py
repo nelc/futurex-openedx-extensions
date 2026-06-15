@@ -65,7 +65,6 @@ def test_course_stat_admin_settings(course_stat_admin):  # pylint: disable=redef
         'course_key', 'certificate_count_all', 'certificate_count_non_staff', 'last_updated',
     )
     assert course_stat_admin.ordering == ('-last_updated',)
-    assert course_stat_admin.list_per_page == 10
     assert course_stat_admin.change_list_template == 'coursestat_change_list.html'
 
 

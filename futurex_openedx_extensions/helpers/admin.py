@@ -415,7 +415,6 @@ class CourseStatAdmin(admin.ModelAdmin):
         'course_key', 'certificate_count_all', 'certificate_count_non_staff', 'last_updated',
     )
     ordering = ('-last_updated',)
-    list_per_page = 10
 
     def get_urls(self) -> list:
         """Add a custom URL to manually trigger a course-stats sync."""

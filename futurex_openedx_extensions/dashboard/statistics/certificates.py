@@ -40,7 +40,7 @@ def get_certificates_count(
     :rtype: Dict[str, int]
     """
     if not is_heavy_queries_enabled():
-        cached_result = list(
+        course_stats_results = list(
             CourseStat.objects.filter(
                 course_key__in=get_base_queryset_courses(
                     fx_permission_info,
@@ -57,7 +57,7 @@ def get_certificates_count(
                 certificates_count=Sum('certificate_count_all')
             ).values_list('course_org', 'certificates_count')
         )
-        return dict(cached_result)
+        return dict(course_stats_results)
 
     if include_staff:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))
