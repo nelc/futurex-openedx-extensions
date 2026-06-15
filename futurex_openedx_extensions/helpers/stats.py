@@ -55,7 +55,5 @@ def sync_course_stats(commit: bool = True) -> int:
                 update_fields=['certificate_count_all', 'certificate_count_non_staff', 'last_updated'],
                 batch_size=500,
             )
-            # Drop cached rows for courses that no longer have downloadable certificates.
-            CourseStat.objects.exclude(course_key__in=[stat.course_key for stat in stats]).delete()
 
     return len(stats)

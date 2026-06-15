@@ -81,19 +81,6 @@ class TestCourseStatSync:
         assert CourseStat.objects.filter(course_key=course_key).count() == 1
         assert CourseStat.objects.get(course_key=course_key).certificate_count_all == 2
 
-    def test_sync_removes_courses_without_certificates(self):  # pylint: disable=no-self-use
-        """A course that loses all its downloadable certificates is dropped from the cache."""
-        cert = _make_cert(_make_user('learner_course_blue'), BLUE_COURSE)
-        sync_course_stats()
-        course_key = CourseKey.from_string(BLUE_COURSE)
-        assert CourseStat.objects.filter(course_key=course_key).exists()
-
-        cert.status = 'notpassing'
-        cert.save()
-        sync_course_stats()
-
-        assert not CourseStat.objects.filter(course_key=course_key).exists()
-
     def test_sync_refreshes_last_updated_on_update(self):  # pylint: disable=no-self-use
         """The upsert refreshes last_updated for rows that already exist."""
         old = timezone.datetime(2000, 1, 1, tzinfo=timezone.utc)
