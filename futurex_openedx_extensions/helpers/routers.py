@@ -36,6 +36,18 @@ def use_read_replica_if_available(view_func: Callable[..., Any]) -> Callable[...
     @functools.wraps(view_func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         """Wrapper function to set the context variable to use read replica"""
+        request = args[1] if len(args) > 1 else None
+
+        if '.' not in view_func.__qualname__:
+            raise TypeError(
+                f'use_read_replica_if_available: expected a DRF Request as second argument in '
+                f'{view_func.__name__!r}, got {type(request).__name__!r} instead. '
+                'This decorator is only valid on class-based view methods.'
+            )
+
+        if request is not None and request.query_params.get('download') == 'csv':
+            return view_func(*args, **kwargs)
+
         token = _use_replica_db.set(True)
         try:
             return view_func(*args, **kwargs)

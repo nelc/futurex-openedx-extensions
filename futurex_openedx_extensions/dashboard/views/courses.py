@@ -16,7 +16,6 @@ from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_courses_feedback_queryset, get_courses_queryset
 from futurex_openedx_extensions.dashboard.docs_utils import docs
 from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count_by_status
-from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
@@ -29,6 +28,7 @@ from futurex_openedx_extensions.helpers.library import get_accessible_libraries
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
+from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
 

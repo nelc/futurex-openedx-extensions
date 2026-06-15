@@ -11,7 +11,6 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.docs_utils import docs
-from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.course_categories import CourseCategories
@@ -19,6 +18,7 @@ from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantAllCoursesAccess
 from futurex_openedx_extensions.helpers.querysets import get_course_search_queryset
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
+from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.tenants import get_tenants_by_org
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()

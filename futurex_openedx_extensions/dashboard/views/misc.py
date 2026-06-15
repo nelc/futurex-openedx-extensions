@@ -21,7 +21,6 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.docs_utils import docs
-from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import (
     ALLOWED_FILE_EXTENSIONS,
     CONFIG_FILES_UPLOAD_DIR,
@@ -34,6 +33,7 @@ from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantAllCoursesAccess, FXHasTenantCourseAccess
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
+from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.tenants import get_all_tenants_info
 from futurex_openedx_extensions.helpers.upload import get_storage_dir, upload_file
 

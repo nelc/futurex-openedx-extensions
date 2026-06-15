@@ -15,13 +15,13 @@ from zeitlabs_payments.serializers import CartSerializer
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_courses_orders_queryset
 from futurex_openedx_extensions.dashboard.docs_utils import docs
-from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
+from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
 

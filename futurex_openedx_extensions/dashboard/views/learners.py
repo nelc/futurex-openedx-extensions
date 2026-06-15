@@ -21,7 +21,6 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_queryset,
 )
 from futurex_openedx_extensions.dashboard.docs_utils import docs
-from futurex_openedx_extensions.dashboard.views.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -30,6 +29,7 @@ from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
 from futurex_openedx_extensions.helpers.querysets import get_course_search_queryset
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
+from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
 
