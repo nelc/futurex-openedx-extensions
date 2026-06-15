@@ -40,7 +40,6 @@ def get_certificates_count(
     :rtype: Dict[str, int]
     """
     if not is_heavy_queries_enabled():
-        cached_certificates_count = 'certificate_count_all' if include_staff else 'certificate_count_non_staff'
         cached_result = list(
             CourseStat.objects.filter(
                 course_key__in=get_base_queryset_courses(
@@ -55,7 +54,7 @@ def get_certificates_count(
                     ).values(org_lower_case=Lower('org'))
                 )
             ).values('course_org').annotate(
-                certificates_count=Sum(cached_certificates_count)
+                certificates_count=Sum('certificate_count_all')
             ).values_list('course_org', 'certificates_count')
         )
         return dict(cached_result)

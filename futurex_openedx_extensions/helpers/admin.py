@@ -14,7 +14,9 @@ from django.core.cache import cache
 from django.http import Http404, HttpResponseRedirect
 from django.urls import path
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.utils.translation.trans_null import gettext_lazy
+from django.views.decorators.http import require_POST
 from django_mysql.models import QuerySet
 from eox_tenant.models import TenantConfig
 from openedx.core.lib.api.authentication import BearerAuthentication
@@ -426,6 +428,7 @@ class CourseStatAdmin(admin.ModelAdmin):
         ]
         return custom_urls + super().get_urls()
 
+    @method_decorator(require_POST)
     def sync_now(self, request: Any) -> HttpResponseRedirect:  # pylint: disable=no-self-use
         """Run sync_course_stats synchronously, then return to the changelist."""
         sync_course_stats(commit=True)

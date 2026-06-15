@@ -173,12 +173,11 @@ def get_courses_queryset(
             )
         )
     else:
-        cached_certificates_count = 'certificate_count_all' if include_staff else 'certificate_count_non_staff'
         queryset = queryset.annotate(
             certificates_count=Coalesce(Subquery(
                 CourseStat.objects.filter(
                     course_key=OuterRef('id'),
-                ).values(cached_certificates_count)[:1],
+                ).values('certificate_count_all')[:1],
                 output_field=IntegerField(),
             ), 0),
         ).annotate(

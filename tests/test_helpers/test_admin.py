@@ -89,6 +89,15 @@ def test_course_stat_admin_sync_now(mock_sync, course_stat_admin):  # pylint: di
     assert response.url == '/admin/fx_helpers/coursestat'
 
 
+def test_course_stat_admin_sync_now_rejects_get(course_stat_admin):  # pylint: disable=redefined-outer-name
+    """sync_now only accepts POST, so it cannot be triggered by a plain GET navigation."""
+    request = APIRequestFactory().get('/admin/fx_helpers/coursestat/sync_now/')
+
+    response = course_stat_admin.sync_now(request)
+
+    assert response.status_code == 405
+
+
 @pytest.fixture
 def mock_clickhousequery_methods():
     """Fixture to mock the ClickhouseQuery methods."""

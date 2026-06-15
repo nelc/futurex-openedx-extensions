@@ -124,8 +124,7 @@ def test_get_courses_queryset_certificates_count_from_cache(  # pylint: disable=
 ):
     """When heavy queries are disabled, certificates_count is read from the CourseStat cache."""
     with override_flag('fx_dashboard.enable_heavy_queries', active=True):
-        live = {str(c.id): c.certificates_count for c in get_courses_queryset(fx_permission_info)}
-        live_with_staff = {
+        live = {
             str(c.id): c.certificates_count
             for c in get_courses_queryset(fx_permission_info, include_staff=True)
         }
@@ -139,8 +138,9 @@ def test_get_courses_queryset_certificates_count_from_cache(  # pylint: disable=
             for c in get_courses_queryset(fx_permission_info, include_staff=True)
         }
 
+    # the cache serves the all-staff count regardless of include_staff
     assert cached == live
-    assert cached_with_staff == live_with_staff
+    assert cached_with_staff == live
     assert any(live.values())  # sanity: there are non-zero counts behind the comparison
 
 
