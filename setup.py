@@ -149,8 +149,6 @@ setup(
     },
     install_requires=[],
     extras_require={
-        'redwood': load_requirements('requirements/base.in', dynamic_constraint_files=['requirements/constraints-redwood.txt']),
-        'sumac': load_requirements('requirements/base.in', dynamic_constraint_files=['requirements/constraints-sumac.txt']),
         'teak': load_requirements('requirements/base.in', dynamic_constraint_files=['requirements/constraints-teak.txt']),
     },
     python_requires='>=3.11',

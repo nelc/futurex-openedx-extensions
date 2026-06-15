@@ -6,6 +6,7 @@ load-plugins = edx_lint.pylint,pylint_django,pylint_celery,pylint.extensions.no_
 [MESSAGES CONTROL]
 disable =
     django-not-configured,
+    too-many-positional-arguments,
 
 [BASIC]
 # Removing test_.+ from no-docstring-rgx to allow for test methods to be documented.

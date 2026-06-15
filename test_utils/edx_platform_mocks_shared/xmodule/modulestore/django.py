@@ -19,7 +19,7 @@ class MockLibrary:  # pylint: disable=too-few-public-methods
 
 class MockCourse:  # pylint: disable=too-few-public-methods
     """Mock Course object"""
-    def __init__(self, org, number, run, user_id, fields=None):  # pylint: disable=unused-argument, too-many-arguments
+    def __init__(self, org, number, run, user_id, fields=None):  # pylint: disable=unused-argument
         self.id = CourseLocator.from_string(f'course-v1:{org}+{number}+{run}')  # pylint: disable=invalid-name
         self.discussions_settings = {}
         self.published_by = user_id
@@ -85,7 +85,7 @@ class DummyModuleStore:
         """Mock"""
         return None
 
-    def create_course(self, org, number, run, user_id, fields):  # pylint: disable=too-many-arguments, no-self-use
+    def create_course(self, org, number, run, user_id, fields):  # pylint: disable=no-self-use
         """Mock method to simulate course creation"""
         return MockCourse(org, number, run, user_id, fields)
 
