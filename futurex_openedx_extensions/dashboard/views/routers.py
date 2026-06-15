@@ -4,4 +4,6 @@ The router moved to ``futurex_openedx_extensions.helpers.routers``, but deployme
 still reference this path in ``DATABASE_ROUTERS``. Re-export it here so the old
 dotted path keeps resolving.
 """
-from futurex_openedx_extensions.helpers.routers import FXReadReplicaRouter  # noqa: F401
+from futurex_openedx_extensions.helpers.routers import FXReadReplicaRouter
+
+__all__ = ['FXReadReplicaRouter']

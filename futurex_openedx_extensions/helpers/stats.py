@@ -14,8 +14,9 @@ def sync_course_stats(commit: bool = True) -> int:
     Refresh the cached downloadable-certificate count for every course.
 
     The count is aggregated with a single grouped query (downloadable certificates of active
-    users) and written with one bulk upsert in an atomic transaction: existing rows are
-    updated and missing rows are created.
+    users). The cache is then rebuilt inside an atomic transaction: every existing row is
+    deleted and the fresh rows are bulk-inserted. This keeps the logic database-agnostic (no
+    upsert) and is cheap at this table's scale (roughly one row per course).
 
     ``certificate_count_non_staff`` is kept on the model but is left at 0 for now; consumers
     currently read ``certificate_count_all``. Skipping the per-row staff lookup keeps the sync
@@ -48,12 +49,7 @@ def sync_course_stats(commit: bool = True) -> int:
 
     if commit:
         with transaction.atomic():
-            CourseStat.objects.bulk_create(
-                stats,
-                update_conflicts=True,
-                unique_fields=['course_key'],
-                update_fields=['certificate_count_all', 'certificate_count_non_staff', 'last_updated'],
-                batch_size=500,
-            )
+            CourseStat.objects.all().delete()
+            CourseStat.objects.bulk_create(stats, batch_size=500)
 
     return len(stats)

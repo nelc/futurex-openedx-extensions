@@ -68,7 +68,7 @@ class TestCourseStatSync:
         assert CourseStat.objects.get(course_key=CourseKey.from_string(BLUE_COURSE)).certificate_count_all == 1
 
     def test_sync_updates_existing_row_without_duplicating(self):  # pylint: disable=no-self-use
-        """A stale row is corrected in place rather than duplicated (upsert)."""
+        """A stale row is corrected rather than duplicated after a rebuild."""
         CourseStat.objects.create(
             course_key=CourseKey.from_string(BLUE_COURSE),
             certificate_count_all=100000,
@@ -84,7 +84,7 @@ class TestCourseStatSync:
         assert CourseStat.objects.get(course_key=course_key).certificate_count_all == 2
 
     def test_sync_refreshes_last_updated_on_update(self):  # pylint: disable=no-self-use
-        """The upsert refreshes last_updated for rows that already exist."""
+        """The rebuild refreshes last_updated for a course that already had a row."""
         old = timezone.datetime(2000, 1, 1, tzinfo=timezone.utc)
         stat = CourseStat.objects.create(course_key=CourseKey.from_string(BLUE_COURSE))
         # .update() bypasses auto_now so we can plant a stale timestamp.
@@ -93,8 +93,9 @@ class TestCourseStatSync:
 
         sync_course_stats()
 
-        stat.refresh_from_db()
-        assert stat.last_updated > old
+        # The row is rebuilt (delete + re-insert), so re-fetch by course_key, not the old pk.
+        refreshed = CourseStat.objects.get(course_key=CourseKey.from_string(BLUE_COURSE))
+        assert refreshed.last_updated > old
 
     def test_sync_dry_run_writes_nothing(self):
         """commit=False computes the count but does not touch the database."""

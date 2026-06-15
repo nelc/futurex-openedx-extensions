@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from futurex_openedx_extensions.dashboard.views import routers as legacy_routers
 from futurex_openedx_extensions.helpers import routers
 
 
@@ -91,3 +92,8 @@ def test_contextvar_reset_on_exception():
 
     # after the function raised, the contextvar must be reset so router.db_for_read returns None
     assert router.db_for_read(object) is None
+
+
+def test_legacy_router_path_reexports_same_class():
+    """Production DATABASE_ROUTERS references the old dotted path; it must keep resolving."""
+    assert legacy_routers.FXReadReplicaRouter is routers.FXReadReplicaRouter
