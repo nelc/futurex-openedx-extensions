@@ -381,7 +381,7 @@ class Cart(models.Model):
         Items aren't modeled here; for tests we surface the most recent invoice's
         total since the two are equal in the real flow.
         """
-        invoice = self.invoices.first()
+        invoice = self.invoices.first()  # pylint: disable=no-member
         return invoice.total if invoice else 0
 
 
