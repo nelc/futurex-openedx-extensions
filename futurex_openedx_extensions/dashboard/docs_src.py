@@ -1943,6 +1943,12 @@ docs_src = {
                                         type=openapi.TYPE_NUMBER, format=openapi.FORMAT_FLOAT, example=750.0,
                                     ),
                                     'currency': openapi.Schema(type=openapi.TYPE_STRING, example='SAR'),
+                                    'paid_at': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        format=openapi.FORMAT_DATETIME,
+                                        nullable=True,
+                                        example='2025-11-23T18:39:39Z',
+                                    ),
                                     'invoice_id': openapi.Schema(
                                         type=openapi.TYPE_STRING, nullable=True, example='DEV-100001',
                                     ),

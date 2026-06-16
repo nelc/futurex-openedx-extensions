@@ -1,13 +1,16 @@
 """Test views for the dashboard app - payments"""
 # pylint: disable=duplicate-code
+from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import resolve
+from django.utils import timezone
 from rest_framework import status as http_status
 from zeitlabs_payments.models import Cart, Invoice
 
+from futurex_openedx_extensions.helpers.converters import dt_to_str
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
 from tests.test_dashboard.test_mixins import BaseTestViewMixin
 
@@ -150,8 +153,9 @@ class TestPaymentOrdersViewV2(BaseTestViewMixin):
         user = get_user_model().objects.get(id=self.staff_user)
 
         cart_paid = Cart.objects.create(user=user, status='paid')
+        paid_at = timezone.now()
         Invoice.objects.create(
-            cart=cart_paid, invoice_number='DEV-100001', total=750.0, currency='SAR',
+            cart=cart_paid, invoice_number='DEV-100001', total=750.0, currency='SAR', paid_at=paid_at,
         )
         cart_unpaid = Cart.objects.create(user=user, status='processing')
 
@@ -168,7 +172,7 @@ class TestPaymentOrdersViewV2(BaseTestViewMixin):
         expected_keys = {
             'id', 'user_id', 'full_name', 'alternative_full_name', 'username',
             'national_id', 'email', 'mobile_no', 'status', 'created_at',
-            'total', 'currency', 'invoice_id', 'invoice_url',
+            'total', 'currency', 'paid_at', 'invoice_id', 'invoice_url',
         }
         assert set(results[0].keys()) == expected_keys
 
@@ -181,8 +185,40 @@ class TestPaymentOrdersViewV2(BaseTestViewMixin):
         assert results[0]['currency'] == 'SAR'
         assert results[0]['invoice_id'] == 'DEV-100001'
         assert results[0]['invoice_url'] == '/payment/v1/invoice/DEV-100001/'
+        assert results[0]['paid_at'] == dt_to_str(paid_at)
 
         assert results[1]['id'] == cart_unpaid.id
         assert results[1]['currency'] is None
         assert results[1]['invoice_id'] is None
         assert results[1]['invoice_url'] is None
+        assert results[1]['paid_at'] is None
+
+    @patch('futurex_openedx_extensions.dashboard.views.payments.get_courses_orders_queryset')
+    def test_date_filter_uses_paid_at(self, mock_get_qs):
+        """date_from/date_to filter on the invoice's paid_at, not the cart's created_at."""
+        user = get_user_model().objects.get(id=self.staff_user)
+
+        cart_in_range = Cart.objects.create(user=user, status='paid')
+        Invoice.objects.create(
+            cart=cart_in_range, invoice_number='DEV-1', total=100.0, currency='SAR',
+            paid_at=timezone.make_aware(datetime(2025, 1, 15, 12, 0, 0)),
+        )
+        cart_out_of_range = Cart.objects.create(user=user, status='paid')
+        Invoice.objects.create(
+            cart=cart_out_of_range, invoice_number='DEV-2', total=100.0, currency='SAR',
+            paid_at=timezone.make_aware(datetime(2025, 3, 15, 12, 0, 0)),
+        )
+        cart_no_invoice = Cart.objects.create(user=user, status='processing')
+
+        mock_get_qs.return_value = Cart.objects.filter(
+            id__in=[cart_in_range.id, cart_out_of_range.id, cart_no_invoice.id],
+        ).order_by('id')
+
+        self.login_user(self.staff_user)
+        response = self.client.get(f'{self.url}?date_from=2025-01-01&date_to=2025-01-31')
+        assert response.status_code == http_status.HTTP_200_OK
+
+        # Only the order whose invoice was paid in January is returned; created_at (now) is ignored,
+        # and the order with no invoice is excluded since it has no paid_at.
+        ids = [result['id'] for result in response.data['results']]
+        assert ids == [cart_in_range.id]

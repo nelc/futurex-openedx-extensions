@@ -129,7 +129,7 @@ class PaymentOrdersViewV2(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     fx_view_name = 'orders_list_v2'
     serializer_class = serializers.PaymentOrderV2Serializer
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
-    fx_view_description = 'api/fx/payments/v2/orders/: Get the list of orders (flat shape)'
+    fx_view_description = 'api/fx/payments/v2/orders/: Get the list of orders (v2)'
 
     def get_queryset(self) -> QuerySet:
         """Get the list of payment orders for v2."""
@@ -167,7 +167,7 @@ class PaymentOrdersViewV2(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
                 message=f'Invalid item_type: {item_type}, must be one of {CatalogueItem.valid_item_types()}.'
             )
 
-        return get_courses_orders_queryset(
+        qs = get_courses_orders_queryset(
             fx_permission_info=self.fx_permission_info,
             user_ids=user_ids_list,
             course_ids=course_ids_list,
@@ -180,9 +180,20 @@ class PaymentOrdersViewV2(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             include_user_details=True,
             status=status,
             item_type=item_type,
-            date_from=date_serializer.validated_data.get('date_from'),
-            date_to=date_serializer.validated_data.get('date_to'),
         )
+
+        # v2 filters by the invoice's paid_at; the cart's created_at stays display-only.
+        paid_at_filter = {}
+        date_from = date_serializer.validated_data.get('date_from')
+        date_to = date_serializer.validated_data.get('date_to')
+        if date_from:
+            paid_at_filter['invoices__paid_at__date__gte'] = date_from
+        if date_to:
+            paid_at_filter['invoices__paid_at__date__lte'] = date_to
+        if paid_at_filter:
+            qs = qs.filter(**paid_at_filter).distinct()
+
+        return qs
 
     @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:

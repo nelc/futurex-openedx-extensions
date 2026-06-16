@@ -391,6 +391,7 @@ class Invoice(models.Model):
     invoice_number = models.CharField(max_length=255, unique=True)
     total = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=3)
+    paid_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         app_label = 'fake_models'

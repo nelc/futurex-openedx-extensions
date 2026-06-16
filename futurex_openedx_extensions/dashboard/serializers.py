@@ -121,13 +121,8 @@ class DataExportTaskSerializer(ModelSerializerOptionalFields):
         return get_exported_file_url(obj)
 
 
-class LearnerFieldsMixin(serializers.Serializer):
-    """Mixin providing the learner-derived SerializerMethodFields and their helpers.
-
-    Inherits from ``serializers.Serializer`` so DRF's metaclass collects the field
-    declarations into ``_declared_fields``; subclasses then inherit them via MRO.
-    Override ``_get_user(obj)`` when ``obj`` is not itself the user (e.g. a Cart).
-    """
+class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
+    """Serializer for learner's basic details."""
     user_id = serializers.SerializerMethodField(help_text='User ID in edx-platform')
     full_name = serializers.SerializerMethodField(help_text='Full name of the user')
     alternative_full_name = serializers.SerializerMethodField(help_text='Arabic name (if available)')
@@ -142,6 +137,23 @@ class LearnerFieldsMixin(serializers.Serializer):
         help_text='Date when the user was registered in the platform regardless of which tenant',
     )
     last_login = serializers.SerializerMethodField(help_text='Date when the user last logged in')
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'user_id',
+            'full_name',
+            'alternative_full_name',
+            'username',
+            'national_id',
+            'email',
+            'mobile_no',
+            'year_of_birth',
+            'gender',
+            'gender_display',
+            'date_joined',
+            'last_login',
+        ]
 
     def _get_user(self, obj: Any = None) -> get_user_model | None:  # pylint: disable=no-self-use
         """
@@ -213,27 +225,6 @@ class LearnerFieldsMixin(serializers.Serializer):
     def get_year_of_birth(self, obj: get_user_model) -> Any:
         """Return year of birth."""
         return self._get_profile_field(obj, 'year_of_birth')
-
-
-class LearnerBasicDetailsSerializer(LearnerFieldsMixin, ModelSerializerOptionalFields):
-    """Serializer for learner's basic details."""
-
-    class Meta:
-        model = get_user_model()
-        fields = [
-            'user_id',
-            'full_name',
-            'alternative_full_name',
-            'username',
-            'national_id',
-            'email',
-            'mobile_no',
-            'year_of_birth',
-            'gender',
-            'gender_display',
-            'date_joined',
-            'last_login',
-        ]
 
 
 class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
@@ -1630,15 +1621,23 @@ class ReportDateFilterSerializer(ReadOnlySerializer):
     )
 
 
-class PaymentOrderV2Serializer(LearnerFieldsMixin, ModelSerializerOptionalFields):
+class PaymentOrderV2Serializer(ModelSerializerOptionalFields):
     """Flat Cart-based serializer for payment orders v2.
 
-    Inlines learner fields (via `LearnerFieldsMixin`) on each order and exposes
-    invoice details as `invoice_id` / `invoice_url`.
+    Inlines learner fields on each order and exposes invoice details as
+    `invoice_id` / `invoice_url`.
     """
+    user_id = serializers.SerializerMethodField(help_text='User ID in edx-platform')
+    full_name = serializers.SerializerMethodField(help_text='Full name of the user')
+    alternative_full_name = serializers.SerializerMethodField(help_text='Arabic name (if available)')
+    username = serializers.SerializerMethodField(help_text='Username of the user in edx-platform')
+    national_id = serializers.SerializerMethodField(help_text='National ID of the user (if available)')
+    email = serializers.SerializerMethodField(help_text='Email of the user in edx-platform')
+    mobile_no = serializers.SerializerMethodField(help_text='Mobile number of the user (if available)')
     created_at = serializers.SerializerMethodField()
     total = serializers.SerializerMethodField()
     currency = serializers.SerializerMethodField()
+    paid_at = serializers.SerializerMethodField()
     invoice_id = serializers.SerializerMethodField()
     invoice_url = serializers.SerializerMethodField()
 
@@ -1657,13 +1656,55 @@ class PaymentOrderV2Serializer(LearnerFieldsMixin, ModelSerializerOptionalFields
             'created_at',
             'total',
             'currency',
+            'paid_at',
             'invoice_id',
             'invoice_url',
         ]
 
-    def _get_user(self, obj: Any = None) -> Any:
+    def _get_user(self, obj: Any = None) -> Any:  # pylint: disable=no-self-use
         """Return the User attached to the Cart."""
         return obj.user if obj is not None else None
+
+    def _get_profile_field(self: Any, obj: Any, field_name: str) -> Any:
+        """Get the profile field value."""
+        user = self._get_user(obj)
+        return getattr(user.profile, field_name) if hasattr(user, 'profile') and user.profile else None
+
+    def _get_extra_field(self: Any, obj: Any, field_name: str) -> Any:
+        """Get the extra field value."""
+        user = self._get_user(obj)
+        return getattr(user.extrainfo, field_name) if hasattr(user, 'extrainfo') and user.extrainfo else None
+
+    def get_user_id(self, obj: Any) -> int:
+        """Return user ID."""
+        return self._get_user(obj).id
+
+    def get_email(self, obj: Any) -> str:
+        """Return user email."""
+        return self._get_user(obj).email
+
+    def get_username(self, obj: Any) -> str:
+        """Return username."""
+        return self._get_user(obj).username
+
+    def get_national_id(self, obj: Any) -> Any:
+        """Return national ID."""
+        return self._get_extra_field(obj, 'national_id')
+
+    def get_full_name(self, obj: Any) -> Any:
+        """Return full name."""
+        return extract_full_name_from_user(self._get_user(obj))
+
+    def get_alternative_full_name(self, obj: Any) -> Any:
+        """Return alternative full name."""
+        return (
+            extract_arabic_name_from_user(self._get_user(obj)) or
+            extract_full_name_from_user(self._get_user(obj), alternative=True)
+        )
+
+    def get_mobile_no(self, obj: Any) -> Any:
+        """Return mobile number."""
+        return self._get_profile_field(obj, 'phone_number')
 
     def _get_invoice(self, obj: Any) -> Any:  # pylint: disable=no-self-use
         """Return the latest invoice attached to the Cart, or None."""
@@ -1682,6 +1723,11 @@ class PaymentOrderV2Serializer(LearnerFieldsMixin, ModelSerializerOptionalFields
         """Return the currency from the cart's invoice."""
         invoice = self._get_invoice(obj)
         return invoice.currency if invoice else None
+
+    def get_paid_at(self, obj: Any) -> Any:
+        """Return the invoice's paid date, or None when no invoice is attached."""
+        invoice = self._get_invoice(obj)
+        return dt_to_str(invoice.paid_at) if invoice else None
 
     def get_invoice_id(self, obj: Any) -> Any:
         """Return the invoice number, or None when no invoice is attached."""
