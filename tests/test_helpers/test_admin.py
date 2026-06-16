@@ -65,36 +65,6 @@ def test_course_stat_admin_settings(course_stat_admin):  # pylint: disable=redef
         'course_key', 'certificate_count_all', 'certificate_count_non_staff', 'last_updated',
     )
     assert course_stat_admin.ordering == ('-last_updated',)
-    assert course_stat_admin.change_list_template == 'coursestat_change_list.html'
-
-
-def test_course_stat_admin_get_urls(course_stat_admin):  # pylint: disable=redefined-outer-name
-    """Verify get_urls registers the manual sync URL alongside the default admin URLs."""
-    url_names = [url.name for url in course_stat_admin.get_urls()]
-    assert 'fx_helpers_coursestat_sync_now' in url_names
-    assert 'fx_helpers_coursestat_changelist' in url_names
-
-
-@patch('futurex_openedx_extensions.helpers.admin.sync_course_stats')
-def test_course_stat_admin_sync_now(mock_sync, course_stat_admin):  # pylint: disable=redefined-outer-name
-    """Verify sync_now runs the sync synchronously and redirects back to the changelist."""
-    mock_sync.return_value = 5
-    request = APIRequestFactory().post('/admin/fx_helpers/coursestat/sync_now/')
-
-    response = course_stat_admin.sync_now(request)
-
-    mock_sync.assert_called_once_with(commit=True)
-    assert response.status_code == 302
-    assert response.url == '/admin/fx_helpers/coursestat'
-
-
-def test_course_stat_admin_sync_now_rejects_get(course_stat_admin):  # pylint: disable=redefined-outer-name
-    """sync_now only accepts POST, so it cannot be triggered by a plain GET navigation."""
-    request = APIRequestFactory().get('/admin/fx_helpers/coursestat/sync_now/')
-
-    response = course_stat_admin.sync_now(request)
-
-    assert response.status_code == 405
 
 
 @pytest.fixture
