@@ -1035,3 +1035,19 @@ class ConfigMirror(models.Model):
         tenant.save()
         invalidate_tenant_readable_lms_configs([tenant.id])
         invalidate_cache()
+
+
+class CourseStat(models.Model):
+    """
+    Cached downloadable-certificate counts per course for fast reads.
+    """
+    course_key = CourseKeyField(max_length=255, unique=True)  # type: ignore
+    certificate_count_all = models.IntegerField(default=0)
+    certificate_count_non_staff = models.IntegerField(default=0)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return (
+            f'{self.course_key}: all={self.certificate_count_all}, '
+            f'non_staff={self.certificate_count_non_staff}'
+        )

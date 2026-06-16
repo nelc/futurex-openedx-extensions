@@ -19,6 +19,7 @@ from futurex_openedx_extensions.dashboard.details.courses import (
     get_learner_courses_info_queryset,
 )
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.stats import sync_course_stats
 
 
 @pytest.mark.django_db
@@ -115,6 +116,32 @@ def test_get_courses_queryset_result_for_completion_rate(
         assert course.enrolled_count == 2
         assert course.certificates_count == (2 if certificate_count_enabled else 0)
         assert course.completion_rate == (1.0 if certificate_count_enabled else 0.0)
+
+
+@pytest.mark.django_db
+def test_get_courses_queryset_certificates_count_from_cache(  # pylint: disable=unused-argument
+    base_data, fx_permission_info,
+):
+    """When heavy queries are disabled, certificates_count is read from the CourseStat cache."""
+    with override_flag('fx_dashboard.enable_heavy_queries', active=True):
+        live = {
+            str(c.id): c.certificates_count
+            for c in get_courses_queryset(fx_permission_info, include_staff=True)
+        }
+
+    sync_course_stats()
+
+    with override_flag('fx_dashboard.enable_heavy_queries', active=False):
+        cached = {str(c.id): c.certificates_count for c in get_courses_queryset(fx_permission_info)}
+        cached_with_staff = {
+            str(c.id): c.certificates_count
+            for c in get_courses_queryset(fx_permission_info, include_staff=True)
+        }
+
+    # the cache serves the all-staff count regardless of include_staff
+    assert cached == live
+    assert cached_with_staff == live
+    assert any(live.values())  # sanity: there are non-zero counts behind the comparison
 
 
 @pytest.mark.django_db

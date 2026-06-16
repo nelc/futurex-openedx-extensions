@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import DataExportTask
-from futurex_openedx_extensions.helpers.tasks import export_data_to_csv_task
+from futurex_openedx_extensions.helpers.tasks import export_data_to_csv_task, sync_course_stats_task
 
 
 @pytest.mark.django_db
@@ -104,3 +104,15 @@ def test_export_data_to_csv_task_error_unhandled(mock_get_task, mock_set_status,
     mock_set_status.assert_called_once_with(
         task_id=task_id, status=DataExportTask.STATUS_FAILED, error_message=str(mock_get_task.side_effect)
     )
+
+
+@patch('futurex_openedx_extensions.helpers.tasks.sync_course_stats')
+def test_sync_course_stats_task(mock_sync, caplog):
+    """Verify sync_course_stats_task refreshes the cache and logs the synced count."""
+    mock_sync.return_value = 7
+    caplog.set_level(logging.INFO)
+
+    sync_course_stats_task()
+
+    mock_sync.assert_called_once_with(commit=True)
+    assert 'synced certificate counts for 7 course(s)' in caplog.text

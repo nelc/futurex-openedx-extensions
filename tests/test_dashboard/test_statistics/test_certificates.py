@@ -6,6 +6,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.statistics import certificates
+from futurex_openedx_extensions.helpers.stats import sync_course_stats
 from tests.fixture_helpers import get_tenants_orgs
 
 
@@ -57,12 +58,27 @@ def test_get_certificates_count_not_downloadable(  # pylint: disable=unused-argu
 
 
 @pytest.mark.django_db
-@override_flag('fx_dashboard.enable_heavy_queries', active=False)
-def test_get_certificates_count_disabled():
-    """Verify get_certificates_count returns empty dict when heavy queries are disabled."""
-    result = certificates.get_certificates_count({})
-    assert not result
-    assert isinstance(result, dict)
+def test_get_certificates_count_uses_cache_when_disabled(  # pylint: disable=unused-argument
+    base_data, fx_permission_info,
+):
+    """When heavy queries are disabled, get_certificates_count reads the CourseStat cache."""
+    fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs([1])
+    fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs([1])
+
+    with override_flag('fx_dashboard.enable_heavy_queries', active=True):
+        live_with_staff = certificates.get_certificates_count(fx_permission_info, include_staff=True)
+
+    with override_flag('fx_dashboard.enable_heavy_queries', active=False):
+        # empty cache -> nothing to report
+        assert not certificates.get_certificates_count(fx_permission_info)
+
+        sync_course_stats()
+
+        # the cache serves the all-staff count regardless of include_staff
+        assert certificates.get_certificates_count(fx_permission_info, include_staff=False) == live_with_staff
+        assert certificates.get_certificates_count(fx_permission_info, include_staff=True) == live_with_staff
+
+    assert live_with_staff  # sanity: there is data behind the comparison
 
 
 @pytest.mark.django_db
@@ -130,9 +146,24 @@ def test_get_learning_hours_count_for_different_course_effort_not_set(
 
 
 @pytest.mark.django_db
-@override_flag('fx_dashboard.enable_heavy_queries', active=False)
-def test_get_learning_hours_count_when_certificate_count_is_disabled():
-    """Verify get_learning_hours_count returns 0 when heavy queries are disabled."""
-    result = certificates.get_learning_hours_count({})
-    assert not result
-    assert isinstance(result, int)
+def test_get_learning_hours_count_uses_cache_when_disabled(  # pylint: disable=unused-argument
+    base_data, fx_permission_info,
+):
+    """When heavy queries are disabled, learning hours are computed from the CourseStat cache."""
+    fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs([1])
+    fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs([1])
+
+    with override_flag('fx_dashboard.enable_heavy_queries', active=True):
+        live_with_staff = certificates.get_learning_hours_count(fx_permission_info, include_staff=True)
+
+    with override_flag('fx_dashboard.enable_heavy_queries', active=False):
+        # empty cache -> no learning hours
+        assert certificates.get_learning_hours_count(fx_permission_info) == 0
+
+        sync_course_stats()
+
+        # the cache serves the all-staff learning hours regardless of include_staff
+        assert certificates.get_learning_hours_count(fx_permission_info, include_staff=False) == live_with_staff
+        assert certificates.get_learning_hours_count(fx_permission_info, include_staff=True) == live_with_staff
+
+    assert live_with_staff  # sanity: there is data behind the comparison
