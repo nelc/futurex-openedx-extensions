@@ -22,8 +22,10 @@ class FXReadReplicaRouter:  # pylint: disable=no-self-use
         """No route for writing"""
         return None
 
-    def allow_relation(self, *a: Any, **kw: Any) -> None:  # pylint: disable=unused-argument
-        """No relation allowed"""
+    def allow_relation(self, *a: Any, **kw: Any) -> Optional[bool]:  # pylint: disable=unused-argument
+        """Allow relations if read replica context is active."""
+        if _use_replica_db.get():
+            return True
         return None
 
     def allow_migrate(self, *a: Any, **kw: Any) -> None:  # pylint: disable=unused-argument
