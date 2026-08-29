@@ -281,6 +281,18 @@ class TestLearnersEnrollmentView(BaseTestViewMixin):
         view_class = view_func.view_class
         self.assertEqual(view_class.permission_classes, [FXHasTenantCourseAccess])
 
+    def test_visible_courses_only(self):
+        """Verify that visible_courses_only is passed through, and defaults to None so callers are unaffected"""
+        self.login_user(self.staff_user)
+        cases = (('', None), ('?visible_courses_only=0', None), ('?visible_courses_only=1', True))
+        for query_string, expected in cases:
+            with patch(
+                'futurex_openedx_extensions.dashboard.views.learners.get_learners_enrollments_queryset'
+            ) as mock_queryset:
+                self.client.get(self.url + query_string)
+                assert mock_queryset.call_args_list[0][1]['visible_filter'] is expected, \
+                    f'unexpected visible_filter for query string: {query_string}'
+
     def test_success(self):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)

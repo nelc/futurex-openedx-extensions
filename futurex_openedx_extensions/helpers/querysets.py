@@ -310,6 +310,7 @@ def get_course_search_queryset(
     fx_permission_info: dict,
     search_text: str | None = None,
     course_ids: List[str] | None = None,
+    visible_filter: bool | None = None,
 ) -> QuerySet:
     """
     Get the courses queryset for the given search text.
@@ -318,6 +319,13 @@ def get_course_search_queryset(
     :type fx_permission_info: dict
     :param search_text: Search text to filter the courses by
     :type search_text: str | None
+    :param visible_filter: Value to filter courses on catalog visibility. None (the default) means no
+        filter, which keeps every existing caller behaving exactly as before. Pass True to match the
+        catalog-visibility rule that `get_base_queryset_courses` applies to the statistics endpoints,
+        so a list and its matching counter cover the same courses. Permission checks on write paths
+        (unenroll, category assignment) must keep the default, otherwise a hidden course becomes
+        unmanageable.
+    :type visible_filter: bool | None
     :return: QuerySet of courses
     :rtype: QuerySet
     """
@@ -325,6 +333,12 @@ def get_course_search_queryset(
         Q(id__in=get_partial_access_course_ids(fx_permission_info)) |
         Q(org__in=fx_permission_info['view_allowed_full_access_orgs'])
     )
+    if visible_filter is not None:
+        queryset = queryset.filter(
+            Q(catalog_visibility__in=['about', 'both']) & Q(visible_to_staff_only=False)
+            if visible_filter else
+            ~(Q(catalog_visibility__in=['about', 'both']) & Q(visible_to_staff_only=False))
+        )
     if course_ids:
         verify_course_ids(course_ids)
         queryset = queryset.filter(id__in=course_ids)
@@ -482,10 +496,14 @@ def get_accessible_users_and_courses(  # pylint: disable=too-many-arguments
     learner_search: str | None = None,
     course_search: str | None = None,
     include_staff: bool = False,
+    visible_filter: bool | None = None,
 ) -> tuple[QuerySet, QuerySet]:
     """
     Utility to return accessible users and courses based on filters.
     Used by multiple APIs (orders, enrollments, etc.).
+
+    :param visible_filter: Passed through to `get_course_search_queryset`. None (the default) keeps
+        the historical behaviour of returning rows from hidden courses too.
     """
     accessible_users = get_permitted_learners_queryset(
         queryset=get_learners_search_queryset(
@@ -501,6 +519,7 @@ def get_accessible_users_and_courses(  # pylint: disable=too-many-arguments
         fx_permission_info=fx_permission_info,
         search_text=course_search,
         course_ids=course_ids,
+        visible_filter=visible_filter,
     )
 
     return accessible_users, accessible_courses
