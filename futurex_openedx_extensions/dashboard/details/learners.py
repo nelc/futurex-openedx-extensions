@@ -323,6 +323,7 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     course_search: str | None = None,
     include_staff: bool = False,
     progress_filter: tuple[float, float] = (-1, -1),
+    visible_filter: bool | None = None,
 ) -> QuerySet:
     """
     Get the enrollment details. If no course_ids or user_ids are provided,
@@ -336,6 +337,8 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     :param course_search: Text to search enrollments by course (display name, id) (optional).
     :param include_staff: Flag to include staff users (default: False).
     :param progress_filter: Tuple containing min and max progress percentage to filter by. -1 means no filter.
+    :param visible_filter: Value to filter courses on catalog visibility. None (the default) means no
+        filter. Pass True to cover the same courses the `total_counts` enrollments stat counts.
     :return: List of dictionaries containing user and course details.
     """
     accessible_users, accessible_courses = get_accessible_users_and_courses(
@@ -346,6 +349,7 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
         learner_search=learner_search,
         course_search=course_search,
         include_staff=include_staff,
+        visible_filter=visible_filter,
     )
 
     if is_learner_certificates_enabled():

@@ -54,12 +54,13 @@ class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     def get_queryset(self) -> QuerySet:
         """Get the list of learners"""
         search_text = self.request.query_params.get('search_text')
-        include_staff = self.request.query_params.get('include_staff')
+        include_staff = self.request.query_params.get('include_staff', '0') == '1'
+        visible_courses_only = self.request.query_params.get('visible_courses_only', '0') == '1'
 
         return get_courses_queryset(
             fx_permission_info=self.fx_permission_info,
             search_text=search_text,
-            visible_filter=None,
+            visible_filter=True if visible_courses_only else None,
             include_staff=include_staff,
         )
 
