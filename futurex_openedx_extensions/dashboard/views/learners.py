@@ -277,6 +277,9 @@ class LearnersEnrollmentView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
             course_search=self.request.query_params.get('course_search'),
             include_staff=self.request.query_params.get('include_staff', '0') == '1',
             progress_filter=(progress_min, progress_max),
+            visible_filter=True if self.request.query_params.get(
+                'visible_courses_only', '0'
+            ) == '1' else None,
         )
 
     def get_serializer_context(self) -> Dict[str, Any]:
