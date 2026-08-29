@@ -50,6 +50,20 @@ def test_db_write_and_relations_and_migrate_return_none():
     assert router.allow_migrate() is None
 
 
+def test_allow_relation_true_inside_replica_context():
+    """allow_relation returns True while the read replica context is active, and None outside it."""
+    router = routers.FXReadReplicaRouter()
+    assert router.allow_relation() is None
+
+    token = routers._use_replica_db.set(True)  # pylint: disable=protected-access
+    try:
+        assert router.allow_relation() is True
+    finally:
+        routers._use_replica_db.reset(token)  # pylint: disable=protected-access
+
+    assert router.allow_relation() is None
+
+
 def test_decorator_raises_type_error_for_plain_function():
     """Decorator raises TypeError when applied to a plain function (no dot in qualname)."""
     def plain_function():
