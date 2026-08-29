@@ -234,6 +234,23 @@ def test_get_course_search_queryset(
 
 
 @pytest.mark.django_db
+def test_get_course_search_queryset_visible_filter(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Verify get_course_search_queryset function with visible_filter."""
+    fx_permission_info['view_allowed_full_access_orgs'] = ['org1', 'org2']
+    course = CourseOverview.objects.filter(org='org1').first()
+    assert course.catalog_visibility == 'both', 'Catalog visibility should be initialized as (both) for test courses'
+    course.catalog_visibility = 'none'
+    course.save()
+
+    result = querysets.get_course_search_queryset(fx_permission_info)
+    assert result.count() == 12, 'the default must not filter on visibility, to keep existing callers unchanged'
+    result = querysets.get_course_search_queryset(fx_permission_info, visible_filter=True)
+    assert result.count() == 11
+    result = querysets.get_course_search_queryset(fx_permission_info, visible_filter=False)
+    assert result.count() == 1
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     'search_text, course_ids_filter, expected_count, expected_error, usecase',
     [
