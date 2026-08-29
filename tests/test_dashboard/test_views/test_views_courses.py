@@ -49,6 +49,22 @@ class TestCoursesView(BaseTestViewMixin):
             assert mock_queryset.call_args_list[0][1]['search_text'] == 'course'
             assert mock_queryset.call_args_list[0][1]['visible_filter'] is None
 
+    def test_list_visible_courses_only(self):
+        """Verify that visible_courses_only=1 restricts the list to catalog-visible courses"""
+        self.login_user(self.staff_user)
+        with patch('futurex_openedx_extensions.dashboard.views.courses.get_courses_queryset') as mock_queryset:
+            self.client.get(self.url + '?visible_courses_only=1')
+            assert mock_queryset.call_args_list[0][1]['visible_filter'] is True
+
+    def test_list_include_staff_parsing(self):
+        """Verify that include_staff is enabled only by an explicit 1, since the string '0' is truthy in python"""
+        self.login_user(self.staff_user)
+        for value, expected in (('1', True), ('0', False), ('false', False)):
+            with patch('futurex_openedx_extensions.dashboard.views.courses.get_courses_queryset') as mock_queryset:
+                self.client.get(self.url + f'?include_staff={value}')
+                assert mock_queryset.call_args_list[0][1]['include_staff'] is expected, \
+                    f'unexpected include_staff parsing for value: {value}'
+
     def test_list_success(self):
         """Verify that the view returns the correct response"""
         self.login_user(self.staff_user)
