@@ -79,12 +79,43 @@ def annotate_courses_rating_queryset(
     return queryset
 
 
+ENROLLED_COUNT_BREAKDOWN_STAGES = [
+    'all_rows',
+    'active_enrollment',
+    'active_user',
+    'excluding_platform_staff',
+    'excluding_course_staff',
+]
+
+
+def _enrollment_stage_subquery(extra_filters: dict, exclude_course_staff: Q | None = None) -> Coalesce:
+    """
+    Build the per-course enrollment count for one breakdown stage.
+
+    :param extra_filters: The filters this stage adds on top of the course match
+    :type extra_filters: dict
+    :param exclude_course_staff: Course-team staff exclusion to apply, or None to skip it
+    :type exclude_course_staff: Q | None
+    :return: Coalesced subquery returning the count for the stage
+    :rtype: Coalesce
+    """
+    q_set = CourseEnrollment.objects.filter(course_id=OuterRef('id'), **extra_filters)
+    if exclude_course_staff is not None:
+        q_set = q_set.filter(~exclude_course_staff)
+
+    return Coalesce(Subquery(
+        q_set.values('course_id').annotate(count=Count('id')).values('count'),
+        output_field=IntegerField(),
+    ), 0)
+
+
 def get_courses_queryset(
     fx_permission_info: dict,
     search_text: str | None = None,
     visible_filter: bool | None = True,
     active_filter: bool | None = None,
     include_staff: bool = False,
+    breakdown: bool = False,
 ) -> QuerySet:
     """
     Get the courses queryset for the given tenant IDs and search text.
@@ -99,6 +130,9 @@ def get_courses_queryset(
     :type active_filter: bool | None
     :param include_staff: flag to include staff users
     :type include_staff: bool
+    :param breakdown: annotate the per-stage enrollment breakdown. Off by default because it costs one
+        extra correlated subquery per stage, per course.
+    :type breakdown: bool
     :return: QuerySet of courses
     :rtype: QuerySet
     """
@@ -148,6 +182,19 @@ def get_courses_queryset(
             output_field=IntegerField(),
         ), 0)
     )
+
+    if breakdown:
+        queryset = queryset.annotate(
+            breakdown_all_rows=_enrollment_stage_subquery({}),
+            breakdown_active_enrollment=_enrollment_stage_subquery({'is_active': True}),
+            breakdown_active_user=_enrollment_stage_subquery({'is_active': True, 'user__is_active': True}),
+            breakdown_excluding_platform_staff=_enrollment_stage_subquery({
+                'is_active': True,
+                'user__is_active': True,
+                'user__is_staff': False,
+                'user__is_superuser': False,
+            }),
+        )
 
     if is_heavy_queries_enabled():
         queryset = queryset.annotate(

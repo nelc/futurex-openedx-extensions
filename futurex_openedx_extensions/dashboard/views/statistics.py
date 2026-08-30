@@ -30,10 +30,7 @@ from futurex_openedx_extensions.dashboard.statistics.courses import (
     get_enrollments_count_aggregated,
     get_enrollments_count_breakdown,
 )
-from futurex_openedx_extensions.dashboard.statistics.learners import (
-    get_learners_count,
-    get_learners_count_breakdown,
-)
+from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count, get_learners_count_breakdown
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES, RATING_RANGE
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.permissions import (

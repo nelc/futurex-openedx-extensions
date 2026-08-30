@@ -621,6 +621,7 @@ class CourseDetailsSerializer(ModelSerializerOptionalFields, CourseDetailsBaseSe
     certificates_count = serializers.IntegerField()
     completion_rate = serializers.FloatField()
     categories = SerializerOptionalMethodField(field_tags=['categories'])
+    enrolled_count_breakdown = SerializerOptionalMethodField(field_tags=['enrolled_count_breakdown'])
 
     class Meta:
         model = CourseOverview
@@ -631,6 +632,7 @@ class CourseDetailsSerializer(ModelSerializerOptionalFields, CourseDetailsBaseSe
             'certificates_count',
             'completion_rate',
             'categories',
+            'enrolled_count_breakdown',
         ]
 
     def __init__(self, instance: Any = None, data: Any = empty, **kwargs: Any) -> None:
@@ -659,6 +661,23 @@ class CourseDetailsSerializer(ModelSerializerOptionalFields, CourseDetailsBaseSe
         if not tenant_categories:
             return []
         return list(tenant_categories.get_categories_for_course(str(obj.id)).keys())
+
+    def get_enrolled_count_breakdown(self, obj: CourseOverview) -> Any:
+        """
+        Return the enrollment count per filter stage for this course.
+
+        Each stage adds one of the filters `enrolled_count` applies, so the drop between two adjacent
+        stages is attributable to a single rule. `all_rows` is the raw enrollment row count and
+        `active_enrollment` is what Open edX reports for the course; the last stage is
+        `enrolled_count` itself.
+        """
+        return {
+            'all_rows': obj.breakdown_all_rows,
+            'active_enrollment': obj.breakdown_active_enrollment,
+            'active_user': obj.breakdown_active_user,
+            'excluding_platform_staff': obj.breakdown_excluding_platform_staff,
+            'excluding_course_staff': obj.enrolled_count,
+        }
 
 
 class CourseCreateSerializer(serializers.Serializer):

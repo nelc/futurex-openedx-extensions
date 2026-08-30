@@ -14,6 +14,7 @@ from opaque_keys.edx.locator import CourseLocator, LibraryLocator
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
 
+from futurex_openedx_extensions.dashboard.details.courses import ENROLLED_COUNT_BREAKDOWN_STAGES
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from tests.fixture_helpers import get_all_orgs
 from tests.test_dashboard.test_mixins import BaseTestViewMixin
@@ -64,6 +65,32 @@ class TestCoursesView(BaseTestViewMixin):
                 self.client.get(self.url + f'?include_staff={value}')
                 assert mock_queryset.call_args_list[0][1]['include_staff'] is expected, \
                     f'unexpected include_staff parsing for value: {value}'
+
+    def test_enrolled_count_breakdown_absent_by_default(self):
+        """The optional breakdown field must not appear unless its tag is requested."""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        for row in response.data['results']:
+            self.assertNotIn('enrolled_count_breakdown', row)
+
+    def test_enrolled_count_breakdown_reconciles_per_course(self):
+        """The last stage must equal enrolled_count for every course, and stages must never increase."""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url + '?optional_field_tags=enrolled_count_breakdown')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+
+        for row in response.data['results']:
+            breakdown = row['enrolled_count_breakdown']
+            self.assertEqual(
+                breakdown['excluding_course_staff'], row['enrolled_count'],
+                f"breakdown must reconcile with enrolled_count for course {row['id']}",
+            )
+            counts = [breakdown[stage] for stage in ENROLLED_COUNT_BREAKDOWN_STAGES]
+            self.assertEqual(
+                counts, sorted(counts, reverse=True),
+                f"stages must not increase for course {row['id']}, got {counts}",
+            )
 
     def test_list_success(self):
         """Verify that the view returns the correct response"""
