@@ -62,6 +62,27 @@ def test_get_enrollments_count(base_data, fx_permission_info):  # pylint: disabl
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('include_staff, expected_final', [
+    (False, {'org1': 4, 'org2': 22}),
+    (True, {'org1': 9, 'org2': 23}),
+])
+def test_get_enrollments_count_breakdown(
+    base_data, fx_permission_info, include_staff, expected_final,
+):  # pylint: disable=unused-argument
+    """The last breakdown stage must equal get_enrollments_count, and stages must never increase."""
+    breakdown = list(courses.get_enrollments_count_breakdown(fx_permission_info, include_staff=include_staff))
+
+    assert {row['org_lower_case']: row['excluding_course_staff'] for row in breakdown} == expected_final, \
+        'the final stage must reproduce get_enrollments_count exactly, otherwise the breakdown lies'
+
+    for row in breakdown:
+        counts = [row[stage] for stage in courses.ENROLLMENTS_BREAKDOWN_STAGES]
+        assert counts == sorted(counts, reverse=True), \
+            f"stages must be monotonically non-increasing for {row['org_lower_case']}, got {counts}"
+        assert row['all_rows'] >= row['active_enrollment'], 'raw rows must include inactive enrollments'
+
+
+@pytest.mark.django_db
 def test_get_courses_count_by_status(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_courses_count_by_status function."""
     result = courses.get_courses_count_by_status(fx_permission_info)

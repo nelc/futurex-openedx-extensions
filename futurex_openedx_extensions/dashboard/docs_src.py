@@ -1128,6 +1128,19 @@ docs_src = {
         'parameters': [
             common_parameters['tenant_ids'],
             query_parameter(
+                'breakdown',
+                int,
+                'return a per-stage breakdown alongside each supported count `1` or `0`. Default is `0`. Any value'
+                ' other than `1` is considered as `0`. Currently supported for `enrollments` only, returned as'
+                ' `enrollments_count_breakdown`.\n'
+                '\nEach stage adds exactly one of the filters the count applies, in order, so the drop between two'
+                ' stages is attributable to a single rule. `all_rows` is the raw enrollment row count, matching what'
+                ' Open edX reports directly; `excluding_course_staff` is the last stage and always equals'
+                ' `enrollments_count`. Use it to explain why a FutureX number differs from one taken from Open edX.\n'
+                '\nStages, in order: `all_rows`, `active_enrollment`, `active_user`, `excluding_platform_staff`,'
+                ' `in_visible_courses`, `excluding_course_staff`.'
+            ),
+            query_parameter(
                 'stats',
                 str,
                 'a comma-separated list of the types of count statistics to include in the response. Available count'
