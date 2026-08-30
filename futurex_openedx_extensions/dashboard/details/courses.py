@@ -31,7 +31,7 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from zeitlabs_payments.querysets import get_orders_queryset
 
-from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled
+from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled, is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
@@ -121,16 +121,25 @@ def get_courses_queryset(
             ref_user_id='user_id', ref_org='course__org', ref_course_id='course_id',
         )
 
+    if is_legacy_filtered_counts_enabled():
+        enrollment_filters: dict = {
+            'is_active': True,
+            'user__is_active': True,
+            'user__is_staff': False,
+            'user__is_superuser': False,
+        }
+        staff_exclusion = ~is_staff_queryset
+    else:
+        enrollment_filters = {'is_active': True}
+        staff_exclusion = Q()
+
     queryset = queryset.annotate(
         enrolled_count=Coalesce(Subquery(
             CourseEnrollment.objects.filter(
                 course_id=OuterRef('id'),
-                is_active=True,
-                user__is_active=True,
-                user__is_staff=False,
-                user__is_superuser=False,
+                **enrollment_filters,
             ).filter(
-                ~is_staff_queryset,
+                staff_exclusion,
             ).values('course_id').annotate(count=Count('id')).values('count'),
             output_field=IntegerField(),
         ), 0)
@@ -138,12 +147,9 @@ def get_courses_queryset(
         active_count=Coalesce(Subquery(
             CourseEnrollment.objects.filter(
                 course_id=OuterRef('id'),
-                is_active=True,
-                user__is_active=True,
-                user__is_staff=False,
-                user__is_superuser=False,
+                **enrollment_filters,
             ).filter(
-                ~is_staff_queryset,
+                staff_exclusion,
             ).values('course_id').annotate(count=Count('id')).values('count'),
             output_field=IntegerField(),
         ), 0)

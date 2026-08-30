@@ -24,6 +24,7 @@ from tests.fixture_helpers import get_tenants_orgs
     ([2, 7], {'org3': 6, 'org8': 2}, {'org3': 7, 'org8': 2}),
     ([7, 8], {'org3': 6, 'org8': 2}, {'org3': 7, 'org8': 2}),
 ])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_certificates_count(
     base_data, fx_permission_info, heavy_q, tenant_ids, expected_result, expected_result_with_staff
 ):  # pylint: disable=unused-argument,too-many-arguments
@@ -41,6 +42,7 @@ def test_get_certificates_count(
 
 
 @pytest.mark.django_db
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_certificates_count_not_downloadable(  # pylint: disable=unused-argument
     base_data, fx_permission_info, heavy_q,
 ):

@@ -12,6 +12,7 @@ from django.utils.timezone import now
 from opaque_keys.edx.django.models import CourseKeyField
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
+from futurex_openedx_extensions.dashboard.toggles import is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers.converters import get_allowed_roles, to_arabic_numerals, to_indian_numerals
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import get_partial_access_course_ids, verify_course_ids
@@ -505,14 +506,20 @@ def get_accessible_users_and_courses(  # pylint: disable=too-many-arguments
     :param visible_filter: Passed through to `get_course_search_queryset`. None (the default) keeps
         the historical behaviour of returning rows from hidden courses too.
     """
+    raw_counts = not is_legacy_filtered_counts_enabled()
+    user_attribute_filters: dict = {
+        'superuser_filter': None, 'staff_filter': None,
+    } if raw_counts else {}
+
     accessible_users = get_permitted_learners_queryset(
         queryset=get_learners_search_queryset(
             search_text=learner_search,
             user_ids=user_ids,
             usernames=usernames,
+            **user_attribute_filters,
         ),
         fx_permission_info=fx_permission_info,
-        include_staff=include_staff,
+        include_staff=include_staff or raw_counts,
     )
 
     accessible_courses = get_course_search_queryset(

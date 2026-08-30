@@ -39,7 +39,25 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(str(response.data['detail']), "Invalid stats type: ['invalid']")
 
+    def test_counts_are_raw_by_default(self):
+        """The shipped default drops the staff and visibility exclusions, so counts are never lower."""
+        self.login_user(self.staff_user)
+        url = self.url + '?stats=enrollments,learners,courses'
+
+        raw = json.loads(self.client.get(url).content)
+        with override_flag('fx_dashboard.legacy_filtered_counts', active=True):
+            filtered = json.loads(self.client.get(url).content)
+
+        assert raw != filtered, 'the default must differ from the legacy filtered behaviour'
+        for key, value in filtered.items():
+            if not isinstance(value, dict):
+                continue
+            for count_key, count in value.items():
+                assert raw[key][count_key] >= count, \
+                    f'raw counting must never report fewer than filtered for tenant {key}.{count_key}'
+
     @override_flag('fx_dashboard.enable_heavy_queries', active=True)
+    @override_flag('fx_dashboard.legacy_filtered_counts', active=True)
     def test_all_stats(self):
         """Test get method"""
         self.login_user(self.staff_user)
@@ -75,6 +93,7 @@ class TestTotalCountsView(BaseTestViewMixin):
         })
 
     @override_flag('fx_dashboard.enable_heavy_queries', active=True)
+    @override_flag('fx_dashboard.legacy_filtered_counts', active=True)
     def test_all_stats_with_include_staff(self):
         """Test get method"""
         self.login_user(self.staff_user)
@@ -105,6 +124,7 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertEqual(json.loads(response.content)['limited_access'], True)
 
     @override_flag('fx_dashboard.enable_heavy_queries', active=True)
+    @override_flag('fx_dashboard.legacy_filtered_counts', active=True)
     def test_selected_tenants(self):
         """Test get method with selected tenants"""
         self.login_user(self.staff_user)

@@ -7,6 +7,7 @@ from common.djangoapps.student.models import CourseEnrollment
 from django.db.models import CharField, Value
 from eox_nelp.course_experience.models import FeedbackCourse
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.statistics import courses
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
@@ -44,6 +45,7 @@ def test_get_courses_count(base_data, fx_permission_info):  # pylint: disable=un
 
 
 @pytest.mark.django_db
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_enrollments_count(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_enrollments_count function."""
     result = courses.get_enrollments_count(fx_permission_info, include_staff=True)
@@ -178,6 +180,7 @@ def test_get_enrollments_count_aggregated_calls(
     (d_t('2022-03-21'), d_t('2022-12-26'), []),
     (d_t('2022-12-26'), d_t('2022-03-21'), []),
 ])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_enrollments_count_aggregated_result(
     date_from, date_to, expected_result, base_data, fx_permission_info,
 ):  # pylint: disable=unused-argument
@@ -241,3 +244,19 @@ def testcache_name_courses_rating():
     assert key3 == 'fx_courses_ratings_t1_vFalse_aTrue'
     assert key4 == 'fx_courses_ratings_t2_vTrue_aTrue'
     assert key5 == 'fx_courses_ratings_t1_vNone_aNone'
+
+
+@pytest.mark.django_db
+def test_get_enrollments_count_raw_by_default(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """By default the count keeps only the enrollment's own is_active, dropping the staff exclusions."""
+    raw = {row['org_lower_case']: row['enrollments_count'] for row in courses.get_enrollments_count(fx_permission_info)}
+
+    with override_flag('fx_dashboard.legacy_filtered_counts', active=True):
+        filtered = {
+            row['org_lower_case']: row['enrollments_count']
+            for row in courses.get_enrollments_count(fx_permission_info)
+        }
+
+    assert raw != filtered, 'the default must differ from the legacy filtered behaviour'
+    for org, count in filtered.items():
+        assert raw[org] >= count, f'raw counting must never report fewer rows than filtered, for {org}'

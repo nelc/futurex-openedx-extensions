@@ -294,6 +294,7 @@ def test_get_learners_enrollments_queryset_annotations(
         ('Course 5', 'user15', 1, 'both course and user search'),
     ],
 )
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_learners_enrollments_queryset_for_course_and_learner_search(
     course_search, learner_search, expected_count, usecase, fx_permission_info,
 ):
@@ -326,6 +327,7 @@ def test_get_learners_enrollments_queryset_for_course_and_learner_search(
         ([], [], [11], 'Invalid usernames: [11]', 0, 'invalid usernames'),
     ]
 )
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_learners_enrollments_queryset_for_course_and_user_filters(
     filter_user_ids, filter_course_ids, filter_usernames, expected_error, expected_count, usecase, fx_permission_info,
 ):  # pylint: disable=too-many-arguments

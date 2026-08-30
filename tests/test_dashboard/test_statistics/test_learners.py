@@ -1,6 +1,7 @@
 """Tests for learners statistics."""
 
 import pytest
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.statistics import learners
 from futurex_openedx_extensions.helpers.permissions import get_tenant_limited_fx_permission_info
@@ -14,6 +15,7 @@ from futurex_openedx_extensions.helpers.permissions import get_tenant_limited_fx
     (7, 17, 20),
     (8, 9, 10),
 ])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_learners_count(
     base_data, user1_fx_permission_info, tenant_id, expected_result_no_staff, expected_result_include_staff,
 ):  # pylint: disable=unused-argument

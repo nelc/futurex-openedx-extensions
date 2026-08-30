@@ -34,3 +34,22 @@ FX_LEARNER_CERTIFICATES_FLAG = WaffleFlag(f'{WAFFLE_FLAG_NAMESPACE}.enable_learn
 def is_learner_certificates_enabled() -> bool:
     """Return True if the per-learner certificate waffle flag is active."""
     return FX_LEARNER_CERTIFICATES_FLAG.is_enabled()
+
+
+# .. toggle_name: fx_dashboard.legacy_filtered_counts
+# .. toggle_implementation: WaffleFlag
+# .. toggle_default: False
+# .. toggle_description: Restores the historical filtered counting behaviour. By default the counts
+#   drop the FutureX-specific exclusions - platform staff, course-team staff and catalog visibility -
+#   and keep only each row's own is_active. That is the same population Open edX reports on its own
+#   screens, so the two systems agree: for course-v1:moe+CS104+2024 both read 76,962 where the
+#   filtered count was 76,246. Activate this flag to restore the exclusions. It exists as an instant
+#   rollback, since the counts it changes are published on every dashboard.
+# .. toggle_use_cases: open_edx
+# .. toggle_creation_date: 2026-08-30
+FX_LEGACY_FILTERED_COUNTS_FLAG = WaffleFlag(f'{WAFFLE_FLAG_NAMESPACE}.legacy_filtered_counts', __name__)
+
+
+def is_legacy_filtered_counts_enabled() -> bool:
+    """Return True if counts should keep the historical filtering instead of reporting raw rows."""
+    return FX_LEGACY_FILTERED_COUNTS_FLAG.is_enabled()

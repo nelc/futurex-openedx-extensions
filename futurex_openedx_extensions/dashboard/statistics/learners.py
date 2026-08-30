@@ -1,6 +1,7 @@
 """functions for getting statistics about learners"""
 from __future__ import annotations
 
+from futurex_openedx_extensions.dashboard.toggles import is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers.querysets import get_learners_search_queryset, get_permitted_learners_queryset
 
 
@@ -18,6 +19,15 @@ def get_learners_count(
     :return: Dictionary of tenant ID and the count of learners
     :rtype: Dict[int, Dict[str, int]]
     """
+    if not is_legacy_filtered_counts_enabled():
+        return get_permitted_learners_queryset(
+            queryset=get_learners_search_queryset(
+                superuser_filter=None, staff_filter=None,
+            ),
+            fx_permission_info=fx_permission_info,
+            include_staff=True,
+        ).count()
+
     queryset = get_learners_search_queryset()
 
     queryset = get_permitted_learners_queryset(

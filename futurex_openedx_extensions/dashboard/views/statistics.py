@@ -27,6 +27,7 @@ from futurex_openedx_extensions.dashboard.statistics.courses import (
     get_enrollments_count_aggregated,
 )
 from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
+from futurex_openedx_extensions.dashboard.toggles import is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES, RATING_RANGE
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.permissions import (
@@ -117,10 +118,16 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
             result = self._get_certificates_count_data(one_tenant_permission_info)
 
         elif stat == self.STAT_COURSES:
-            result = self._get_courses_count_data(one_tenant_permission_info, visible_filter=True)
+            result = self._get_courses_count_data(
+                one_tenant_permission_info,
+                visible_filter=True if is_legacy_filtered_counts_enabled() else None,
+            )
 
         elif stat == self.STAT_ENROLLMENTS:
-            result = self._get_enrollments_count_data(one_tenant_permission_info, visible_filter=True)
+            result = self._get_enrollments_count_data(
+                one_tenant_permission_info,
+                visible_filter=True if is_legacy_filtered_counts_enabled() else None,
+            )
 
         elif stat == self.STAT_HIDDEN_COURSES:
             result = self._get_courses_count_data(one_tenant_permission_info, visible_filter=False)

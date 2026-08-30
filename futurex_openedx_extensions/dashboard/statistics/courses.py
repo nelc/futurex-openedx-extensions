@@ -11,6 +11,7 @@ from django.db.models.query import QuerySet
 from django.utils.timezone import now
 from eox_nelp.course_experience.models import FeedbackCourse
 
+from futurex_openedx_extensions.dashboard.toggles import is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES, RATING_RANGE
@@ -67,6 +68,14 @@ def _get_enrollments_count(
     :return: QuerySet of courses count per organization
     :rtype: QuerySet
     """
+    if not is_legacy_filtered_counts_enabled():
+        return CourseEnrollment.objects.filter(
+            course_id__in=get_base_queryset_courses(
+                fx_permission_info, visible_filter=None, active_filter=None
+            ).values_list('id', flat=True),
+            is_active=True,
+        )
+
     q_set = CourseEnrollment.objects.filter(
         course_id__in=get_base_queryset_courses(
             fx_permission_info, visible_filter=visible_filter, active_filter=active_filter
