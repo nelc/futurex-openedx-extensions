@@ -158,7 +158,6 @@ def get_courses_queryset(  # pylint: disable=too-many-arguments
         ), 0)
     )
 
-
     if is_heavy_queries_enabled():
         queryset = queryset.annotate(
             certificates_count=Coalesce(Subquery(
