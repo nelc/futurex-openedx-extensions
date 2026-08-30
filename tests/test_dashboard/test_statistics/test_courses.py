@@ -7,13 +7,13 @@ from common.djangoapps.student.models import CourseEnrollment
 from django.db.models import CharField, Value
 from eox_nelp.course_experience.models import FeedbackCourse
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.statistics import courses
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list
 from tests.base_test_data import _base_data
 from tests.fixture_helpers import d_t
-from waffle.testutils import override_flag
 
 
 @pytest.mark.django_db

@@ -2,10 +2,10 @@
 from unittest.mock import patch
 
 import pytest
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.statistics import live
 from futurex_openedx_extensions.helpers.permissions import build_fx_permission_info
-from waffle.testutils import override_flag
 
 
 @patch('futurex_openedx_extensions.dashboard.statistics.live.build_fx_permission_info')

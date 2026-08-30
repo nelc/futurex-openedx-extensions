@@ -1,10 +1,10 @@
 """Tests for learners statistics."""
 
 import pytest
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.statistics import learners
 from futurex_openedx_extensions.helpers.permissions import get_tenant_limited_fx_permission_info
-from waffle.testutils import override_flag
 
 
 @pytest.mark.django_db
