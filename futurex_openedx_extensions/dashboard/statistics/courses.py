@@ -48,6 +48,36 @@ def get_courses_count(
     ).order_by(Lower('org'))
 
 
+COURSES_BREAKDOWN_STAGES = [
+    'all_courses',
+    'in_visible_courses',
+]
+
+
+def get_courses_count_breakdown(fx_permission_info: dict) -> QuerySet:
+    """
+    Get the courses count per organization broken down by filter stage.
+
+    Only one filter separates the two stages, so the breakdown is short by nature: `all_courses`
+    counts every course the caller can reach, and `in_visible_courses` keeps those visible in the
+    catalog, which is what `get_courses_count` reports. The difference is exactly the
+    `hidden_courses` statistic.
+
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
+    :return: QuerySet of courses count per organization and stage
+    :rtype: QuerySet
+    """
+    q_set = get_base_queryset_courses(fx_permission_info, visible_filter=None, active_filter=None)
+
+    visible_q = Q(catalog_visibility__in=['about', 'both']) & Q(visible_to_staff_only=False)
+
+    return q_set.values(org_lower_case=Lower('org')).annotate(
+        all_courses=Count('id'),
+        in_visible_courses=Count('id', filter=visible_q),
+    ).order_by(Lower('org'))
+
+
 def _get_enrollments_count(
     fx_permission_info: dict,
     visible_filter: bool | None = True,
@@ -117,6 +147,63 @@ def get_enrollments_count(
 
     return q_set.values(org_lower_case=Lower('course__org')).annotate(
         enrollments_count=Count('id')
+    ).order_by(Lower('course__org'))
+
+
+ENROLLMENTS_BREAKDOWN_STAGES = [
+    'all_rows',
+    'active_enrollment',
+    'active_user',
+    'excluding_platform_staff',
+    'in_visible_courses',
+    'excluding_course_staff',
+]
+
+
+def get_enrollments_count_breakdown(
+    fx_permission_info: dict,
+    include_staff: bool = False,
+) -> QuerySet:
+    """
+    Get the enrollments count per organization broken down by filter stage.
+
+    Each stage adds exactly one of the filters that `get_enrollments_count` applies, in the order it
+    applies them, so the drop between two stages is attributable to a single rule. The first stage is
+    the raw row count that Open edX's own screens report; the last stage equals what
+    `get_enrollments_count` returns for the same arguments.
+
+    The whole breakdown is computed in a single pass with conditional aggregation. Running one query
+    per stage would multiply the cost of an already expensive query.
+
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
+    :param include_staff: Value to include staff users in the last stage. False means exclude them.
+    :type include_staff: bool
+    :return: QuerySet of enrollments count per organization and stage
+    :rtype: QuerySet
+    """
+    q_set = CourseEnrollment.objects.filter(
+        course_id__in=get_base_queryset_courses(
+            fx_permission_info, visible_filter=None, active_filter=None
+        ).values_list('id', flat=True),
+    ).annotate(
+        is_course_staff=check_staff_exist_queryset('user_id', 'course__org', 'course_id'),
+    )
+
+    visible_q = Q(course__catalog_visibility__in=['about', 'both']) & Q(course__visible_to_staff_only=False)
+    active_enrollment_q = Q(is_active=True)
+    active_user_q = active_enrollment_q & Q(user__is_active=True)
+    not_platform_staff_q = active_user_q & Q(user__is_staff=False) & Q(user__is_superuser=False)
+    visible_courses_q = not_platform_staff_q & visible_q
+    not_course_staff_q = visible_courses_q if include_staff else visible_courses_q & Q(is_course_staff=False)
+
+    return q_set.values(org_lower_case=Lower('course__org')).annotate(
+        all_rows=Count('id'),
+        active_enrollment=Count('id', filter=active_enrollment_q),
+        active_user=Count('id', filter=active_user_q),
+        excluding_platform_staff=Count('id', filter=not_platform_staff_q),
+        in_visible_courses=Count('id', filter=visible_courses_q),
+        excluding_course_staff=Count('id', filter=not_course_staff_q),
     ).order_by(Lower('course__org'))
 
 

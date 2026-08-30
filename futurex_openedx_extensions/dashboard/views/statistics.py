@@ -21,12 +21,16 @@ from futurex_openedx_extensions.dashboard.statistics.certificates import (
     get_learning_hours_count,
 )
 from futurex_openedx_extensions.dashboard.statistics.courses import (
+    COURSES_BREAKDOWN_STAGES,
+    ENROLLMENTS_BREAKDOWN_STAGES,
     get_courses_count,
+    get_courses_count_breakdown,
     get_courses_ratings,
     get_enrollments_count,
     get_enrollments_count_aggregated,
+    get_enrollments_count_breakdown,
 )
-from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
+from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count, get_learners_count_breakdown
 from futurex_openedx_extensions.dashboard.toggles import is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES, RATING_RANGE
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -80,6 +84,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         ]
         self.stats: list[str] = []
         self.include_staff = False
+        self.breakdown = False
         self.tenant_ids: list[int] = []
 
     def _get_certificates_count_data(self, one_tenant_permission_info: dict) -> int:
@@ -107,6 +112,37 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
     def _get_learning_hours_count_data(self, one_tenant_permission_info: dict) -> int:
         """Get the count of learning_hours for the given tenant"""
         return get_learning_hours_count(one_tenant_permission_info, include_staff=self.include_staff)
+
+    BREAKDOWN_SUPPORTED_STATS = [STAT_ENROLLMENTS, STAT_LEARNERS, STAT_COURSES]
+
+    def _get_stat_breakdown(self, stat: str, tenant_id: int) -> dict:
+        """
+        Get the filter-stage breakdown for the given stat, for one tenant.
+
+        The stages run in the order the filters are applied, so the drop between two adjacent stages
+        is attributable to a single rule. Which stage equals the reported count depends on the
+        counting mode: by default it is the stage that keeps only the row's own is_active, and with
+        `fx_dashboard.legacy_filtered_counts` active it is the last stage. Both are always present,
+        so a caller can read the current number and the one the other mode would give.
+        """
+        one_tenant_permission_info = get_tenant_limited_fx_permission_info(self.fx_permission_info, tenant_id)
+
+        if stat == self.STAT_LEARNERS:
+            return get_learners_count_breakdown(one_tenant_permission_info, include_staff=self.include_staff)
+
+        if stat == self.STAT_COURSES:
+            collector_result = get_courses_count_breakdown(one_tenant_permission_info)
+            stages = COURSES_BREAKDOWN_STAGES
+        else:
+            collector_result = get_enrollments_count_breakdown(
+                one_tenant_permission_info, include_staff=self.include_staff,
+            )
+            stages = ENROLLMENTS_BREAKDOWN_STAGES
+
+        return {
+            stage: sum(org_row[stage] for org_row in collector_result)
+            for stage in stages
+        }
 
     def _get_stat_count(self, stat: str, tenant_id: int) -> Any:
         """Get the count of the given stat for the given tenant"""
@@ -147,6 +183,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         if invalid_stats:
             raise ParseError(f'Invalid stats type: {invalid_stats}')
         self.include_staff = request.query_params.get('include_staff', '0') == '1'
+        self.breakdown = request.query_params.get('breakdown', '0') == '1'
         self.tenant_ids = self.fx_permission_info['view_allowed_tenant_ids_any_access']
 
     def _construct_result(self) -> dict:
@@ -166,6 +203,9 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
                 count = int(self._get_stat_count(stat, tenant_id))
                 result[tenant_id][self.STAT_RESULT_KEYS[stat]] = count
                 result[f'total_{self.STAT_RESULT_KEYS[stat]}'] += count
+                if self.breakdown and stat in self.BREAKDOWN_SUPPORTED_STATS:
+                    result[tenant_id][f'{self.STAT_RESULT_KEYS[stat]}_breakdown'] = \
+                        self._get_stat_breakdown(stat, tenant_id)
 
         if total_unique_learners is not None:
             result['total_unique_learners'] = total_unique_learners
