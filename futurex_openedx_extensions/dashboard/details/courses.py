@@ -82,7 +82,7 @@ def annotate_courses_rating_queryset(
     return queryset
 
 
-def get_courses_queryset(  # pylint: disable=too-many-arguments
+def get_courses_queryset(
     fx_permission_info: dict,
     search_text: str | None = None,
     visible_filter: bool | None = True,

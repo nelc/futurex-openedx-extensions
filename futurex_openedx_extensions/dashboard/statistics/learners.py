@@ -1,15 +1,8 @@
 """functions for getting statistics about learners"""
 from __future__ import annotations
 
-from django.contrib.auth import get_user_model
-from django.db.models import Count, Q
-
 from futurex_openedx_extensions.dashboard.toggles import is_legacy_filtered_counts_enabled
-from futurex_openedx_extensions.helpers.querysets import (
-    check_staff_exist_queryset,
-    get_learners_search_queryset,
-    get_permitted_learners_queryset,
-)
+from futurex_openedx_extensions.helpers.querysets import get_learners_search_queryset, get_permitted_learners_queryset
 
 
 def get_learners_count(
