@@ -56,15 +56,12 @@ class CoursesView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
         search_text = self.request.query_params.get('search_text')
         include_staff = self.request.query_params.get('include_staff', '0') == '1'
         visible_courses_only = self.request.query_params.get('visible_courses_only', '0') == '1'
-        requested_tags = self.request.query_params.get('optional_field_tags', '')
-        breakdown = 'enrolled_count_breakdown' in [tag.strip().lower() for tag in requested_tags.split(',')]
 
         return get_courses_queryset(
             fx_permission_info=self.fx_permission_info,
             search_text=search_text,
             visible_filter=True if visible_courses_only else None,
             include_staff=include_staff,
-            breakdown=breakdown,
         )
 
     @use_read_replica_if_available
