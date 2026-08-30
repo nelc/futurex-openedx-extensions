@@ -1128,26 +1128,6 @@ docs_src = {
         'parameters': [
             common_parameters['tenant_ids'],
             query_parameter(
-                'breakdown',
-                int,
-                'return a per-stage breakdown alongside each supported count `1` or `0`. Default is `0`. Any value'
-                ' other than `1` is considered as `0`. Supported for `enrollments`, `learners` and `courses`,'
-                ' returned as `<stat>_count_breakdown`.\n'
-                '\nEach stage adds one of the filters in the order they are applied, so the drop between two'
-                ' adjacent stages is attributable to a single rule. Which stage equals the reported count depends'
-                ' on the counting mode: by default it is the stage that keeps only the row\'s own `is_active`,'
-                ' matching what Open edX reports; with `fx_dashboard.legacy_filtered_counts` active it is the last'
-                ' stage. Both are always present, so a caller can read the current number and the one the other'
-                ' mode would give without a second request.\n'
-                '\n- `enrollments`: `all_rows`, `active_enrollment`, `active_user`, `excluding_platform_staff`,'
-                ' `in_visible_courses`, `excluding_course_staff`.\n'
-                '- `learners`: `in_tenant`, `active_user`, `excluding_platform_staff`, `excluding_course_staff`.\n'
-                '- `courses`: `all_courses`, `in_visible_courses`.\n'
-                '\n**Note:** `certificates`, `hidden_courses`, `learning_hours` and `unique_learners` do not'
-                ' support a breakdown. The default certificate count is served from a pre-aggregated cache, which'
-                ' holds no intermediate stages.'
-            ),
-            query_parameter(
                 'stats',
                 str,
                 'a comma-separated list of the types of count statistics to include in the response. Available count'

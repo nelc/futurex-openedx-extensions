@@ -15,11 +15,6 @@ from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from waffle.testutils import override_flag
 
-from futurex_openedx_extensions.dashboard.statistics.courses import (
-    COURSES_BREAKDOWN_STAGES,
-    ENROLLMENTS_BREAKDOWN_STAGES,
-)
-from futurex_openedx_extensions.dashboard.statistics.learners import LEARNERS_BREAKDOWN_STAGES
 from futurex_openedx_extensions.dashboard.views.statistics import AggregatedCountsView
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
@@ -43,50 +38,6 @@ class TestTotalCountsView(BaseTestViewMixin):
         response = self.client.get(self.url + '?stats=invalid')
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(str(response.data['detail']), "Invalid stats type: ['invalid']")
-
-    def test_breakdown_absent_by_default(self):
-        """Without breakdown=1 the response shape is unchanged, so existing consumers are unaffected."""
-        self.login_user(self.staff_user)
-        response = self.client.get(self.url + '?stats=enrollments')
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        for key, value in json.loads(response.content).items():
-            if isinstance(value, dict):
-                self.assertNotIn('enrollments_count_breakdown', value, f'unexpected breakdown for tenant {key}')
-
-    def test_breakdown_reconciles_in_both_counting_modes(self):
-        """The stage matching the active counting mode must equal the reported count, in both modes."""
-        self.login_user(self.staff_user)
-        cases = [
-            ('enrollments', 'enrollments_count', ENROLLMENTS_BREAKDOWN_STAGES,
-             'active_enrollment', 'excluding_course_staff'),
-            ('learners', 'learners_count', LEARNERS_BREAKDOWN_STAGES,
-             'active_user', 'excluding_course_staff'),
-            ('courses', 'courses_count', COURSES_BREAKDOWN_STAGES,
-             'all_courses', 'in_visible_courses'),
-        ]
-        for legacy in (False, True):
-            with override_flag('fx_dashboard.legacy_filtered_counts', active=legacy):
-                for stat, count_key, stages, raw_stage, legacy_stage in cases:
-                    data = json.loads(self.client.get(self.url + f'?stats={stat}&breakdown=1').content)
-                    expected_stage = legacy_stage if legacy else raw_stage
-
-                    checked = 0
-                    for key, value in data.items():
-                        if not isinstance(value, dict):
-                            continue
-                        breakdown = value[f'{count_key}_breakdown']
-                        self.assertEqual(
-                            breakdown[expected_stage], value[count_key],
-                            f'{stat} breakdown stage {expected_stage} must equal the count for tenant {key} '
-                            f'(legacy={legacy})',
-                        )
-                        counts = [breakdown[stage] for stage in stages]
-                        self.assertEqual(
-                            counts, sorted(counts, reverse=True),
-                            f'{stat} stages must not increase for tenant {key}, got {counts}',
-                        )
-                        checked += 1
-                    self.assertGreater(checked, 0, f'no tenant rows were checked for {stat}')
 
     def test_counts_are_raw_by_default(self):
         """The shipped default drops the staff and visibility exclusions, so counts are never lower."""
