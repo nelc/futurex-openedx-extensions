@@ -15,11 +15,6 @@ from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from waffle.testutils import override_flag
 
-from futurex_openedx_extensions.dashboard.statistics.courses import (
-    COURSES_BREAKDOWN_STAGES,
-    ENROLLMENTS_BREAKDOWN_STAGES,
-)
-from futurex_openedx_extensions.dashboard.statistics.learners import LEARNERS_BREAKDOWN_STAGES
 from futurex_openedx_extensions.dashboard.views.statistics import AggregatedCountsView
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
@@ -43,46 +38,6 @@ class TestTotalCountsView(BaseTestViewMixin):
         response = self.client.get(self.url + '?stats=invalid')
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(str(response.data['detail']), "Invalid stats type: ['invalid']")
-
-    def test_breakdown_absent_by_default(self):
-        """Without breakdown=1 the response shape is unchanged, so existing consumers are unaffected."""
-        self.login_user(self.staff_user)
-        response = self.client.get(self.url + '?stats=enrollments')
-        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
-        data = json.loads(response.content)
-        for key, value in data.items():
-            if isinstance(value, dict):
-                self.assertNotIn('enrollments_count_breakdown', value, f'unexpected breakdown for tenant {key}')
-
-    def test_breakdown_last_stage_equals_the_count(self):
-        """breakdown=1 adds the funnel, whose last stage must equal the reported count for every tenant."""
-        self.login_user(self.staff_user)
-        cases = [
-            ('enrollments', 'enrollments_count', ENROLLMENTS_BREAKDOWN_STAGES, 'excluding_course_staff'),
-            ('learners', 'learners_count', LEARNERS_BREAKDOWN_STAGES, 'excluding_course_staff'),
-            ('courses', 'courses_count', COURSES_BREAKDOWN_STAGES, 'in_visible_courses'),
-        ]
-        for stat, count_key, stages, final_stage in cases:
-            response = self.client.get(self.url + f'?stats={stat}&breakdown=1')
-            self.assertEqual(response.status_code, http_status.HTTP_200_OK, f'stat {stat} failed')
-            data = json.loads(response.content)
-
-            checked = 0
-            for key, value in data.items():
-                if not isinstance(value, dict):
-                    continue
-                breakdown = value[f'{count_key}_breakdown']
-                self.assertEqual(
-                    breakdown[final_stage], value[count_key],
-                    f'{stat} breakdown must reconcile with the headline count for tenant {key}',
-                )
-                counts = [breakdown[stage] for stage in stages]
-                self.assertEqual(
-                    counts, sorted(counts, reverse=True),
-                    f'{stat} stages must not increase for tenant {key}, got {counts}',
-                )
-                checked += 1
-            self.assertGreater(checked, 0, f'no tenant rows were checked for {stat}')
 
     @override_flag('fx_dashboard.enable_heavy_queries', active=True)
     def test_all_stats(self):

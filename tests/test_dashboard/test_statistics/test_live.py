@@ -5,10 +5,12 @@ import pytest
 
 from futurex_openedx_extensions.dashboard.statistics import live
 from futurex_openedx_extensions.helpers.permissions import build_fx_permission_info
+from waffle.testutils import override_flag
 
 
 @patch('futurex_openedx_extensions.dashboard.statistics.live.build_fx_permission_info')
 @pytest.mark.django_db
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_live_statistics_valid_tenant_id(
     mocked_build, base_data, heavy_q,
 ):  # pylint: disable=unused-argument

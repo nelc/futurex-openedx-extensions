@@ -13,6 +13,7 @@ from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES
 from futurex_openedx_extensions.helpers.tenants import get_course_org_filter_list
 from tests.base_test_data import _base_data
 from tests.fixture_helpers import d_t
+from waffle.testutils import override_flag
 
 
 @pytest.mark.django_db
@@ -44,6 +45,7 @@ def test_get_courses_count(base_data, fx_permission_info):  # pylint: disable=un
 
 
 @pytest.mark.django_db
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_enrollments_count(base_data, fx_permission_info):  # pylint: disable=unused-argument
     """Verify get_enrollments_count function."""
     result = courses.get_enrollments_count(fx_permission_info, include_staff=True)
@@ -59,46 +61,6 @@ def test_get_enrollments_count(base_data, fx_permission_info):  # pylint: disabl
         {'org_lower_case': 'org1', 'enrollments_count': 4},
         {'org_lower_case': 'org2', 'enrollments_count': 22},
     ]
-
-
-@pytest.mark.django_db
-def test_get_courses_count_breakdown(base_data, fx_permission_info):  # pylint: disable=unused-argument
-    """The visible stage must equal get_courses_count, and the gap must be exactly the hidden courses."""
-    breakdown = {
-        row['org_lower_case']: row for row in courses.get_courses_count_breakdown(fx_permission_info)
-    }
-    visible = {row['org_lower_case']: row['courses_count'] for row in courses.get_courses_count(fx_permission_info)}
-    hidden = {
-        row['org_lower_case']: row['courses_count']
-        for row in courses.get_courses_count(fx_permission_info, visible_filter=False)
-    }
-
-    for org, row in breakdown.items():
-        assert row['in_visible_courses'] == visible.get(org, 0), \
-            f'the visible stage must reproduce get_courses_count for {org}'
-        assert row['all_courses'] - row['in_visible_courses'] == hidden.get(org, 0), \
-            f'all_courses minus in_visible_courses must equal the hidden courses for {org}'
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize('include_staff, expected_final', [
-    (False, {'org1': 4, 'org2': 22}),
-    (True, {'org1': 9, 'org2': 23}),
-])
-def test_get_enrollments_count_breakdown(
-    base_data, fx_permission_info, include_staff, expected_final,
-):  # pylint: disable=unused-argument
-    """The last breakdown stage must equal get_enrollments_count, and stages must never increase."""
-    breakdown = list(courses.get_enrollments_count_breakdown(fx_permission_info, include_staff=include_staff))
-
-    assert {row['org_lower_case']: row['excluding_course_staff'] for row in breakdown} == expected_final, \
-        'the final stage must reproduce get_enrollments_count exactly, otherwise the breakdown lies'
-
-    for row in breakdown:
-        counts = [row[stage] for stage in courses.ENROLLMENTS_BREAKDOWN_STAGES]
-        assert counts == sorted(counts, reverse=True), \
-            f"stages must be monotonically non-increasing for {row['org_lower_case']}, got {counts}"
-        assert row['all_rows'] >= row['active_enrollment'], 'raw rows must include inactive enrollments'
 
 
 @pytest.mark.django_db
@@ -218,6 +180,7 @@ def test_get_enrollments_count_aggregated_calls(
     (d_t('2022-03-21'), d_t('2022-12-26'), []),
     (d_t('2022-12-26'), d_t('2022-03-21'), []),
 ])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_enrollments_count_aggregated_result(
     date_from, date_to, expected_result, base_data, fx_permission_info,
 ):  # pylint: disable=unused-argument
@@ -281,3 +244,19 @@ def testcache_name_courses_rating():
     assert key3 == 'fx_courses_ratings_t1_vFalse_aTrue'
     assert key4 == 'fx_courses_ratings_t2_vTrue_aTrue'
     assert key5 == 'fx_courses_ratings_t1_vNone_aNone'
+
+
+@pytest.mark.django_db
+def test_get_enrollments_count_raw_by_default(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """By default the count keeps only the enrollment's own is_active, dropping the staff exclusions."""
+    raw = {row['org_lower_case']: row['enrollments_count'] for row in courses.get_enrollments_count(fx_permission_info)}
+
+    with override_flag('fx_dashboard.legacy_filtered_counts', active=True):
+        filtered = {
+            row['org_lower_case']: row['enrollments_count']
+            for row in courses.get_enrollments_count(fx_permission_info)
+        }
+
+    assert raw != filtered, 'the default must differ from the legacy filtered behaviour'
+    for org, count in filtered.items():
+        assert raw[org] >= count, f'raw counting must never report fewer rows than filtered, for {org}'

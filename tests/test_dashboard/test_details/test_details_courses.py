@@ -34,6 +34,7 @@ from futurex_openedx_extensions.helpers.stats import sync_course_stats
     (['ORGX'], None, 0),
     ([], None, 0),
 ])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_courses_queryset(
     base_data, fx_permission_info, orgs, search_text, expected_count
 ):  # pylint: disable=unused-argument
@@ -44,6 +45,7 @@ def test_get_courses_queryset(
 
 
 @pytest.mark.django_db
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_courses_queryset_result_excludes_staff(  # pylint: disable=unused-argument
     base_data, fx_permission_info, heavy_q,
 ):
@@ -75,6 +77,7 @@ def test_get_courses_queryset_result_excludes_staff(  # pylint: disable=unused-a
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('certificate_count_enabled', [True, False])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_courses_queryset_result_for_completion_rate(
     certificate_count_enabled, base_data, fx_permission_info,
 ):  # pylint: disable=unused-argument
@@ -145,6 +148,7 @@ def test_get_courses_queryset_certificates_count_from_cache(  # pylint: disable=
 
 
 @pytest.mark.django_db
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_courses_queryset_result_excludes_staff_inactive_enrollment(
     base_data, fx_permission_info
 ):  # pylint: disable=unused-argument
