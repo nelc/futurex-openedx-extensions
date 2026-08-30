@@ -103,6 +103,7 @@ def _get_enrollments_count(
             course_id__in=get_base_queryset_courses(
                 fx_permission_info, visible_filter=None, active_filter=None
             ).values_list('id', flat=True),
+            is_active=True,
         )
 
     q_set = CourseEnrollment.objects.filter(

@@ -508,7 +508,7 @@ def get_accessible_users_and_courses(  # pylint: disable=too-many-arguments
     """
     raw_counts = not is_legacy_filtered_counts_enabled()
     user_attribute_filters: dict = {
-        'superuser_filter': None, 'staff_filter': None, 'active_filter': None,
+        'superuser_filter': None, 'staff_filter': None,
     } if raw_counts else {}
 
     accessible_users = get_permitted_learners_queryset(

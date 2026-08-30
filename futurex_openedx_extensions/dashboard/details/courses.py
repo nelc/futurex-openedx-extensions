@@ -133,7 +133,7 @@ def get_courses_queryset(  # pylint: disable=too-many-arguments
         }
         staff_exclusion = ~is_staff_queryset
     else:
-        enrollment_filters = {}
+        enrollment_filters = {'is_active': True}
         staff_exclusion = Q()
 
     queryset = queryset.annotate(

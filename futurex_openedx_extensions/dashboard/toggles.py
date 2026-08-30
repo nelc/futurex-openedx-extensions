@@ -39,12 +39,12 @@ def is_learner_certificates_enabled() -> bool:
 # .. toggle_name: fx_dashboard.legacy_filtered_counts
 # .. toggle_implementation: WaffleFlag
 # .. toggle_default: False
-# .. toggle_description: Restores the historical filtered counting behaviour. Counts are raw by
-#   default: they report every matching row, which is what Open edX's own screens report, so the two
-#   systems agree. Activate this flag to go back to excluding deactivated accounts, platform staff,
-#   course-team staff and hidden courses. It exists as an instant rollback: the raw counts are much
-#   larger than the filtered ones (for one production course, 77,984 rather than 76,246), so if a
-#   consumer cannot cope with the change this can be flipped without a redeploy.
+# .. toggle_description: Restores the historical filtered counting behaviour. By default the counts
+#   drop the FutureX-specific exclusions - platform staff, course-team staff and catalog visibility -
+#   and keep only each row's own is_active. That is the same population Open edX reports on its own
+#   screens, so the two systems agree: for course-v1:moe+CS104+2024 both read 76,962 where the
+#   filtered count was 76,246. Activate this flag to restore the exclusions. It exists as an instant
+#   rollback, since the counts it changes are published on every dashboard.
 # .. toggle_use_cases: open_edx
 # .. toggle_creation_date: 2026-08-30
 FX_LEGACY_FILTERED_COUNTS_FLAG = WaffleFlag(f'{WAFFLE_FLAG_NAMESPACE}.legacy_filtered_counts', __name__)

@@ -29,7 +29,7 @@ def get_learners_count(
     if not is_legacy_filtered_counts_enabled():
         return get_permitted_learners_queryset(
             queryset=get_learners_search_queryset(
-                superuser_filter=None, staff_filter=None, active_filter=None,
+                superuser_filter=None, staff_filter=None,
             ),
             fx_permission_info=fx_permission_info,
             include_staff=True,

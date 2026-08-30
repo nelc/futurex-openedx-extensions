@@ -67,7 +67,6 @@ def get_certificates_count(
         )
 
     raw_counts = not is_legacy_filtered_counts_enabled()
-    certificate_filters: dict = {} if raw_counts else {'user__is_active': True}
 
     result = list(
         GeneratedCertificate.objects.filter(
@@ -77,7 +76,7 @@ def get_certificates_count(
                 visible_filter=None if raw_counts else visible_courses_filter,
                 active_filter=active_courses_filter,
             ),
-            **certificate_filters,
+            user__is_active=True,
         )
         .annotate(
             course_org=Subquery(
