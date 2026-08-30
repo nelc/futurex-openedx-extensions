@@ -39,7 +39,6 @@ class TestTotalCountsView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
         self.assertEqual(str(response.data['detail']), "Invalid stats type: ['invalid']")
 
-    @override_flag('fx_dashboard.enable_heavy_queries', active=True)
     def test_counts_are_raw_by_default(self):
         """The shipped default drops the staff and visibility exclusions, so counts are never lower."""
         self.login_user(self.staff_user)
@@ -57,6 +56,7 @@ class TestTotalCountsView(BaseTestViewMixin):
                 assert raw[key][count_key] >= count, \
                     f'raw counting must never report fewer than filtered for tenant {key}.{count_key}'
 
+    @override_flag('fx_dashboard.enable_heavy_queries', active=True)
     @override_flag('fx_dashboard.legacy_filtered_counts', active=True)
     def test_all_stats(self):
         """Test get method"""
