@@ -44,4 +44,3 @@ def get_learners_count(
     )
 
     return queryset.count()
-

@@ -26,4 +26,3 @@ def test_get_learners_count(
 
     result = learners.get_learners_count(tenant_fx_permission_info, include_staff=True)
     assert result == expected_result_include_staff
-
