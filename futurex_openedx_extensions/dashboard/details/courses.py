@@ -88,23 +88,22 @@ ENROLLED_COUNT_BREAKDOWN_STAGES = [
 ]
 
 
-def _enrollment_stage_subquery(extra_filters: dict, exclude_course_staff: Q | None = None) -> Coalesce:
+def _enrollment_stage_subquery(extra_filters: dict) -> Coalesce:
     """
     Build the per-course enrollment count for one breakdown stage.
 
+    The final stage of the breakdown is `enrolled_count` itself, which is annotated separately and
+    carries the course-team staff exclusion, so no stage built here needs one.
+
     :param extra_filters: The filters this stage adds on top of the course match
     :type extra_filters: dict
-    :param exclude_course_staff: Course-team staff exclusion to apply, or None to skip it
-    :type exclude_course_staff: Q | None
     :return: Coalesced subquery returning the count for the stage
     :rtype: Coalesce
     """
-    q_set = CourseEnrollment.objects.filter(course_id=OuterRef('id'), **extra_filters)
-    if exclude_course_staff is not None:
-        q_set = q_set.filter(~exclude_course_staff)
-
     return Coalesce(Subquery(
-        q_set.values('course_id').annotate(count=Count('id')).values('count'),
+        CourseEnrollment.objects.filter(
+            course_id=OuterRef('id'), **extra_filters,
+        ).values('course_id').annotate(count=Count('id')).values('count'),
         output_field=IntegerField(),
     ), 0)
 
