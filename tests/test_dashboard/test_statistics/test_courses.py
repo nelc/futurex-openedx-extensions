@@ -62,6 +62,25 @@ def test_get_enrollments_count(base_data, fx_permission_info):  # pylint: disabl
 
 
 @pytest.mark.django_db
+def test_get_courses_count_breakdown(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """The visible stage must equal get_courses_count, and the gap must be exactly the hidden courses."""
+    breakdown = {
+        row['org_lower_case']: row for row in courses.get_courses_count_breakdown(fx_permission_info)
+    }
+    visible = {row['org_lower_case']: row['courses_count'] for row in courses.get_courses_count(fx_permission_info)}
+    hidden = {
+        row['org_lower_case']: row['courses_count']
+        for row in courses.get_courses_count(fx_permission_info, visible_filter=False)
+    }
+
+    for org, row in breakdown.items():
+        assert row['in_visible_courses'] == visible.get(org, 0), \
+            f'the visible stage must reproduce get_courses_count for {org}'
+        assert row['all_courses'] - row['in_visible_courses'] == hidden.get(org, 0), \
+            f'all_courses minus in_visible_courses must equal the hidden courses for {org}'
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize('include_staff, expected_final', [
     (False, {'org1': 4, 'org2': 22}),
     (True, {'org1': 9, 'org2': 23}),

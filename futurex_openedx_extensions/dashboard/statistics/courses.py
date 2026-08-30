@@ -47,6 +47,36 @@ def get_courses_count(
     ).order_by(Lower('org'))
 
 
+COURSES_BREAKDOWN_STAGES = [
+    'all_courses',
+    'in_visible_courses',
+]
+
+
+def get_courses_count_breakdown(fx_permission_info: dict) -> QuerySet:
+    """
+    Get the courses count per organization broken down by filter stage.
+
+    Only one filter separates the two stages, so the breakdown is short by nature: `all_courses`
+    counts every course the caller can reach, and `in_visible_courses` keeps those visible in the
+    catalog, which is what `get_courses_count` reports. The difference is exactly the
+    `hidden_courses` statistic.
+
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
+    :return: QuerySet of courses count per organization and stage
+    :rtype: QuerySet
+    """
+    q_set = get_base_queryset_courses(fx_permission_info, visible_filter=None, active_filter=None)
+
+    visible_q = Q(catalog_visibility__in=['about', 'both']) & Q(visible_to_staff_only=False)
+
+    return q_set.values(org_lower_case=Lower('org')).annotate(
+        all_courses=Count('id'),
+        in_visible_courses=Count('id', filter=visible_q),
+    ).order_by(Lower('org'))
+
+
 def _get_enrollments_count(
     fx_permission_info: dict,
     visible_filter: bool | None = True,

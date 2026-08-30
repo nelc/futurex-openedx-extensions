@@ -21,14 +21,19 @@ from futurex_openedx_extensions.dashboard.statistics.certificates import (
     get_learning_hours_count,
 )
 from futurex_openedx_extensions.dashboard.statistics.courses import (
+    COURSES_BREAKDOWN_STAGES,
     ENROLLMENTS_BREAKDOWN_STAGES,
     get_courses_count,
+    get_courses_count_breakdown,
     get_courses_ratings,
     get_enrollments_count,
     get_enrollments_count_aggregated,
     get_enrollments_count_breakdown,
 )
-from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
+from futurex_openedx_extensions.dashboard.statistics.learners import (
+    get_learners_count,
+    get_learners_count_breakdown,
+)
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES, RATING_RANGE
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.permissions import (
@@ -110,7 +115,7 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         """Get the count of learning_hours for the given tenant"""
         return get_learning_hours_count(one_tenant_permission_info, include_staff=self.include_staff)
 
-    BREAKDOWN_SUPPORTED_STATS = [STAT_ENROLLMENTS]
+    BREAKDOWN_SUPPORTED_STATS = [STAT_ENROLLMENTS, STAT_LEARNERS, STAT_COURSES]
 
     def _get_stat_breakdown(self, stat: str, tenant_id: int) -> dict:
         """
@@ -120,12 +125,22 @@ class TotalCountsView(FXViewRoleInfoMixin, APIView):
         accounts for each difference against a raw count taken from Open edX directly.
         """
         one_tenant_permission_info = get_tenant_limited_fx_permission_info(self.fx_permission_info, tenant_id)
-        collector_result = get_enrollments_count_breakdown(
-            one_tenant_permission_info, include_staff=self.include_staff,
-        )
+
+        if stat == self.STAT_LEARNERS:
+            return get_learners_count_breakdown(one_tenant_permission_info, include_staff=self.include_staff)
+
+        if stat == self.STAT_COURSES:
+            collector_result = get_courses_count_breakdown(one_tenant_permission_info)
+            stages = COURSES_BREAKDOWN_STAGES
+        else:
+            collector_result = get_enrollments_count_breakdown(
+                one_tenant_permission_info, include_staff=self.include_staff,
+            )
+            stages = ENROLLMENTS_BREAKDOWN_STAGES
+
         return {
             stage: sum(org_row[stage] for org_row in collector_result)
-            for stage in ENROLLMENTS_BREAKDOWN_STAGES
+            for stage in stages
         }
 
     def _get_stat_count(self, stat: str, tenant_id: int) -> Any:

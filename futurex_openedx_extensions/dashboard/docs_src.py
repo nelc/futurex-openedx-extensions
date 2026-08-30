@@ -1131,14 +1131,23 @@ docs_src = {
                 'breakdown',
                 int,
                 'return a per-stage breakdown alongside each supported count `1` or `0`. Default is `0`. Any value'
-                ' other than `1` is considered as `0`. Currently supported for `enrollments` only, returned as'
-                ' `enrollments_count_breakdown`.\n'
-                '\nEach stage adds exactly one of the filters the count applies, in order, so the drop between two'
-                ' stages is attributable to a single rule. `all_rows` is the raw enrollment row count, matching what'
-                ' Open edX reports directly; `excluding_course_staff` is the last stage and always equals'
-                ' `enrollments_count`. Use it to explain why a FutureX number differs from one taken from Open edX.\n'
-                '\nStages, in order: `all_rows`, `active_enrollment`, `active_user`, `excluding_platform_staff`,'
-                ' `in_visible_courses`, `excluding_course_staff`.'
+                ' other than `1` is considered as `0`. Supported for `enrollments`, `learners` and `courses`,'
+                ' returned as `<stat>_count_breakdown`.\n'
+                '\nEach stage adds exactly one of the filters the count applies, in the order it applies them, so'
+                ' the drop between two adjacent stages is attributable to a single rule. The last stage always'
+                ' equals the reported count. Use it to explain why a FutureX number differs from one taken from'
+                ' Open edX directly.\n'
+                '\n- `enrollments`: `all_rows`, `active_enrollment`, `active_user`, `excluding_platform_staff`,'
+                ' `in_visible_courses`, `excluding_course_staff`. `all_rows` is the raw enrollment row count, which'
+                ' is what Open edX reports.\n'
+                '- `learners`: `in_tenant`, `active_user`, `excluding_platform_staff`, `excluding_course_staff`.'
+                ' The base stage is the tenant-scoped population, since an unscoped one would report every user on'
+                ' the installation.\n'
+                '- `courses`: `all_courses`, `in_visible_courses`. The difference between the two is exactly the'
+                ' `hidden_courses` statistic.\n'
+                '\n**Note:** `certificates`, `hidden_courses`, `learning_hours` and `unique_learners` do not'
+                ' support a breakdown. The default certificate count is served from a pre-aggregated cache, which'
+                ' holds no intermediate stages.'
             ),
             query_parameter(
                 'stats',
