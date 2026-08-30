@@ -31,7 +31,10 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from zeitlabs_payments.querysets import get_orders_queryset
 
-from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled
+from futurex_openedx_extensions.dashboard.toggles import (
+    is_heavy_queries_enabled,
+    is_legacy_filtered_counts_enabled,
+)
 from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
@@ -79,42 +82,12 @@ def annotate_courses_rating_queryset(
     return queryset
 
 
-ENROLLED_COUNT_BREAKDOWN_STAGES = [
-    'all_rows',
-    'active_enrollment',
-    'active_user',
-    'excluding_platform_staff',
-    'excluding_course_staff',
-]
-
-
-def _enrollment_stage_subquery(extra_filters: dict) -> Coalesce:
-    """
-    Build the per-course enrollment count for one breakdown stage.
-
-    The final stage of the breakdown is `enrolled_count` itself, which is annotated separately and
-    carries the course-team staff exclusion, so no stage built here needs one.
-
-    :param extra_filters: The filters this stage adds on top of the course match
-    :type extra_filters: dict
-    :return: Coalesced subquery returning the count for the stage
-    :rtype: Coalesce
-    """
-    return Coalesce(Subquery(
-        CourseEnrollment.objects.filter(
-            course_id=OuterRef('id'), **extra_filters,
-        ).values('course_id').annotate(count=Count('id')).values('count'),
-        output_field=IntegerField(),
-    ), 0)
-
-
 def get_courses_queryset(  # pylint: disable=too-many-arguments
     fx_permission_info: dict,
     search_text: str | None = None,
     visible_filter: bool | None = True,
     active_filter: bool | None = None,
     include_staff: bool = False,
-    breakdown: bool = False,
 ) -> QuerySet:
     """
     Get the courses queryset for the given tenant IDs and search text.
@@ -129,9 +102,6 @@ def get_courses_queryset(  # pylint: disable=too-many-arguments
     :type active_filter: bool | None
     :param include_staff: flag to include staff users
     :type include_staff: bool
-    :param breakdown: annotate the per-stage enrollment breakdown. Off by default because it costs one
-        extra correlated subquery per stage, per course.
-    :type breakdown: bool
     :return: QuerySet of courses
     :rtype: QuerySet
     """
@@ -154,16 +124,25 @@ def get_courses_queryset(  # pylint: disable=too-many-arguments
             ref_user_id='user_id', ref_org='course__org', ref_course_id='course_id',
         )
 
+    if is_legacy_filtered_counts_enabled():
+        enrollment_filters: dict = {
+            'is_active': True,
+            'user__is_active': True,
+            'user__is_staff': False,
+            'user__is_superuser': False,
+        }
+        staff_exclusion = ~is_staff_queryset
+    else:
+        enrollment_filters = {}
+        staff_exclusion = Q()
+
     queryset = queryset.annotate(
         enrolled_count=Coalesce(Subquery(
             CourseEnrollment.objects.filter(
                 course_id=OuterRef('id'),
-                is_active=True,
-                user__is_active=True,
-                user__is_staff=False,
-                user__is_superuser=False,
+                **enrollment_filters,
             ).filter(
-                ~is_staff_queryset,
+                staff_exclusion,
             ).values('course_id').annotate(count=Count('id')).values('count'),
             output_field=IntegerField(),
         ), 0)
@@ -171,29 +150,14 @@ def get_courses_queryset(  # pylint: disable=too-many-arguments
         active_count=Coalesce(Subquery(
             CourseEnrollment.objects.filter(
                 course_id=OuterRef('id'),
-                is_active=True,
-                user__is_active=True,
-                user__is_staff=False,
-                user__is_superuser=False,
+                **enrollment_filters,
             ).filter(
-                ~is_staff_queryset,
+                staff_exclusion,
             ).values('course_id').annotate(count=Count('id')).values('count'),
             output_field=IntegerField(),
         ), 0)
     )
 
-    if breakdown:
-        queryset = queryset.annotate(
-            breakdown_all_rows=_enrollment_stage_subquery({}),
-            breakdown_active_enrollment=_enrollment_stage_subquery({'is_active': True}),
-            breakdown_active_user=_enrollment_stage_subquery({'is_active': True, 'user__is_active': True}),
-            breakdown_excluding_platform_staff=_enrollment_stage_subquery({
-                'is_active': True,
-                'user__is_active': True,
-                'user__is_staff': False,
-                'user__is_superuser': False,
-            }),
-        )
 
     if is_heavy_queries_enabled():
         queryset = queryset.annotate(

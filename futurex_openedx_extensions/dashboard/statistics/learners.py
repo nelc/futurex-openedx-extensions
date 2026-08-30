@@ -4,6 +4,7 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
 
+from futurex_openedx_extensions.dashboard.toggles import is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_learners_search_queryset,
@@ -25,6 +26,15 @@ def get_learners_count(
     :return: Dictionary of tenant ID and the count of learners
     :rtype: Dict[int, Dict[str, int]]
     """
+    if not is_legacy_filtered_counts_enabled():
+        return get_permitted_learners_queryset(
+            queryset=get_learners_search_queryset(
+                superuser_filter=None, staff_filter=None, active_filter=None,
+            ),
+            fx_permission_info=fx_permission_info,
+            include_staff=True,
+        ).count()
+
     queryset = get_learners_search_queryset()
 
     queryset = get_permitted_learners_queryset(

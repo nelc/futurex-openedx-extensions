@@ -10,7 +10,7 @@ from django.db.models.functions import Lower
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
-from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled
+from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled, is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_base_queryset_courses
@@ -59,22 +59,25 @@ def get_certificates_count(
         )
         return dict(course_stats_results)
 
-    if include_staff:
+    if include_staff or not is_legacy_filtered_counts_enabled():
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))
     else:
         is_staff_queryset = check_staff_exist_queryset(
             ref_user_id='user_id', ref_org='course_org', ref_course_id='course_id',
         )
 
+    raw_counts = not is_legacy_filtered_counts_enabled()
+    certificate_filters: dict = {} if raw_counts else {'user__is_active': True}
+
     result = list(
         GeneratedCertificate.objects.filter(
             status='downloadable',
             course_id__in=get_base_queryset_courses(
                 fx_permission_info,
-                visible_filter=visible_courses_filter,
+                visible_filter=None if raw_counts else visible_courses_filter,
                 active_filter=active_courses_filter,
             ),
-            user__is_active=True,
+            **certificate_filters,
         )
         .annotate(
             course_org=Subquery(
