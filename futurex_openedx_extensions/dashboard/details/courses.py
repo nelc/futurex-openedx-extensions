@@ -108,7 +108,7 @@ def _enrollment_stage_subquery(extra_filters: dict) -> Coalesce:
     ), 0)
 
 
-def get_courses_queryset(
+def get_courses_queryset(  # pylint: disable=too-many-arguments
     fx_permission_info: dict,
     search_text: str | None = None,
     visible_filter: bool | None = True,

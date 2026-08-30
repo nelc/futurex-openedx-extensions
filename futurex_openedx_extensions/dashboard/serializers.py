@@ -662,7 +662,7 @@ class CourseDetailsSerializer(ModelSerializerOptionalFields, CourseDetailsBaseSe
             return []
         return list(tenant_categories.get_categories_for_course(str(obj.id)).keys())
 
-    def get_enrolled_count_breakdown(self, obj: CourseOverview) -> Any:
+    def get_enrolled_count_breakdown(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
         """
         Return the enrollment count per filter stage for this course.
 
