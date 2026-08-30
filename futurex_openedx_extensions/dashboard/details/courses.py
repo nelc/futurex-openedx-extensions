@@ -31,10 +31,7 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from zeitlabs_payments.querysets import get_orders_queryset
 
-from futurex_openedx_extensions.dashboard.toggles import (
-    is_heavy_queries_enabled,
-    is_legacy_filtered_counts_enabled,
-)
+from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled, is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,

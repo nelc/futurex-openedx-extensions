@@ -11,8 +11,8 @@ from django.db.models.query import QuerySet
 from django.utils.timezone import now
 from eox_nelp.course_experience.models import FeedbackCourse
 
-from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.dashboard.toggles import is_legacy_filtered_counts_enabled
+from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.constants import COURSE_STATUSES, RATING_RANGE
 from futurex_openedx_extensions.helpers.extractors import get_valid_duration
