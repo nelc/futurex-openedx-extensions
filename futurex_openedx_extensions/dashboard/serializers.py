@@ -1397,9 +1397,7 @@ class TenantConfigSerializer(ReadOnlySerializer):
     def to_representation(self, instance: Any) -> Any:
         """Rewrite legacy CloudFront dashboard asset URLs to the LMS serve route."""
         data = super().to_representation(instance)
-        values = data.get('values')
-        if isinstance(values, dict):
-            data['values'] = rewrite_legacy_cloudfront_asset_urls(values)
+        data['values'] = rewrite_legacy_cloudfront_asset_urls(data.get('values', {}))
         return data
 
 
