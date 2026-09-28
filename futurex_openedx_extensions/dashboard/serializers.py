@@ -79,6 +79,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_tenants_by_org,
     set_request_domain_by_org,
 )
+from futurex_openedx_extensions.helpers.upload import rewrite_legacy_cloudfront_asset_urls
 from futurex_openedx_extensions.helpers.users import get_user_by_key
 
 logger = logging.getLogger(__name__)
@@ -1392,6 +1393,12 @@ class TenantConfigSerializer(ReadOnlySerializer):
         """Return the revision IDs as strings."""
         revision_ids = obj.get('revision_ids', {})
         return {key: str(value) for key, value in revision_ids.items()}
+
+    def to_representation(self, instance: Any) -> Any:
+        """Rewrite legacy CloudFront dashboard asset URLs to the LMS serve route."""
+        data = super().to_representation(instance)
+        data['values'] = rewrite_legacy_cloudfront_asset_urls(data.get('values', {}))
+        return data
 
 
 class CategorySerializer(OptionalFieldsSerializerMixin, FxPermissionInfoSerializerMixin, serializers.Serializer):
