@@ -104,3 +104,17 @@ def plugin_settings(settings: Any) -> None:
         'FX_COURSE_CATEGORY_MAX_COUNT',
         20,
     )
+
+    # Stop NEW certificates for courses with disabled issuance. Merged into any existing filters configuration
+    # (e.g. the xAPI filters of eox-nelp), never replacing it. fail_silently=True keeps certificates issuing if the
+    # step itself errors (e.g. migrations not applied yet); PreventCertificateCreation is always propagated
+    filters_config = getattr(settings, 'OPEN_EDX_FILTERS_CONFIG', None) or {}
+    certificate_filter = filters_config.setdefault(
+        'org.openedx.learning.certificate.creation.requested.v1',
+        {'fail_silently': True, 'pipeline': []},
+    )
+    pipeline = certificate_filter.setdefault('pipeline', [])
+    step = 'futurex_openedx_extensions.helpers.certificates.StopCertificateIssuanceWhenDisabled'
+    if step not in pipeline:
+        pipeline.append(step)
+    settings.OPEN_EDX_FILTERS_CONFIG = filters_config

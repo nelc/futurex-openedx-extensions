@@ -28,6 +28,7 @@ from futurex_openedx_extensions.helpers.models import (
     ClickhouseQuery,
     ConfigAccessControl,
     ConfigMirror,
+    CourseCertificateIssuance,
     CourseStat,
     DataExportTask,
     DraftConfig,
@@ -438,6 +439,13 @@ class CourseStatAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(one_step_back_path)
 
 
+class CourseCertificateIssuanceAdmin(SimpleHistoryAdmin):
+    """Admin class of CourseCertificateIssuance model"""
+    list_display = ('course_key', 'issuance_enabled', 'updated_by', 'updated_at')
+    search_fields = ('course_key',)
+    ordering = ('-updated_at',)
+
+
 def register_admins() -> None:
     """Register the admin views."""
     CacheInvalidator._meta.abstract = False  # to be able to register the admin view
@@ -452,6 +460,7 @@ def register_admins() -> None:
     admin.site.register(DraftConfig, DraftConfigAdmin)
     admin.site.register(ConfigMirror, ConfigMirrorAdmin)
     admin.site.register(CourseStat, CourseStatAdmin)
+    admin.site.register(CourseCertificateIssuance, CourseCertificateIssuanceAdmin)
 
 
 register_admins()

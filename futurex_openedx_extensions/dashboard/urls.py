@@ -28,6 +28,7 @@ from futurex_openedx_extensions.dashboard.views.configs import (
     ThemeConfigTenantView,
 )
 from futurex_openedx_extensions.dashboard.views.courses import (
+    CourseCertificatesView,
     CoursesFeedbackView,
     CourseStatusesView,
     CoursesView,
@@ -90,6 +91,11 @@ urlpatterns = [
         fr'^api/fx/courses/v1/course_categories/{COURSE_ID_REGX}/$',
         CourseCategoriesView.as_view(),
         name='courses-course-categories',
+    ),
+    re_path(
+        fr'^api/fx/courses/v1/certificates/{COURSE_ID_REGX}/$',
+        CourseCertificatesView.as_view(),
+        name='courses-course-certificates',
     ),
 
     re_path(r'^api/fx/export/v1/', include(export_router.urls)),

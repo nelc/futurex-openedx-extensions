@@ -2965,4 +2965,49 @@ docs_src = {
             remove=[200],
         ),
     },
+    'CourseCertificatesView.put': {
+        'summary': 'Enable or disable certificates of a course',
+        'description':
+            'Enable or disable issuing certificates for a course.'
+            '\n\n**enabled = 1**: activates the course certificate configuration (created if missing), enables the '
+            'HTML certificate view, and resumes issuing certificates. Fails with 409 when no active certificate '
+            'template matches the course.'
+            '\n\n**enabled = 0**: stops issuing NEW certificates only. Already-issued certificates remain valid.',
+        'parameters': [
+            path_parameter(
+                'course_id',
+                str,
+                'The course ID to enable or disable certificates for.',
+            ),
+        ],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'enabled': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='1 to enable certificates, 0 to stop issuing new certificates.',
+                    enum=[0, 1],
+                    example=1,
+                ),
+            },
+            required=['enabled']
+        ),
+        'responses': responses(
+            overrides={
+                200: openapi.Response(
+                    description='Certificates setting updated.',
+                    schema=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'course_id': openapi.Schema(type=openapi.TYPE_STRING),
+                            'enabled': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        },
+                    ),
+                ),
+                400: 'Invalid input or unable to update the course.',
+                404: 'Course not found or access denied.',
+                409: 'No active certificate template matches the course.',
+            },
+        ),
+    },
 }

@@ -24,6 +24,7 @@ from futurex_openedx_extensions.helpers.model_helpers import NoUpdateQuerySet
 from futurex_openedx_extensions.helpers.models import (
     ClickhouseQuery,
     ConfigMirror,
+    CourseCertificateIssuance,
     CourseStat,
     DataExportTask,
     DraftConfig,
@@ -1634,3 +1635,26 @@ def test_course_stat_str():
         certificate_count_non_staff=3,
     )
     assert str(stat) == 'course-v1:2+2+2: all=5, non_staff=3'
+
+
+@pytest.mark.django_db
+def test_course_certificate_issuance_defaults_to_enabled():
+    """Verify that a course without a record is treated as enabled"""
+    assert CourseCertificateIssuance.is_issuance_enabled(CourseKey.from_string('course-v1:ORG1+1+1')) is True
+
+
+@pytest.mark.django_db
+def test_course_certificate_issuance_set_issuance_enabled():
+    """Verify that set_issuance_enabled creates then updates the course record"""
+    course_key = CourseKey.from_string('course-v1:ORG1+1+1')
+    user = get_user_model().objects.get(id=1)
+
+    record = CourseCertificateIssuance.set_issuance_enabled(course_key, False, user)
+    assert CourseCertificateIssuance.is_issuance_enabled(course_key) is False
+    assert record.updated_by == user
+    assert str(record) == 'course-v1:ORG1+1+1: issuance_enabled=False'
+
+    CourseCertificateIssuance.set_issuance_enabled(course_key, True, user)
+    assert CourseCertificateIssuance.is_issuance_enabled(course_key) is True
+    assert CourseCertificateIssuance.objects.filter(course_key=course_key).count() == 1
+    assert record.history.count() == 2
