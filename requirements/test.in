@@ -24,5 +24,6 @@ django-filter
 django-mysql
 django-simple-history
 jsonfield
+openedx-filters
 python-dateutil
 social-auth-app-django

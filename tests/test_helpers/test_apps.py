@@ -74,3 +74,38 @@ def test_ready_imports_signals():
     with patch('futurex_openedx_extensions.helpers.signals') as mock_signals:
         config.ready()
     assert mock_signals is not None, 'signals module was not imported in ready method!'
+
+
+CERTIFICATE_FILTER = 'org.openedx.learning.certificate.creation.requested.v1'
+CERTIFICATE_STEP = 'futurex_openedx_extensions.helpers.certificates.StopCertificateIssuanceWhenDisabled'
+
+
+@pytest.mark.parametrize('existing_config, expected_config', [
+    (None, {CERTIFICATE_FILTER: {'fail_silently': True, 'pipeline': [CERTIFICATE_STEP]}}),
+    (
+        {'other.filter': {'fail_silently': False, 'pipeline': ['other.step']}},
+        {
+            'other.filter': {'fail_silently': False, 'pipeline': ['other.step']},
+            CERTIFICATE_FILTER: {'fail_silently': True, 'pipeline': [CERTIFICATE_STEP]},
+        },
+    ),
+    (
+        {CERTIFICATE_FILTER: {'fail_silently': True, 'pipeline': ['other.step']}},
+        {CERTIFICATE_FILTER: {'fail_silently': True, 'pipeline': ['other.step', CERTIFICATE_STEP]}},
+    ),
+    (
+        {CERTIFICATE_FILTER: {'fail_silently': False}},
+        {CERTIFICATE_FILTER: {'fail_silently': False, 'pipeline': [CERTIFICATE_STEP]}},
+    ),
+    (
+        {CERTIFICATE_FILTER: {'fail_silently': False, 'pipeline': [CERTIFICATE_STEP]}},
+        {CERTIFICATE_FILTER: {'fail_silently': False, 'pipeline': [CERTIFICATE_STEP]}},
+    ),
+])
+def test_common_production_plugin_settings_certificate_filter(settings, existing_config, expected_config):
+    """Verify that the certificate filter step is merged into the filters configuration without replacing it"""
+    settings = copy.deepcopy(settings)
+    settings.OPEN_EDX_FILTERS_CONFIG = copy.deepcopy(existing_config)
+
+    common_production.plugin_settings(settings)
+    assert settings.OPEN_EDX_FILTERS_CONFIG == expected_config

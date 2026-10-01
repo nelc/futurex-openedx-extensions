@@ -7,6 +7,7 @@ from typing import Any
 
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
+from opaque_keys.edx.keys import CourseKey
 from rest_framework import status as http_status
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
@@ -16,17 +17,20 @@ from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_courses_feedback_queryset, get_courses_queryset
 from futurex_openedx_extensions.dashboard.docs_utils import docs
 from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count_by_status
+from futurex_openedx_extensions.helpers.certificates import disable_course_certificates, enable_course_certificates
 from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUS_SELF_PREFIX,
     COURSE_STATUSES,
     FX_VIEW_DEFAULT_AUTH_CLASSES,
 )
+from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from futurex_openedx_extensions.helpers.library import get_accessible_libraries
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
-from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
+from futurex_openedx_extensions.helpers.permissions import FXHasTenantAllCoursesAccess, FXHasTenantCourseAccess
+from futurex_openedx_extensions.helpers.querysets import get_course_search_queryset
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
 from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 
@@ -224,3 +228,48 @@ class CoursesFeedbackView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """GET /api/fx/courses/v1/feedback/"""
         return super().get(request, *args, **kwargs)
+
+
+@docs('CourseCertificatesView.put')
+class CourseCertificatesView(FXViewRoleInfoMixin, APIView):
+    """View to enable or disable certificates of a course"""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    fx_view_name = 'course_certificates'
+    fx_default_read_write_roles = ['staff', 'org_course_creator_group']
+    fx_allowed_write_methods = ['PUT']
+    fx_view_description = 'api/fx/courses/v1/certificates/<course_id>/: Enable or disable certificates of a course'
+
+    def put(self, request: Any, course_id: str, *args: Any, **kwargs: Any) -> Response:
+        """PUT /api/fx/courses/v1/certificates/<course_id>/"""
+        serializer = serializers.CourseCertificatesSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+        accessible_course = get_course_search_queryset(
+            fx_permission_info=self.fx_permission_info,
+            course_ids=[course_id],
+        ).first()
+        if not accessible_course:
+            return Response(
+                error_details_to_dictionary(reason=f'Course not found or access denied: {course_id}'),
+                status=http_status.HTTP_404_NOT_FOUND
+            )
+
+        enabled = serializer.validated_data['enabled']
+        course_key = CourseKey.from_string(course_id)
+        try:
+            if enabled:
+                enable_course_certificates(course_key, request.user)
+            else:
+                disable_course_certificates(course_key, request.user)
+
+        except FXCodedException as exc:
+            status = (
+                http_status.HTTP_409_CONFLICT
+                if exc.code == FXExceptionCodes.COURSE_CERTIFICATE_TEMPLATE_NOT_FOUND.value
+                else http_status.HTTP_400_BAD_REQUEST
+            )
+            return Response(error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'), status=status)
+
+        return Response({'course_id': course_id, 'enabled': enabled})

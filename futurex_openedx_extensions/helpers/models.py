@@ -1051,3 +1051,38 @@ class CourseStat(models.Model):
             f'{self.course_key}: all={self.certificate_count_all}, '
             f'non_staff={self.certificate_count_non_staff}'
         )
+
+
+class CourseCertificateIssuance(models.Model):
+    """
+    Per-course switch for issuing NEW certificates. Already-issued certificates are not affected.
+    A course without a record is treated as enabled.
+    """
+    course_key = CourseKeyField(max_length=255, unique=True)  # type: ignore
+    issuance_enabled = models.BooleanField(default=True)
+    updated_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    history = HistoricalRecords()
+
+    class Meta:
+        """Metaclass for the model"""
+        verbose_name = 'Course Certificate Issuance'
+        verbose_name_plural = 'Course Certificate Issuances'
+
+    def __str__(self) -> str:
+        return f'{self.course_key}: issuance_enabled={self.issuance_enabled}'
+
+    @classmethod
+    def is_issuance_enabled(cls, course_key: Any) -> bool:
+        """Return False only when the course has been explicitly disabled."""
+        return not cls.objects.filter(course_key=course_key, issuance_enabled=False).exists()
+
+    @classmethod
+    def set_issuance_enabled(cls, course_key: Any, enabled: bool, user: Any) -> CourseCertificateIssuance:
+        """Create or update the course record."""
+        record, _ = cls.objects.update_or_create(
+            course_key=course_key,
+            defaults={'issuance_enabled': enabled, 'updated_by': user},
+        )
+        return record

@@ -1534,6 +1534,11 @@ class CourseCategoriesSerializer(ReadOnlySerializer):
     categories = serializers.ListField(child=serializers.CharField(), required=True)
 
 
+class CourseCertificatesSerializer(ReadOnlySerializer):
+    """Serializer for enabling or disabling certificates of a course."""
+    enabled = serializers.BooleanField(required=True)
+
+
 class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
     """
     Serializer for unenrolling a learner from a course.
