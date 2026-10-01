@@ -10,6 +10,7 @@ from opaque_keys.edx.keys import CourseKey
 from opaque_keys.edx.locator import CourseLocator
 from openedx_filters import PipelineStep
 from openedx_filters.learning.filters import CertificateCreationRequested
+from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.django import modulestore
 
 from futurex_openedx_extensions.helpers.converters import relative_url_to_absolute_url
@@ -81,36 +82,40 @@ def enable_course_certificates(course_key: CourseKey, user: get_user_model) -> N
     :param user: The user performing the change.
     :type user: get_user_model
     """
-    course = modulestore().get_course(course_key)
-    if not course:
-        raise FXCodedException(
-            code=FXExceptionCodes.COURSE_CERTIFICATE_COURSE_NOT_FOUND,
-            message=f'Course not found: {course_key}',
-        )
+    store = modulestore()
+    # The LMS defaults to the published branch; edit the draft like Studio does. The course block is a direct-only
+    # category, so the update is auto-published, Studio shows it, and course_published refreshes the course overview
+    with store.branch_setting(ModuleStoreEnum.Branch.draft_preferred, course_key):
+        course = store.get_course(course_key)
+        if not course:
+            raise FXCodedException(
+                code=FXExceptionCodes.COURSE_CERTIFICATE_COURSE_NOT_FOUND,
+                message=f'Course not found: {course_key}',
+            )
 
-    if not _has_certificate_template(course_key, course.language):
-        raise FXCodedException(
-            code=FXExceptionCodes.COURSE_CERTIFICATE_TEMPLATE_NOT_FOUND,
-            message=f'No active certificate template matches the course: {course_key}',
-        )
+        if not _has_certificate_template(course_key, course.language):
+            raise FXCodedException(
+                code=FXExceptionCodes.COURSE_CERTIFICATE_TEMPLATE_NOT_FOUND,
+                message=f'No active certificate template matches the course: {course_key}',
+            )
 
-    certificates = course.certificates or {}
-    configurations = certificates.setdefault('certificates', [])
-    if configurations:
-        configurations[0]['is_active'] = True
-    else:
-        configurations.append({
-            'id': 100,
-            'name': 'Course Certificate',
-            'description': 'Course Certificate',
-            'version': 1,
-            'is_active': True,
-            'course_title': '',
-            'signatories': [],
-        })
-    course.certificates = certificates
-    course.cert_html_view_enabled = True
-    modulestore().update_item(course, user.id)
+        certificates = course.certificates or {}
+        configurations = certificates.setdefault('certificates', [])
+        if configurations:
+            configurations[0]['is_active'] = True
+        else:
+            configurations.append({
+                'id': 100,
+                'name': 'Course Certificate',
+                'description': 'Course Certificate',
+                'version': 1,
+                'is_active': True,
+                'course_title': '',
+                'signatories': [],
+            })
+        course.certificates = certificates
+        course.cert_html_view_enabled = True
+        store.update_item(course, user.id)
 
     CourseCertificateIssuance.set_issuance_enabled(course_key, True, user)
 

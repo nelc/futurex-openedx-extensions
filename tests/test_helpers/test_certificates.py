@@ -123,6 +123,11 @@ def test_enable_course_certificates(mock_modulestore, _, certificates, expected_
 
     enable_course_certificates(COURSE_KEY, user)
 
+    store = mock_modulestore.return_value
+    store.branch_setting.assert_called_once_with('draft-preferred', COURSE_KEY)
+    assert [call[0] for call in store.mock_calls] == [
+        'branch_setting', 'branch_setting().__enter__', 'get_course', 'update_item', 'branch_setting().__exit__',
+    ], 'the course must be read and updated inside the draft branch context'
     configurations = course.certificates['certificates']
     if expected_configurations is None:
         assert len(configurations) == 1
