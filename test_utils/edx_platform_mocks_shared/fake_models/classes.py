@@ -40,6 +40,13 @@ class ModuleStoreEnum:  # pylint: disable=too-few-public-methods
         """
         split = 'split'
 
+    class Branch:
+        """
+        Fake Branch
+        """
+        draft_preferred = 'draft-preferred'
+        published_only = 'published-only'
+
 
 class DuplicateCourseError(Exception):
     """Mock"""

@@ -81,6 +81,10 @@ class DummyModuleStore:
         self.libraries.append(new_library)
         return new_library
 
+    def branch_setting(self, branch_setting, course_id=None):  # pylint: disable=unused-argument
+        """Mock context manager for branch setting"""
+        return self
+
     def get_course(self, course_key):  # pylint: disable=unused-argument, no-self-use
         """Mock"""
         return Mock()
