@@ -1673,6 +1673,44 @@ def test_create_success(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('setting_overrides, expected_fields', [
+    ({'NEW_COURSE_CATALOG_VISIBILITY': 'none'}, {'catalog_visibility': 'none'}),
+    ({'NEW_COURSE_CATALOG_VISIBILITY': None}, {}),
+    ({}, {}),
+], ids=['set', 'set to None', 'not defined'])
+@patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
+@patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
+@patch('futurex_openedx_extensions.dashboard.serializers.add_organization_course')
+@patch('futurex_openedx_extensions.dashboard.serializers.modulestore')
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseCreateSerializer.add_roles_and_permissions')
+@patch('futurex_openedx_extensions.dashboard.serializers.CourseCreateSerializer.update_course_discussions_settings')
+def test_create_catalog_visibility_setting(
+    _,
+    __,
+    mock_modulestore,
+    ___,
+    ____,
+    mock_get_all_tenants_info,
+    setting_overrides,
+    expected_fields,
+    course_data,
+    valid_tenants,
+    settings,
+):  # pylint: disable=too-many-arguments,redefined-outer-name
+    """Verify create() writes NEW_COURSE_CATALOG_VISIBILITY into the course fields only when it is set."""
+    for name, value in setting_overrides.items():
+        setattr(settings, name, value)
+    mock_get_all_tenants_info.return_value = valid_tenants
+
+    serializer = serializers.CourseCreateSerializer(context={'request': MagicMock(user=MagicMock(id=123))})
+    serializer.create(course_data)
+
+    fields = mock_modulestore.return_value.create_course.call_args.kwargs['fields']
+    assert {key: value for key, value in fields.items() if key == 'catalog_visibility'} == expected_fields
+    assert fields['display_name'] == course_data['display_name'], 'other fields are untouched'
+
+
+@pytest.mark.django_db
 @patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info')
 @patch('futurex_openedx_extensions.dashboard.serializers.ensure_organization')
 @patch('futurex_openedx_extensions.dashboard.serializers.add_organization_course')
