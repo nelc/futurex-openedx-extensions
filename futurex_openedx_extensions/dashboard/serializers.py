@@ -845,6 +845,9 @@ class CourseCreateSerializer(serializers.Serializer):
         fields = {
             field_name: validated_data.get(field_name) for field_name in field_names if field_name in validated_data
         }
+        # This path bypasses Studio, so it must apply the platform's catalog visibility for new courses itself
+        if catalog_visibility := getattr(settings, 'NEW_COURSE_CATALOG_VISIBILITY', None):
+            fields['catalog_visibility'] = catalog_visibility
 
         try:
             org_data = ensure_organization(org)
