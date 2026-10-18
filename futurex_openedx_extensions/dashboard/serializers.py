@@ -8,7 +8,7 @@ import re
 from typing import Any, Dict, List, Tuple
 
 from common.djangoapps.student.auth import add_users
-from common.djangoapps.student.models import CourseEnrollment
+from common.djangoapps.student.models import CourseEnrollment, CourseEnrollmentAllowed
 from common.djangoapps.student.roles import CourseInstructorRole, CourseStaffRole
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -491,6 +491,39 @@ class LearnerEnrollmentSerializer(
                     break
 
         return result
+
+
+class PendingInvitationSerializer(serializers.ModelSerializer):
+    """
+    One course invitation. The only personal value is the invited email, by design: no name, username,
+    national id or linked user id. The view puts the flags of the current page in the context.
+    """
+    course_id = serializers.SerializerMethodField()
+    org = serializers.SerializerMethodField()
+    has_account = serializers.SerializerMethodField()
+    enrolled = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CourseEnrollmentAllowed
+        fields = ['id', 'course_id', 'org', 'email', 'auto_enroll', 'created', 'has_account', 'enrolled']
+
+    @staticmethod
+    def get_course_id(obj: Any) -> str:
+        """Get the course id as text"""
+        return str(obj.course_id)
+
+    @staticmethod
+    def get_org(obj: Any) -> str:
+        """The org comes from the course key, it is not stored on the invitation"""
+        return obj.course_id.org
+
+    def get_has_account(self, obj: Any) -> bool:
+        """True when a user account has this email"""
+        return obj.email.lower() in self.context['invitation_flags']['accounts']
+
+    def get_enrolled(self, obj: Any) -> bool:
+        """True when a user with this email is actively enrolled in THIS course"""
+        return (obj.email.lower(), str(obj.course_id)) in self.context['invitation_flags']['enrolled']
 
 
 class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):  # pylint: disable=too-many-ancestors

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
 
 from django.db.models.query import QuerySet
@@ -14,6 +15,12 @@ from rest_framework.views import APIView
 
 from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_learner_courses_info_queryset
+from futurex_openedx_extensions.dashboard.details.invitations import (
+    get_invitation_flags,
+    get_pending_invitations_queryset,
+    parse_bool_param,
+    parse_datetime_param,
+)
 from futurex_openedx_extensions.dashboard.details.learners import (
     get_learner_info_queryset,
     get_learners_by_course_queryset,
@@ -33,6 +40,10 @@ from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
 from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
+
+# Dedicated logger so the audit trail of invited emails can be filtered on its own. Its lines never carry
+# an invitee value, and search text is only logged as present/absent.
+invitations_access_log = logging.getLogger('futurex_openedx_extensions.pending_invitations_access')
 
 
 @docs('LearnersView.get')
@@ -367,3 +378,74 @@ class LearnerUnenrollView(FXViewRoleInfoMixin, APIView):
 
         result = serializer.unenroll()
         return Response(result, status=http_status.HTTP_200_OK)
+
+
+@docs('PendingInvitationsView.get')
+class PendingInvitationsView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIView):
+    """View to get the course invitations that have not been accepted yet"""
+    authentication_classes = default_auth_classes
+    serializer_class = serializers.PendingInvitationSerializer
+    permission_classes = [FXHasTenantCourseAccess]
+    pagination_class = DefaultPagination
+    fx_view_name = 'pending_invitations'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = 'api/fx/learners/v1/pending_invitations/: Get the list of pending course invitations'
+
+    def _get_course_filter(self) -> str | None:
+        """The requested course: the path form, or the course_id parameter"""
+        return self.kwargs.get('course_id') or self.request.query_params.get('course_id') or None
+
+    def get_related_id(self) -> str | None:  # type: ignore[override]
+        """Related ID is the course_id when a single course is requested"""
+        return self.kwargs.get('course_id')
+
+    def get_queryset(self) -> QuerySet:
+        """Get the invitations of the caller's courses"""
+        params = self.request.query_params
+        if self.kwargs.get('course_id') and params.get('course_id') not in (None, '', self.kwargs['course_id']):
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT, message='course_id in the path and in the query do not match',
+            )
+        return get_pending_invitations_queryset(
+            fx_permission_info=self.request.fx_permission_info,
+            course_id=self._get_course_filter(),
+            search_text=params.get('search_text'),
+            status=params.get('status', 'pending'),
+            created_from=parse_datetime_param('created_from', params.get('created_from')),
+            created_to=parse_datetime_param('created_to', params.get('created_to')),
+            has_account=parse_bool_param('has_account', params.get('has_account')),
+            enrolled=parse_bool_param('enrolled', params.get('enrolled')),
+        )
+
+    def paginate_queryset(self, queryset: QuerySet) -> Any:
+        """The account/enrollment flags are worked out for the rows of the page only"""
+        page = super().paginate_queryset(queryset)
+        self.invitation_flags = get_invitation_flags(page)  # pylint: disable=attribute-defined-outside-init
+        return page
+
+    def get_serializer_context(self) -> Dict[str, Any]:
+        """Add the flags of the current page"""
+        context = super().get_serializer_context()
+        context['invitation_flags'] = self.invitation_flags
+        return context
+
+    def list(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """Serve the list (or start the export), and leave one access-log record for it"""
+        response = super().list(request, *args, **kwargs)
+        if response.status_code == http_status.HTTP_200_OK:
+            export = request.query_params.get('download', '').lower() == 'csv'
+            invitations_access_log.info(
+                'pending invitations access: user_id=%s tenant_ids=%s course_id=%s search_text=%s count=%s export=%s',
+                request.user.id,
+                request.fx_permission_info['view_allowed_tenant_ids_any_access'],
+                self._get_course_filter(),
+                'present' if request.query_params.get('search_text') else 'absent',
+                None if export else response.data['count'],
+                export,
+            )
+        return response
+
+    @use_read_replica_if_available
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/learners/v1/pending_invitations/ and /api/fx/learners/v1/pending_invitations/<course-id>/"""
+        return super().get(request, *args, **kwargs)

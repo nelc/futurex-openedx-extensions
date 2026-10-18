@@ -975,6 +975,69 @@ docs_src = {
         ),
     },
 
+    'PendingInvitationsView.get': {
+        'summary': 'Get the list of pending course invitations',
+        'description': 'Get the course invitations that have not been accepted yet, one row per invitation (not per'
+        ' user). Use the path form to limit the list to one course. Only courses of the caller\'s tenants and roles'
+        ' are covered, and a course outside them gives an empty list, exactly like a course that does not exist.'
+        ' The invited email is returned as is, so every call, and every export, is written to the'
+        ' `futurex_openedx_extensions.pending_invitations_access` log (who, tenants, course, number of rows;'
+        ' never any email). The learners list does NOT include invited people, and the two counts are different'
+        ' by design.',
+        'parameters': [
+            path_parameter(
+                'course_id',
+                str,
+                'Optional. The course ID to limit the invitations to.',
+            ),
+            common_parameters['tenant_ids'],
+            query_parameter(
+                'course_id',
+                str,
+                'Same as the path form. When both are sent they must match.',
+            ),
+            query_parameter(
+                'search_text',
+                str,
+                'Email filter: starts-with across courses, and contains when a single course is requested.',
+            ),
+            query_parameter(
+                'status',
+                str,
+                '`pending` (default): invitations with no linked user, the same definition as the LMS instructor'
+                ' page. `all`: also the invitations already linked to a user.',
+            ),
+            query_parameter(
+                'created_from',
+                str,
+                'ISO-8601 datetime. Only invitations created at or after it (naive values are UTC).',
+            ),
+            query_parameter(
+                'created_to',
+                str,
+                'ISO-8601 datetime. Only invitations created at or before it (naive values are UTC).',
+            ),
+            query_parameter(
+                'has_account',
+                int,
+                '1 or 0. Keep the invitations whose email has (1) or has not (0) an account. Requires a single'
+                ' course.',
+            ),
+            query_parameter(
+                'enrolled',
+                int,
+                '1 or 0. Keep the invitations whose email is (1) or is not (0) actively enrolled in the course.'
+                ' Requires a single course.',
+            ),
+            common_parameters['download'],
+        ],
+        'responses': responses(
+            overrides={
+                200: serializers.PendingInvitationSerializer(read_only=True, required=False),
+            },
+        ),
+    },
+
     'LearnersEnrollmentView.get': {
         'summary': 'Get the list of enrollments',
         'description': 'Get the list of enrollments in the tenants, which is the list of all learners having at '

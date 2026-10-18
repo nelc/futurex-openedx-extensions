@@ -78,6 +78,20 @@ class CourseEnrollment(models.Model):
         enrollment.save()
 
 
+class CourseEnrollmentAllowed(models.Model):
+    """Mock"""
+    email = models.CharField(max_length=255, db_index=True)
+    course_id = CourseKeyField(max_length=255, db_index=True)
+    auto_enroll = models.BooleanField(default=False)
+    user = models.ForeignKey(get_user_model(), null=True, blank=True, db_constraint=False, on_delete=models.CASCADE)
+    created = models.DateTimeField(auto_now_add=True, null=True, db_index=True)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'student_courseenrollmentallowed'
+        unique_together = (('email', 'course_id'),)
+
+
 class UserSignupSource(models.Model):
     """Mock"""
     site = models.CharField(max_length=255)

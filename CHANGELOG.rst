@@ -14,6 +14,8 @@ Change Log
 Unreleased
 **********
 
+* Added the read-only pending course invitations endpoint (``api/fx/learners/v1/pending_invitations/``), with an
+  access log for every view and export. The learners list is unchanged. Version 0.14.0.
 * Added the bulk course progress feed: ``api/fx/learners/v1/learner_courses/`` without a username returns one row per
   active enrollment with course completion above zero (national_id, user_id, email, course_id, date_joined,
   last_login, course_score, progress, certificate_available, certificate_date, grade, passed). Each request reads one

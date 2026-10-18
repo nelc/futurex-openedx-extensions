@@ -43,6 +43,7 @@ from futurex_openedx_extensions.dashboard.views.learners import (
     LearnersEnrollmentView,
     LearnersView,
     LearnerUnenrollView,
+    PendingInvitationsView,
 )
 from futurex_openedx_extensions.dashboard.views.misc import (
     DataExportManagementView,
@@ -107,6 +108,12 @@ urlpatterns = [
     re_path(
         r'^api/fx/learners/v1/enrollments/$',
         LearnersEnrollmentView.as_view(), name='learners-enrollements'),
+    re_path(
+        r'^api/fx/learners/v1/pending_invitations/$',
+        PendingInvitationsView.as_view(), name='pending-invitations'),
+    re_path(
+        fr'^api/fx/learners/v1/pending_invitations/{COURSE_ID_REGX}/$',
+        PendingInvitationsView.as_view(), name='pending-invitations-course'),
     re_path(
         r'^api/fx/learners/v1/unenroll/$',
         LearnerUnenrollView.as_view(), name='learners-unenroll'),
