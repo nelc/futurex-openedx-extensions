@@ -1645,14 +1645,19 @@ class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
 
         return course_key
 
+    def not_enrolled_error(self) -> serializers.ValidationError:
+        """
+        One answer for "unknown user" and "user not enrolled in this (already scope-checked) course", so the response
+        never reveals whether a key belongs to a user, or who (ADR 0009 rule R).
+        """
+        return serializers.ValidationError(f'The user is not enrolled in course {self.validated_data["course_id"]}')
+
     def get_user(self) -> get_user_model:
         """Get the user based on provided identifier."""
         user_key = self.validated_data.get('user_key')
         user_info = get_user_by_key(user_key)
         if not user_info['user']:
-            raise serializers.ValidationError(
-                f"({user_info['error_code']}): Invalid user: {user_info['error_message']}"
-            )
+            raise self.not_enrolled_error()
 
         return user_info['user']
 
@@ -1671,9 +1676,7 @@ class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Ser
                 course_id=course_key
             )
         except CourseEnrollment.DoesNotExist as exc:
-            raise serializers.ValidationError(
-                f'User {user.username} is not enrolled in course {course_key}'
-            ) from exc
+            raise self.not_enrolled_error() from exc
 
         if not enrollment.is_active:
             raise serializers.ValidationError(

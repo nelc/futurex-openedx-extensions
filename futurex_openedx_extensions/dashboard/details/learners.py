@@ -34,6 +34,7 @@ from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_accessible_users_and_courses,
     get_base_queryset_courses,
+    get_course_search_queryset,
     get_learners_search_queryset,
     get_one_user_queryset,
     get_permitted_learners_queryset,
@@ -199,11 +200,13 @@ def get_learners_queryset(  # pylint: disable=too-many-arguments
 
 
 def get_learners_by_course_queryset(
-    course_id: str, search_text: str | None = None, include_staff: bool = False,
+    fx_permission_info: dict, course_id: str, search_text: str | None = None, include_staff: bool = False,
 ) -> QuerySet:
     """
-    Get the learners queryset for the given course ID.
+    Get the learners queryset for the given course ID, if the course is within the caller's course scope.
 
+    :param fx_permission_info: Dictionary containing permission information
+    :type fx_permission_info: dict
     :param course_id: The course ID to get the learners for
     :type course_id: str
     :param search_text: Search text to filter the learners by
@@ -212,7 +215,14 @@ def get_learners_by_course_queryset(
     :type include_staff: bool
     :return: QuerySet of learners
     :rtype: QuerySet
+    :raises FXCodedException: COURSE_NOT_IN_SCOPE when the course is outside the caller's scope or does not exist
+        (the two cases are deliberately indistinguishable, ADR 0009 rule R)
     """
+    course = get_course_search_queryset(fx_permission_info, course_ids=[course_id]).first()
+    if not course:
+        raise FXCodedException(code=FXExceptionCodes.COURSE_NOT_IN_SCOPE, message='Course not found or access denied.')
+    course_id = str(course.id)  # the stored key, so every filter below uses the course that was checked
+
     queryset = get_learners_search_queryset(search_text)
     queryset = queryset.filter(
         courseenrollment__course_id=course_id,

@@ -159,6 +159,17 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
 
     def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """Update a user role"""
+        # ADR 0009 rule S: the tenant named in the body is checked against the caller's reach before anything changes
+        tenant_id = (request.data or {}).get('tenant_id')
+        reach = self.fx_permission_info['view_allowed_tenant_ids_full_access']
+        if isinstance(tenant_id, int) and tenant_id not in reach:
+            return Response(
+                error_details_to_dictionary(
+                    reason='User does not have access to these tenants', tenant_ids=[tenant_id],
+                ),
+                status=http_status.HTTP_403_FORBIDDEN,
+            )
+
         user_info = self.verify_username(kwargs['username'])
         if isinstance(user_info, Response):
             return user_info

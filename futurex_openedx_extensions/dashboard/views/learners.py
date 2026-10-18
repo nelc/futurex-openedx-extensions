@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
+from django.contrib.auth import get_user_model
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from rest_framework import status as http_status
@@ -211,11 +212,20 @@ class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIV
         course_id = self.kwargs.get('course_id')
         include_staff = self.request.query_params.get('include_staff', '0') == '1'
 
-        return get_learners_by_course_queryset(
-            course_id=course_id,
-            search_text=search_text,
-            include_staff=include_staff,
-        )
+        try:
+            return get_learners_by_course_queryset(
+                fx_permission_info=self.fx_permission_info,
+                course_id=course_id,
+                search_text=search_text,
+                include_staff=include_staff,
+            )
+        except FXCodedException as exc:
+            if exc.code != FXExceptionCodes.COURSE_NOT_IN_SCOPE.value:
+                raise
+            # ADR 0009 rule R: a course outside the caller's scope answers exactly like a non-existent one, an
+            # empty list (also for the CSV export, whose task replays this method). To answer 404 instead,
+            # replace the next line with `raise Http404`.
+            return get_user_model().objects.none()
 
     def get_serializer_context(self) -> Dict[str, Any]:
         """Get the serializer context"""

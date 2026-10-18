@@ -120,7 +120,8 @@ def test_get_learner_info_queryset_invalid_user(base_data, fx_permission_info): 
     """Verify that get_learner_info_queryset raises an exception for an invalid user."""
     with pytest.raises(FXCodedException) as exc_info:
         get_learner_info_queryset(fx_permission_info, 'invalid_user')
-    assert exc_info.value.code == FXExceptionCodes.USER_NOT_FOUND.value
+    assert exc_info.value.code == FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value
+    assert str(exc_info.value) == 'User not found or not permitted.'
 
 
 @pytest.mark.django_db
@@ -145,7 +146,7 @@ def test_get_learner_info_queryset_not_permitted(base_data):  # pylint: disable=
     with pytest.raises(FXCodedException) as exc_info:
         get_learner_info_queryset(fx_permission_info, user_id)
     assert exc_info.value.code == FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value
-    assert str(exc_info.value) == f'Caller (user3) is not permitted to query user (user{user_id}).'
+    assert str(exc_info.value) == 'User not found or not permitted.'
 
 
 @pytest.mark.django_db
@@ -222,11 +223,13 @@ def test_test_get_learners_queryset_enrollments_filter(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('certificate_count_enabled', [True, False])
-def test_get_learners_by_course_queryset(base_data, certificate_count_enabled):  # pylint: disable=unused-argument
+def test_get_learners_by_course_queryset(
+    base_data, fx_permission_info, certificate_count_enabled,
+):  # pylint: disable=unused-argument
     """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
     PersistentCourseGrade.objects.create(user_id=40, course_id='course-v1:ORG1+5+5', percent_grade=0.67)
     with override_flag('fx_dashboard.enable_learner_certificates', active=certificate_count_enabled):
-        queryset = get_learners_by_course_queryset('course-v1:ORG1+5+5')
+        queryset = get_learners_by_course_queryset(fx_permission_info, 'course-v1:ORG1+5+5')
     assert queryset.count() == 3, 'unexpected test data'
 
     user40 = queryset.filter(id=40).first()
@@ -239,17 +242,35 @@ def test_get_learners_by_course_queryset(base_data, certificate_count_enabled): 
         'active_in_course should be in the queryset with value True for the first record (user40)'
 
     user40.courseenrollment_set.update(is_active=False)
-    assert get_learners_by_course_queryset('course-v1:ORG1+5+5').count() == 2, 'inactive enrollments should be counted'
+    queryset = get_learners_by_course_queryset(fx_permission_info, 'course-v1:ORG1+5+5')
+    assert queryset.count() == 2, 'inactive enrollments should be counted'
 
 
 @pytest.mark.django_db
-def test_get_learners_by_course_queryset_include_staff(base_data):  # pylint: disable=unused-argument
+def test_get_learners_by_course_queryset_include_staff(
+    base_data, fx_permission_info,
+):  # pylint: disable=unused-argument
     """Verify that get_learners_by_course_queryset returns the correct QuerySet."""
-    queryset = get_learners_by_course_queryset('course-v1:ORG1+5+5')
+    queryset = get_learners_by_course_queryset(fx_permission_info, 'course-v1:ORG1+5+5')
     assert queryset.count() == 3, 'unexpected test data'
 
-    queryset = get_learners_by_course_queryset('course-v1:ORG1+5+5', include_staff=True)
+    queryset = get_learners_by_course_queryset(fx_permission_info, 'course-v1:ORG1+5+5', include_staff=True)
     assert queryset.count() == 5, 'unexpected test data'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('course_id', ['course-v1:ORG3+1+1', 'course-v1:ORG1+99+99', 'course-v1:NOSUCH+1+1'])
+def test_get_learners_by_course_queryset_out_of_scope(
+    base_data, fx_permission_info, course_id,
+):  # pylint: disable=unused-argument
+    """A course outside the caller's scope and a non-existent course raise the same error (ADR 0009 rule R)."""
+    fx_permission_info['is_system_staff_user'] = False
+    fx_permission_info['view_allowed_full_access_orgs'] = ['org1', 'org2']
+    fx_permission_info.update({'view_allowed_roles': ['staff'], 'user_roles': {}})
+    with pytest.raises(FXCodedException) as exc_info:
+        get_learners_by_course_queryset(fx_permission_info, course_id)
+    assert exc_info.value.code == FXExceptionCodes.COURSE_NOT_IN_SCOPE.value
+    assert str(exc_info.value) == 'Course not found or access denied.'
 
 
 @pytest.mark.django_db

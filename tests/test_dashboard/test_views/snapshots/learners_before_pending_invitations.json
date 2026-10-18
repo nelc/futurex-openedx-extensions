@@ -1,7 +1,7 @@
 {
  "learner-courses": {
   "details": {},
-  "reason": "User with username/email (user15) does not exist!"
+  "reason": "User not found or not permitted."
  },
  "learners-all-p1": {
   "count": 37,

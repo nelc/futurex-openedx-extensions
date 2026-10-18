@@ -242,7 +242,7 @@ def test_get_learner_courses_info_queryset_invalid_user(
     """Verify that get_learner_courses_info_queryset raises an exception for an invalid user."""
     with pytest.raises(FXCodedException) as exc_info:
         get_learner_courses_info_queryset(fx_permission_info, 'invalid_user')
-    assert exc_info.value.code == FXExceptionCodes.USER_NOT_FOUND.value
+    assert exc_info.value.code == FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value
 
 
 @pytest.mark.django_db

@@ -78,9 +78,12 @@ class AccessibleTenantsInfoViewV2(FXViewRoleInfoMixin, APIView):
     fx_view_description = 'api/fx/accessible/v2/info/: Get accessible tenants'
 
     @use_read_replica_if_available
-    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:
         """
-        GET /api/fx/accessible/v1/info/?username_or_email=<usernameOrEmail>
+        GET /api/fx/accessible/v2/info/?username_or_email=<usernameOrEmail>
+
+        ADR 0009 rule S: only the tenants the caller itself reaches are ever returned, so an unknown user and a user
+        with no tenant in common with the caller answer the same (an empty object).
         """
         username_or_email = request.query_params.get('username_or_email')
         try:
@@ -88,11 +91,9 @@ class AccessibleTenantsInfoViewV2(FXViewRoleInfoMixin, APIView):
         except ObjectDoesNotExist:
             user = None
 
-        if not user:
-            return JsonResponse({})
-
-        tenant_ids = get_accessible_tenant_ids(user)
-        return JsonResponse(get_tenants_info(tenant_ids))
+        reach = self.fx_permission_info['view_allowed_tenant_ids_any_access']
+        tenant_ids = [tenant_id for tenant_id in get_accessible_tenant_ids(user) if tenant_id in reach] if user else []
+        return JsonResponse(get_tenants_info(tenant_ids) if tenant_ids else {})
 
 
 @docs('VersionInfoView.get')

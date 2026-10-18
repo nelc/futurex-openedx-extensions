@@ -413,11 +413,16 @@ def get_one_user_queryset(
     :return: QuerySet of users (filtered on one user)
     :rtype: QuerySet
     """
-    user_key_info = get_user_by_key(user_key, fail_if_inactive=True)
-    user: get_user_model = user_key_info['user']
+    # ADR 0009 rule R: an unknown key, a user outside the caller's reach and an ambiguous key answer with the same
+    # error and message, so the response never tells whether (or as whom) a user exists on another tenant
+    not_permitted = FXCodedException(
+        code=FXExceptionCodes.USER_QUERY_NOT_PERMITTED, message='User not found or not permitted.',
+    )
+    user_key_info = get_user_by_key(user_key)
     if user_key_info['error_code'] is not None:
-        raise FXCodedException(user_key_info['error_code'], str(user_key_info['error_message']))
+        raise not_permitted
 
+    user: get_user_model = user_key_info['user']
     queryset = get_permitted_learners_queryset(
         queryset=get_user_model().objects.filter(id=user.id),
         fx_permission_info=fx_permission_info,
@@ -425,13 +430,10 @@ def get_one_user_queryset(
     )
 
     if not queryset.exists():
-        raise FXCodedException(
-            code=FXExceptionCodes.USER_QUERY_NOT_PERMITTED,
-            message=(
-                f'Caller ({fx_permission_info["user"].username}) is not permitted to query user '
-                f'({user.username}).'
-            )
-        )
+        raise not_permitted
+
+    if not user.is_active:  # checked only after the scope, so it cannot reveal a foreign user
+        raise FXCodedException(FXExceptionCodes.USER_IS_NOT_ACTIVE, 'The user is not active.')
 
     return queryset
 

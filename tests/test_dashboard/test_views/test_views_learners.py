@@ -65,7 +65,7 @@ class PermissionsTestOfLearnerInfoViewMixin:
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
         self.assertEqual(response.data, {
-            'reason': 'User with username/email (user10x) does not exist!', 'details': {}
+            'reason': 'User not found or not permitted.', 'details': {}
         })
 
     def _get_test_users(self, org3_admin_id, org3_learner_id):
@@ -465,7 +465,8 @@ class TestLearnerUnenrollView(BaseTestViewMixin):
         }
         response = self.client.post(self.url, data, format='json')
         self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
-        self.assertTrue(any('User not found' in str(err) or 'nonexistent_user' in str(err) for err in response.data))
+        self.assertTrue(any('not enrolled' in str(err) for err in response.data))
+        self.assertFalse(any('nonexistent_user' in str(err) for err in response.data))
 
     def test_unenroll_course_not_found(self):
         """Test unenrollment when course doesn't exist"""

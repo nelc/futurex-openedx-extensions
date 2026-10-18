@@ -10,14 +10,17 @@ from unittest.mock import patch
 
 import ddt
 import pytest
-from common.djangoapps.student.models import CourseEnrollment, CourseEnrollmentAllowed
+from cms.djangoapps.course_creators.models import CourseCreator
+from common.djangoapps.student.models import CourseAccessRole, CourseEnrollment, CourseEnrollmentAllowed
 from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
 from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 from opaque_keys.edx.locator import CourseLocator
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from organizations.models import Organization
 from rest_framework import status as http_status
 
 from futurex_openedx_extensions.dashboard.details.invitations import (
@@ -30,6 +33,7 @@ from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
 from tests.test_dashboard.test_mixins import BaseTestViewMixin
+from tests.test_helpers.test_course_creator_manager import _add_clear_org_to_course_creator
 
 LOGGER_NAME = 'futurex_openedx_extensions.pending_invitations_access'
 CANARY = 'canary-xyz@example.test'
@@ -114,6 +118,58 @@ class TestPendingInvitationsView(BaseTestViewMixin):
         response = self._login_and_get(user_id)
         assert response.status_code == http_status.HTTP_200_OK, response.data
         assert set(self._emails(response)) == expected_emails
+
+    @staticmethod
+    def _grant_course_creator(user_id=20, org='ORG1'):
+        """
+        Give a user the org-wide `org_course_creator_group` role (the shared fixtures grant it no org access). The
+        role is only valid with a granted course-creator record that lists the org.
+        """
+        CourseCreator.objects.bulk_create([  # bulk_create: the model's save() is blocked in this package's tests
+            CourseCreator(user_id=user_id, all_organizations=False, state=CourseCreator.GRANTED),
+        ])
+        creator = CourseCreator.objects.get(user_id=user_id)
+        _add_clear_org_to_course_creator(creator, Organization.objects.create(short_name=org))
+        CourseAccessRole.objects.create(user_id=user_id, role='org_course_creator_group', org=org)
+        cache.clear()
+
+    def test_org_course_creator_group_is_a_live_caller(self):
+        """The fourth default role reaches the endpoint and sees exactly the invitations of its own org"""
+        self._grant_course_creator()
+        response = self._login_and_get(20, tenant_ids='1')
+        assert response.status_code == http_status.HTTP_200_OK, response.data
+        assert set(self._emails(response)) == {'in-tenant@example.test'}
+
+    @ddt.data(
+        (3, '1', 'staff'), (48, '3', 'instructor'), (10, '2', 'data_researcher'),
+        (20, '1', 'org_course_creator_group'),
+    )
+    @ddt.unpack
+    def test_export_role_matrix(self, user_id, tenant_id, role):
+        """Each default role can start the CSV export, and the task carries the requester's own user id"""
+        if role == 'org_course_creator_group':
+            self._grant_course_creator()
+        self.login_user(user_id)
+        with patch('futurex_openedx_extensions.helpers.export_mixins.export_data_to_csv_task') as task, \
+                patch('futurex_openedx_extensions.helpers.export_mixins.log_export_task'), \
+                patch('django.core.handlers.wsgi.WSGIRequest.site', Site.objects.first(), create=True):
+            response = self.client.get(self.url, data={'download': 'csv', 'tenant_ids': tenant_id})
+        assert response.status_code == http_status.HTTP_200_OK, (role, response.data)
+        assert 'export_task_id' in response.data
+        assert task.delay.call_args.args[3]['user_id'] == user_id
+        assert task.delay.call_args.args[3]['view_allowed_tenant_ids_any_access'] == [int(tenant_id)]
+
+    def test_export_denied_without_a_role(self):
+        """No role of the set, no export (and no task)"""
+        self.login_user(20)
+        response = self.client.get(self.url, data={'download': 'csv', 'tenant_ids': '1'})
+        assert response.status_code == http_status.HTTP_403_FORBIDDEN
+
+    def test_export_of_a_foreign_tenant_is_refused(self):
+        """Naming a tenant the caller is not granted is refused for the export too"""
+        self.login_user(3)
+        response = self.client.get(self.url, data={'download': 'csv', 'tenant_ids': '2'})
+        assert response.status_code == http_status.HTTP_403_FORBIDDEN
 
     def test_role_outside_the_set_denied(self):
         """A user holding no role of the set is denied"""

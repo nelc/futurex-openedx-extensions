@@ -946,7 +946,8 @@ docs_src = {
     'LearnersDetailsForCourseView.get': {
         'summary': 'Get the list of learners for a specific course',
         'description': 'Get the list of learners for a specific course using the `course_id`. The caller must have'
-        ' access to the course.',
+        ' access to the course. A course outside the caller\'s access answers exactly like a non-existent course:'
+        ' an empty list (also for the CSV export).',
         'parameters': [
             path_parameter(
                 'course_id',
@@ -1630,7 +1631,7 @@ docs_src = {
                 '| 1002 | The given user is not active (`is_active` = `False`) |\n'
                 '| 1003 | The given email is used as a username for another user. Conflict data to be resolved by the'
                 ' superuser |\n'
-                '| 1004 | The given user is not accessible by the caller |\n'
+                '| 1004 | The given user is not accessible by the caller (also the answer for an unknown user) |\n'
                 '| 2001 | Error while deleting role |\n'
                 '| 2002 | Error while adding role to a user |\n'
                 '| 2003 | Dirty data found for user which prevents the requested operation. For example, adding'

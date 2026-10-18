@@ -1941,7 +1941,8 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
         assert serializer.is_valid()
         with pytest.raises(ValidationError) as exc_info:
             serializer.get_user()
-        assert 'Invalid user' in str(exc_info.value)
+        assert 'The user is not enrolled in course' in str(exc_info.value)
+        assert 'nonexistent_user' not in str(exc_info.value)
         mock_get_user_by_key.assert_called_once_with('nonexistent_user')
 
     @patch('futurex_openedx_extensions.dashboard.serializers.get_user_by_key')
@@ -2105,5 +2106,5 @@ class TestLearnerUnenrollSerializer:  # pylint: disable=attribute-defined-outsid
 
         with pytest.raises(ValidationError) as exc_info:
             serializer.get_user()
-        assert 'Invalid user' in str(exc_info.value)
+        assert 'The user is not enrolled in course' in str(exc_info.value)
         mock_get_user_by_key.assert_called_once_with(None)
