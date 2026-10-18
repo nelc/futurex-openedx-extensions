@@ -67,6 +67,7 @@ from futurex_openedx_extensions.helpers.extractors import (
     verify_course_ids,
 )
 from futurex_openedx_extensions.helpers.models import DataExportTask, TenantAsset
+from futurex_openedx_extensions.helpers.querysets import get_course_search_queryset
 from futurex_openedx_extensions.helpers.roles import (
     RoleType,
     get_course_access_roles_queryset,
@@ -1574,11 +1575,11 @@ class CategoryUpdateSerializer(FxPermissionInfoSerializerMixin, ReadOnlySerializ
             raise serializers.ValidationError('Label must be a non-empty dictionary.')
         return value
 
-    def validate_courses(self, value: list) -> list:  # pylint: disable=no-self-use
-        """Validate courses is a list."""
+    def validate_courses(self, value: list) -> list:
+        """Validate courses is a list of courses in the caller's scope (a foreign course reads as non-existent)."""
         verify_course_ids(value)
 
-        courses_qs = CourseOverview.objects.filter(id__in=value).values_list('id', flat=True)
+        courses_qs = get_course_search_queryset(self.fx_permission_info, course_ids=value).values_list('id', flat=True)
         courses = [str(course_id) for course_id in courses_qs]
         invalid_courses = []
         for course_id in value:

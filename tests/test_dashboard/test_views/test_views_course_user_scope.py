@@ -507,3 +507,20 @@ class TestAccessibleTenantsV2Scope(BaseTestViewMixin):
     def test_system_staff_sees_every_tenant_of_the_user(self):
         """The scope widens for system staff, as everywhere else"""
         assert set(self._ask(SYSTEM_STAFF, 'user9').json()) == {'1', '2', '7'}
+
+    @patch('futurex_openedx_extensions.dashboard.views.categories.CourseCategories')
+    def test_courses_in_the_body_are_intersected_with_the_scope(self, manager):
+        """A foreign course id in a PATCH body is refused exactly like a non-existent one; an own course is kept"""
+        _allow_staff_writes('category_detail')
+        self.login_user(TENANT1_STAFF)
+        url = '/api/fx/courses/v1/categories/any_category/?tenant_ids=1'
+        foreign = self.client.patch(url, {'courses': [FOREIGN_COURSE]}, format='json')
+        missing = self.client.patch(url, {'courses': ['course-v1:ORG1+99+99']}, format='json')
+        assert foreign.status_code == missing.status_code == http_status.HTTP_400_BAD_REQUEST
+        assert str(foreign.data['courses'][0]).replace(FOREIGN_COURSE, '') == \
+            str(missing.data['courses'][0]).replace('course-v1:ORG1+99+99', '')
+        manager.return_value.set_courses_for_category.assert_not_called()
+
+        own = self.client.patch(url, {'courses': [OWN_COURSE]}, format='json')
+        assert own.status_code == http_status.HTTP_204_NO_CONTENT
+        manager.return_value.set_courses_for_category.assert_called_once()

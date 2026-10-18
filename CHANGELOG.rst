@@ -33,6 +33,8 @@ Unreleased
     does not fully reach.
   * ``api/fx/accessible/v2/info/`` returned the tenants of any user named in ``username_or_email``. It now returns
     only tenants the caller reaches itself (an unknown user and a user with none in common both answer ``{}``).
+  * ``api/fx/courses/v1/categories/<category_id>/`` (PATCH) accepted any existing course id in ``courses``; ids are
+    now intersected with the caller's courses, and a foreign id is refused like a non-existent one.
   * ``learner/<username>/`` and ``learner_courses/<username>/`` no longer tell a foreign, an unknown, an inactive and
     an ambiguous user apart (404, message ``User not found or not permitted.``, no username echoed); the unenroll
     errors no longer name the user. Error texts changed; status codes are unchanged except an ambiguous email,
