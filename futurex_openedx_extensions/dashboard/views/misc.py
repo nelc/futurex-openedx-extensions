@@ -161,7 +161,7 @@ class SetThemePreviewCookieView(APIView):
             url_has_allowed_host_and_scheme(next_url, allowed_hosts=hosts, require_https=request.is_secure())
         )
 
-    def get(self, request: Any) -> Any:  # pylint: disable=no-self-use
+    def get(self, request: Any) -> Any:
         """Set theme preview cookie"""
         next_url = request.GET.get('next', request.build_absolute_uri())
         if not self.is_allowed_next(request, next_url):  # loud, before BOTH the redirect and the interstitial page
