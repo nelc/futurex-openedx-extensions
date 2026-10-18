@@ -84,7 +84,8 @@ def roles_authorize_caller():
         with patch('futurex_openedx_extensions.helpers.roles._verify_can_add_org_course_creator'):
             with patch('futurex_openedx_extensions.helpers.roles._verify_can_delete_course_access_roles'):
                 with patch('futurex_openedx_extensions.helpers.roles._verify_can_delete_course_access_roles_partial'):
-                    yield
+                    with patch('futurex_openedx_extensions.helpers.roles._verify_not_self'):
+                        yield
 
 
 @pytest.fixture

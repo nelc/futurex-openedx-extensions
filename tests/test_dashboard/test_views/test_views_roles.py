@@ -240,9 +240,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.put(self.url)
         self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
-        self.assertEqual(response.data, {
-            'reason': '(1001) User with username/email (invalid_username) does not exist!', 'details': {}
-        })
+        self.assertEqual(response.data, {'reason': 'User not found or not permitted.', 'details': {}})
 
     @patch('futurex_openedx_extensions.dashboard.views.roles.update_course_access_roles')
     @patch('futurex_openedx_extensions.dashboard.views.roles.UserRolesManagementView.verify_username')
@@ -305,7 +303,7 @@ class TestUserRolesManagementView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.delete(self.url + '?tenant_ids=1,2')
         self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
-        self.assertEqual(response.data, {'reason': '(999) the error message', 'details': {}})
+        self.assertEqual(response.data, {'reason': 'User not found or not permitted.', 'details': {}})
 
     @patch('futurex_openedx_extensions.dashboard.views.roles.get_user_by_key')
     def test_delete_missing_required_parameter(self, _):

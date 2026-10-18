@@ -1952,7 +1952,7 @@ def test_update_course_access_roles_keep_tenant_roles(roles_authorize_caller):  
 @pytest.mark.parametrize('empty_data', [
     {'tenant_roles': [], 'course_roles': {}}, {'tenant_roles': [], 'course_roles': {'course': []}}
 ])
-def test_update_course_access_roles_empty(empty_data):
+def test_update_course_access_roles_empty(empty_data, roles_authorize_caller):  # pylint: disable=unused-argument
     """Verify that update_course_access_roles returns an error when the update data is empty."""
     result = _run_update_roles(empty_data, assert_not_failed=False)
     assert result == {
@@ -1962,7 +1962,9 @@ def test_update_course_access_roles_empty(empty_data):
 
 
 @pytest.mark.django_db
-def test_update_course_access_existing_roles_empty(base_data):  # pylint: disable=unused-argument
+def test_update_course_access_existing_roles_empty(
+    base_data, roles_authorize_caller,
+):  # pylint: disable=unused-argument
     """Verify that update_course_access_roles returns an error when no roles already exist for the user."""
     CourseAccessRole.objects.filter(user__username='user11').delete()
 
@@ -1999,6 +2001,7 @@ def test_update_course_access_course_add_failed(
 
 
 @pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles._verify_not_self', new=Mock())
 @patch('futurex_openedx_extensions.helpers.roles._verify_can_delete_course_access_roles_partial')
 def test_update_course_access_roles_unexpected_error(mock_delete):
     """Verify that update_course_access_roles returns an error when an unexpected error occurs."""
@@ -2010,6 +2013,7 @@ def test_update_course_access_roles_unexpected_error(mock_delete):
 
 
 @pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles._verify_not_self', new=Mock())
 @patch('futurex_openedx_extensions.helpers.roles.cache_refresh_course_access_roles')
 @patch('futurex_openedx_extensions.helpers.roles._verify_can_delete_course_access_roles_partial')
 @patch('futurex_openedx_extensions.helpers.roles._clean_course_access_roles_partial')
@@ -2034,7 +2038,7 @@ def test_update_course_access_roles_dry_run(
     mock_verify_can_delete.assert_called_once_with(
         None,
         [2],
-        {'tenant_id': 2, 'tenant_roles': [], 'course_roles': {}},
+        {},  # nothing is dropped from the user, so there is nothing to need authority for
         user.username
     )
     mock_clean.assert_called_once()

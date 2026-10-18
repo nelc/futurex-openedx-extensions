@@ -27,6 +27,7 @@ from futurex_openedx_extensions.helpers.converters import error_details_to_dicti
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.pagination import DefaultPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantAllCoursesAccess, FXHasTenantCourseAccess
+from futurex_openedx_extensions.helpers.querysets import get_permitted_learners_queryset
 from futurex_openedx_extensions.helpers.roles import (
     FXViewRoleInfoMixin,
     add_course_access_roles,
@@ -166,16 +167,28 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
             status=http_status.HTTP_201_CREATED,
         )
 
-    @staticmethod
-    def verify_username(username: str) -> Response | Dict[str, Any]:
-        """Verify the username"""
-        user_info = get_user_by_key(username)
-        if not user_info['user']:
+    def verify_username(self, username: str) -> Response | Dict[str, Any]:
+        """
+        ADR 0009 rules R and A: an unknown username, an ambiguous email and a user outside the caller's reach (never
+        signed up on, and holding no role in, a tenant the caller fully reaches) all get the SAME 404, decided before
+        any lookup-specific message.
+        """
+        user = get_user_by_key(username)['user']
+        if not user or not self.is_user_in_reach(user):
             return Response(
-                error_details_to_dictionary(reason=f'({user_info["error_code"]}) {user_info["error_message"]}'),
-                status=http_status.HTTP_404_NOT_FOUND
+                error_details_to_dictionary(reason='User not found or not permitted.'),
+                status=http_status.HTTP_404_NOT_FOUND,
             )
-        return user_info
+        return {'user': user}
+
+    def is_user_in_reach(self, user: get_user_model) -> bool:
+        """The user signed up on a tenant the caller fully reaches, or holds a role there (system staff: any user)"""
+        info = self.fx_permission_info
+        return info['is_system_staff_user'] or get_permitted_learners_queryset(
+            get_user_model().objects.filter(id=user.id), info, include_staff=True,
+        ).exists() or get_course_access_roles_queryset(
+            orgs_filter=info['view_allowed_full_access_orgs'], remove_redundant=False, users=[user],
+        ).exists()
 
     def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """Update a user role"""

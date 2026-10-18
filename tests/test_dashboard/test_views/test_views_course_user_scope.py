@@ -432,7 +432,7 @@ class TestUserRolesScope(BaseTestViewMixin):
     def test_update_inside_the_callers_tenant_still_works(self):
         """The same call for the caller's own tenant is not blocked by the scope check (it reaches the role logic)"""
         response = self.client.put(
-            f'{self.BASE}user9/', {'tenant_id': 1, 'tenant_roles': [], 'course_roles': {}}, format='json',
+            f'{self.BASE}user4/', {'tenant_id': 1, 'tenant_roles': [], 'course_roles': {}}, format='json',
         )
         assert response.status_code == http_status.HTTP_400_BAD_REQUEST  # empty update, refused by the role logic
         assert 'empty data' in response.data['reason']

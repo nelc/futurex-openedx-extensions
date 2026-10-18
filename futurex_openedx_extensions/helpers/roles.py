@@ -1343,6 +1343,7 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
             user_key = user_key.id
 
         try:
+            _verify_not_self(caller, user_info['user'], FXExceptionCodes.ROLE_CREATE)
             status = _add_course_access_roles_one_user(
                 caller, user_info['user'], role, orgs, course_ids, orgs_of_courses['courses'], dry_run
             )
@@ -1503,6 +1504,41 @@ def _group_clean_extract_roles_to_keep(
     user_roles['course_roles'] = grouped_course_roles
 
 
+def _verify_not_self(caller: get_user_model, user: get_user_model, code: FXExceptionCodes) -> None:
+    """
+    ADR 0009 rule A: nobody changes their own roles through the API (system staff has no ceiling to protect).
+
+    :param caller: The caller user
+    :type caller: get_user_model
+    :param user: The user whose roles are being granted or changed
+    :type user: get_user_model
+    :param code: The exception code to raise with
+    :type code: FXExceptionCodes
+    """
+    if user.id == caller.id and not is_system_staff_user(caller):
+        raise FXCodedException(code=code, message='Permission denied: a user cannot grant or change their own roles.')
+
+
+def _dropped_roles_info(tenant_id: int, dropped: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Describe the roles an update drops in the shape the delete authority check reads ({role: {tenant lists}}), so a
+    caller needs the same authority to drop a role by update as to delete it (ADR 0009 rule A).
+
+    :param tenant_id: The tenant ID being updated
+    :type tenant_id: int
+    :param dropped: What the update drops: {'tenant_roles': [roles], 'course_roles': {role: [course ids]}}
+    :type dropped: dict
+    :return: The dropped roles as {role: {'tenant_ids_full_access': [...], 'tenant_ids': [...]}}
+    :rtype: dict
+    """
+    info: Dict[str, Any] = {}
+    for role in dropped['tenant_roles']:
+        info[role] = {'tenant_ids_full_access': [tenant_id], 'tenant_ids': [tenant_id]}
+    for role in dropped['course_roles']:
+        info.setdefault(role, {'tenant_ids_full_access': [], 'tenant_ids': [tenant_id]})
+    return info
+
+
 def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-statements, too-many-locals
     caller: get_user_model,
     user: get_user_model,
@@ -1530,6 +1566,8 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
         raise ValueError('Invalid user provided!')
 
     try:
+        _verify_not_self(caller, user, FXExceptionCodes.ROLE_UPDATE)
+
         if not tenant_id or not isinstance(tenant_id, int):
             raise ValueError('No valid tenant ID provided')
 
@@ -1582,7 +1620,9 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
 
         if not dry_run:
             with transaction.atomic():
-                _verify_can_delete_course_access_roles_partial(caller, [tenant_id], user_roles, user.username)
+                _verify_can_delete_course_access_roles_partial(
+                    caller, [tenant_id], _dropped_roles_info(tenant_id, user_roles), user.username,
+                )
                 _clean_course_access_roles_partial(caller, user, [tenant_id], keep_roles)
 
                 for role in tenant_roles:
@@ -1612,6 +1652,9 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
                         if result['failed']:
                             break
 
+                if result['failed']:  # all or nothing: the roles deleted above must not stay deleted
+                    transaction.set_rollback(True)
+
     except ValueError as exc:
         result['failed'].append({
             'reason_code': FXExceptionCodes.INVALID_INPUT.value,
@@ -1630,14 +1673,14 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
             'reason_message': f'{type(exc).__name__}: {str(exc)}',
         })
 
+    if not dry_run:  # also after a failure: the cache was refreshed inside the transaction that may have rolled back
+        cache_refresh_course_access_roles(user.id)
+
     if result['failed']:
         return {
             'error_code': result['failed'][0]['reason_code'],
             'error_message': result['failed'][0]['reason_message'],
         }
-
-    if not dry_run:
-        cache_refresh_course_access_roles(user.id)
 
     return {
         'error_code': None,

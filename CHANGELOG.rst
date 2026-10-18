@@ -71,6 +71,19 @@ Unreleased
   * Operators: before deploying, diff the roles table against the defaults and check 30 days of write calls per view
     and role (see the US-9 ticket). A writer whose row says ``allow_write=False`` will receive 403 after the upgrade.
 
+* SECURITY (ADR 0009 addendum F2, rules R and A, no deprecation window): ``roles/v1/user_roles/`` authority.
+
+  * PUT (update) checked the authority to DROP a role against the wrong data shape, so the check never fired: a
+    caller holding any role allowed to write on the view (for example an org-wide instructor) could erase ALL the
+    roles of a tenant admin in the tenant (the request answered 400 for the refused grant, but the deletion had
+    already been committed). Dropping a role by update now needs the same authority as deleting it, and a failed update
+    is rolled back as a whole.
+  * Nobody can grant or change their own roles through the API (400, code 2007 on PUT; a failed entry, code 2002, in
+    the POST result). System staff is exempt.
+  * PUT and DELETE answer the same 404 (``User not found or not permitted.``) for an unknown username, an ambiguous
+    email, and a user who never signed up on, and holds no role in, a tenant the caller fully reaches. The messages
+    of the lookup (``... does not exist!``, ``Multiple users found ...``) are gone.
+
 0.1.0 – 2024-03-05
 **********************************************
 
