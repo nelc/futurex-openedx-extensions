@@ -332,7 +332,8 @@ docs_src = {
     'AccessibleTenantsInfoView.get': {
         'summary': 'Get information about accessible tenants for a user',
         'description': 'Get information about accessible tenants for a user. The caller must be a staff user or an'
-        ' anonymous user. \n**Note:** This API will be deprecated and removed in version: v0.11.0.1.\n',
+        ' anonymous user. Anonymous callers are rate-limited per client address (429 when exceeded) and every lookup'
+        ' is logged. \n**Note:** This API will be deprecated and removed in version: v0.11.0.1.\n',
         'parameters': [
             query_parameter(
                 'username_or_email',

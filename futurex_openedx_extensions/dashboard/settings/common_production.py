@@ -20,6 +20,13 @@ def plugin_settings(settings: Any) -> None:
         60 * 60,  # 1 hour
     )
 
+    # Rate limit per client address of the anonymous lookups (accessible/v1/info)
+    settings.FX_ANONYMOUS_LOOKUP_THROTTLE_RATE = getattr(
+        settings,
+        'FX_ANONYMOUS_LOOKUP_THROTTLE_RATE',
+        '60/minute',
+    )
+
     settings.FX_DISABLE_CONFIG_VALIDATIONS = getattr(
         settings,
         'FX_DISABLE_CONFIG_VALIDATIONS',

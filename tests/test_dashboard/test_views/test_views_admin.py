@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.urls import resolve
 from rest_framework import status as http_status
 
@@ -16,6 +17,7 @@ from futurex_openedx_extensions.helpers.permissions import (
     IsAnonymousOrSystemStaff,
     IsSystemStaff,
 )
+from futurex_openedx_extensions.helpers.throttles import AnonymousLookupThrottle
 from tests.test_dashboard.test_mixins import BaseTestViewMixin
 
 
@@ -329,6 +331,57 @@ class TestAccessibleTenantsInfoView(BaseTestViewMixin):
         response = self.client.get(self.url, data={'username_or_email': 'dummy'})
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertDictEqual(json.loads(response.content), {})
+
+
+@pytest.mark.usefixtures('base_data', 'cache_testing')
+class TestAccessibleTenantsInfoThrottleAndLog(BaseTestViewMixin):
+    """ADR 0009 addendum F2, option A: the anonymous lookup keeps its answer, and gains a rate limit and a log"""
+    VIEW_NAME = 'fx_dashboard:accessible-info'
+
+    def test_view_is_throttled_and_its_rate_comes_from_the_setting(self):
+        """The throttle class is wired, and reads FX_ANONYMOUS_LOOKUP_THROTTLE_RATE"""
+        view_class = resolve(self.url)[0].view_class
+        assert view_class.throttle_classes == [AnonymousLookupThrottle]
+        with override_settings(FX_ANONYMOUS_LOOKUP_THROTTLE_RATE='7/hour'):
+            assert AnonymousLookupThrottle().get_rate() == '7/hour'
+
+    @override_settings(FX_ANONYMOUS_LOOKUP_THROTTLE_RATE='3/minute')
+    def test_anonymous_callers_are_limited_per_client_address(self):
+        """The fourth call of one address within the window is 429 and logged; another address is unaffected"""
+        statuses = [self.client.get(self.url, data={'username_or_email': 'dummy'}).status_code for _ in range(3)]
+        assert statuses == [http_status.HTTP_200_OK] * 3
+        with self.assertLogs('futurex_openedx_extensions.anonymous_lookup', level='WARNING') as logs:
+            refused = self.client.get(self.url, data={'username_or_email': 'dummy'})
+        assert refused.status_code == http_status.HTTP_429_TOO_MANY_REQUESTS
+        assert 'client=127.0.0.1' in logs.output[0] and 'dummy' not in logs.output[0]
+        other = self.client.get(self.url, data={'username_or_email': 'dummy'}, REMOTE_ADDR='10.1.2.3')
+        assert other.status_code == http_status.HTTP_200_OK
+
+    @override_settings(FX_ANONYMOUS_LOOKUP_THROTTLE_RATE='1/minute')
+    def test_system_staff_is_not_limited(self):
+        """Only anonymous callers are limited"""
+        self.login_user(self.staff_user)
+        for _ in range(3):
+            assert self.client.get(self.url, data={'username_or_email': 'dummy'}).status_code == http_status.HTTP_200_OK
+
+    @patch('futurex_openedx_extensions.dashboard.views.admin.get_user_by_username_or_email')
+    def test_the_answer_is_unchanged_and_the_lookup_is_logged_without_the_value(self, mock_get_user):
+        """Same body as before; one record with a hash of the key, the tenant count and no username or email"""
+        mock_get_user.return_value = get_user_model().objects.get(username='user4')
+        with self.assertLogs('futurex_openedx_extensions.accessible_info_access', level='INFO') as logs:
+            response = self.client.get(self.url, data={'username_or_email': 'user4@example.com'})
+        assert response.status_code == http_status.HTTP_200_OK
+        assert sorted(response.json()) == ['1', '2', '7']
+        assert len(logs.output) == 1
+        assert 'tenants=3' in logs.output[0] and 'anonymous=True' in logs.output[0]
+        assert 'user4' not in logs.output[0] and 'example.com' not in logs.output[0]
+
+    def test_an_unknown_user_is_logged_too_and_answers_empty(self):
+        """The record for a miss says tenants=0, and the answer is the same empty object"""
+        with self.assertLogs('futurex_openedx_extensions.accessible_info_access', level='INFO') as logs:
+            response = self.client.get(self.url)
+        assert response.json() == {}
+        assert 'tenants=0' in logs.output[0]
 
 
 @pytest.mark.usefixtures('base_data')

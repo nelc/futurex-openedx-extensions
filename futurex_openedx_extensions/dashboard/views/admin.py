@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import logging
 from typing import Any
 
 from common.djangoapps.student.models import get_user_by_username_or_email
@@ -30,8 +32,13 @@ from futurex_openedx_extensions.helpers.permissions import (
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin, get_accessible_tenant_ids
 from futurex_openedx_extensions.helpers.routers import use_read_replica_if_available
 from futurex_openedx_extensions.helpers.tenants import get_all_tenants_info, get_excluded_tenant_ids, get_tenants_info
+from futurex_openedx_extensions.helpers.throttles import AnonymousLookupThrottle
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
+
+# One record per anonymous lookup. The looked-up value is never logged, only a short hash that lets repeated probes
+# of the same user be counted.
+anonymous_lookup_log = logging.getLogger('futurex_openedx_extensions.accessible_info_access')
 
 
 @docs('ExcludedTenantsView.get')
@@ -50,6 +57,7 @@ class ExcludedTenantsView(APIView):
 class AccessibleTenantsInfoView(APIView):
     """View to get the list of accessible tenants"""
     permission_classes = [IsAnonymousOrSystemStaff]
+    throttle_classes = [AnonymousLookupThrottle]
 
     @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=no-self-use
@@ -62,11 +70,15 @@ class AccessibleTenantsInfoView(APIView):
         except ObjectDoesNotExist:
             user = None
 
-        if not user:
-            return JsonResponse({})
-
-        tenant_ids = get_accessible_tenant_ids(user)
-        return JsonResponse(get_tenants_info(tenant_ids))
+        tenant_ids = get_accessible_tenant_ids(user) if user else []
+        anonymous_lookup_log.info(
+            'anonymous lookup: client=%s anonymous=%s key=%s tenants=%s',
+            AnonymousLookupThrottle().get_ident(request),
+            not request.user.is_authenticated,
+            hashlib.sha256((username_or_email or '').strip().lower().encode()).hexdigest()[:12],
+            len(tenant_ids),
+        )
+        return JsonResponse(get_tenants_info(tenant_ids) if user else {})
 
 
 @docs('AccessibleTenantsInfoViewV2.get')
