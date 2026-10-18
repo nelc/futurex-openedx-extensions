@@ -381,6 +381,11 @@ class FXViewRoleInfoMetaClass(type):
         """Get a list of the write methods."""
         return ['POST', 'PUT', 'PATCH', 'DELETE']
 
+    @staticmethod
+    def get_write_handlers() -> List[str]:
+        """Get the names of the handlers (APIView methods and ViewSet actions) that change data."""
+        return ['post', 'put', 'patch', 'delete', 'create', 'update', 'partial_update', 'destroy']
+
     @classmethod
     def check_allowed_read_methods(mcs) -> bool:
         """Check if the allowed read methods are valid."""
@@ -428,11 +433,17 @@ class FXViewRoleInfoMetaClass(type):
             logger.error('fx_view_name duplicate between (%s) and another view', name)
             return
 
+        # roles that may call the view's write methods by default: its declared read-write roles, and for a view that
+        # has write handlers but declares none (course/library create), the roles it lists today
+        write_capable = any(hasattr(cls, handler) for handler in cls.get_write_handlers())
+        default_write_roles = cls.fx_default_read_write_roles or cls.fx_default_read_only_roles
+
         cls._fx_views_with_roles[name] = {
             'name': cls.fx_view_name,
             'description': cls.fx_view_description,
             'default_read_only_roles': cls.fx_default_read_only_roles,
             'default_read_write_roles': cls.fx_default_read_write_roles,
+            'default_write_roles': default_write_roles if write_capable else [],
         }
         cls._fx_views_with_roles['_all_view_names'][cls.fx_view_name] = cls
 
@@ -541,12 +552,22 @@ class FXViewRoleInfoMixin(metaclass=FXViewRoleInfoMetaClass):
                         view_name=view_name,
                         view_description=info['description'],
                         allowed_role=role,
-                        allow_write=role in info['default_read_only_roles'],
+                        allow_write=role in info['default_write_roles'],
                     )
                     for role in result[view_name]
                 ])
 
         return result
+
+    @staticmethod
+    def get_write_roles(view_name: str) -> List[str]:
+        """
+        Get the roles whose row on the view has allow_write. Read from the table on every write request (writes are
+        rare), so revoking a flag takes effect at once.
+        """
+        return list(ViewAllowedRoles.objects.filter(
+            view_name=view_name, allow_write=True,
+        ).values_list('allowed_role', flat=True))
 
     def get_view_user_roles_mapping(self, view_name: str, user: get_user_model) -> List[str]:
         """

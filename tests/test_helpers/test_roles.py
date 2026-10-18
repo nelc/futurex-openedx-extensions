@@ -524,8 +524,51 @@ def test_fx_view_role_metaclass_adding_view_to_fx_views_with_roles():
         'description': 'A unique test view',
         'default_read_only_roles': ['role1', 'role2'],
         'default_read_write_roles': [],
+        'default_write_roles': [],
     }
     assert 'UniqueView' in TestView._fx_views_with_roles['_all_view_names']  # pylint: disable=protected-access
+
+
+def test_fx_view_role_metaclass_default_write_roles():
+    """A view with write handlers writes with its read-write roles, else with its listed roles; a reader never does."""
+    class DeclaredWriters(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods
+        """Declares its read-write roles"""
+        fx_view_name = 'declared_writers'
+        fx_default_read_only_roles = ['reader', 'writer']
+        fx_default_read_write_roles = ['writer']
+
+        def post(self):
+            """A write handler"""
+
+    class UndeclaredWriters(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods
+        """Declares none"""
+        fx_view_name = 'undeclared_writers'
+        fx_default_read_only_roles = ['reader', 'writer']
+
+        def delete(self):
+            """A write handler"""
+
+    class ReadOnlyView(FXViewRoleInfoMetaClassTestView):  # pylint: disable=too-few-public-methods
+        """No write handler"""
+        fx_view_name = 'read_only'
+        fx_default_read_only_roles = ['reader']
+        fx_default_read_write_roles = ['reader']
+
+    registry = get_fx_view_with_roles()
+    assert registry['DeclaredWriters']['default_write_roles'] == ['writer']
+    assert registry['UndeclaredWriters']['default_write_roles'] == ['reader', 'writer']
+    assert registry['ReadOnlyView']['default_write_roles'] == []
+    assert DeclaredWriters and UndeclaredWriters and ReadOnlyView
+
+
+def test_fx_view_role_mixin_get_write_roles(db):  # pylint: disable=unused-argument
+    """get_write_roles returns the roles whose row on that view has allow_write, read fresh from the table."""
+    ViewAllowedRoles.objects.create(view_name='V', allowed_role='a', allow_write=True)
+    ViewAllowedRoles.objects.create(view_name='V', allowed_role='b', allow_write=False)
+    ViewAllowedRoles.objects.create(view_name='W', allowed_role='c', allow_write=True)
+    assert FXViewRoleInfoMixin.get_write_roles('V') == ['a']
+    ViewAllowedRoles.objects.filter(view_name='V', allowed_role='a').update(allow_write=False)
+    assert not FXViewRoleInfoMixin.get_write_roles('V')
 
 
 def test_fx_view_role_metaclass_bad_duplicate_class_definition():
@@ -543,6 +586,7 @@ def test_fx_view_role_metaclass_bad_duplicate_class_definition():
             'description': 'A test view',
             'default_read_only_roles': ['role1', 'role2'],
             'default_read_write_roles': [],
+            'default_write_roles': [],
         },
         '_all_view_names': {'TestView_1': DuplicateClassDefinition},
     }
@@ -579,12 +623,14 @@ def test_fx_view_role_metaclass_get_fx_view_with_roles():
             'description': 'A test view',
             'default_read_only_roles': ['role1', 'role2'],
             'default_read_write_roles': [],
+            'default_write_roles': [],
         },
         'TestView2': {
             'name': 'TestView_2',
             'description': 'A test view',
             'default_read_only_roles': ['role1', 'role5'],
             'default_read_write_roles': [],
+            'default_write_roles': [],
         },
         '_all_view_names': {'TestView_1': TestView1, 'TestView_2': TestView2},
     }
@@ -686,12 +732,14 @@ def _fill_default_fx_views_with_roles():
             'description': 'Desc1',
             'default_read_only_roles': ['role1'],
             'default_read_write_roles': [],
+            'default_write_roles': [],
         },
         'View2Class': {
             'name': 'View2',
             'description': 'Desc2',
             'default_read_only_roles': ['role1', 'role2'],
             'default_read_write_roles': [],
+            'default_write_roles': ['role2'],
         }
     }
 
@@ -712,6 +760,10 @@ def test_fx_view_role_mixin_get_allowed_roles_no_existing_roles(db):  # pylint: 
     assert ViewAllowedRoles.objects.filter(view_name='View1', allowed_role='role1').exists()
     assert ViewAllowedRoles.objects.filter(view_name='View2', allowed_role='role1').exists()
     assert ViewAllowedRoles.objects.filter(view_name='View2', allowed_role='role2').exists()
+    # allow_write follows the view's default WRITE roles, not its read-only list
+    assert sorted(ViewAllowedRoles.objects.filter(allow_write=True).values_list('view_name', 'allowed_role')) == [
+        ('View2', 'role2'),
+    ]
 
 
 def test_fx_view_role_mixin_get_allowed_roles_with_existing_roles(db):  # pylint: disable=unused-argument

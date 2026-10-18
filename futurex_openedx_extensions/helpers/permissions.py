@@ -5,7 +5,7 @@ import json
 from typing import Any, List
 
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 
 from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -106,6 +106,25 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
             'view_allowed_tenant_ids_partial_access': list(set(tenant_ids) - full_access_tenant_ids),
         })
 
+    @staticmethod
+    def _roles_for_method(
+        method: str, view: Any, view_allowed_roles: List[str], user_roles: dict, system_staff_user: bool,
+    ) -> List[str]:
+        """
+        ADR 0009 rule W: a write method passes only through a role whose row on the view has allow_write. A role
+        mapped to the user for this view (ViewUserMapping) is an explicit per-user grant and stays usable. Reading
+        and system staff need no flag.
+        """
+        if method in SAFE_METHODS or system_staff_user:
+            return view_allowed_roles
+
+        write_roles = set(view.get_write_roles(view.fx_view_name)) | set(cs.COURSE_ACCESS_ROLES_USER_VIEW_MAPPING)
+        writable = [role for role in view_allowed_roles if role in write_roles]
+        if set(user_roles) & set(view_allowed_roles) and not set(user_roles) & set(writable):
+            raise PermissionDenied(detail=json.dumps({'reason': 'None of the roles of the user allows writing here'}))
+
+        return writable
+
     def has_permission(self, request: Any, view: Any) -> bool:
         """Check if the user is authenticated."""
         if not hasattr(view, 'get_allowed_roles_all_views'):
@@ -121,6 +140,12 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
         view_allowed_roles: List[str] = view.get_view_user_roles_mapping(
             view_name=view.fx_view_name, user=request.user,
         )
+        system_staff_user_flag = is_system_staff_user(request.user)
+        user_roles: dict = get_user_course_access_roles(request.user.id)['roles']
+        view_allowed_roles = self._roles_for_method(
+            request.method, view, view_allowed_roles, user_roles, system_staff_user_flag,
+        )
+
         tenant_ids_string: str | None = request.GET.get('tenant_ids')
 
         if tenant_ids_string:
@@ -155,9 +180,6 @@ class FXBaseAuthenticatedPermission(IsAuthenticated):
                     raise PermissionDenied(detail=json.dumps({
                         'reason': f'User does not have access to the tenant ({_tenant_id})',
                     }))
-
-        system_staff_user_flag = is_system_staff_user(request.user)
-        user_roles: dict = get_user_course_access_roles(request.user.id)['roles']
 
         download_allowed = bool(
             set(user_roles.keys()) & set(view.get_view_user_roles_mapping(

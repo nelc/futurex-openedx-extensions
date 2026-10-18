@@ -54,6 +54,23 @@ Unreleased
   * ``roles/v1/user_roles/`` POST and DELETE refuse the WHOLE request (403) when any tenant in ``tenant_ids`` is out
     of reach; before, POST answered 201 with a per-user failure for such a tenant. System staff is unaffected.
 
+* SECURITY (ADR 0009 addendum F2, rule W, no deprecation window): the ``allow_write`` flag of the roles table
+  (``ViewAllowedRoles``) is now enforced. It was stored but never read, so every role listed on a view could use its
+  POST/PUT/PATCH/DELETE. A write method now passes only through a role whose row on that view has ``allow_write``;
+  reading never needs it; system staff is not subject to it; a role mapped to a user for a view
+  (``ViewUserMapping``) stays usable. A caller whose roles may read but not write gets 403
+  (``None of the roles of the user allows writing here``).
+
+  * Migration ``0013_backfill_view_allow_write`` sets the flag, before the enforcement matters, on the rows of every
+    write-capable view for the roles its declared defaults let write (the declared read-write roles; for
+    ``courses_list`` and ``libraries_list``, which declare none, the roles they list today). It only ever turns
+    False into True, so it is safe to run twice, and it leaves untouched any row an operator created or edited
+    (a row with a history record), logging those at WARNING so they can be reviewed.
+  * Seeding of a view's rows now sets ``allow_write`` from the view's default WRITE roles; it used the read-only list,
+    which marked every seeded role writable, including on views that cannot write.
+  * Operators: before deploying, diff the roles table against the defaults and check 30 days of write calls per view
+    and role (see the US-9 ticket). A writer whose row says ``allow_write=False`` will receive 403 after the upgrade.
+
 0.1.0 – 2024-03-05
 **********************************************
 
