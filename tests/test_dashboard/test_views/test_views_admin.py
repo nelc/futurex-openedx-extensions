@@ -1,15 +1,20 @@
 """Test views for the dashboard app - admin"""
 # pylint: disable=duplicate-code
+import hashlib
+import hmac
 import json
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ImproperlyConfigured
 from django.test import override_settings
 from django.urls import resolve
 from rest_framework import status as http_status
 
 from futurex_openedx_extensions.dashboard import urls
+from futurex_openedx_extensions.dashboard.views.admin import anonymous_lookup_key
 from futurex_openedx_extensions.helpers.exceptions import FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import DataExportTask
 from futurex_openedx_extensions.helpers.permissions import (
@@ -382,6 +387,33 @@ class TestAccessibleTenantsInfoThrottleAndLog(BaseTestViewMixin):
             response = self.client.get(self.url)
         assert response.json() == {}
         assert 'tenants=0' in logs.output[0]
+
+    def test_the_logged_key_is_keyed_so_a_candidate_list_cannot_confirm_a_guess(self):
+        """N2: the key is an HMAC under the environment's secret, not a bare hash of the value"""
+        value = 'Someone@Example.com'
+        plain = hashlib.sha256(b'someone@example.com').hexdigest()[:12]
+        expected = hmac.new(b'test-only-lookup-salt', b'someone@example.com', hashlib.sha256).hexdigest()[:12]
+        assert anonymous_lookup_key(' Someone@example.COM ') == anonymous_lookup_key(value) == expected != plain
+        with override_settings(FX_ANONYMOUS_LOOKUP_LOG_SALT='another-environment'):
+            assert anonymous_lookup_key(value) not in (expected, plain)
+        assert anonymous_lookup_key(None) == anonymous_lookup_key('')
+        with self.assertLogs('futurex_openedx_extensions.accessible_info_access', level='INFO') as logs:
+            self.client.get(self.url, data={'username_or_email': value})
+        assert f'key={expected} ' in logs.output[0] and plain not in logs.output[0]
+
+    @patch('futurex_openedx_extensions.dashboard.views.admin.get_user_by_username_or_email')
+    def test_an_unset_salt_fails_loudly_before_anything_is_looked_up(self, mock_get_user):
+        """No default secret (R-FALLBACK-1): unset or empty refuses the lookup, discloses nothing and logs nothing"""
+        for salt in (None, ''):
+            with override_settings(FX_ANONYMOUS_LOOKUP_LOG_SALT=salt):
+                with self.assertNoLogs('futurex_openedx_extensions.accessible_info_access', level='INFO'):
+                    with pytest.raises(ImproperlyConfigured, match='FX_ANONYMOUS_LOOKUP_LOG_SALT'):
+                        self.client.get(self.url, data={'username_or_email': 'user4@example.com'})
+        with override_settings():
+            del settings.FX_ANONYMOUS_LOOKUP_LOG_SALT
+            with pytest.raises(ImproperlyConfigured):
+                anonymous_lookup_key('x')
+        mock_get_user.assert_not_called()
 
 
 @pytest.mark.usefixtures('base_data')

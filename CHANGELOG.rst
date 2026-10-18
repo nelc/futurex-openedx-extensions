@@ -100,11 +100,17 @@ Unreleased
 * ``api/fx/accessible/v1/info/`` (anonymous by design, used by the login flow) keeps its response unchanged (ADR 0009
   addendum F2, option A) but anonymous callers are now rate-limited per client address (429 when exceeded; setting
   ``FX_ANONYMOUS_LOOKUP_THROTTLE_RATE``, default ``60/minute``) and every lookup is logged (logger
-  ``futurex_openedx_extensions.accessible_info_access``: client address, a short hash of the looked-up value, and the
-  tenant count, never the username or email; refusals on ``futurex_openedx_extensions.anonymous_lookup``). Which
-  tenants a given email belongs to is still readable by anyone who stays under the limit: narrowing the answer needs
-  the login owner to name the fields it reads. Behind proxies DRF's ``NUM_PROXIES`` must be set for the client
+  ``futurex_openedx_extensions.accessible_info_access``: client address, a short KEYED hash (HMAC-SHA256) of the
+  looked-up value, and the tenant count, never the username or email; refusals on
+  ``futurex_openedx_extensions.anonymous_lookup``). Which tenants a given email belongs to is still readable by
+  anyone who stays under the limit: narrowing the answer needs the login owner to name the fields it reads. Behind proxies DRF's ``NUM_PROXIES`` must be set for the client
   address to be the real one.
+
+  * REQUIRED NEW SETTING (N2): ``FX_ANONYMOUS_LOOKUP_LOG_SALT``, the secret of that hash. There is NO default. Set it
+    as a committed literal per environment in nassau (``stage_config`` / ``prod_config``), exactly like
+    ``EOX_NELP_ENROLLMENT_LOG_SALT`` (decision a6-salt-source), BEFORE or with the image that carries this version
+    (the setting is ignored by older versions). While it is unset or empty, ``accessible/v1/info`` raises
+    ``ImproperlyConfigured`` (HTTP 500, nothing looked up, nothing logged): the login lookup fails until it is set.
 
 0.1.0 – 2024-03-05
 **********************************************

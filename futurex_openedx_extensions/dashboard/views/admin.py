@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 from typing import Any
 
 from common.djangoapps.student.models import get_user_by_username_or_email
-from django.core.exceptions import ObjectDoesNotExist
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django_filters.rest_framework import DjangoFilterBackend
@@ -36,9 +38,20 @@ from futurex_openedx_extensions.helpers.throttles import AnonymousLookupThrottle
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
 
-# One record per anonymous lookup. The looked-up value is never logged, only a short hash that lets repeated probes
-# of the same user be counted.
+# One record per anonymous lookup. The looked-up value is never logged, only a short keyed hash that lets repeated
+# probes of the same user be counted.
 anonymous_lookup_log = logging.getLogger('futurex_openedx_extensions.accessible_info_access')
+
+
+def anonymous_lookup_key(value: str | None) -> str:
+    """
+    Salted HMAC-SHA256 (first 12 hex) of the lowercased lookup value. Keyed, so whoever reads the logs cannot confirm
+    a guessed username or email by hashing a candidate list. There is no default secret: unset means a loud failure.
+    """
+    salt = getattr(settings, 'FX_ANONYMOUS_LOOKUP_LOG_SALT', None)
+    if not salt:
+        raise ImproperlyConfigured('FX_ANONYMOUS_LOOKUP_LOG_SALT must be set to use the anonymous accessible info.')
+    return hmac.new(salt.encode(), (value or '').strip().lower().encode(), hashlib.sha256).hexdigest()[:12]
 
 
 @docs('ExcludedTenantsView.get')
@@ -65,6 +78,7 @@ class AccessibleTenantsInfoView(APIView):
         GET /api/fx/accessible/v1/info/?username_or_email=<usernameOrEmail>
         """
         username_or_email = request.query_params.get('username_or_email')
+        lookup_key = anonymous_lookup_key(username_or_email)  # before any lookup: a missing salt discloses nothing
         try:
             user = get_user_by_username_or_email(username_or_email)
         except ObjectDoesNotExist:
@@ -75,7 +89,7 @@ class AccessibleTenantsInfoView(APIView):
             'anonymous lookup: client=%s anonymous=%s key=%s tenants=%s',
             AnonymousLookupThrottle().get_ident(request),
             not request.user.is_authenticated,
-            hashlib.sha256((username_or_email or '').strip().lower().encode()).hexdigest()[:12],
+            lookup_key,
             len(tenant_ids),
         )
         return JsonResponse(get_tenants_info(tenant_ids) if user else {})
