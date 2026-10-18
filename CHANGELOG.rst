@@ -72,6 +72,13 @@ Unreleased
   empty: follow ``next`` until it is null. No total count, optional ``modified_since`` filter. All values come from
   stored data in one query per page. The per-learner route with a username is unchanged.
 
+* SECURITY (ADR 0009 addendum F2, no deprecation window): ``redirect/set_theme_preview/`` (unauthenticated) followed
+  any ``next`` value: an open redirect, and the value was written into a JavaScript string with HTML escaping only.
+  ``next`` is now accepted only as a path of this site (one leading ``/``) or an absolute URL on the request host or
+  one of the platform's tenant hosts; anything else (``//host``, backslash forms, ``javascript:``, other hosts,
+  control characters, an empty value) answers 400, before both the redirect and the interstitial page, and the value
+  is JavaScript-escaped in the page.
+
 0.1.0 – 2024-03-05
 **********************************************
 

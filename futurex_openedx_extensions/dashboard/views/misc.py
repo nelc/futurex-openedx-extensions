@@ -11,6 +11,7 @@ from typing import Any
 from django.db.models.query import QuerySet
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status as http_status
@@ -148,9 +149,27 @@ class FileUploadView(FXViewRoleInfoMixin, APIView):
 
 class SetThemePreviewCookieView(APIView):
     """View to set theme preview cookie"""
+    @staticmethod
+    def is_allowed_next(request: Any, next_url: str) -> bool:
+        """
+        ADR 0009 rule: `next` is a same-site path (one leading slash) or an absolute URL on this request's host or on
+        one of the platform's tenant hosts, with no control characters. Protocol-relative and backslash variants,
+        other schemes and other hosts are refused (Django's check reads a backslash the way browsers do).
+        """
+        hosts = {request.get_host(), *get_all_tenants_info()['tenant_by_site']}
+        return next_url.isprintable() and (next_url.startswith('/') or '://' in next_url) and (
+            url_has_allowed_host_and_scheme(next_url, allowed_hosts=hosts, require_https=request.is_secure())
+        )
+
     def get(self, request: Any) -> Any:  # pylint: disable=no-self-use
         """Set theme preview cookie"""
         next_url = request.GET.get('next', request.build_absolute_uri())
+        if not self.is_allowed_next(request, next_url):  # loud, before BOTH the redirect and the interstitial page
+            return Response(
+                error_details_to_dictionary(reason='next must be a path of this site or a URL of one of its tenants.'),
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
         if request.COOKIES.get('theme-preview') == 'yes':
             return redirect(next_url)
 
