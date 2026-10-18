@@ -7,7 +7,7 @@ import logging
 import re
 from copy import deepcopy
 from enum import Enum
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from common.djangoapps.student.models import CourseAccessRole, UserSignupSource
 from django.contrib.auth import get_user_model
@@ -1244,7 +1244,27 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
     return 'added' if new_entry else 'updated'
 
 
-def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-branches
+def _unresolved_user_entry(
+    user_key: Any, key_type: Any, code: Any, message: Any, hide_cause: bool,
+) -> dict:
+    """
+    The failed entry for a key that is not a usable user. It only repeats what the caller sent. With hide_cause, an
+    inactive, ambiguous or refused user reads exactly like one that does not exist (ADR 0009 rule 3).
+    """
+    if hide_cause and code != FXExceptionCodes.USER_NOT_FOUND.value:
+        code = FXExceptionCodes.USER_NOT_FOUND.value
+        message = f'User with {key_type} ({user_key}) does not exist!'
+    is_id = key_type == cs.USER_KEY_TYPE_ID
+    return {
+        'user_id': user_key if is_id else None,
+        'username': None if is_id else user_key,
+        'email': None if is_id else user_key,
+        'reason_code': code,
+        'reason_message': message,
+    }
+
+
+def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals
     caller: get_user_model,
     tenant_ids: list[int],
     user_keys: list[get_user_model | str | int],
@@ -1252,6 +1272,7 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     tenant_wide: bool,
     course_ids: list[str] | None,
     dry_run: bool = False,
+    in_reach: Callable[[get_user_model], bool] | None = None,
 ) -> dict:
     """
     Add the course access roles for the given tenant IDs and user.
@@ -1273,6 +1294,10 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     :type course_ids: list
     :param dry_run: True for dry run, False otherwise
     :type dry_run: bool
+    :param in_reach: ADR 0009 rule 3 (N1). When given, a failure for a user it does not accept, and any lookup failure
+        (inactive, ambiguous), reads exactly like an unknown key and never carries the target's identity. The grant
+        itself is not limited by it, so onboarding a user who holds roles only in another tenant stays possible
+    :type in_reach: Callable[[get_user_model], bool] | None
     :return: Operation details
     :type: dict
     """
@@ -1330,13 +1355,10 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     for user_key in user_keys:
         user_info = get_user_by_key(user_key, fail_if_inactive=True)
         if not user_info['user']:
-            result['failed'].append({
-                'user_id': user_key if user_info['key_type'] == cs.USER_KEY_TYPE_ID else None,
-                'username': None if user_info['key_type'] == cs.USER_KEY_TYPE_ID else user_key,
-                'email': None if user_info['key_type'] == cs.USER_KEY_TYPE_ID else user_key,
-                'reason_code': user_info['error_code'],
-                'reason_message': user_info['error_message'],
-            })
+            result['failed'].append(_unresolved_user_entry(
+                user_key, user_info['key_type'], user_info['error_code'], user_info['error_message'],
+                hide_cause=in_reach is not None,
+            ))
             continue
 
         if isinstance(user_key, get_user_model()):
@@ -1348,6 +1370,12 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
                 caller, user_info['user'], role, orgs, course_ids, orgs_of_courses['courses'], dry_run
             )
         except Exception as exc:
+            if in_reach and not in_reach(user_info['user']):
+                result['failed'].append(_unresolved_user_entry(
+                    user_key, cs.USER_KEY_TYPE_ID if isinstance(user_key, int) else cs.USER_KEY_TYPE_NOT_ID,
+                    None, None, hide_cause=True,
+                ))
+                continue
             result['failed'].append({
                 'user_id': user_info['user'].id,
                 'username': user_info['user'].username,

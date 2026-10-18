@@ -150,6 +150,7 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
                 role=data['role'],
                 tenant_wide=data['tenant_wide'] != 0,
                 course_ids=data.get('course_ids', []),
+                in_reach=self.is_user_in_reach,
             )
         except KeyError as exc:
             return Response(

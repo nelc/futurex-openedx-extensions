@@ -83,6 +83,12 @@ Unreleased
   * PUT and DELETE answer the same 404 (``User not found or not permitted.``) for an unknown username, an ambiguous
     email, and a user who never signed up on, and holds no role in, a tenant the caller fully reaches. The messages
     of the lookup (``... does not exist!``, ``Multiple users found ...``) are gone.
+  * POST (N1): a failed entry for a key that is unknown, inactive, ambiguous, or an existing user outside the
+    caller's reach (never signed up on, and holding no role in, a tenant the caller fully reaches) is now ONE shape:
+    ``reason_code`` USER_NOT_FOUND, message ``User with <ID|username/email> (<key as sent>) does not exist!``,
+    and only the key as the caller sent it (a numeric id no longer returns the real username and email). Users the
+    caller can see keep the detailed reason. Onboarding is unchanged: a user holding roles only in another tenant
+    still receives the role (``added``/``updated``); that success is the one remaining difference from an unknown key.
 
 * SECURITY (ADR 0009 addendum F2, no deprecation window): ``redirect/set_theme_preview/`` (unauthenticated) followed
   any ``next`` value: an open redirect, and the value was written into a JavaScript string with HTML escaping only.
