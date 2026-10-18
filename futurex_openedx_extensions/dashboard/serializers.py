@@ -583,6 +583,26 @@ class LearnerDetailsExtendedSerializer(LearnerDetailsSerializer):  # pylint: dis
         return relative_url_to_absolute_url(f'/u/{obj.username}/', self.context.get('request'))
 
 
+class FxPermissionInfoSerializerMixin:  # pylint: disable=too-few-public-methods
+    """Mixin to add a property fx_permission_info that loads the fx_permission_info from the request context."""
+
+    @property
+    def fx_permission_info(self) -> dict[str, Any]:
+        """
+        Get the fx_permission_info from the request context.
+
+        :return: The fx_permission_info dictionary.
+        :rtype: dict[str, Any]
+        """
+        request = self.context.get('request')  # type: ignore[attr-defined]
+        if not request:
+            raise serializers.ValidationError('Unable to load fx_permission_info as request object is missing.')
+        if not hasattr(request, 'fx_permission_info'):
+            raise serializers.ValidationError('fx_permission_info is missing in the request context of the serializer!')
+
+        return request.fx_permission_info
+
+
 class CourseDetailsBaseSerializer(serializers.ModelSerializer):
     """Serializer for course details."""
     status = serializers.SerializerMethodField()
@@ -696,7 +716,7 @@ class CourseDetailsSerializer(ModelSerializerOptionalFields, CourseDetailsBaseSe
         return list(tenant_categories.get_categories_for_course(str(obj.id)).keys())
 
 
-class CourseCreateSerializer(serializers.Serializer):
+class CourseCreateSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
     """Serializer for course create."""
     COURSE_NUMBER_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
     MAX_COURSE_ID_LENGTH = 250
@@ -762,7 +782,9 @@ class CourseCreateSerializer(serializers.Serializer):
     def validate_tenant_id(self, tenant_id: Any) -> Any:
         """Validate the tenant ID."""
         default_orgs = get_all_tenants_info().get('default_org_per_tenant', {})
-        if tenant_id not in default_orgs:
+        # ADR 0009 rule B: creating needs FULL access to the tenant; out of reach reads exactly like non-existent
+        reach = self.fx_permission_info['view_allowed_tenant_ids_full_access']
+        if tenant_id not in default_orgs or tenant_id not in reach:
             raise serializers.ValidationError(
                 f'Invalid tenant_id: {tenant_id}. This tenant does not exist or is not configured properly.'
             )
@@ -1191,7 +1213,7 @@ class LearnerCourseProgressSerializer(ReadOnlySerializer):
         return obj['passed_timestamp'] is not None
 
 
-class LibrarySerializer(serializers.Serializer):
+class LibrarySerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):
     """Serializer for library."""
     library_key = serializers.CharField(source='location.library_key', read_only=True)
     edited_by = serializers.IntegerField(source='_edited_by', read_only=True)
@@ -1205,10 +1227,12 @@ class LibrarySerializer(serializers.Serializer):
         """Return the tenant IDs."""
         return get_tenants_by_org(obj.location.library_key.org)
 
-    def validate_tenant_id(self, tenant_id: Any) -> Any:  # pylint: disable=no-self-use
+    def validate_tenant_id(self, tenant_id: Any) -> Any:
         """Validate the tenant ID."""
         default_orgs = get_all_tenants_info().get('default_org_per_tenant', {})
-        if tenant_id not in default_orgs:
+        # ADR 0009 rule B: creating needs FULL access to the tenant; out of reach reads exactly like non-existent
+        reach = self.fx_permission_info['view_allowed_tenant_ids_full_access']
+        if tenant_id not in default_orgs or tenant_id not in reach:
             raise serializers.ValidationError(
                 f'Invalid tenant_id: "{tenant_id}". This tenant does not exist or is not configured properly.'
             )
@@ -1333,26 +1357,6 @@ class AggregatedCountsSerializer(ReadOnlySerializer):
     all_tenants = AggregatedCountsAllTenantsSerializer()
     by_tenant = AggregatedCountsOneTenantSerializer(many=True)
     limited_access = serializers.BooleanField()
-
-
-class FxPermissionInfoSerializerMixin:  # pylint: disable=too-few-public-methods
-    """Mixin to add a property fx_permission_info that loads the fx_permission_info from the request context."""
-
-    @property
-    def fx_permission_info(self) -> dict[str, Any]:
-        """
-        Get the fx_permission_info from the request context.
-
-        :return: The fx_permission_info dictionary.
-        :rtype: dict[str, Any]
-        """
-        request = self.context.get('request')  # type: ignore[attr-defined]
-        if not request:
-            raise serializers.ValidationError('Unable to load fx_permission_info as request object is missing.')
-        if not hasattr(request, 'fx_permission_info'):
-            raise serializers.ValidationError('fx_permission_info is missing in the request context of the serializer!')
-
-        return request.fx_permission_info
 
 
 class FileUploadSerializer(FxPermissionInfoSerializerMixin, ReadOnlySerializer):

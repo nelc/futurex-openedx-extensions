@@ -42,6 +42,18 @@ Unreleased
   * Before the release, grep the gateway/uwsgi logs for consumers that call learners-by-course (or the v2 accessible
     info) across tenants on purpose: they will now receive empty answers. Not verified here.
 
+* SECURITY (ADR 0009 addendum F2, rule B, no deprecation window): a tenant named in a request body, query or URL
+  must be inside the caller's FULL-access reach.
+
+  * ``courses/v1/courses/`` and ``libraries/v1/libraries/`` (POST) accepted any existing ``tenant_id``, so a caller
+    with a role in one tenant (even a course-level one) could create courses and libraries in another. A tenant out
+    of reach now answers exactly like a non-existent one: 400 with one error on ``tenant_id``.
+  * ``courses/v1/course_categories/<course_id>/`` (PUT) refuses (404, like a missing course) a course whose tenant
+    the caller reaches only at course level. ``config/v1/draft/<tenant_id>/`` (all methods) answers 403 for a tenant
+    the caller reaches only at course level.
+  * ``roles/v1/user_roles/`` POST and DELETE refuse the WHOLE request (403) when any tenant in ``tenant_ids`` is out
+    of reach; before, POST answered 201 with a per-user failure for such a tenant. System staff is unaffected.
+
 0.1.0 – 2024-03-05
 **********************************************
 

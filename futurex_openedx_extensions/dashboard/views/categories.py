@@ -209,13 +209,16 @@ class CourseCategoriesView(FXViewRoleInfoMixin, APIView):
             course_ids=[course_id],
         ).first()
 
-        if not accessible_course:
+        # ADR 0009 rule B: categories live in the tenant's config, so writing needs FULL access to the tenant (a
+        # course-level grant is not enough); a course whose tenant is out of reach reads like a missing course
+        tenant_ids = get_tenants_by_org(accessible_course.org) if accessible_course else []
+        full_access = self.fx_permission_info['view_allowed_tenant_ids_full_access']
+        if not accessible_course or not set(tenant_ids) <= set(full_access):
             return Response(
                 error_details_to_dictionary(reason=f'Course not found or access denied: {course_id}'),
                 status=http_status.HTTP_404_NOT_FOUND
             )
 
-        tenant_ids = get_tenants_by_org(accessible_course.org)
         if len(tenant_ids) > 1:
             return Response(
                 error_details_to_dictionary(

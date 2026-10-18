@@ -85,6 +85,22 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
 
         return q_set
 
+    def out_of_reach_response(self, tenant_ids: list) -> Response | None:
+        """
+        ADR 0009 rule B: every tenant a role write names (body or query) must be inside the caller's FULL-access
+        reach. One tenant out of reach (or non-existent, which reads the same) refuses the whole request.
+        """
+        if self.fx_permission_info['is_system_staff_user']:
+            return None
+        reach = self.fx_permission_info['view_allowed_tenant_ids_full_access']
+        outside = [tenant_id for tenant_id in tenant_ids if tenant_id not in reach]
+        if not outside:
+            return None
+        return Response(
+            error_details_to_dictionary(reason='User does not have access to these tenants', tenant_ids=outside),
+            status=http_status.HTTP_403_FORBIDDEN,
+        )
+
     def create(self, request: Any, *args: Any, **kwargs: Any) -> Response | JsonResponse:
         """Create a new user role"""
         data = request.data
@@ -97,6 +113,10 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
                     code=FXExceptionCodes.INVALID_INPUT,
                     message='tenant_ids must be a list of integers',
                 )
+
+            refusal = self.out_of_reach_response(data['tenant_ids'])
+            if refusal:
+                return refusal
 
             if not isinstance(data['users'], list):
                 raise FXCodedException(
@@ -159,16 +179,11 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
 
     def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         """Update a user role"""
-        # ADR 0009 rule S: the tenant named in the body is checked against the caller's reach before anything changes
+        # ADR 0009 rules S/B: the tenant named in the body is checked against the caller's reach before anything changes
         tenant_id = (request.data or {}).get('tenant_id')
-        reach = self.fx_permission_info['view_allowed_tenant_ids_full_access']
-        if isinstance(tenant_id, int) and tenant_id not in reach:
-            return Response(
-                error_details_to_dictionary(
-                    reason='User does not have access to these tenants', tenant_ids=[tenant_id],
-                ),
-                status=http_status.HTTP_403_FORBIDDEN,
-            )
+        refusal = self.out_of_reach_response([tenant_id] if isinstance(tenant_id, int) else [])
+        if refusal:
+            return refusal
 
         user_info = self.verify_username(kwargs['username'])
         if isinstance(user_info, Response):
@@ -199,6 +214,10 @@ class UserRolesManagementView(FXViewRoleInfoMixin, viewsets.ModelViewSet):  # py
                 error_details_to_dictionary(reason="Missing required parameter: 'tenant_ids'"),
                 status=http_status.HTTP_400_BAD_REQUEST
             )
+
+        refusal = self.out_of_reach_response(self.fx_permission_info['view_allowed_tenant_ids_any_access'])
+        if refusal:
+            return refusal
 
         user_info = self.verify_username(kwargs['username'])
         if isinstance(user_info, Response):

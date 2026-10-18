@@ -330,7 +330,23 @@ def test_fx_has_tenant_all_courses_access_correct_base_success(
         'view_allowed_full_access_orgs': set(allowed_full_access),
         'view_allowed_course_access_orgs': set(allowed_course_access),
     })
-    assert FXHasTenantAllCoursesAccess().verify_access_roles(request, None) is True
+    assert FXHasTenantAllCoursesAccess().verify_access_roles(request, Mock(fx_tenant_id_url_arg_name='')) is True
+
+
+@pytest.mark.parametrize('url_tenant_id, allowed', [('1', True), ('2', False), ('999', False)])
+def test_fx_has_tenant_all_courses_access_url_tenant_needs_full_access(url_tenant_id, allowed):
+    """ADR 0009 rule B: a tenant in the URL needs FULL access; partial access and unknown tenants read the same."""
+    request = Mock(fx_permission_info={
+        'view_allowed_full_access_orgs': {'org1'},
+        'view_allowed_tenant_ids_full_access': [1],
+    })
+    view = Mock(fx_tenant_id_url_arg_name='tenant_id', kwargs={'tenant_id': url_tenant_id})
+    if allowed:
+        assert FXHasTenantAllCoursesAccess().verify_access_roles(request, view) is True
+        return
+    with pytest.raises(PermissionDenied) as exc:
+        FXHasTenantAllCoursesAccess().verify_access_roles(request, view)
+    assert str(exc.value) == json.dumps({'reason': f'User does not have access to the tenant ({url_tenant_id})'})
 
 
 @pytest.mark.parametrize('allowed_full_access, allowed_course_access', [

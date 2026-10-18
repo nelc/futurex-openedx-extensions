@@ -1488,12 +1488,33 @@ def course_data():
 )
 def test_validate_tenant_id_errors(tenant_id, org_map, expected_error, test_case):
     """Verify tenant_id validation error handling for various misconfigurations."""
-    serializer = serializers.CourseCreateSerializer()
+    serializer = serializers.CourseCreateSerializer(context={'request': _request_reaching([1, 2])})
     with patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info', return_value=org_map), \
          patch('futurex_openedx_extensions.dashboard.serializers.get_org_to_tenant_map', return_value={}):
         with pytest.raises(ValidationError) as exc:
             serializer.validate_tenant_id(tenant_id)
         assert expected_error in str(exc.value), test_case
+
+
+@pytest.mark.parametrize('serializer_class', [serializers.CourseCreateSerializer, serializers.LibrarySerializer])
+def test_validate_tenant_id_out_of_reach_reads_like_non_existent(serializer_class):
+    """ADR 0009 rule B: a tenant outside the caller's full-access reach gets the exact error of a missing tenant."""
+    org_map = {'default_org_per_tenant': {1: 'testorg', 2: 'otherorg'}}
+    errors = []
+    with patch('futurex_openedx_extensions.dashboard.serializers.get_all_tenants_info', return_value=org_map), \
+         patch('futurex_openedx_extensions.dashboard.serializers.get_org_to_tenant_map', return_value={}):
+        for tenant_id in (2, 999):  # 2 exists but is out of reach, 999 does not exist
+            serializer = serializer_class(context={'request': _request_reaching([1])})
+            with pytest.raises(ValidationError) as exc:
+                serializer.validate_tenant_id(tenant_id)
+            errors.append(str(exc.value).replace(str(tenant_id), 'N'))
+    assert errors[0] == errors[1]
+    assert 'does not exist or is not configured properly' in errors[0]
+
+
+def _request_reaching(tenant_ids):
+    """A request whose caller has FULL access to the given tenants"""
+    return Mock(fx_permission_info={'view_allowed_tenant_ids_full_access': tenant_ids})
 
 
 @pytest.mark.parametrize(

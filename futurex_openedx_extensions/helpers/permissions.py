@@ -205,6 +205,15 @@ class FXHasTenantAllCoursesAccess(FXBaseAuthenticatedPermission):
         if not request.fx_permission_info['view_allowed_full_access_orgs']:
             raise PermissionDenied(detail=json.dumps({'reason': 'User does not have full access to any organization'}))
 
+        # ADR 0009 rule B: a tenant named in the URL needs FULL access, the same refusal as a tenant out of reach
+        url_tenant_id = view.kwargs.get(view.fx_tenant_id_url_arg_name) if view.fx_tenant_id_url_arg_name else None
+        if url_tenant_id and int(url_tenant_id) not in request.fx_permission_info[
+            'view_allowed_tenant_ids_full_access'
+        ]:
+            raise PermissionDenied(detail=json.dumps({
+                'reason': f'User does not have access to the tenant ({int(url_tenant_id)})',
+            }))
+
         return True
 
 

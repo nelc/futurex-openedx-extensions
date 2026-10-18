@@ -445,13 +445,12 @@ class TestUserRolesScope(BaseTestViewMixin):
         assert self._roles(9) == before
 
     def test_create_cannot_grant_in_a_foreign_tenant(self):
-        """Granting a role in another tenant is refused per user, and nothing is created"""
+        """Granting a role in another tenant is refused, and nothing is created"""
         before = self._roles(6)
         response = self.client.post(
             self.BASE, {'tenant_ids': [2], 'users': ['user6'], 'role': 'instructor', 'tenant_wide': 1}, format='json',
         )
-        assert response.status_code == http_status.HTTP_201_CREATED
-        assert response.json()['failed'] and not response.json().get('added')
+        assert response.status_code == http_status.HTTP_403_FORBIDDEN  # ADR 0009 rule B: the whole request is refused
         assert self._roles(6) == before
 
 
