@@ -6,7 +6,7 @@
     <title>Setting Theme Preview</title>
     <script>
         document.cookie = "theme-preview=yes; path=/";
-        window.location.href = "{{ next_url }}";
+        window.location.href = "{{ next_url|escapejs }}";
     </script>
 </head>
 <body>
