@@ -18,14 +18,15 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learner_info_queryset,
     get_learners_by_course_queryset,
     get_learners_enrollments_queryset,
+    get_learners_progress_queryset,
     get_learners_queryset,
 )
 from futurex_openedx_extensions.dashboard.docs_utils import docs
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
-from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary
+from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, parse_datetime_param
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
-from futurex_openedx_extensions.helpers.pagination import DefaultPagination
+from futurex_openedx_extensions.helpers.pagination import DefaultPagination, IdWindowPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
 from futurex_openedx_extensions.helpers.querysets import get_course_search_queryset
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
@@ -145,6 +146,35 @@ class LearnerCoursesView(FXViewRoleInfoMixin, APIView):
         return Response(serializers.LearnerCoursesDetailsSerializer(
             courses, context={'request': request}, many=True
         ).data)
+
+
+@docs('LearnersCoursesProgressView.get')
+class LearnersCoursesProgressView(FXViewRoleInfoMixin, ListAPIView):
+    """
+    View to get the course progress of all learners, for bulk sync. It answers the learner_courses route when no
+    username is given; the per-learner route keeps LearnerCoursesView.
+    """
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantCourseAccess]
+    serializer_class = serializers.LearnerCourseProgressSerializer
+    pagination_class = IdWindowPagination
+    fx_view_name = 'learners_courses_progress'
+    fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
+    fx_view_description = 'api/fx/learners/v1/learner_courses/: Get the course progress of all learners'
+
+    def get_queryset(self) -> QuerySet:
+        """Get the enrollments with progress"""
+        params = self.request.query_params
+        return get_learners_progress_queryset(
+            fx_permission_info=self.request.fx_permission_info,
+            include_staff=params.get('include_staff', '0') == '1',
+            modified_since=parse_datetime_param('modified_since', params.get('modified_since')),
+        )
+
+    @use_read_replica_if_available
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """GET /api/fx/learners/v1/learner_courses/"""
+        return super().get(request, *args, **kwargs)
 
 
 @docs('LearnersDetailsForCourseView.get')

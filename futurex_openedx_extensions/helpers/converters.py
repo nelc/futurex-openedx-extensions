@@ -5,12 +5,16 @@ import hashlib
 import json
 import re
 from datetime import date, datetime, timedelta
+from datetime import timezone as dt_timezone
 from typing import Any, Callable, Dict, List
 from urllib.parse import urljoin
 
 from dateutil.relativedelta import relativedelta
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from futurex_openedx_extensions.helpers import constants as cs
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 
 DEFAULT_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
@@ -214,6 +218,16 @@ def get_allowed_roles(roles_filter: List[str] | None) -> Dict[str, List[str]]:
 def dt_to_str(datetime_or_date: datetime | date) -> str | None:
     """Convert a datetime object to a string"""
     return datetime_or_date.strftime(DEFAULT_DATETIME_FORMAT) if datetime_or_date else None
+
+
+def parse_datetime_param(name: str, value: str | None) -> datetime | None:
+    """Parse an optional ISO-8601 datetime query parameter (naive values are taken as UTC)"""
+    if not value:
+        return None
+    parsed = parse_datetime(value)
+    if parsed is None:
+        raise FXCodedException(code=FXExceptionCodes.INVALID_INPUT, message=f'{name} must be an ISO-8601 datetime')
+    return timezone.make_aware(parsed, dt_timezone.utc) if timezone.is_naive(parsed) else parsed
 
 
 def path_to_json(path: str, value: Any) -> dict:
