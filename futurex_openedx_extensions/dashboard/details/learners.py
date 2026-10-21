@@ -1,7 +1,7 @@
 """Learners details collectors"""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from common.djangoapps.student.models import CourseEnrollment
 from completion_aggregator.models import Aggregator
@@ -9,7 +9,9 @@ from django.contrib.auth import get_user_model
 from django.db.models import (
     BooleanField,
     Case,
+    CharField,
     Count,
+    DateTimeField,
     Exists,
     FloatField,
     IntegerField,
@@ -426,3 +428,83 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     ])
 
     return queryset
+
+
+def get_learners_progress_queryset(
+    fx_permission_info: dict,
+    include_staff: bool = False,
+    modified_since: datetime | None = None,
+) -> QuerySet:
+    """
+    Get the progress of every active enrollment of the caller's learners and courses, for bulk sync. Only
+    enrollments with course completion above zero are included. Every value is read from a stored column in the
+    same SQL query (no per-row query and no live grade computation), and the result is a values() queryset ordered
+    later by the paginator on the enrollment id.
+
+    :param fx_permission_info: Dictionary containing permission information
+    :param include_staff: Flag to include staff users
+    :param modified_since: Only enrollments whose completion, grade or certificate changed at or after this time
+    :return: values() QuerySet of CourseEnrollment rows
+    """
+    accessible_users, accessible_courses = get_accessible_users_and_courses(
+        fx_permission_info=fx_permission_info,
+        include_staff=include_staff,
+    )
+
+    course_completion = Aggregator.objects.filter(
+        user_id=OuterRef('user_id'),
+        aggregation_name='course',
+        course_key=OuterRef('course_id'),
+    )
+    course_grade = PersistentCourseGrade.objects.filter(
+        user_id=OuterRef('user_id'),
+        course_id=OuterRef('course_id'),
+    )
+    certificate = GeneratedCertificate.objects.filter(
+        user_id=OuterRef('user_id'),
+        course_id=OuterRef('course_id'),
+    )
+
+    if is_learner_certificates_enabled():
+        certificate_date_expr = Subquery(
+            certificate.filter(status='downloadable', user__is_active=True).values('created_date')[:1],
+            output_field=DateTimeField(),
+        )
+    else:
+        certificate_date_expr = Value(None, output_field=DateTimeField())
+
+    queryset = CourseEnrollment.objects.filter(
+        is_active=True,
+        course__in=Subquery(accessible_courses.values('id')),
+        user__in=Subquery(accessible_users.values('id')),
+    ).filter(
+        Exists(course_completion.filter(percent__gt=0)),
+    )
+
+    if modified_since:
+        queryset = queryset.filter(
+            Exists(course_completion.filter(modified__gte=modified_since)) |
+            Exists(course_grade.filter(modified__gte=modified_since)) |
+            Exists(certificate.filter(modified_date__gte=modified_since)),
+        )
+
+    return queryset.annotate(
+        progress=Subquery(course_completion.values('percent')[:1], output_field=FloatField()),
+        course_score=Subquery(course_grade.values('percent_grade')[:1], output_field=FloatField()),
+        letter_grade=Subquery(course_grade.values('letter_grade')[:1], output_field=CharField()),
+        passed_timestamp=Subquery(course_grade.values('passed_timestamp')[:1], output_field=DateTimeField()),
+        certificate_date=certificate_date_expr,
+    ).values(
+        'id',
+        'user_id',
+        'course_id',
+        'user__email',
+        'user__date_joined',
+        'user__last_login',
+        'user__extrainfo__national_id',
+        'progress',
+        'course_score',
+        'letter_grade',
+        'passed_timestamp',
+        'certificate_date',
+    )

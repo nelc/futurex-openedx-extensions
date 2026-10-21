@@ -1010,6 +1010,45 @@ docs_src = {
         ),
     },
 
+    'LearnersCoursesProgressView.get': {
+        'summary': 'Get the course progress of all learners (bulk sync)',
+        'description': 'One row per active enrollment whose course completion is above zero, across all the learners'
+        ' and courses of the caller\'s tenants and roles. Built for a consumer that pulls everything on every run:'
+        ' rows are ordered by enrollment id, and each request reads one window of 20,000 enrollment ids (at most'
+        ' `page_size` rows of it), so every request costs the same whatever the size of the tenant. A page can be'
+        ' short or EMPTY while more rows follow: start without a cursor and follow `next` until it is null, never stop'
+        ' on an empty page. There is no total count and no `previous` link. Every value comes from stored data'
+        ' (completion aggregator, persisted course'
+        ' grade, generated certificate), so `course_score` and `grade` reflect the last stored grade, not a live'
+        ' recalculation. With a username in the path, this route returns the per-learner course list instead.',
+        'parameters': [
+            common_parameters['tenant_ids'],
+            common_parameters['include_staff'],
+            query_parameter(
+                'page_size',
+                int,
+                'Most rows per page, 1000 by default and at most.',
+            ),
+            query_parameter(
+                'cursor',
+                str,
+                'Opaque cursor taken from the `next` link of the previous page. An invalid cursor answers 404.',
+            ),
+            query_parameter(
+                'modified_since',
+                str,
+                'ISO-8601 datetime (naive values are UTC). Only enrollments whose completion, grade or certificate'
+                ' changed at or after it. Without it, every enrollment with progress is returned.',
+            ),
+        ],
+        'responses': responses(
+            overrides={
+                200: serializers.LearnerCourseProgressSerializer(read_only=True, required=False),
+            },
+            remove=[404],
+        ),
+    },
+
     'LearnerUnenrollView.post': {
         'summary': 'Unenroll a learner from a course',
         'description': (

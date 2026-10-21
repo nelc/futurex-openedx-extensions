@@ -38,6 +38,7 @@ from futurex_openedx_extensions.dashboard.views.files import TenantAssetServeVie
 from futurex_openedx_extensions.dashboard.views.learners import (
     LearnerCoursesView,
     LearnerInfoView,
+    LearnersCoursesProgressView,
     LearnersDetailsForCourseView,
     LearnersEnrollmentView,
     LearnersView,
@@ -113,6 +114,11 @@ urlpatterns = [
         r'^api/fx/learners/v1/learner/' + settings.USERNAME_PATTERN + '/$',
         LearnerInfoView.as_view(),
         name='learner-info'
+    ),
+    re_path(
+        r'^api/fx/learners/v1/learner_courses/$',
+        LearnersCoursesProgressView.as_view(),
+        name='learners-courses-progress'
     ),
     re_path(
         r'^api/fx/learners/v1/learner_courses/' + settings.USERNAME_PATTERN + '/$',

@@ -94,6 +94,7 @@ class GeneratedCertificate(models.Model):
     course_id = CourseKeyField(max_length=255, blank=True, default=None)
     status = models.CharField(max_length=32, default='unavailable')
     created_date = models.DateTimeField(auto_now_add=True)
+    modified_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         unique_together = (('user', 'course_id'),)
@@ -222,6 +223,9 @@ class PersistentCourseGrade(models.Model):
     course_id = CourseKeyField(blank=False, max_length=255)
 
     percent_grade = models.FloatField(blank=False)
+    letter_grade = models.CharField(blank=True, default='', max_length=255)
+    passed_timestamp = models.DateTimeField(blank=True, null=True)
+    modified = models.DateTimeField(auto_now=True)
 
     class Meta:
         app_label = 'fake_models'
@@ -356,6 +360,7 @@ class Aggregator(models.Model):
     course_key = CourseKeyField(max_length=255)
     aggregation_name = models.CharField(max_length=255)
     percent = models.FloatField()
+    modified = models.DateTimeField(auto_now=True)
 
 
 class Cart(models.Model):

@@ -1,12 +1,14 @@
 
 """Tests for converters helpers."""
 from datetime import date, datetime
+from datetime import timezone as dt_timezone
 from unittest.mock import Mock, patch
 
 import pytest
 
 from futurex_openedx_extensions.helpers import converters
 from futurex_openedx_extensions.helpers.converters import DateMethods
+from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 
 
 @pytest.mark.parametrize('ids_string, expected', [
@@ -200,3 +202,22 @@ def test_to_arabic_numerals(input_text, expected_output, test_case):
 def test_to_indian_numerals(input_text, expected_output, test_case):
     """Verify that to_indian_numerals returns correct data"""
     assert converters.to_indian_numerals(input_text) == expected_output, f'Failed: {test_case}'
+
+
+@pytest.mark.parametrize('value, expected', [
+    (None, None),
+    ('', None),
+    ('2026-10-21T08:00:00', datetime(2026, 10, 21, 8, 0, tzinfo=dt_timezone.utc)),
+    ('2026-10-21T11:00:00+03:00', datetime(2026, 10, 21, 8, 0, tzinfo=dt_timezone.utc)),
+])
+def test_parse_datetime_param(value, expected):
+    """Verify that parse_datetime_param reads ISO-8601, takes naive values as UTC, and skips an empty value"""
+    assert converters.parse_datetime_param('since', value) == expected
+
+
+def test_parse_datetime_param_invalid():
+    """Verify that parse_datetime_param refuses a value that is not ISO-8601, naming the parameter"""
+    with pytest.raises(FXCodedException) as exc_info:
+        converters.parse_datetime_param('since', 'yesterday')
+    assert exc_info.value.code == FXExceptionCodes.INVALID_INPUT.value
+    assert 'since' in str(exc_info.value)

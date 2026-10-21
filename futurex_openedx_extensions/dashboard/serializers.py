@@ -1115,6 +1115,48 @@ class ReadOnlySerializer(serializers.Serializer):
         raise ValueError('This serializer is read-only and does not support object updates.')
 
 
+class LearnerCourseProgressSerializer(ReadOnlySerializer):
+    """One enrollment row of the bulk progress feed. Reads the values() rows of get_learners_progress_queryset."""
+    national_id = serializers.CharField(
+        source='user__extrainfo__national_id', allow_null=True, help_text='National ID of the user (if available)',
+    )
+    user_id = serializers.IntegerField(help_text='User ID in edx-platform')
+    email = serializers.CharField(source='user__email', help_text='Email of the user')
+    course_id = serializers.SerializerMethodField(help_text='Course ID')
+    date_joined = serializers.DateTimeField(
+        source='user__date_joined', format=DEFAULT_DATETIME_FORMAT, help_text='Date the user registered',
+    )
+    last_login = serializers.DateTimeField(
+        source='user__last_login', format=DEFAULT_DATETIME_FORMAT, allow_null=True,
+        help_text='Date the user last logged in',
+    )
+    course_score = serializers.FloatField(
+        allow_null=True, help_text='Grade percent (0 to 1) from the persisted course grade; null if never graded',
+    )
+    progress = serializers.FloatField(help_text='Course completion (0 to 1); always above 0 in this feed')
+    certificate_available = serializers.SerializerMethodField(help_text='True if a downloadable certificate exists')
+    certificate_date = serializers.DateTimeField(
+        format=DEFAULT_DATETIME_FORMAT, allow_null=True, help_text='Creation date of the downloadable certificate',
+    )
+    grade = serializers.CharField(
+        source='letter_grade', allow_null=True,
+        help_text='Letter grade as configured in the course (free text); empty when not passing, null if never graded',
+    )
+    passed = serializers.SerializerMethodField(help_text='True if the learner has earned a passing grade')
+
+    def get_course_id(self, obj: dict) -> str:  # pylint: disable=no-self-use
+        """Return the course ID as a string."""
+        return str(obj['course_id'])
+
+    def get_certificate_available(self, obj: dict) -> bool:  # pylint: disable=no-self-use
+        """Return True if a downloadable certificate exists."""
+        return obj['certificate_date'] is not None
+
+    def get_passed(self, obj: dict) -> bool:  # pylint: disable=no-self-use
+        """Return True if the learner has earned a passing grade."""
+        return obj['passed_timestamp'] is not None
+
+
 class LibrarySerializer(serializers.Serializer):
     """Serializer for library."""
     library_key = serializers.CharField(source='location.library_key', read_only=True)
