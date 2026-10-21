@@ -20,7 +20,6 @@ from futurex_openedx_extensions.dashboard.details.invitations import (
     get_invitation_flags,
     get_pending_invitations_queryset,
     parse_bool_param,
-    parse_datetime_param,
 )
 from futurex_openedx_extensions.dashboard.details.learners import (
     get_learner_info_queryset,

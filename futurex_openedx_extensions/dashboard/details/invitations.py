@@ -2,15 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from datetime import timezone as dt_timezone
 from typing import Any, Iterable
 
 from common.djangoapps.student.models import CourseEnrollment, CourseEnrollmentAllowed
 from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef
 from django.db.models.query import QuerySet
-from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.querysets import get_course_search_queryset
@@ -30,16 +27,6 @@ def parse_bool_param(name: str, value: str | None) -> bool | None:
     if value not in ('0', '1'):
         raise _invalid(f'{name} must be 1 or 0')
     return value == '1'
-
-
-def parse_datetime_param(name: str, value: str | None) -> datetime | None:
-    """Parse an optional ISO-8601 datetime query parameter (naive values are taken as UTC)"""
-    if not value:
-        return None
-    parsed = parse_datetime(value)
-    if parsed is None:
-        raise _invalid(f'{name} must be an ISO-8601 datetime')
-    return timezone.make_aware(parsed, dt_timezone.utc) if timezone.is_naive(parsed) else parsed
 
 
 def get_pending_invitations_queryset(  # pylint: disable=too-many-arguments

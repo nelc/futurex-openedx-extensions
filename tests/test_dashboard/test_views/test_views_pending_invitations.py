@@ -23,11 +23,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from organizations.models import Organization
 from rest_framework import status as http_status
 
-from futurex_openedx_extensions.dashboard.details.invitations import (
-    get_invitation_flags,
-    parse_bool_param,
-    parse_datetime_param,
-)
+from futurex_openedx_extensions.dashboard.details.invitations import get_invitation_flags, parse_bool_param
 from futurex_openedx_extensions.dashboard.views.learners import PendingInvitationsView
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
@@ -533,15 +529,6 @@ def test_parse_bool_param():
     assert parse_bool_param('x', '0') is False
     with pytest.raises(FXCodedException):
         parse_bool_param('x', 'yes')
-
-
-def test_parse_datetime_param():
-    """Aware, naive (taken as UTC), absent and invalid values"""
-    assert parse_datetime_param('x', None) is None
-    assert parse_datetime_param('x', '2026-01-01T00:00:00') == datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
-    assert parse_datetime_param('x', '2026-01-01T02:00:00+02:00') == datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
-    with pytest.raises(FXCodedException):
-        parse_datetime_param('x', 'tomorrow')
 
 
 @pytest.mark.django_db
