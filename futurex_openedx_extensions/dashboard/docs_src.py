@@ -1017,7 +1017,10 @@ docs_src = {
         ' rows are ordered by enrollment id, and each request reads one window of 20,000 enrollment ids (at most'
         ' `page_size` rows of it), so every request costs the same whatever the size of the tenant. A page can be'
         ' short or EMPTY while more rows follow: start without a cursor and follow `next` until it is null, never stop'
-        ' on an empty page. There is no total count and no `previous` link. Every value comes from stored data'
+        ' on an empty page. Every response also has `page` (1 for the first call) and `count`, the total rows of the'
+        ' walk. The total is counted once, on the first call (which is the slower one for a large tenant), and is'
+        ' carried in the cursor afterwards; rows added during a long walk are not in it. There is no `previous` link.'
+        ' Every value comes from stored data'
         ' (completion aggregator, persisted course'
         ' grade, generated certificate), so `course_score` and `grade` reflect the last stored grade, not a live'
         ' recalculation. With a username in the path, this route returns the per-learner course list instead.',
