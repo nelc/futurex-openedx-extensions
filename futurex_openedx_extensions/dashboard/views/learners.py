@@ -18,6 +18,7 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learner_info_queryset,
     get_learners_by_course_queryset,
     get_learners_enrollments_queryset,
+    get_learners_progress_count,
     get_learners_progress_queryset,
     get_learners_queryset,
 )
@@ -162,14 +163,22 @@ class LearnersCoursesProgressView(FXViewRoleInfoMixin, ListAPIView):
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learner_courses/: Get the course progress of all learners'
 
+    def _feed_arguments(self) -> Dict[str, Any]:
+        """The query arguments shared by the rows and their total"""
+        params = self.request.query_params
+        return {
+            'fx_permission_info': self.request.fx_permission_info,
+            'include_staff': params.get('include_staff', '0') == '1',
+            'modified_since': parse_datetime_param('modified_since', params.get('modified_since')),
+        }
+
     def get_queryset(self) -> QuerySet:
         """Get the enrollments with progress"""
-        params = self.request.query_params
-        return get_learners_progress_queryset(
-            fx_permission_info=self.request.fx_permission_info,
-            include_staff=params.get('include_staff', '0') == '1',
-            modified_since=parse_datetime_param('modified_since', params.get('modified_since')),
-        )
+        return get_learners_progress_queryset(**self._feed_arguments())
+
+    def get_total_count(self) -> int:
+        """The total rows of the walk; the paginator asks for it on the first call only"""
+        return get_learners_progress_count(**self._feed_arguments())
 
     @use_read_replica_if_available
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:

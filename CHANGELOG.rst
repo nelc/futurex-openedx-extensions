@@ -14,6 +14,10 @@ Change Log
 Unreleased
 **********
 
+* The bulk course progress feed (``api/fx/learners/v1/learner_courses/`` without a username) now returns ``count``
+  (the total rows of the walk) and ``page`` (1 for the first call) in every response. The total is counted once, on
+  the call without a cursor, and carried in the cursor afterwards. Cursors issued before this change still work; their
+  walks report ``count`` and ``page`` as null.
 * Added the bulk course progress feed: ``api/fx/learners/v1/learner_courses/`` without a username returns one row per
   active enrollment with course completion above zero (national_id, user_id, email, course_id, date_joined,
   last_login, course_score, progress, certificate_available, certificate_date, grade, passed). Each request reads one

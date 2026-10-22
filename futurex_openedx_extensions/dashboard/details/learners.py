@@ -430,21 +430,16 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     return queryset
 
 
-def get_learners_progress_queryset(
+def _get_learners_progress_base(
     fx_permission_info: dict,
     include_staff: bool = False,
     modified_since: datetime | None = None,
-) -> QuerySet:
+) -> tuple[QuerySet, QuerySet, QuerySet, QuerySet]:
     """
-    Get the progress of every active enrollment of the caller's learners and courses, for bulk sync. Only
-    enrollments with course completion above zero are included. Every value is read from a stored column in the
-    same SQL query (no per-row query and no live grade computation), and the result is a values() queryset ordered
-    later by the paginator on the enrollment id.
+    Build the filtered enrollments of the bulk progress feed, without the per-row columns, together with the three
+    correlated querysets the columns are read from.
 
-    :param fx_permission_info: Dictionary containing permission information
-    :param include_staff: Flag to include staff users
-    :param modified_since: Only enrollments whose completion, grade or certificate changed at or after this time
-    :return: values() QuerySet of CourseEnrollment rows
+    :return: (enrollments, course completion, course grade, certificate) querysets
     """
     accessible_users, accessible_courses = get_accessible_users_and_courses(
         fx_permission_info=fx_permission_info,
@@ -465,14 +460,6 @@ def get_learners_progress_queryset(
         course_id=OuterRef('course_id'),
     )
 
-    if is_learner_certificates_enabled():
-        certificate_date_expr = Subquery(
-            certificate.filter(status='downloadable', user__is_active=True).values('created_date')[:1],
-            output_field=DateTimeField(),
-        )
-    else:
-        certificate_date_expr = Value(None, output_field=DateTimeField())
-
     queryset = CourseEnrollment.objects.filter(
         is_active=True,
         course__in=Subquery(accessible_courses.values('id')),
@@ -487,6 +474,55 @@ def get_learners_progress_queryset(
             Exists(course_grade.filter(modified__gte=modified_since)) |
             Exists(certificate.filter(modified_date__gte=modified_since)),
         )
+
+    return queryset, course_completion, course_grade, certificate
+
+
+def get_learners_progress_count(
+    fx_permission_info: dict,
+    include_staff: bool = False,
+    modified_since: datetime | None = None,
+) -> int:
+    """
+    Count the rows the bulk progress feed returns for the same arguments: a COUNT over the filtered enrollments,
+    without the per-row columns. It scans the caller's whole scope, so the feed runs it once per walk.
+
+    :param fx_permission_info: Dictionary containing permission information
+    :param include_staff: Flag to include staff users
+    :param modified_since: Only enrollments whose completion, grade or certificate changed at or after this time
+    :return: number of rows
+    """
+    queryset, _, _, _ = _get_learners_progress_base(fx_permission_info, include_staff, modified_since)
+    return queryset.count()
+
+
+def get_learners_progress_queryset(
+    fx_permission_info: dict,
+    include_staff: bool = False,
+    modified_since: datetime | None = None,
+) -> QuerySet:
+    """
+    Get the progress of every active enrollment of the caller's learners and courses, for bulk sync. Only
+    enrollments with course completion above zero are included. Every value is read from a stored column in the
+    same SQL query (no per-row query and no live grade computation), and the result is a values() queryset ordered
+    later by the paginator on the enrollment id.
+
+    :param fx_permission_info: Dictionary containing permission information
+    :param include_staff: Flag to include staff users
+    :param modified_since: Only enrollments whose completion, grade or certificate changed at or after this time
+    :return: values() QuerySet of CourseEnrollment rows
+    """
+    queryset, course_completion, course_grade, certificate = _get_learners_progress_base(
+        fx_permission_info, include_staff, modified_since,
+    )
+
+    if is_learner_certificates_enabled():
+        certificate_date_expr = Subquery(
+            certificate.filter(status='downloadable', user__is_active=True).values('created_date')[:1],
+            output_field=DateTimeField(),
+        )
+    else:
+        certificate_date_expr = Value(None, output_field=DateTimeField())
 
     return queryset.annotate(
         progress=Subquery(course_completion.values('percent')[:1], output_field=FloatField()),

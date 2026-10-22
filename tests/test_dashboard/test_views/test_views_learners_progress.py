@@ -1,5 +1,6 @@
 """Test views for the dashboard app - bulk course progress of all learners"""
 # pylint: disable=duplicate-code
+import base64
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 from unittest.mock import patch
@@ -15,6 +16,8 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.grades.models import PersistentCourseGrade
 from opaque_keys.edx.locator import CourseLocator
 from rest_framework import status as http_status
+from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
 
 from futurex_openedx_extensions.dashboard.views.learners import LearnerCoursesView, LearnersCoursesProgressView
 from futurex_openedx_extensions.helpers.pagination import IdWindowPagination
@@ -29,6 +32,11 @@ COURSE_ORG1 = 'course-v1:Org1+1+1'  # tenant 1, learner 5
 COURSE_ORG1_B = 'course-v1:ORG1+5+5'  # tenant 1, learner 15
 COURSE_ORG2 = 'course-v1:ORG2+4+4'  # tenant 1, learner 21
 COURSE_ORG3 = 'course-v1:ORG3+1+1'  # tenant 2, learner 40
+
+
+def _cursor(position):
+    """A cursor value as DRF encodes it (base64 of p=<position>)"""
+    return base64.b64encode(f'p={position}'.encode()).decode()
 
 
 def _progress(user_id, course_id, percent, aggregation_name='course'):
@@ -152,12 +160,26 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
         pages = []
         while True:
             assert response.status_code == http_status.HTTP_200_OK, response.data
-            assert set(response.data) == {'next', 'previous', 'results'}
+            assert list(response.data) == ['count', 'page', 'next', 'previous', 'results']
             assert response.data['previous'] is None
+            assert response.data['page'] == len(pages) + 1
             pages.append([(row['user_id'], row['course_id']) for row in response.data['results']])
+            assert response.data['count'] == self._total
             if not response.data['next']:
+                assert self._total == sum(len(page) for page in pages)
                 return pages
             response = self.client.get(response.data['next'])
+
+    @property
+    def _total(self):
+        """The rows the walk is expected to return in total: active enrollments with course completion above 0"""
+        started = {
+            (user_id, str(course_key)) for user_id, course_key in Aggregator.objects.filter(
+                aggregation_name='course', percent__gt=0,
+            ).values_list('user_id', 'course_key')
+        }
+        enrollments = CourseEnrollment.objects.filter(is_active=True).values_list('user_id', 'course_id')
+        return sum((user_id, str(course_id)) in started for user_id, course_id in enrollments)
 
     def test_walk_one_window(self):
         """Within one window, a full page continues after its last row, in enrollment id order"""
@@ -189,7 +211,65 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
         CourseEnrollment.objects.all().delete()
         assert self._walk() == [[]]
 
-    @ddt.data('not-base64!', 'cD1hYmM=')  # garbage, and a well-formed cursor whose position is not a number (p=abc)
+    def test_count_once_per_walk(self):
+        """The total is counted on the call without a cursor only, and the later pages read it from the cursor"""
+        with patch(
+            'futurex_openedx_extensions.dashboard.views.learners.get_learners_progress_count', return_value=4,
+        ) as mock_count:
+            pages = self._walk(page_size=1)
+        assert len(pages) == 4
+        mock_count.assert_called_once()
+
+    def test_count_follows_modified_since(self):
+        """The total uses the same filters as the rows"""
+        old = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
+        Aggregator.objects.update(modified=old)
+        PersistentCourseGrade.objects.update(modified=old)
+        GeneratedCertificate.objects.update(modified_date=old)
+        Aggregator.objects.filter(user_id=21).update(modified=old + timedelta(days=30))
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url, data={'modified_since': (old + timedelta(days=30)).isoformat()})
+        assert response.data['count'] == len(response.data['results']) == 1
+
+    def test_count_no_enrollments(self):
+        """No enrollment at all: count 0 on the single page"""
+        CourseEnrollment.objects.all().delete()
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        assert (response.data['count'], response.data['page'], response.data['next']) == (0, 1, None)
+
+    def test_old_cursor_still_walks(self):
+        """A cursor issued before count/page existed (a bare id) still walks to the end, with count and page null"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url, data={'cursor': _cursor('0'), 'page_size': 1})
+        seen = 0
+        while True:
+            assert response.status_code == http_status.HTTP_200_OK, response.data
+            assert (response.data['count'], response.data['page']) == (None, None)
+            seen += len(response.data['results'])
+            if not response.data['next']:
+                break
+            response = self.client.get(response.data['next'])
+        assert seen == self._total
+
+    @staticmethod
+    def test_paginator_counts_the_queryset_without_a_view_counter():
+        """A view that has no get_total_count gets queryset.count()"""
+        paginator = IdWindowPagination()
+        request = Request(APIRequestFactory().get('/feed/'))
+        queryset = CourseEnrollment.objects.filter(id__lte=3).values('id')
+        page = paginator.paginate_queryset(queryset, request, view=object())
+        assert paginator.total_count == queryset.count() == len(page)
+        assert paginator.page_number == 1
+
+    @ddt.data(
+        'not-base64!',  # garbage
+        'cD1hYmM=',  # p=abc: the position is not a number
+        _cursor('5:2'),  # two parts: neither the old nor the new shape
+        _cursor('5:2:9:1'),  # four parts
+        _cursor('x:2:9'),  # the id part is not a number
+        _cursor('5:y:9'),  # the page part is not a number
+    )
     def test_invalid_cursor(self, cursor):
         """A cursor that cannot be decoded is a 404, like DRF's own cursor pagination"""
         self.login_user(self.staff_user)
