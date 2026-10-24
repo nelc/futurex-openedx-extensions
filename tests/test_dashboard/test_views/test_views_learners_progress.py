@@ -1,5 +1,5 @@
 """Test views for the dashboard app - bulk course progress of all learners"""
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-public-methods
 import base64
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
@@ -20,8 +20,10 @@ from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
 from futurex_openedx_extensions.dashboard.views.learners import LearnerCoursesView, LearnersCoursesProgressView
+from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.pagination import IdWindowPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
+from futurex_openedx_extensions.helpers.stats import sync_course_stats
 from tests.test_dashboard.test_mixins import BaseTestViewMixin
 
 KEYS = {
@@ -79,6 +81,7 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
         GeneratedCertificate.objects.create(
             user_id=15, course_id=CourseLocator.from_string(COURSE_ORG1_B), status='notpassing',
         )
+        sync_course_stats()  # the hourly job that keeps the per-course counts behind `count`
 
     def _rows(self, user_id=None, **params):
         """Login, call the feed and index the rows by (user_id, course_id)"""
@@ -164,7 +167,7 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
             assert response.data['previous'] is None
             assert response.data['page'] == len(pages) + 1
             pages.append([(row['user_id'], row['course_id']) for row in response.data['results']])
-            assert response.data['count'] == self._total
+            assert response.data['count'] == (None if params.get('modified_since') else self._total)
             if not response.data['next']:
                 assert self._total == sum(len(page) for page in pages)
                 return pages
@@ -209,6 +212,8 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
     def test_walk_no_enrollments(self):
         """No enrollment at all: one empty page and no next"""
         CourseEnrollment.objects.all().delete()
+        Aggregator.objects.all().delete()
+        sync_course_stats()
         assert self._walk() == [[]]
 
     def test_count_once_per_walk(self):
@@ -220,8 +225,8 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
         assert len(pages) == 4
         mock_count.assert_called_once()
 
-    def test_count_follows_modified_since(self):
-        """The total uses the same filters as the rows"""
+    def test_count_null_with_modified_since(self):
+        """A delta call has no total"""
         old = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
         Aggregator.objects.update(modified=old)
         PersistentCourseGrade.objects.update(modified=old)
@@ -229,14 +234,38 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
         Aggregator.objects.filter(user_id=21).update(modified=old + timedelta(days=30))
         self.login_user(self.staff_user)
         response = self.client.get(self.url, data={'modified_since': (old + timedelta(days=30)).isoformat()})
-        assert response.data['count'] == len(response.data['results']) == 1
+        assert len(response.data['results']) == 1
+        assert response.data['count'] is None  # a total of changed rows is not kept in advance
 
-    def test_count_no_enrollments(self):
-        """No enrollment at all: count 0 on the single page"""
-        CourseEnrollment.objects.all().delete()
+    def test_count_is_as_fresh_as_the_last_sync(self):
+        """The total comes from the stored per-course counts: it changes after the next sync, not before"""
+        Aggregator.objects.all().delete()
+        self.login_user(self.staff_user)
+        before = self.client.get(self.url).data
+        assert (before['count'], before['results']) == (4, [])
+        sync_course_stats()
+        after = self.client.get(self.url).data
+        assert (after['count'], after['page'], after['next']) == (0, 1, None)
+
+    def test_count_includes_unenrolled_learners_with_progress(self):
+        """A learner who unenrolled after starting is not a row, but still counts until the progress is gone"""
+        CourseEnrollment.objects.filter(user_id=21, course_id=COURSE_ORG2).update(is_active=False)
+        sync_course_stats()
         self.login_user(self.staff_user)
         response = self.client.get(self.url)
-        assert (response.data['count'], response.data['page'], response.data['next']) == (0, 1, None)
+        assert (response.data['count'], len(response.data['results'])) == (4, 3)
+
+    def test_count_follows_the_scope(self):
+        """The total sums only the caller's courses"""
+        self.login_user(3)  # org-wide staff of Org1 only
+        response = self.client.get(self.url)
+        assert response.data['count'] == len(response.data['results']) == 2  # its two courses with progress
+
+    def test_count_without_stats_is_zero(self):
+        """Before the first sync there are no stored counts: count is 0, not an error"""
+        CourseStat.objects.all().delete()
+        self.login_user(self.staff_user)
+        assert self.client.get(self.url).data['count'] == 0
 
     def test_old_cursor_still_walks(self):
         """A cursor issued before count/page existed (a bare id) still walks to the end, with count and page null"""

@@ -2,11 +2,14 @@
 from unittest.mock import patch
 
 import pytest
+from common.djangoapps.student.models import CourseEnrollment
+from completion_aggregator.models import Aggregator
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.utils import timezone
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from opaque_keys.edx.keys import CourseKey
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 
 from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.stats import sync_course_stats
@@ -105,6 +108,58 @@ class TestCourseStatSync:
 
         assert synced == self.baseline + 1
         assert not CourseStat.objects.exists()
+
+
+@pytest.mark.django_db
+class TestCourseStatProgressCount:
+    """progress_count: active enrollments of active users with course-level completion above zero"""
+
+    @staticmethod
+    def _enrolled_with_progress(user, course_id, percent=0.5, aggregation_name='course', is_active=True):
+        """Enroll a user and store a completion aggregate for the course"""
+        CourseOverview.objects.get_or_create(id=CourseKey.from_string(course_id), defaults={'org': 'acme'})
+        CourseEnrollment.objects.create(user=user, course_id=course_id, is_active=is_active)
+        Aggregator.objects.create(
+            user=user, course_key=CourseKey.from_string(course_id), aggregation_name=aggregation_name, percent=percent,
+        )
+
+    def test_counts_enrollments_with_course_progress(self):
+        """Course-level completion above 0 counts; zero, chapter-level and no aggregate do not"""
+        self._enrolled_with_progress(_make_user('p1'), BLUE_COURSE)
+        self._enrolled_with_progress(_make_user('p2'), BLUE_COURSE)
+        self._enrolled_with_progress(_make_user('p3'), BLUE_COURSE, percent=0.0)
+        self._enrolled_with_progress(_make_user('p4'), BLUE_COURSE, aggregation_name='chapter')
+        CourseEnrollment.objects.create(user=_make_user('p5'), course_id=BLUE_COURSE, is_active=True)
+        sync_course_stats()
+        assert CourseStat.objects.get(course_key=CourseKey.from_string(BLUE_COURSE)).progress_count == 2
+
+    def test_counts_from_the_aggregates_alone(self):
+        """
+        Unenrolled or deactivated learners with progress still count: the sync reads only the aggregates (the
+        documented trade-off that keeps it an index-only count)
+        """
+        self._enrolled_with_progress(_make_user('q1'), BLUE_COURSE)
+        self._enrolled_with_progress(_make_user('q2', is_active=False), BLUE_COURSE)
+        self._enrolled_with_progress(_make_user('q3'), BLUE_COURSE, is_active=False)
+        sync_course_stats()
+        assert CourseStat.objects.get(course_key=CourseKey.from_string(BLUE_COURSE)).progress_count == 3
+
+    def test_counts_across_batches(self):
+        """Course keys are read in batches; every batch is counted"""
+        self._enrolled_with_progress(_make_user('b1'), BLUE_COURSE)
+        self._enrolled_with_progress(_make_user('b2'), GREEN_COURSE)
+        with patch('futurex_openedx_extensions.helpers.stats.PROGRESS_COUNT_BATCH_SIZE', 1):
+            sync_course_stats()
+        assert {
+            str(stat.course_key): stat.progress_count for stat in CourseStat.objects.filter(progress_count__gt=0)
+        } == {BLUE_COURSE: 1, GREEN_COURSE: 1}
+
+    def test_course_with_progress_but_no_certificates_gets_a_row(self):
+        """A course appears for its progress alone, with 0 certificates"""
+        self._enrolled_with_progress(_make_user('r1'), GREEN_COURSE)
+        sync_course_stats()
+        stat = CourseStat.objects.get(course_key=CourseKey.from_string(GREEN_COURSE))
+        assert (stat.progress_count, stat.certificate_count_all) == (1, 0)
 
 
 @pytest.mark.django_db
