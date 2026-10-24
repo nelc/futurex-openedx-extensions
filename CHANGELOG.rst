@@ -14,6 +14,12 @@ Change Log
 Unreleased
 **********
 
+* Bulk course progress feed: ``count`` is now fast. It is the sum of per-course counts that ``sync_course_stats``
+  keeps in ``CourseStat.progress_count`` (new column, migration ``0013_coursestat_progress_count``), instead of a
+  live COUNT over the caller's whole scope, which took minutes for a platform-wide caller in 0.13.9. It is as fresh
+  as the last sync, counts learners who unenrolled after starting (so it can be slightly above the rows walked), and
+  is null with ``modified_since``. Run ``sync_course_stats --async`` once after the deploy and
+  schedule it hourly. The response shape is unchanged. Version 0.13.10.
 * The bulk course progress feed (``api/fx/learners/v1/learner_courses/`` without a username) now returns ``count``
   (the total rows of the walk) and ``page`` (1 for the first call) in every response. The total is counted once, on
   the call without a cursor, and carried in the cursor afterwards. Cursors issued before this change still work; their

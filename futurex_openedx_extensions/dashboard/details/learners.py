@@ -18,6 +18,7 @@ from django.db.models import (
     OuterRef,
     Q,
     Subquery,
+    Sum,
     Value,
     When,
 )
@@ -30,6 +31,7 @@ from lms.djangoapps.grades.models import PersistentCourseGrade
 
 from futurex_openedx_extensions.dashboard.toggles import is_learner_certificates_enabled
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
     get_accessible_users_and_courses,
@@ -482,18 +484,28 @@ def get_learners_progress_count(
     fx_permission_info: dict,
     include_staff: bool = False,
     modified_since: datetime | None = None,
-) -> int:
+) -> int | None:
     """
-    Count the rows the bulk progress feed returns for the same arguments: a COUNT over the filtered enrollments,
-    without the per-row columns. It scans the caller's whole scope, so the feed runs it once per walk.
+    The total rows of the bulk progress feed, read from the per-course counts that sync_course_stats keeps in
+    CourseStat, summed over the caller's courses. Counting the rows live scans the caller's whole scope and takes
+    minutes for a platform-wide caller; this sum takes milliseconds. It is as fresh as the last sync, so it can
+    differ slightly from the rows walked. A total of changed rows cannot be kept in advance, so with
+    `modified_since` the result is None.
 
     :param fx_permission_info: Dictionary containing permission information
     :param include_staff: Flag to include staff users
-    :param modified_since: Only enrollments whose completion, grade or certificate changed at or after this time
-    :return: number of rows
+    :param modified_since: When given, there is no total (None)
+    :return: number of rows, or None
     """
-    queryset, _, _, _ = _get_learners_progress_base(fx_permission_info, include_staff, modified_since)
-    return queryset.count()
+    if modified_since:
+        return None
+    _, accessible_courses = get_accessible_users_and_courses(
+        fx_permission_info=fx_permission_info,
+        include_staff=include_staff,
+    )
+    return CourseStat.objects.filter(
+        course_key__in=Subquery(accessible_courses.values('id')),
+    ).aggregate(total=Sum('progress_count'))['total'] or 0
 
 
 def get_learners_progress_queryset(

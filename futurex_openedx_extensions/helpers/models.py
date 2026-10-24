@@ -1039,11 +1039,13 @@ class ConfigMirror(models.Model):
 
 class CourseStat(models.Model):
     """
-    Cached downloadable-certificate counts per course for fast reads.
+    Cached per-course counts for fast reads: downloadable certificates, and active enrollments with course
+    progress (the total of the bulk progress feed).
     """
     course_key = CourseKeyField(max_length=255, unique=True)  # type: ignore
     certificate_count_all = models.IntegerField(default=0)
     certificate_count_non_staff = models.IntegerField(default=0)
+    progress_count = models.IntegerField(default=0)
     last_updated = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:

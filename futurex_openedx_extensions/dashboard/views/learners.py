@@ -176,7 +176,7 @@ class LearnersCoursesProgressView(FXViewRoleInfoMixin, ListAPIView):
         """Get the enrollments with progress"""
         return get_learners_progress_queryset(**self._feed_arguments())
 
-    def get_total_count(self) -> int:
+    def get_total_count(self) -> int | None:
         """The total rows of the walk; the paginator asks for it on the first call only"""
         return get_learners_progress_count(**self._feed_arguments())
 
