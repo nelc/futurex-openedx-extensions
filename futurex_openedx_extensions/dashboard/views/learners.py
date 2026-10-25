@@ -21,6 +21,7 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_progress_count,
     get_learners_progress_queryset,
     get_learners_queryset,
+    parse_progress_filters,
 )
 from futurex_openedx_extensions.dashboard.docs_utils import docs
 from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CLASSES
@@ -170,6 +171,7 @@ class LearnersCoursesProgressView(FXViewRoleInfoMixin, ListAPIView):
             'fx_permission_info': self.request.fx_permission_info,
             'include_staff': params.get('include_staff', '0') == '1',
             'modified_since': parse_datetime_param('modified_since', params.get('modified_since')),
+            'filters': parse_progress_filters(params),
         }
 
     def get_queryset(self) -> QuerySet:
