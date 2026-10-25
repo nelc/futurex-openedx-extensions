@@ -36,6 +36,9 @@ COURSE_ORG2 = 'course-v1:ORG2+4+4'  # tenant 1, learner 21
 COURSE_ORG3 = 'course-v1:ORG3+1+1'  # tenant 2, learner 40
 
 
+FILTER_PARAMS = {'progress_min', 'progress_max', 'course_score_min', 'course_score_max', 'grade', 'passed'}
+
+
 def _cursor(position):
     """A cursor value as DRF encodes it (base64 of p=<position>)"""
     return base64.b64encode(f'p={position}'.encode()).decode()
@@ -167,9 +170,11 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
             assert response.data['previous'] is None
             assert response.data['page'] == len(pages) + 1
             pages.append([(row['user_id'], row['course_id']) for row in response.data['results']])
-            assert response.data['count'] == (None if params.get('modified_since') else self._total)
+            filtered = params.get('modified_since') or set(params) & FILTER_PARAMS
+            assert response.data['count'] == (None if filtered else self._total)
             if not response.data['next']:
-                assert self._total == sum(len(page) for page in pages)
+                if not filtered:
+                    assert self._total == sum(len(page) for page in pages)
                 return pages
             response = self.client.get(response.data['next'])
 
@@ -342,6 +347,49 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
             expected = (5, COURSE_ORG1)
 
         assert set(self._rows(modified_since=since.isoformat())) == {expected}
+
+    @ddt.data(
+        ({'progress_min': '0.5'}, {5, 15, 40}),
+        ({'progress_max': '0.5'}, {5, 21}),
+        ({'progress_min': '0.5', 'progress_max': '0.75'}, {5, 40}),
+        ({'course_score_min': '0.5'}, {5}),
+        ({'course_score_max': '0.5'}, {15}),  # never graded (21, 40) has no score: not a match
+        ({'grade': 'Pass'}, {5}),
+        ({'grade': 'Fail,Pass'}, {5}),
+        ({'grade': 'Distinction'}, set()),
+        ({'passed': '1'}, {5}),
+        ({'passed': '0'}, {15, 21, 40}),  # failed and never graded
+        ({'progress_min': '0.5', 'passed': '0'}, {15, 40}),
+        ({'progress_min': '', 'grade': ''}, {5, 15, 21, 40}),  # empty values are ignored
+    )
+    @ddt.unpack
+    def test_filters(self, params, expected_users):
+        """Each value filter keeps exactly the matching rows; filters combine"""
+        assert {user_id for user_id, _ in self._rows(**params)} == expected_users
+
+    def test_filters_null_count(self):
+        """With a value filter there is no total (it cannot be kept in advance)"""
+        self.login_user(self.staff_user)
+        assert self.client.get(self.url, data={'passed': '1'}).data['count'] is None
+        assert self.client.get(self.url).data['count'] == 4
+
+    def test_filters_follow_next(self):
+        """The next links keep the filters"""
+        pages = self._walk(page_size=1, passed='0')
+        assert {user_id for page in pages for user_id, _ in page} == {15, 21, 40}
+
+    @ddt.data(
+        {'progress_min': 'abc'},
+        {'progress_max': '1.5'},
+        {'course_score_min': '-0.1'},
+        {'progress_min': '0.8', 'progress_max': '0.2'},
+        {'course_score_min': '0.9', 'course_score_max': '0.1'},
+        {'passed': 'yes'},
+    )
+    def test_filters_invalid(self, params):
+        """A bad filter value is a 400"""
+        self.login_user(self.staff_user)
+        assert self.client.get(self.url, data=params).status_code == http_status.HTTP_400_BAD_REQUEST
 
     def test_modified_since_invalid(self):
         """An unparsable modified_since is a 400"""

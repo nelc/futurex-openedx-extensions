@@ -1020,8 +1020,8 @@ docs_src = {
         ' on an empty page. Every response also has `page` (1 for the first call) and `count`, the total rows of the'
         ' walk, read on the first call from per-course counts refreshed by the stats job (hourly) and carried in the'
         ' cursor afterwards. It is fast but as fresh as the last refresh, and it also counts learners who unenrolled'
-        ' after starting, so it can be slightly above the rows walked. With `modified_since` the count is null. There'
-        ' is no `previous` link.'
+        ' after starting, so it can be slightly above the rows walked. With `modified_since` or any value filter'
+        ' (progress, course_score, grade, passed) the count is null. There is no `previous` link.'
         ' Every value comes from stored data'
         ' (completion aggregator, persisted course'
         ' grade, generated certificate), so `course_score` and `grade` reflect the last stored grade, not a live'
@@ -1038,6 +1038,22 @@ docs_src = {
                 'cursor',
                 str,
                 'Opaque cursor taken from the `next` link of the previous page. An invalid cursor answers 404.',
+            ),
+            query_parameter('progress_min', float, 'Only rows with `progress` at or above this value (0 to 1).'),
+            query_parameter('progress_max', float, 'Only rows with `progress` at or below this value (0 to 1).'),
+            query_parameter(
+                'course_score_min', float,
+                'Only rows with `course_score` at or above this value (0 to 1). Never-graded rows do not match.',
+            ),
+            query_parameter(
+                'course_score_max', float,
+                'Only rows with `course_score` at or below this value (0 to 1). Never-graded rows do not match.',
+            ),
+            query_parameter(
+                'grade', str, 'Only rows with one of these letter grades, comma-separated, exact match (free text).',
+            ),
+            query_parameter(
+                'passed', int, '1: only learners with a passing grade. 0: failed or never graded.',
             ),
             query_parameter(
                 'modified_since',

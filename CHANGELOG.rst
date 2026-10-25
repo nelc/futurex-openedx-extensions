@@ -14,6 +14,10 @@ Change Log
 Unreleased
 **********
 
+* Bulk course progress feed: value filters ``progress_min`` / ``progress_max``, ``course_score_min`` /
+  ``course_score_max`` (0 to 1; never-graded rows do not match a score filter), ``grade`` (comma-separated, exact) and
+  ``passed`` (1 or 0; 0 = failed or never graded). They apply inside each page's id window, so pages stay as fast; with
+  any of them ``count`` is null. A bad value answers 400. Version 0.13.11.
 * Bulk course progress feed: ``count`` is now fast. It is the sum of per-course counts that ``sync_course_stats``
   keeps in ``CourseStat.progress_count`` (new column, migration ``0013_coursestat_progress_count``), instead of a
   live COUNT over the caller's whole scope, which took minutes for a platform-wide caller in 0.13.9. It is as fresh

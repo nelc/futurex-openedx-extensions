@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any
 
 from common.djangoapps.student.models import CourseEnrollment
 from completion_aggregator.models import Aggregator
@@ -432,6 +433,70 @@ def get_learners_enrollments_queryset(  # pylint: disable=too-many-arguments
     return queryset
 
 
+PROGRESS_RANGE_FILTERS = ('progress', 'course_score')
+
+
+def parse_progress_filters(query_params: Any) -> dict:
+    """
+    Read the optional value filters of the bulk progress feed from the query parameters.
+
+    `<field>_min` / `<field>_max` for `progress` and `course_score` take a number from 0 to 1 (inclusive), `grade` takes
+    one or more letter grades separated by commas (exact match), and `passed` takes 1 or 0. Raises INVALID_INPUT on a
+    bad value, and returns only the filters that were given.
+
+    :param query_params: The request query parameters
+    :return: {'progress_min': float, ..., 'grade': [str, ...], 'passed': bool}
+    """
+    filters: dict = {}
+    for field in PROGRESS_RANGE_FILTERS:
+        for bound in ('min', 'max'):
+            name = f'{field}_{bound}'
+            raw = query_params.get(name)
+            if raw in (None, ''):
+                continue
+            try:
+                value = float(raw)
+            except ValueError as exc:
+                raise FXCodedException(
+                    code=FXExceptionCodes.INVALID_INPUT, message=f'{name} must be a number from 0 to 1',
+                ) from exc
+            if not 0 <= value <= 1:
+                raise FXCodedException(code=FXExceptionCodes.INVALID_INPUT, message=f'{name} must be from 0 to 1')
+            filters[name] = value
+        low, high = filters.get(f'{field}_min'), filters.get(f'{field}_max')
+        if low is not None and high is not None and low > high:
+            raise FXCodedException(
+                code=FXExceptionCodes.INVALID_INPUT, message=f'{field}_min cannot be greater than {field}_max',
+            )
+
+    grades = [grade.strip() for grade in (query_params.get('grade') or '').split(',') if grade.strip()]
+    if grades:
+        filters['grade'] = grades
+
+    passed = query_params.get('passed')
+    if passed not in (None, ''):
+        if passed not in ('0', '1'):
+            raise FXCodedException(code=FXExceptionCodes.INVALID_INPUT, message='passed must be 1 or 0')
+        filters['passed'] = passed == '1'
+
+    return filters
+
+
+def _apply_progress_filters(queryset: QuerySet, filters: dict) -> QuerySet:
+    """Filter the annotated feed rows by the value filters from parse_progress_filters"""
+    lookups: dict = {}
+    for field in PROGRESS_RANGE_FILTERS:
+        if f'{field}_min' in filters:
+            lookups[f'{field}__gte'] = filters[f'{field}_min']
+        if f'{field}_max' in filters:
+            lookups[f'{field}__lte'] = filters[f'{field}_max']
+    if 'grade' in filters:
+        lookups['letter_grade__in'] = filters['grade']
+    if 'passed' in filters:
+        lookups['passed_timestamp__isnull'] = not filters['passed']
+    return queryset.filter(**lookups)
+
+
 def _get_learners_progress_base(
     fx_permission_info: dict,
     include_staff: bool = False,
@@ -484,20 +549,22 @@ def get_learners_progress_count(
     fx_permission_info: dict,
     include_staff: bool = False,
     modified_since: datetime | None = None,
+    filters: dict | None = None,
 ) -> int | None:
     """
     The total rows of the bulk progress feed, read from the per-course counts that sync_course_stats keeps in
     CourseStat, summed over the caller's courses. Counting the rows live scans the caller's whole scope and takes
     minutes for a platform-wide caller; this sum takes milliseconds. It is as fresh as the last sync, so it can
-    differ slightly from the rows walked. A total of changed rows cannot be kept in advance, so with
-    `modified_since` the result is None.
+    differ slightly from the rows walked. A total of changed or filtered rows cannot be kept in advance, so with
+    `modified_since` or any value filter the result is None.
 
     :param fx_permission_info: Dictionary containing permission information
     :param include_staff: Flag to include staff users
     :param modified_since: When given, there is no total (None)
+    :param filters: Value filters from parse_progress_filters; when any is given, there is no total (None)
     :return: number of rows, or None
     """
-    if modified_since:
+    if modified_since or filters:
         return None
     _, accessible_courses = get_accessible_users_and_courses(
         fx_permission_info=fx_permission_info,
@@ -512,6 +579,7 @@ def get_learners_progress_queryset(
     fx_permission_info: dict,
     include_staff: bool = False,
     modified_since: datetime | None = None,
+    filters: dict | None = None,
 ) -> QuerySet:
     """
     Get the progress of every active enrollment of the caller's learners and courses, for bulk sync. Only
@@ -522,6 +590,7 @@ def get_learners_progress_queryset(
     :param fx_permission_info: Dictionary containing permission information
     :param include_staff: Flag to include staff users
     :param modified_since: Only enrollments whose completion, grade or certificate changed at or after this time
+    :param filters: Value filters from parse_progress_filters (progress, course_score, grade, passed)
     :return: values() QuerySet of CourseEnrollment rows
     """
     queryset, course_completion, course_grade, certificate = _get_learners_progress_base(
@@ -536,13 +605,17 @@ def get_learners_progress_queryset(
     else:
         certificate_date_expr = Value(None, output_field=DateTimeField())
 
-    return queryset.annotate(
+    queryset = queryset.annotate(
         progress=Subquery(course_completion.values('percent')[:1], output_field=FloatField()),
         course_score=Subquery(course_grade.values('percent_grade')[:1], output_field=FloatField()),
         letter_grade=Subquery(course_grade.values('letter_grade')[:1], output_field=CharField()),
         passed_timestamp=Subquery(course_grade.values('passed_timestamp')[:1], output_field=DateTimeField()),
         certificate_date=certificate_date_expr,
-    ).values(
+    )
+    if filters:
+        queryset = _apply_progress_filters(queryset, filters)
+
+    return queryset.values(
         'id',
         'user_id',
         'course_id',
