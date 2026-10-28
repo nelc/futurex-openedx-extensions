@@ -18,6 +18,7 @@ from django.db.models import (
     IntegerField,
     Max,
     OuterRef,
+    Prefetch,
     Q,
     Subquery,
     Sum,
@@ -29,6 +30,7 @@ from django.db.models.query import QuerySet
 from eox_nelp.course_experience.models import FeedbackCourse
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from zeitlabs_payments.models import Invoice, InvoiceItem
 from zeitlabs_payments.querysets import get_orders_queryset
 
 from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled, is_legacy_filtered_counts_enabled
@@ -388,3 +390,39 @@ def get_courses_orders_queryset(  # pylint: disable=too-many-arguments, too-many
         date_from=date_from,
         date_to=date_to,
     )
+
+
+def get_invoices_queryset(
+    fx_permission_info: dict,
+    course_ids: list = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> QuerySet:
+    """
+    Returns the invoices of the accessible courses, newest first.
+
+    :param fx_permission_info: Dictionary containing tenant or user permission info used to filter accessible courses.
+    :type fx_permission_info: dict
+    :param course_ids: List of course IDs to filter by (optional).
+    :type course_ids: list | None
+    :param date_from: Earliest paid_at date (optional).
+    :type date_from: date | None
+    :param date_to: Latest paid_at date (optional).
+    :type date_to: date | None
+    :return: A Django QuerySet of Invoice objects.
+    :rtype: QuerySet
+    """
+    accessible_courses = get_course_search_queryset(fx_permission_info=fx_permission_info, course_ids=course_ids)
+    queryset = Invoice.objects.filter(
+        cart__items__catalogue_item__item_ref_id__in=Subquery(accessible_courses.values('id')),
+    )
+    if date_from:
+        queryset = queryset.filter(paid_at__date__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(paid_at__date__lte=date_to)
+
+    return queryset.distinct().select_related(
+        'cart__user__profile', 'cart__user__extrainfo', 'related_transaction',
+    ).prefetch_related(
+        Prefetch('items', queryset=InvoiceItem.objects.select_related('cart_item__catalogue_item').order_by('id')),
+    ).order_by('-id')
