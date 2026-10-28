@@ -90,6 +90,7 @@ def test_get_certificates_count_uses_cache_when_disabled(  # pylint: disable=unu
     ([2], 8 * 10, 9 * 10),
     ([3], 0 * 10, 0 * 10),
 ])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_learning_hours_count_for_default_course_effort(
     base_data, fx_permission_info, heavy_q, tenant_ids, expected_result, expected_result_with_staff,
 ):  # pylint: disable=unused-argument,too-many-arguments
@@ -169,3 +170,93 @@ def test_get_learning_hours_count_uses_cache_when_disabled(  # pylint: disable=u
         assert certificates.get_learning_hours_count(fx_permission_info, include_staff=True) == live_with_staff
 
     assert live_with_staff  # sanity: there is data behind the comparison
+
+
+@pytest.mark.django_db
+@override_settings(FX_DEFAULT_COURSE_EFFORT=10)
+@pytest.mark.parametrize('tenant_ids, expected_result', [
+    ([1], 14 * 10),
+    ([2], 9 * 10),
+    ([3], 0 * 10),
+])
+def test_get_learning_hours_count_raw_includes_staff(
+    base_data, fx_permission_info, heavy_q, tenant_ids, expected_result,
+):  # pylint: disable=unused-argument
+    """Raw mode (default): the heavy path counts staff certificates whatever include_staff says."""
+    fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs(tenant_ids)
+    fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs(tenant_ids)
+    assert certificates.get_learning_hours_count(fx_permission_info) == expected_result
+    assert certificates.get_learning_hours_count(fx_permission_info, include_staff=True) == expected_result
+
+
+HIDDEN_COURSE_ID = 'course-v1:ORG1+5+5'  # the only ORG1 course with certificates (users 2, 3, 4, 40)
+
+
+def _hide_course(course_id: str) -> None:
+    """Hide the given course from the catalog."""
+    CourseOverview.objects.filter(id=course_id).update(catalog_visibility='none')
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('heavy', [True, False])
+def test_get_certificates_count_raw_includes_hidden_courses(
+    base_data, fx_permission_info, heavy,
+):  # pylint: disable=unused-argument
+    """Raw mode (default): certificates of hidden courses are counted, on the cached and the heavy path."""
+    sync_course_stats()
+    with override_flag('fx_dashboard.enable_heavy_queries', active=heavy):
+        before = certificates.get_certificates_count(fx_permission_info)
+        _hide_course(HIDDEN_COURSE_ID)
+        after = certificates.get_certificates_count(fx_permission_info)
+
+    assert after == before == {'org1': 4, 'org2': 10}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('heavy, expected_before', [
+    (True, {'org1': 2, 'org2': 9}),
+    (False, {'org1': 4, 'org2': 10}),
+])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
+def test_get_certificates_count_legacy_excludes_hidden_courses(
+    base_data, fx_permission_info, heavy, expected_before,
+):  # pylint: disable=unused-argument
+    """Legacy mode: certificates of hidden courses are not counted, on the cached and the heavy path."""
+    sync_course_stats()
+    with override_flag('fx_dashboard.enable_heavy_queries', active=heavy):
+        assert certificates.get_certificates_count(fx_permission_info) == expected_before
+        _hide_course(HIDDEN_COURSE_ID)
+        after = certificates.get_certificates_count(fx_permission_info)
+
+    assert after == {'org2': expected_before['org2']}
+
+
+@pytest.mark.django_db
+@override_settings(FX_DEFAULT_COURSE_EFFORT=10)
+@pytest.mark.parametrize('heavy', [True, False])
+def test_get_learning_hours_count_raw_includes_hidden_courses(
+    base_data, fx_permission_info, heavy,
+):  # pylint: disable=unused-argument
+    """Raw mode (default): learning hours of hidden courses are counted, on the cached and the heavy path."""
+    sync_course_stats()
+    _hide_course(HIDDEN_COURSE_ID)
+    with override_flag('fx_dashboard.enable_heavy_queries', active=heavy):
+        assert certificates.get_learning_hours_count(fx_permission_info) == 14 * 10
+
+
+@pytest.mark.django_db
+@override_settings(FX_DEFAULT_COURSE_EFFORT=10)
+@pytest.mark.parametrize('heavy, expected_before, expected_after', [
+    (True, 11 * 10, 9 * 10),
+    (False, 14 * 10, 10 * 10),
+])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
+def test_get_learning_hours_count_legacy_excludes_hidden_courses(
+    base_data, fx_permission_info, heavy, expected_before, expected_after,
+):  # pylint: disable=unused-argument
+    """Legacy mode: learning hours of hidden courses are not counted, on the cached and the heavy path."""
+    sync_course_stats()
+    with override_flag('fx_dashboard.enable_heavy_queries', active=heavy):
+        assert certificates.get_learning_hours_count(fx_permission_info) == expected_before
+        _hide_course(HIDDEN_COURSE_ID)
+        assert certificates.get_learning_hours_count(fx_permission_info) == expected_after

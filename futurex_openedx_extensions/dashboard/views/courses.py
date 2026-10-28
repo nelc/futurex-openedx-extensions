@@ -17,6 +17,7 @@ from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.details.courses import get_courses_feedback_queryset, get_courses_queryset
 from futurex_openedx_extensions.dashboard.docs_utils import docs
 from futurex_openedx_extensions.dashboard.statistics.courses import get_courses_count_by_status
+from futurex_openedx_extensions.dashboard.toggles import is_legacy_filtered_counts_enabled
 from futurex_openedx_extensions.helpers.certificates import disable_course_certificates, enable_course_certificates
 from futurex_openedx_extensions.helpers.constants import (
     COURSE_STATUS_SELF_PREFIX,
@@ -162,7 +163,10 @@ class CourseStatusesView(FXViewRoleInfoMixin, APIView):
         <tenantIds> (optional): a comma-separated list of the tenant IDs to get the information for. If not provided,
             the API will assume the list of all accessible tenants by the user
         """
-        result = get_courses_count_by_status(fx_permission_info=self.fx_permission_info)
+        result = get_courses_count_by_status(
+            fx_permission_info=self.fx_permission_info,
+            visible_filter=True if is_legacy_filtered_counts_enabled() else None,
+        )
 
         return JsonResponse(self.to_json(result))
 

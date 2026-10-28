@@ -169,7 +169,7 @@ def get_courses_queryset(
                         CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')
                     )
                 ).filter(
-                    ~is_staff_queryset
+                    staff_exclusion,
                 ).values('course_id').annotate(count=Count('id')).values('count'),
                 output_field=IntegerField(),
             ), 0),
