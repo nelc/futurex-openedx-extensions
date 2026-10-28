@@ -302,6 +302,10 @@ def get_learner_info_queryset(
     :return: QuerySet of learners
     :rtype: QuerySet
     """
+    if not is_legacy_filtered_counts_enabled():
+        include_staff = True
+        visible_courses_filter = None
+
     queryset = get_one_user_queryset(
         fx_permission_info=fx_permission_info,
         user_key=user_key,

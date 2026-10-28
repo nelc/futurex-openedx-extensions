@@ -24,6 +24,9 @@ Unreleased
   * ``learners/v1/learners/``: lists platform staff, superusers and course-team members (``is_active`` is kept), so
     ``count`` equals ``total_counts`` ``learners_count``; ``include_staff`` has no effect. Each learner's courses and
     certificates counts include hidden courses and the learner's course-team courses.
+  * ``learners/v1/learner/<username>/``: same rule as the list. Course-team members are found without
+    ``include_staff`` (it has no effect), and ``enrolled_courses_count`` / ``certificates_count`` equal the learner's
+    row in the list.
   * ``courses/v1/courses/`` with heavy queries on: ``certificates_count`` no longer drops course-team certificates.
   * The legacy flag still restores every previous number. ``courses_count`` includes ``hidden_courses_count``; do not
     add them. Swagger text updated, including the learners list (it no longer claims enrolled users are listed).

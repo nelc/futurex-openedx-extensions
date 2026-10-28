@@ -1128,7 +1128,12 @@ docs_src = {
     'LearnerInfoView.get': {
         'summary': 'Get learner\'s information',
         'description': 'Get full information for a specific learner using the `username`. The caller must have access'
-        ' to the learner\'s tenant through a tenant-role, or access to a course where the learner is enrolled.',
+        ' to the learner\'s tenant through a tenant-role, or access to a course where the learner is enrolled.\n'
+        '\nPlatform staff, superusers and course-team members are found too, and `include_staff` has no effect. The'
+        ' courses and certificates counts include hidden courses and the courses where the learner has a course-team'
+        ' role, so they equal the learner\'s row in `learners/v1/learners/`.\n'
+        '\n**Note:** With the `fx_dashboard.legacy_filtered_counts` flag on, a course-team member is found only with'
+        ' `include_staff=1`, and the counts include visible courses only.',
         'parameters': [
             common_path_parameters['username-learner'],
             common_parameters['tenant_ids'],

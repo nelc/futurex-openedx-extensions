@@ -732,6 +732,24 @@ class TestLearnersView(BaseTestViewMixin):
                 assert list_count == total_count, \
                     f'tenant {tenant_id}, include_staff={include_staff}: list {list_count} != total {total_count}'
 
+    @override_flag('fx_dashboard.enable_learner_certificates', active=True)
+    @patch(
+        'futurex_openedx_extensions.helpers.users.get_user_by_username_or_email',
+        side_effect=lambda key: get_user_model().objects.get(username=key),
+    )
+    def test_rows_equal_learner_info(self, _):
+        """Raw mode (default): learner-info counts equal the learner's list row, hidden course included"""
+        CourseOverview.objects.filter(id='course-v1:ORG1+5+5').update(catalog_visibility='none')
+        self.login_user(self.staff_user)
+        rows = self.client.get(self.url + '?tenant_ids=1&page_size=100').data['results']
+        assert 'user4' in [row['username'] for row in rows], 'course-team member user4 must be listed in raw mode'
+        for row in rows:
+            info_url = reverse('fx_dashboard:learner-info', args=[row['username']]) + '?tenant_ids=1'
+            info = json.loads(self.client.get(info_url).content)
+            assert (info['enrolled_courses_count'], info['certificates_count']) == (
+                row['enrolled_courses_count'], row['certificates_count'],
+            ), f'{row["username"]}: learner-info counts differ from the list row'
+
     @override_flag('fx_dashboard.legacy_filtered_counts', active=True)
     def test_count_equals_total_counts_learners_legacy(self):
         """Legacy mode: both sides apply the same staff exclusions, so they agree for include_staff 0 and 1"""
