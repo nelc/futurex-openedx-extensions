@@ -396,3 +396,54 @@ class TestLearnersCoursesProgressView(BaseTestViewMixin):
         self.login_user(self.staff_user)
         response = self.client.get(self.url, data={'modified_since': 'yesterday'})
         assert response.status_code == http_status.HTTP_400_BAD_REQUEST
+
+    def _search(self, user_id=None, **params):
+        """Call the feed once and return (status, data)"""
+        self.login_user(user_id or self.staff_user)
+        response = self.client.get(self.url, data=params)
+        return response.status_code, response.data
+
+    @ddt.data(
+        ('123456700005', {5}),  # a national ID
+        ('١٢٣٤٥٦٧٠٠٠٠٥', {5}),  # the same national ID in Arabic-Indic digits
+        ('user15@example.com', {15}),  # an email
+        ('nobody-matches-this', set()),
+    )
+    @ddt.unpack
+    def test_learner_search(self, text, expected_users):
+        """learner_search keeps the rows of the matched learners, and count is their exact row total"""
+        status, data = self._search(learner_search=text)
+        assert status == http_status.HTTP_200_OK
+        assert {row['user_id'] for row in data['results']} == expected_users
+        assert (data['count'], data['page'], data['next']) == (len(expected_users), 1, None)
+
+    def test_learner_search_blank_is_ignored(self):
+        """A blank learner_search is the whole feed, with the stored count"""
+        status, data = self._search(learner_search='  ')
+        assert status == http_status.HTTP_200_OK
+        assert (len(data['results']), data['count']) == (4, 4)
+
+    def test_learner_search_follows_the_scope(self):
+        """A learner outside the caller's courses is not found"""
+        assert self._search(learner_search='user40@example.com')[1]['results']
+        status, data = self._search(user_id=3, learner_search='user40@example.com')
+        assert status == http_status.HTTP_200_OK
+        assert (data['results'], data['count']) == ([], 0)
+
+    def test_learner_search_has_no_windows(self):
+        """A learner search walks full pages, without id windows, to the last row"""
+        with patch.object(IdWindowPagination, 'window_size', 1):
+            pages = self._walk(page_size=1, learner_search='@example.com')
+        assert [len(page) for page in pages] == [1, 1, 1, 1]
+
+    def test_learner_search_count_with_filters(self):
+        """With learner_search the count is exact, value filters included"""
+        status, data = self._search(learner_search='@example.com', passed='0')
+        assert status == http_status.HTTP_200_OK
+        assert data['count'] == len(data['results']) == 3
+
+    def test_learner_search_too_many_matches(self):
+        """A search that matches more learners than the cap is a 400"""
+        with patch('futurex_openedx_extensions.dashboard.details.learners.LEARNER_SEARCH_MAX_MATCHES', 1):
+            status, _ = self._search(learner_search='@example.com')
+        assert status == http_status.HTTP_400_BAD_REQUEST

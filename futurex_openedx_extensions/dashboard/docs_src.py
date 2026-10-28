@@ -1022,6 +1022,8 @@ docs_src = {
         ' cursor afterwards. It is fast but as fresh as the last refresh, and it also counts learners who unenrolled'
         ' after starting, so it can be slightly above the rows walked. With `modified_since` or any value filter'
         ' (progress, course_score, grade, passed) the count is null. There is no `previous` link.'
+        ' With `learner_search` (for example a national ID) the walk covers the matched learners only: pages are'
+        ' full, usually one request is enough, and `count` is the exact number of their rows.'
         ' Every value comes from stored data'
         ' (completion aggregator, persisted course'
         ' grade, generated certificate), so `course_score` and `grade` reflect the last stored grade, not a live'
@@ -1029,6 +1031,13 @@ docs_src = {
         'parameters': [
             common_parameters['tenant_ids'],
             common_parameters['include_staff'],
+            query_parameter(
+                'learner_search',
+                str,
+                'Only the learners whose full name, username, national ID or email contains this text (national IDs'
+                ' also match in Arabic-Indic digits). It is a contains match, so check `national_id` on the rows when'
+                ' you need an exact one. More than 1000 matching learners answers 400.',
+            ),
             query_parameter(
                 'page_size',
                 int,
