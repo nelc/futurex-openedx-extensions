@@ -1697,6 +1697,7 @@ class PaymentOrderV2Serializer(ModelSerializerOptionalFields):
     paid_at = serializers.SerializerMethodField()
     invoice_id = serializers.SerializerMethodField()
     invoice_url = serializers.SerializerMethodField()
+    transaction_id = serializers.SerializerMethodField(help_text='HyperPay payment id (null for manual payments)')
 
     class Meta:
         model = Cart
@@ -1716,6 +1717,7 @@ class PaymentOrderV2Serializer(ModelSerializerOptionalFields):
             'paid_at',
             'invoice_id',
             'invoice_url',
+            'transaction_id',
         ]
 
     def _get_user(self, obj: Any = None) -> Any:  # pylint: disable=no-self-use
@@ -1797,3 +1799,108 @@ class PaymentOrderV2Serializer(ModelSerializerOptionalFields):
         if not invoice_id:
             return None
         return f'/payment/v1/invoice/{invoice_id}/'
+
+    def get_transaction_id(self, obj: Any) -> Any:
+        """Return the payment gateway's transaction id, or None for a manual payment or no invoice."""
+        invoice = self._get_invoice(obj)
+        transaction = invoice.related_transaction if invoice else None
+        return transaction.gateway_transaction_id if transaction else None
+
+
+class PaymentInvoiceSerializer(serializers.Serializer):  # pylint: disable=abstract-method
+    """Serializer for one paid invoice with its items, buyer, seller identity, and payment reference."""
+    BUYER_FIELDS = ['user_id', 'username', 'full_name', 'alternative_full_name', 'national_id', 'email']
+
+    invoice_number = serializers.CharField()
+    status = serializers.CharField()
+    paid_at = serializers.SerializerMethodField()
+    currency = serializers.CharField()
+    gross_total = serializers.FloatField()
+    discount_total = serializers.FloatField()
+    tax_total = serializers.FloatField()
+    total = serializers.FloatField()
+    tenant_id = serializers.SerializerMethodField()
+    seller = serializers.SerializerMethodField()
+    buyer = serializers.SerializerMethodField()
+    items = serializers.SerializerMethodField()
+    payment = serializers.SerializerMethodField()
+    invoice_url = serializers.SerializerMethodField()
+
+    def _get_tenant_configs(self, tenant_ids: List[int]) -> Dict[int, dict]:
+        """Return the lms_configs of the given tenants, cached on the serializer context."""
+        cache = self.context.setdefault('tenant_lms_configs', {})
+        missing = [tenant_id for tenant_id in tenant_ids if tenant_id not in cache]
+        if missing:
+            cache.update(dict(TenantConfig.objects.filter(id__in=missing).values_list('id', 'lms_configs')))
+        return {tenant_id: cache.get(tenant_id) or {} for tenant_id in tenant_ids}
+
+    def get_tenant_id(self, obj: Any) -> int | None:
+        """
+        Return the tenant that issued the invoice: among the tenants of the course's org, the one whose
+        invoice_prefix starts the invoice number, else the only tenant of the org. None when undecidable.
+        """
+        item = next(iter(obj.items.all()), None)
+        catalogue_item = item.cart_item.catalogue_item if item and item.cart_item else None
+        if not catalogue_item:
+            return None
+        try:
+            org = CourseLocator.from_string(catalogue_item.item_ref_id).org
+        except InvalidKeyError:
+            return None
+
+        tenant_ids = get_tenants_by_org(str(org))
+        prefix = obj.invoice_number.rsplit('-', 1)[0]
+        for tenant_id, lms_configs in self._get_tenant_configs(tenant_ids).items():
+            payments_settings = lms_configs.get('ZEITLABS_PAYMENTS_SETTINGS') or {}
+            if payments_settings.get('invoice_prefix') == prefix:
+                return tenant_id
+        return tenant_ids[0] if len(tenant_ids) == 1 else None
+
+    def get_seller(self, obj: Any) -> Dict[str, Any]:
+        """Return the seller identity from the issuing tenant's current payments settings."""
+        tenant_id = self.get_tenant_id(obj)
+        lms_configs = self._get_tenant_configs([tenant_id])[tenant_id] if tenant_id else {}
+        payments_settings = lms_configs.get('ZEITLABS_PAYMENTS_SETTINGS') or {}
+        return {
+            'organization': payments_settings.get('organization'),
+            'tax_number': payments_settings.get('customer_number'),
+        }
+
+    def get_paid_at(self, obj: Any) -> Any:  # pylint: disable=no-self-use
+        """Return ISO-formatted paid_at."""
+        return dt_to_str(obj.paid_at)
+
+    def get_buyer(self, obj: Any) -> Dict[str, Any]:
+        """Return the buyer's learner fields, using the same logic as the orders v2 API."""
+        order_serializer = PaymentOrderV2Serializer(context=self.context)
+        return {field: getattr(order_serializer, f'get_{field}')(obj.cart) for field in self.BUYER_FIELDS}
+
+    def get_items(self, obj: Any) -> List[Dict[str, Any]]:  # pylint: disable=no-self-use
+        """Return the invoice items."""
+        result = []
+        for item in obj.items.all():
+            catalogue_item = item.cart_item.catalogue_item if item.cart_item else None
+            result.append({
+                'sku': catalogue_item.sku if catalogue_item else None,
+                'title': catalogue_item.title if catalogue_item else None,
+                'course_id': catalogue_item.item_ref_id if catalogue_item else None,
+                'original_price': float(item.original_price),
+                'discount_amount': float(item.discount_amount),
+                'tax_amount': float(item.tax_amount),
+                'price': float(item.price),
+                'quantity': item.quantity,
+            })
+        return result
+
+    def get_payment(self, obj: Any) -> Dict[str, Any]:  # pylint: disable=no-self-use
+        """Return the payment reference; gateway is 'manual' when no gateway transaction is attached."""
+        transaction = obj.related_transaction
+        return {
+            'gateway': transaction.gateway if transaction else 'manual',
+            'method': transaction.method if transaction else None,
+            'transaction_id': transaction.gateway_transaction_id if transaction else None,
+        }
+
+    def get_invoice_url(self, obj: Any) -> str:  # pylint: disable=no-self-use
+        """Build the invoice URL as a tenant-relative path."""
+        return f'/payment/v1/invoice/{obj.invoice_number}/'

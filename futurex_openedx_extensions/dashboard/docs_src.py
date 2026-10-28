@@ -2026,12 +2026,250 @@ docs_src = {
                                         nullable=True,
                                         example='/payment/v1/invoice/DEV-100001/',
                                     ),
+                                    'transaction_id': openapi.Schema(
+                                        type=openapi.TYPE_STRING,
+                                        nullable=True,
+                                        description='The HyperPay payment id. Null for a manual payment or no invoice.',
+                                        example='8ac7a4a19a0f1b2c019a0f3d4e5f6071',
+                                    ),
                                 },
                             ),
                         ),
                     },
                 ),
             }
+        ),
+    },
+
+    'PaymentInvoicesView.get': {
+        'summary': 'Get the list of invoices',
+        'description': (
+            'Get the paid invoices of the accessible courses, newest first, with their items, buyer, seller '
+            'identity, and HyperPay payment id. Use `course_ids` with a large `page_size` to fetch all the invoices '
+            'of one course.\n\n'
+            '`seller` comes from the current payments settings of the issuing tenant (the tenant of the course org '
+            'whose `invoice_prefix` starts the invoice number, else the only tenant of that org); it is null when '
+            'the tenant cannot be decided.'
+        ),
+        'parameters': [
+            common_parameters['tenant_ids'],
+            common_parameters['course_ids'],
+            query_parameter(
+                'date_from', str, 'Earliest `paid_at` date, in `YYYY-MM-DD` format.',
+            ),
+            query_parameter(
+                'date_to', str, 'Latest `paid_at` date, in `YYYY-MM-DD` format.',
+            ),
+        ],
+        'responses': responses(
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                example={
+                                    'invoice_number': 'SEEC-100004',
+                                    'status': 'paid',
+                                    'paid_at': '2026-10-06T10:00:00Z',
+                                    'currency': 'SAR',
+                                    'gross_total': 1.15,
+                                    'discount_total': 0.0,
+                                    'tax_total': 0.15,
+                                    'total': 1.15,
+                                    'tenant_id': 448,
+                                    'seller': {'organization': 'Org name', 'tax_number': '300000000000003'},
+                                    'buyer': {
+                                        'user_id': 10, 'username': 'learner1', 'full_name': 'Full Name',
+                                        'alternative_full_name': 'الاسم الكامل', 'national_id': '1234567890',
+                                        'email': 'learner@example.com',
+                                    },
+                                    'items': [{
+                                        'sku': 'Pay101', 'title': 'Course title',
+                                        'course_id': 'course-v1:seec+Pay101+2026', 'original_price': 1.0,
+                                        'discount_amount': 0.0, 'tax_amount': 0.15, 'price': 1.15, 'quantity': 1,
+                                    }],
+                                    'payment': {
+                                        'gateway': 'hyperpay', 'method': 'VISA',
+                                        'transaction_id': '8ac7a4a19a0f1b2c019a0f3d4e5f6071',
+                                    },
+                                    'invoice_url': '/payment/v1/invoice/SEEC-100004/',
+                                },
+                            ),
+                        ),
+                    },
+                ),
+            },
+        ),
+    },
+
+    'PaymentInvoiceDetailView.get': {
+        'summary': 'Get one invoice',
+        'description': (
+            'Get one invoice by its number, in the same shape as an item of the invoices list. Returns 404 when the '
+            'invoice does not exist or its course is not accessible to the caller.'
+        ),
+        'parameters': [
+            path_parameter('invoice_number', str, 'The invoice number, e.g. `SEEC-100004`.'),
+        ],
+        'responses': responses(remove=[400]),
+    },
+
+    'TenantPaymentsStatusView.get': {
+        'summary': 'Get the payments status of the tenants',
+        'description': (
+            'Get the payments status of every tenant the caller has full access to. `active` is true only when '
+            'payments are switched on AND the invoice identity and the card gateway settings are complete, which '
+            'is the state in which a learner can pay. The status is computed from the tenant config on each call, '
+            'so it follows every change immediately.'
+        ),
+        'parameters': [
+            common_parameters['tenant_ids'],
+        ],
+        'responses': responses(
+            remove=[400, 404],
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        example={
+                            'tenant_id': 54, 'domain': 'seu.futurex.sa', 'enabled': True, 'active': True,
+                            'configured': True, 'mada_available': True, 'test_mode': False,
+                        },
+                    ),
+                ),
+            },
+        ),
+    },
+
+    'TenantPaymentsSettingsView.get': {
+        'summary': 'Get the payments settings of a tenant',
+        'description': (
+            'Get the payments status and settings of one tenant. `ENTITY_ID` and `ACCESS_TOKEN` are never '
+            'returned: they show as `{"is_set": bool, "last4": "…"}`. The caller must be a system staff.'
+        ),
+        'parameters': [
+            common_path_parameters['tenant_id'],
+        ],
+        'responses': responses(
+            remove=[400],
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    example={
+                        'tenant_id': 54, 'domain': 'seu.futurex.sa', 'enabled': True, 'active': True,
+                        'configured': True, 'mada_available': True, 'test_mode': False,
+                        'settings': {
+                            'settings': {
+                                'organization': 'Org name', 'invoice_prefix': 'SEU', 'valid_currency': 'SAR',
+                                'customer_number': '300000000000003',
+                            },
+                            'hyperpay': {
+                                'API_URL': 'https://eu-prod.oppwa.com/', 'TEST_MODE': '',
+                                'ENTITY_ID': {'is_set': True, 'last4': 'ab12'},
+                                'ACCESS_TOKEN': {'is_set': True, 'last4': 'cd34'},
+                            },
+                            'hyperpay_mada': {
+                                'API_URL': None, 'TEST_MODE': None,
+                                'ENTITY_ID': {'is_set': False, 'last4': None},
+                                'ACCESS_TOKEN': {'is_set': False, 'last4': None},
+                            },
+                        },
+                    },
+                ),
+            },
+        ),
+    },
+
+    'TenantPaymentsSettingsView.patch': {
+        'summary': 'Change the payments settings of a tenant',
+        'description': (
+            'Switch payments on or off and set the payments settings of one tenant. Every part is optional: a '
+            'field left out keeps its stored value, and a field sent as `null` is removed. The caller must be a '
+            'system staff.\n\n'
+            'Rules: `API_URL` must be https on `eu-prod.oppwa.com` or `eu-test.oppwa.com`; `TEST_MODE` is one of '
+            '`""`, `EXTERNAL`, `INTERNAL`; `valid_currency` is `SAR`; payments cannot be on unless `settings` '
+            '(organization, invoice_prefix, valid_currency) and `hyperpay` (API_URL, ENTITY_ID, ACCESS_TOKEN) are '
+            'complete. The response has the same shape as the GET, with secrets masked.'
+        ),
+        'parameters': [
+            common_path_parameters['tenant_id'],
+        ],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            example={
+                'enabled': True,
+                'settings': {
+                    'organization': 'Org name', 'invoice_prefix': 'SEU', 'valid_currency': 'SAR',
+                    'customer_number': '300000000000003',
+                },
+                'hyperpay': {
+                    'API_URL': 'https://eu-prod.oppwa.com/', 'ENTITY_ID': '<entity id>',
+                    'ACCESS_TOKEN': '<access token>', 'TEST_MODE': '',
+                },
+                'hyperpay_mada': {
+                    'API_URL': 'https://eu-prod.oppwa.com/', 'ENTITY_ID': '<mada entity id>',
+                    'ACCESS_TOKEN': '<access token>', 'TEST_MODE': '',
+                },
+            },
+        ),
+        'responses': responses(),
+    },
+
+    'CoursePriceView.get': {
+        'summary': 'Get the price of a course and whether it can take payment',
+        'description': (
+            'Get the price of a course (paid mode `no-id-professional` and its catalogue item) with a readiness '
+            'report. `ready` is true when every check passes: payments active on a tenant of the course org, the '
+            'paid mode and the catalogue item exist with the same sku, price and currency, the item is a paid '
+            'course for this course, enrollment is open, and no other paid mode exists. A real charge is only '
+            'proven by a test payment. The caller must be a system staff.'
+        ),
+        'parameters': [
+            path_parameter('course_id', str, 'The course ID.'),
+        ],
+        'responses': responses(
+            remove=[400],
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    example={
+                        'course_id': 'course-v1:seec+Pay101+2026', 'tenant_ids': [448], 'active_tenant_ids': [448],
+                        'mode': 'no-id-professional', 'sku': 'Pay101', 'price': 100.0, 'currency': 'SAR',
+                        'ready': True,
+                        'checks': [{'name': 'tenant_payments_active', 'passed': True}],
+                    },
+                ),
+            },
+        ),
+    },
+
+    'CoursePriceView.put': {
+        'summary': 'Set the price of a course',
+        'description': (
+            'Create or update the paid mode `no-id-professional` and its catalogue item together, with one sku '
+            'and one price in SAR. `price` is a whole number (edX course modes store whole units). `sku` is only '
+            'used when the course has no paid mode yet (letters, digits, `.`, `_`, `-`, up to 50); it is generated '
+            'when omitted, and it cannot be changed once set (409). Refused (400) when payments are not active on '
+            'any tenant of the course org. An existing item keeps its title, because invoices show the title live. '
+            'A cart already started keeps its old price. The response is the GET response after the change. The '
+            'caller must be a system staff.'
+        ),
+        'parameters': [
+            path_parameter('course_id', str, 'The course ID.'),
+        ],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'price': openapi.Schema(type=openapi.TYPE_INTEGER, example=500),
+                'sku': openapi.Schema(type=openapi.TYPE_STRING, example='Pay101'),
+            },
+        ),
+        'responses': responses(
+            overrides={409: 'The sku belongs to another course, or the course already has a different sku.'},
         ),
     },
 

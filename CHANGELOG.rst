@@ -18,7 +18,23 @@ Unreleased
   ID or email contains the text (the same matching as ``learner_search`` elsewhere in ``/api/fx``), for example to look
   up one learner by national ID. The matched learners are resolved once, so the walk has no id windows (pages are
   full, usually one request) and ``count`` is their exact row total. More than 1000 matching learners answers 400.
-  Version 0.13.12.
+  Version 0.13.13.
+* Payments APIs for the Entity portal (version 0.13.12):
+
+  * ``GET api/fx/payments/v1/tenants/``: payments status of the accessible tenants. ``active`` is true only when
+    ``IS_ZEITLABS_PAYMENTS_ENABLED`` is on and the invoice identity and the card gateway settings are complete; it is
+    computed from the tenant config on each call.
+  * ``GET``/``PATCH api/fx/payments/v1/tenants/<tenant_id>/`` (system staff only): read or change the switch and the
+    ``ZEITLABS_PAYMENTS_SETTINGS``, ``HYPERPAY_SETTINGS`` and ``HYPERPAY_MADA_SETTINGS`` values. ``ENTITY_ID`` and
+    ``ACCESS_TOKEN`` are write-only (read back as ``is_set`` + last 4 characters); ``API_URL`` must be https on a
+    HyperPay host; payments cannot be on with incomplete settings; each change logs the changed key names, never
+    values.
+  * ``GET api/fx/payments/v1/invoices/`` and ``invoices/<invoice_number>/``: paid invoices of the accessible courses
+    as JSON (items, VAT, totals, buyer, seller identity, HyperPay payment id), filterable by ``course_ids`` and
+    ``paid_at`` dates.
+  * ``GET``/``PUT api/fx/payments/v1/courses/<course_id>/price/`` (system staff only): set the ``no-id-professional``
+    mode and its catalogue item together with one sku and one whole-SAR price, and read a per-course readiness report.
+  * ``api/fx/payments/v2/orders/`` returns ``transaction_id`` (the HyperPay payment id; null for manual payments).
 * Bulk course progress feed: value filters ``progress_min`` / ``progress_max``, ``course_score_min`` /
   ``course_score_max`` (0 to 1; never-graded rows do not match a score filter), ``grade`` (comma-separated, exact) and
   ``passed`` (1 or 0; 0 = failed or never graded). They apply inside each page's id window, so pages stay as fast; with

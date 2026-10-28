@@ -390,14 +390,108 @@ class Cart(models.Model):
         return invoice.total if invoice else 0
 
 
+class Transaction(models.Model):
+    """Mock for zeitlabs_payments.Transaction."""
+    cart = models.ForeignKey(Cart, on_delete=models.SET_NULL, related_name='transactions', null=True)
+    status = models.CharField(max_length=50, default='success')
+    gateway = models.CharField(max_length=50)
+    gateway_transaction_id = models.CharField(max_length=255)
+    method = models.CharField(max_length=50, default='')
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    currency = models.CharField(max_length=3, default='SAR')
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'zeitlabs_payments_transaction'
+
+
 class Invoice(models.Model):
     """Mock for zeitlabs_payments.Invoice."""
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='invoices')
     invoice_number = models.CharField(max_length=255, unique=True)
+    status = models.CharField(max_length=20, default='paid')
+    gross_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    discount_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tax_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=3)
     paid_at = models.DateTimeField(null=True, blank=True)
+    related_transaction = models.ForeignKey(Transaction, on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
         app_label = 'fake_models'
         db_table = 'zeitlabs_payments_invoice'
+
+
+class CatalogueItem(models.Model):
+    """Mock for zeitlabs_payments.CatalogueItem."""
+    sku = models.CharField(max_length=255, unique=True)
+    type = models.CharField(max_length=20)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    item_ref_id = models.CharField(max_length=255)
+    price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    currency = models.CharField(max_length=3, blank=True, null=True)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'zeitlabs_payments_catalogueitem'
+
+    @classmethod
+    def valid_item_types(cls):
+        """Return all valid item types."""
+        return ['paid_course', 'bulk_course']
+
+
+class CartItem(models.Model):
+    """Mock for zeitlabs_payments.CartItem."""
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
+    catalogue_item = models.ForeignKey(CatalogueItem, on_delete=models.PROTECT)
+    original_price = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    final_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'zeitlabs_payments_cartitem'
+
+
+class InvoiceItem(models.Model):
+    """Mock for zeitlabs_payments.InvoiceItem."""
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='items')
+    cart_item = models.ForeignKey(CartItem, on_delete=models.SET_NULL, null=True)
+    original_price = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'zeitlabs_payments_invoiceitem'
+
+
+class CourseMode(models.Model):
+    """Mock for course_modes.CourseMode."""
+    course = models.ForeignKey(
+        CourseOverview, db_constraint=False, db_index=True, related_name='modes', on_delete=models.DO_NOTHING,
+    )
+    mode_slug = models.CharField(max_length=100)
+    mode_display_name = models.CharField(max_length=255)
+    min_price = models.IntegerField(default=0)
+    currency = models.CharField(default='usd', max_length=8)
+    expiration_datetime = models.DateTimeField(default=None, null=True, blank=True)
+    sku = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        app_label = 'fake_models'
+        db_table = 'course_modes_coursemode'
+        unique_together = ('course', 'mode_slug', 'currency')
+
+    @classmethod
+    def modes_for_course(
+        cls, course_id=None, include_expired=False, only_selectable=True, course=None,
+    ):  # pylint: disable=unused-argument
+        """Mock"""
+        return []
