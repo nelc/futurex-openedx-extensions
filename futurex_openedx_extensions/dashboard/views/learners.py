@@ -174,9 +174,17 @@ class LearnersCoursesProgressView(FXViewRoleInfoMixin, ListAPIView):
             'filters': parse_progress_filters(params),
         }
 
+    def get_learner_search(self) -> str | None:
+        """The learner_search text, or None when it is missing or blank"""
+        return (self.request.query_params.get('learner_search') or '').strip() or None
+
+    def is_narrow_scope(self) -> bool:
+        """A learner search covers a few learners only: the paginator walks it without id windows and counts it live"""
+        return self.get_learner_search() is not None
+
     def get_queryset(self) -> QuerySet:
         """Get the enrollments with progress"""
-        return get_learners_progress_queryset(**self._feed_arguments())
+        return get_learners_progress_queryset(**self._feed_arguments(), learner_search=self.get_learner_search())
 
     def get_total_count(self) -> int | None:
         """The total rows of the walk; the paginator asks for it on the first call only"""

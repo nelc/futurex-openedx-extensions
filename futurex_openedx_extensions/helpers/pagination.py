@@ -51,6 +51,9 @@ class IdWindowPagination(CursorPagination):
     counted once, on the call without a cursor, by the view's `get_total_count()` (or `queryset.count()`), and travels
     in the cursor afterwards, so the later pages never count again. A cursor from before this field existed (a bare
     id) still works; its walk reports `page` and `count` as null.
+
+    When the view's `is_narrow_scope()` is true (the rows of a few learners only), the walk has no id windows: every
+    page holds the next page_size rows, and the total is counted live, which is cheap for so few rows.
     """
     page_size: int = 1000
     page_size_query_param: str = 'page_size'
@@ -62,12 +65,15 @@ class IdWindowPagination(CursorPagination):
     page_number: int | None = None
     total_count: int | None = None
 
-    def _read_position(self, request: Any, queryset: QuerySet, view: Any) -> int:
+    def _read_position(self, request: Any, queryset: QuerySet, view: Any, narrow: bool) -> int:
         """Read `after`, the page number and the total from the cursor; count the total on the first call."""
         cursor = self.decode_cursor(request)
         if cursor is None:
             self.page_number = 1
-            self.total_count = view.get_total_count() if hasattr(view, 'get_total_count') else queryset.count()
+            if narrow or not hasattr(view, 'get_total_count'):
+                self.total_count = queryset.count()
+            else:
+                self.total_count = view.get_total_count()
             return 0
 
         parts = cursor.position.split(':') if cursor.position else []
@@ -85,15 +91,17 @@ class IdWindowPagination(CursorPagination):
         """Return the rows of the window that starts at the cursor."""
         self.page_size = self.get_page_size(request)
         self.base_url = request.build_absolute_uri()
-        after = self._read_position(request, queryset, view)
+        narrow = bool(view is not None and hasattr(view, 'is_narrow_scope') and view.is_narrow_scope())
+        after = self._read_position(request, queryset, view, narrow)
 
-        rows = list(queryset.filter(
-            id__gt=after, id__lte=after + self.window_size,
-        ).order_by('id')[:self.page_size + 1])
+        window = {} if narrow else {'id__lte': after + self.window_size}
+        rows = list(queryset.filter(id__gt=after, **window).order_by('id')[:self.page_size + 1])
         page = rows[:self.page_size]
 
         if len(rows) > self.page_size:
             self.next_after = page[-1]['id']
+        elif narrow:
+            self.next_after = None
         else:
             max_id = queryset.model.objects.using(queryset.db).order_by('-id').values_list('id', flat=True).first()
             self.next_after = after + self.window_size if max_id and after + self.window_size < max_id else None

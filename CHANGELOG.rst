@@ -14,6 +14,11 @@ Change Log
 Unreleased
 **********
 
+* Bulk course progress feed: ``learner_search`` filters the rows to the learners whose full name, username, national
+  ID or email contains the text (the same matching as ``learner_search`` elsewhere in ``/api/fx``), for example to look
+  up one learner by national ID. The matched learners are resolved once, so the walk has no id windows (pages are
+  full, usually one request) and ``count`` is their exact row total. More than 1000 matching learners answers 400.
+  Version 0.13.13.
 * Payments APIs for the Entity portal (version 0.13.12):
 
   * ``GET api/fx/payments/v1/tenants/``: payments status of the accessible tenants. ``active`` is true only when

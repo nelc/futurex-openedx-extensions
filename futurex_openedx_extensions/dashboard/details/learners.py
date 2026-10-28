@@ -497,10 +497,29 @@ def _apply_progress_filters(queryset: QuerySet, filters: dict) -> QuerySet:
     return queryset.filter(**lookups)
 
 
+LEARNER_SEARCH_MAX_MATCHES = 1000
+
+
+def _get_learner_search_user_ids(accessible_users: QuerySet) -> list[int]:
+    """
+    Resolve the learners matched by `learner_search` to their ids, once. Filtering the enrollments by a short list of
+    ids lets MySQL read them through the user index instead of scanning the enrollment table. Raises INVALID_INPUT
+    when the search matches more than LEARNER_SEARCH_MAX_MATCHES learners.
+    """
+    user_ids = list(accessible_users.values_list('id', flat=True)[:LEARNER_SEARCH_MAX_MATCHES + 1])
+    if len(user_ids) > LEARNER_SEARCH_MAX_MATCHES:
+        raise FXCodedException(
+            code=FXExceptionCodes.INVALID_INPUT,
+            message=f'learner_search matches more than {LEARNER_SEARCH_MAX_MATCHES} learners, narrow it',
+        )
+    return user_ids
+
+
 def _get_learners_progress_base(
     fx_permission_info: dict,
     include_staff: bool = False,
     modified_since: datetime | None = None,
+    learner_search: str | None = None,
 ) -> tuple[QuerySet, QuerySet, QuerySet, QuerySet]:
     """
     Build the filtered enrollments of the bulk progress feed, without the per-row columns, together with the three
@@ -510,8 +529,13 @@ def _get_learners_progress_base(
     """
     accessible_users, accessible_courses = get_accessible_users_and_courses(
         fx_permission_info=fx_permission_info,
+        learner_search=learner_search,
         include_staff=include_staff,
     )
+    if learner_search:
+        user_filter: dict = {'user_id__in': _get_learner_search_user_ids(accessible_users)}
+    else:
+        user_filter = {'user__in': Subquery(accessible_users.values('id'))}
 
     course_completion = Aggregator.objects.filter(
         user_id=OuterRef('user_id'),
@@ -530,7 +554,7 @@ def _get_learners_progress_base(
     queryset = CourseEnrollment.objects.filter(
         is_active=True,
         course__in=Subquery(accessible_courses.values('id')),
-        user__in=Subquery(accessible_users.values('id')),
+        **user_filter,
     ).filter(
         Exists(course_completion.filter(percent__gt=0)),
     )
@@ -575,11 +599,12 @@ def get_learners_progress_count(
     ).aggregate(total=Sum('progress_count'))['total'] or 0
 
 
-def get_learners_progress_queryset(
+def get_learners_progress_queryset(  # pylint: disable=too-many-arguments
     fx_permission_info: dict,
     include_staff: bool = False,
     modified_since: datetime | None = None,
     filters: dict | None = None,
+    learner_search: str | None = None,
 ) -> QuerySet:
     """
     Get the progress of every active enrollment of the caller's learners and courses, for bulk sync. Only
@@ -591,10 +616,11 @@ def get_learners_progress_queryset(
     :param include_staff: Flag to include staff users
     :param modified_since: Only enrollments whose completion, grade or certificate changed at or after this time
     :param filters: Value filters from parse_progress_filters (progress, course_score, grade, passed)
+    :param learner_search: Only the learners whose full name, username, national ID or email contains this text
     :return: values() QuerySet of CourseEnrollment rows
     """
     queryset, course_completion, course_grade, certificate = _get_learners_progress_base(
-        fx_permission_info, include_staff, modified_since,
+        fx_permission_info, include_staff, modified_since, learner_search,
     )
 
     if is_learner_certificates_enabled():
