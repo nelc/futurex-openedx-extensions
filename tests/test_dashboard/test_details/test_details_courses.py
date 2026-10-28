@@ -335,3 +335,19 @@ def test_get_courses_orders_queryset(  # pylint: disable=too-many-locals
     )
 
     assert result == mock_orders_qs
+
+
+@pytest.mark.django_db
+def test_get_courses_queryset_raw_heavy_certificates_include_staff(  # pylint: disable=unused-argument
+    base_data, fx_permission_info, heavy_q,
+):
+    """Raw mode (default), heavy path: course-team certificates are counted whatever include_staff says."""
+    no_staff = {str(c.id): c.certificates_count for c in get_courses_queryset(fx_permission_info)}
+    with_staff = {
+        str(c.id): c.certificates_count for c in get_courses_queryset(fx_permission_info, include_staff=True)
+    }
+
+    assert no_staff == with_staff
+    assert no_staff['course-v1:ORG1+5+5'] == GeneratedCertificate.objects.filter(
+        course_id='course-v1:ORG1+5+5', status='downloadable', user__is_active=True,
+    ).count() == 4

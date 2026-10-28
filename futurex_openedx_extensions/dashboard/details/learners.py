@@ -30,7 +30,10 @@ from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.grades.models import PersistentCourseGrade
 
-from futurex_openedx_extensions.dashboard.toggles import is_learner_certificates_enabled
+from futurex_openedx_extensions.dashboard.toggles import (
+    is_learner_certificates_enabled,
+    is_legacy_filtered_counts_enabled,
+)
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.querysets import (
@@ -162,7 +165,13 @@ def get_learners_queryset(  # pylint: disable=too-many-arguments
             message='Enrollments filter must be a tuple or a list of two integer values.',
         )
 
-    queryset = get_learners_search_queryset(search_text)
+    raw_counts = not is_legacy_filtered_counts_enabled()
+    if raw_counts:
+        queryset = get_learners_search_queryset(search_text, superuser_filter=None, staff_filter=None)
+        include_staff = True
+        visible_courses_filter = None
+    else:
+        queryset = get_learners_search_queryset(search_text)
 
     queryset = get_permitted_learners_queryset(
         queryset=queryset,
@@ -293,6 +302,10 @@ def get_learner_info_queryset(
     :return: QuerySet of learners
     :rtype: QuerySet
     """
+    if not is_legacy_filtered_counts_enabled():
+        include_staff = True
+        visible_courses_filter = None
+
     queryset = get_one_user_queryset(
         fx_permission_info=fx_permission_info,
         user_key=user_key,

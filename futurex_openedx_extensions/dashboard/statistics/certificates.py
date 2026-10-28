@@ -39,12 +39,14 @@ def get_certificates_count(
     :return: Count of certificates per organization
     :rtype: Dict[str, int]
     """
+    raw_counts = not is_legacy_filtered_counts_enabled()
+
     if not is_heavy_queries_enabled():
         course_stats_results = list(
             CourseStat.objects.filter(
                 course_key__in=get_base_queryset_courses(
                     fx_permission_info,
-                    visible_filter=visible_courses_filter,
+                    visible_filter=None if raw_counts else visible_courses_filter,
                     active_filter=active_courses_filter,
                 ),
             ).annotate(
@@ -59,14 +61,12 @@ def get_certificates_count(
         )
         return dict(course_stats_results)
 
-    if include_staff or not is_legacy_filtered_counts_enabled():
+    if include_staff or raw_counts:
         is_staff_queryset = Q(Value(False, output_field=BooleanField()))
     else:
         is_staff_queryset = check_staff_exist_queryset(
             ref_user_id='user_id', ref_org='course_org', ref_course_id='course_id',
         )
-
-    raw_counts = not is_legacy_filtered_counts_enabled()
 
     result = list(
         GeneratedCertificate.objects.filter(
@@ -148,18 +148,20 @@ def get_learning_hours_count(
             )
             return settings.FX_DEFAULT_COURSE_EFFORT
 
+    raw_counts = not is_legacy_filtered_counts_enabled()
+
     if is_heavy_queries_enabled():
         queryset = GeneratedCertificate.objects.filter(
             status='downloadable',
             course_id__in=get_base_queryset_courses(
                 fx_permission_info,
-                visible_filter=visible_courses_filter,
+                visible_filter=None if raw_counts else visible_courses_filter,
                 active_filter=active_courses_filter,
             ),
             user__is_active=True,
         )
 
-        if not include_staff:
+        if not include_staff and not raw_counts:
             queryset = queryset.annotate(
                 course_org=Subquery(
                     CourseOverview.objects.filter(id=OuterRef('course_id')).values('org')
@@ -186,7 +188,7 @@ def get_learning_hours_count(
             CourseStat.objects.filter(
                 course_key__in=get_base_queryset_courses(
                     fx_permission_info,
-                    visible_filter=visible_courses_filter,
+                    visible_filter=None if raw_counts else visible_courses_filter,
                     active_filter=active_courses_filter,
                 ),
             ).annotate(

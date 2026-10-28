@@ -451,7 +451,9 @@ docs_src = {
         'summary': 'Get number of courses of each status in the tenants',
         'description': 'The response will include the number of courses in the selected tenants for each status. See'
         ' details in the 200 response description below.\n'
-        '\n**Note:** the count includes only visible courses.\n'
+        '\n**Note:** the count includes hidden courses too, so the buckets add up to `courses_count` of'
+        ' `statistics/v1/total_counts/`. With the `fx_dashboard.legacy_filtered_counts` flag on, only visible courses'
+        ' are counted.\n'
         f'{repeated_descriptions["visible_course_definition"]}',
         'parameters': [
             common_parameters['tenant_ids'],
@@ -1126,7 +1128,12 @@ docs_src = {
     'LearnerInfoView.get': {
         'summary': 'Get learner\'s information',
         'description': 'Get full information for a specific learner using the `username`. The caller must have access'
-        ' to the learner\'s tenant through a tenant-role, or access to a course where the learner is enrolled.',
+        ' to the learner\'s tenant through a tenant-role, or access to a course where the learner is enrolled.\n'
+        '\nPlatform staff, superusers and course-team members are found too, and `include_staff` has no effect. The'
+        ' courses and certificates counts include hidden courses and the courses where the learner has a course-team'
+        ' role, so they equal the learner\'s row in `learners/v1/learners/`.\n'
+        '\n**Note:** With the `fx_dashboard.legacy_filtered_counts` flag on, a course-team member is found only with'
+        ' `include_staff=1`, and the counts include visible courses only.',
         'parameters': [
             common_path_parameters['username-learner'],
             common_parameters['tenant_ids'],
@@ -1141,10 +1148,15 @@ docs_src = {
 
     'LearnersView.get': {
         'summary': 'Get the list of learners in the tenants',
-        'description': 'Get the list of learners in the tenants. Which is the list of all learners having at least one'
-        ' enrollment in any course in the selected tenants, or had their user registered for the first time within'
-        ' the selected tenants. When using the `include_staff` parameter, the response will also include staff'
-        ' users who have a role within the tenant regardless of enrollments or user registration.',
+        'description': 'Get the list of learners in the tenants: the active users who registered for the first time'
+        ' within the selected tenants. Users enrolled in a tenant\'s courses but registered elsewhere are not listed;'
+        ' a caller with access to only some courses of a tenant gets the active users enrolled in those courses.\n'
+        '\nPlatform staff, superusers and course-team members are listed too, and `include_staff` has no effect,'
+        ' so the count equals `learners_count` of `statistics/v1/total_counts/`. A learner\'s courses and'
+        ' certificates counts include hidden courses and the courses where the learner has a course-team role.\n'
+        '\n**Note:** With the `fx_dashboard.legacy_filtered_counts` flag on, platform staff and superusers are not'
+        ' listed, course-team members are listed only with `include_staff=1`, and the per-learner counts include'
+        ' visible courses only.',
         'parameters': [
             common_parameters['tenant_ids'],
             query_parameter(
@@ -1192,8 +1204,13 @@ docs_src = {
 
     'TotalCountsView.get': {
         'summary': 'Get total counts statistics',
-        'description': 'Get total counts for certificates, courses, hidden_courses, learners, and enrollments. The'
-        ' `include_staff` parameter does not affect the counts of **course** and **hidden-courses**.',
+        'description': 'Get total counts for certificates, courses, hidden_courses, learners, and enrollments.'
+        ' Counts include hidden courses, and staff, superusers and course-team members; `include_staff` has no'
+        ' effect. Each row keeps its own active flag: inactive enrollments, and the certificates and learner records'
+        ' of inactive users, are not counted.\n'
+        '\n**Note:** With the `fx_dashboard.legacy_filtered_counts` flag on, the counts cover visible courses only'
+        ' and exclude staff unless `include_staff=1`; `include_staff` never affects **courses** and'
+        ' **hidden-courses**.',
         'parameters': [
             common_parameters['tenant_ids'],
             query_parameter(
@@ -1201,16 +1218,18 @@ docs_src = {
                 str,
                 'a comma-separated list of the types of count statistics to include in the response. Available count'
                 ' statistics are:\n'
-                '- `certificates`: total number of issued certificates in the selected tenants. Only visible courses'
-                ' are included in th count.\n'
-                '- `courses`: total number of visible courses in the selected tenants.\n'
+                '- `certificates`: total number of issued certificates in the selected tenants. It equals the sum of'
+                ' `certificates_count` in `courses/v1/courses/`.\n'
+                '- `courses`: total number of courses in the selected tenants. It includes the hidden courses counted'
+                ' by `hidden_courses`, so do not add the two.\n'
                 '- `hidden_courses`: total number of hidden courses in the selected tenants.\n'
                 '- `learners`: total number of learners in the selected tenants. The same learner might'
-                ' be accessing multiple tenants, and will be counted on every related tenant.\n'
+                ' be accessing multiple tenants, and will be counted on every related tenant. It equals the `count`'
+                ' of `learners/v1/learners/`.\n'
                 '- `unique_learners`: unlike `learners` statistics; this one will not repeat the count of a learner'
                 ' related to multiple tenants.\n'
-                '- `enrollments`: total number of enrollments in visible courses in the selected tenants.\n'
-                '- `learning_hours`: total learning hours for visible courses in the selected tenants.\n'
+                '- `enrollments`: total number of enrollments in the selected tenants.\n'
+                '- `learning_hours`: total learning hours in the selected tenants.\n'
                 '\n**Note:** Be ware of the deference between `learners` and `unique_learners`. The first will count'
                 ' the learner on every related tenant, while the second will count the learner once. Therefore, the'
                 ' returned JSON will **not** include `unique_learners_count` field per tenant. It\'ll only include'
@@ -1238,7 +1257,7 @@ docs_src = {
                         ),
                         'courses_count': openapi.Schema(
                             type=openapi.TYPE_INTEGER,
-                            description='Total number of visible courses in the tenant',
+                            description='Total number of courses in the tenant, hidden courses included',
                         ),
                         'hidden_courses_count': openapi.Schema(
                             type=openapi.TYPE_INTEGER,
@@ -1250,11 +1269,11 @@ docs_src = {
                         ),
                         'enrollments_count': openapi.Schema(
                             type=openapi.TYPE_INTEGER,
-                            description='Total number of enrollments in visible courses in the tenant',
+                            description='Total number of enrollments in the tenant',
                         ),
                         'learning_hours': openapi.Schema(
                             type=openapi.TYPE_INTEGER,
-                            description='Total learning hours for visible courses in the tenant',
+                            description='Total learning hours in the tenant',
                         ),
                     },
                 ),

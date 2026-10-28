@@ -9,7 +9,8 @@ import pytest
 from common.djangoapps.student.models import CourseEnrollment
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
-from django.urls import resolve
+from django.urls import resolve, reverse
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
 from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
@@ -18,6 +19,7 @@ from waffle.testutils import override_flag
 from futurex_openedx_extensions.dashboard.views.statistics import AggregatedCountsView
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
+from futurex_openedx_extensions.helpers.stats import sync_course_stats
 from tests.fixture_helpers import d_t
 from tests.test_dashboard.test_mixins import BaseTestViewMixin
 
@@ -140,6 +142,43 @@ class TestTotalCountsView(BaseTestViewMixin):
             'limited_access': False,
         }
         self.assertDictEqual(json.loads(response.content), expected_response)
+
+
+@ddt.ddt
+@pytest.mark.usefixtures('base_data')
+class TestTotalCountsCertificatesConsistency(BaseTestViewMixin):
+    """total_counts certificates against the course list, with a hidden course that has certificates"""
+    VIEW_NAME = 'fx_dashboard:total-counts'
+
+    def _counts(self, tenant_id, heavy, course_list_query=''):
+        """Return total_counts certificates_count and the sum of the course list certificates_count."""
+        sync_course_stats()
+        CourseOverview.objects.filter(id='course-v1:ORG1+5+5').update(catalog_visibility='none')
+        self.login_user(self.staff_user)
+        with override_flag('fx_dashboard.enable_heavy_queries', active=heavy):
+            total = json.loads(self.client.get(self.url + f'?tenant_ids={tenant_id}&stats=certificates').content)
+            course_list = self.client.get(
+                reverse('fx_dashboard:courses') + f'?tenant_ids={tenant_id}&page_size=100{course_list_query}'
+            )
+        return total[str(tenant_id)]['certificates_count'], sum(
+            course['certificates_count'] for course in course_list.data['results']
+        )
+
+    @ddt.data((1, True), (1, False), (2, True), (2, False), (7, True), (7, False))
+    @ddt.unpack
+    def test_certificates_equal_course_list_sum(self, tenant_id, heavy):
+        """Raw mode (default): total_counts certificates == sum of the course list, hidden course included"""
+        total_count, list_sum = self._counts(tenant_id, heavy)
+        assert total_count == list_sum, f'tenant {tenant_id}, heavy={heavy}: {total_count} != {list_sum}'
+        assert total_count > 0
+
+    @ddt.data(True, False)
+    @override_flag('fx_dashboard.legacy_filtered_counts', active=True)
+    def test_certificates_legacy_visible_only(self, heavy):
+        """Legacy mode: total_counts certificates == sum of the visible-only course list (hidden excluded)"""
+        total_count, visible_sum = self._counts(1, heavy, course_list_query='&visible_courses_only=1')
+        _, list_sum = self._counts(1, heavy)
+        assert total_count == visible_sum < list_sum
 
 
 @ddt.ddt

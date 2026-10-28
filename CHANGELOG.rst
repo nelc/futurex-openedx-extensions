@@ -14,6 +14,22 @@ Change Log
 Unreleased
 **********
 
+* Raw counts (the default; ``fx_dashboard.legacy_filtered_counts`` off) now apply the same rule on every endpoint, so
+  two endpoints that answer the same question give the same number. Version 0.13.14.
+
+  * ``statistics/v1/total_counts/``: ``certificates_count`` and ``learning_hours`` include hidden courses on the
+    cached path too, so ``certificates_count`` equals the sum of the course list's ``certificates_count``; with heavy
+    queries on, learning hours no longer drop staff certificates.
+  * ``statistics/v1/course_statuses/``: counts hidden courses, so the buckets add up to ``courses_count``.
+  * ``learners/v1/learners/``: lists platform staff, superusers and course-team members (``is_active`` is kept), so
+    ``count`` equals ``total_counts`` ``learners_count``; ``include_staff`` has no effect. Each learner's courses and
+    certificates counts include hidden courses and the learner's course-team courses.
+  * ``learners/v1/learner/<username>/``: same rule as the list. Course-team members are found without
+    ``include_staff`` (it has no effect), and ``enrolled_courses_count`` / ``certificates_count`` equal the learner's
+    row in the list.
+  * ``courses/v1/courses/`` with heavy queries on: ``certificates_count`` no longer drops course-team certificates.
+  * The legacy flag still restores every previous number. ``courses_count`` includes ``hidden_courses_count``; do not
+    add them. Swagger text updated, including the learners list (it no longer claims enrolled users are listed).
 * Bulk course progress feed: ``learner_search`` filters the rows to the learners whose full name, username, national
   ID or email contains the text (the same matching as ``learner_search`` elsewhere in ``/api/fx``), for example to look
   up one learner by national ID. The matched learners are resolved once, so the walk has no id windows (pages are

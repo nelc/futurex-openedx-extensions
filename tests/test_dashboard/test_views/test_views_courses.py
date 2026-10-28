@@ -7,12 +7,13 @@ import ddt
 import pytest
 from common.djangoapps.student.models import CourseAccessRole
 from django.contrib.auth import get_user_model
-from django.urls import resolve
+from django.urls import resolve, reverse
 from django.utils.functional import SimpleLazyObject
 from eox_nelp.course_experience.models import FeedbackCourse
 from opaque_keys.edx.locator import CourseLocator, LibraryLocator
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from rest_framework import status as http_status
+from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.helpers.filters import DefaultOrderingFilter
 from tests.fixture_helpers import get_all_orgs
@@ -468,3 +469,30 @@ class TestCourseCourseStatusesView(BaseTestViewMixin):
             'self_archived': 0,
             'self_upcoming': 0,
         })
+
+
+@pytest.mark.usefixtures('base_data')
+class TestCourseStatusesConsistency(BaseTestViewMixin):
+    """course_statuses against total_counts and the course list, with a hidden course"""
+    VIEW_NAME = 'fx_dashboard:course-statuses'
+
+    def _counts(self):
+        """Return (sum of status buckets, total_counts courses_count, course-list count) for tenant 1."""
+        CourseOverview.objects.filter(id='course-v1:ORG1+5+5').update(catalog_visibility='none')
+        self.login_user(self.staff_user)
+        statuses = json.loads(self.client.get(self.url + '?tenant_ids=1').content)
+        total_url = reverse('fx_dashboard:total-counts') + '?tenant_ids=1&stats=courses'
+        total = json.loads(self.client.get(total_url).content)
+        course_list = self.client.get(reverse('fx_dashboard:courses') + '?tenant_ids=1')
+        return sum(statuses.values()), total['1']['courses_count'], course_list.data['count']
+
+    def test_raw_statuses_include_hidden_courses(self):
+        """Raw mode (default): the buckets add up to courses_count and to the course list count"""
+        statuses_sum, total_courses, list_count = self._counts()
+        assert statuses_sum == total_courses == list_count == 12
+
+    @override_flag('fx_dashboard.legacy_filtered_counts', active=True)
+    def test_legacy_statuses_exclude_hidden_courses(self):
+        """Legacy mode: the buckets count visible courses only, as total_counts courses_count does"""
+        statuses_sum, total_courses, list_count = self._counts()
+        assert statuses_sum == total_courses == list_count - 1 == 11

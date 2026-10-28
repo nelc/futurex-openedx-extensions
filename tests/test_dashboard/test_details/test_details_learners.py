@@ -5,7 +5,9 @@ import pytest
 from common.djangoapps.student.models import CourseEnrollment
 from completion_aggregator.models import Aggregator
 from django.contrib.auth import get_user_model
+from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.grades.models import PersistentCourseGrade
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from waffle.testutils import override_flag
 
 from futurex_openedx_extensions.dashboard.details.learners import (
@@ -16,7 +18,9 @@ from futurex_openedx_extensions.dashboard.details.learners import (
     get_learners_enrollments_queryset,
     get_learners_queryset,
 )
+from futurex_openedx_extensions.dashboard.statistics.learners import get_learners_count
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
+from futurex_openedx_extensions.helpers.querysets import get_base_queryset_courses
 from tests.fixture_helpers import get_tenants_orgs
 
 
@@ -153,6 +157,7 @@ def test_get_learner_info_queryset_not_permitted(base_data):  # pylint: disable=
     ([7, 8], 26, 24),
     ([7], 20, 18),
 ])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_get_learners_queryset(
     base_data, fx_permission_info, tenant_ids, expected_count_with_staff, expected_count_without_staff,
 ):  # pylint: disable=unused-argument
@@ -203,6 +208,7 @@ def test_test_get_learners_queryset_enrollments_filter_invalid(
     ((4, 100), []),
     ((100, 3), []),
 ])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
 def test_test_get_learners_queryset_enrollments_filter(
     base_data, fx_permission_info, enrollments_filter, expected_ids,
 ):  # pylint: disable=unused-argument
@@ -404,3 +410,196 @@ def test_get_learners_enrollments_queryset_progress_filter_bounds(
         assert enrollment.progress == pytest.approx(
             aggregator_percent,
         ), f'progress should match Aggregator.percent for case: {test_case}'
+
+
+def _set_tenant_full_access(fx_permission_info: dict, tenant_ids: list) -> None:
+    """Point fx_permission_info at the given tenants with full access."""
+    fx_permission_info['is_system_staff_user'] = False
+    fx_permission_info['user'] = Mock(id=3)
+    fx_permission_info['view_allowed_full_access_orgs'] = get_tenants_orgs(tenant_ids)
+    fx_permission_info['view_allowed_any_access_orgs'] = get_tenants_orgs(tenant_ids)
+    fx_permission_info['view_allowed_tenant_ids_full_access'] = tenant_ids
+    fx_permission_info['view_allowed_tenant_ids_partial_access'] = []
+    fx_permission_info['view_allowed_roles'] = ['staff']
+    fx_permission_info['user_roles'] = {'staff': {'course_limited_access': []}}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('tenant_ids', [[7, 8], [7], [1], [2]])
+def test_get_learners_queryset_raw_count_matches_total_counts(
+    base_data, fx_permission_info, tenant_ids,
+):  # pylint: disable=unused-argument
+    """Raw mode (default): the list holds the same learners as total_counts, whatever include_staff says."""
+    _set_tenant_full_access(fx_permission_info, tenant_ids)
+    expected = get_learners_count(fx_permission_info)
+
+    assert get_learners_queryset(fx_permission_info).count() == expected
+    assert get_learners_queryset(fx_permission_info, include_staff=True).count() == expected
+
+
+# tenant 1 (s1.sample.com) members: user1 is_superuser, user2 is_staff, user3 org-wide staff role on Org1
+TENANT1_SUPERUSER, TENANT1_STAFF, TENANT1_ORG_STAFF, TENANT1_PLAIN = 1, 2, 3, 5
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('include_staff', [False, True])
+def test_get_learners_queryset_raw_lists_staff_keeps_is_active(
+    base_data, fx_permission_info, include_staff,
+):  # pylint: disable=unused-argument
+    """Raw mode (default): superusers, staff and course-team members are listed; inactive accounts are not."""
+    _set_tenant_full_access(fx_permission_info, [1])
+    get_user_model().objects.filter(id=TENANT1_PLAIN).update(is_active=False)
+
+    ids = set(get_learners_queryset(fx_permission_info, include_staff=include_staff).values_list('id', flat=True))
+
+    assert {TENANT1_SUPERUSER, TENANT1_STAFF, TENANT1_ORG_STAFF} <= ids
+    assert TENANT1_PLAIN not in ids
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('include_staff, expected_listed', [
+    (False, set()),
+    (True, {TENANT1_ORG_STAFF}),
+])
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
+def test_get_learners_queryset_legacy_excludes_staff(
+    base_data, fx_permission_info, include_staff, expected_listed,
+):  # pylint: disable=unused-argument
+    """Legacy mode: superusers and staff are never listed; course-team members only with include_staff."""
+    _set_tenant_full_access(fx_permission_info, [1])
+    get_user_model().objects.filter(id=TENANT1_PLAIN).update(is_active=False)
+
+    ids = set(get_learners_queryset(fx_permission_info, include_staff=include_staff).values_list('id', flat=True))
+
+    assert ids & {TENANT1_SUPERUSER, TENANT1_STAFF, TENANT1_ORG_STAFF} == expected_listed
+    assert TENANT1_PLAIN not in ids
+
+
+def _expected_learner_counts(fx_permission_info: dict, user_id: int, visible_filter: bool | None) -> tuple:
+    """Active enrollments and downloadable certificates of the user in the tenant's courses."""
+    course_ids = get_base_queryset_courses(fx_permission_info, visible_filter=visible_filter).values_list(
+        'id', flat=True,
+    )
+    return (
+        CourseEnrollment.objects.filter(user_id=user_id, course_id__in=course_ids, is_active=True).count(),
+        GeneratedCertificate.objects.filter(
+            user_id=user_id, course_id__in=course_ids, status='downloadable', user__is_active=True,
+        ).count(),
+    )
+
+
+@pytest.mark.django_db
+@override_flag('fx_dashboard.enable_learner_certificates', active=True)
+def test_get_learners_queryset_raw_per_learner_counts(
+    base_data, fx_permission_info,
+):  # pylint: disable=unused-argument
+    """Raw mode (default): per-learner counts include hidden courses and the learner's course-team courses."""
+    _set_tenant_full_access(fx_permission_info, [1])
+    CourseOverview.objects.filter(id='course-v1:ORG1+5+5').update(catalog_visibility='none')
+
+    learners = {user.id: user for user in get_learners_queryset(fx_permission_info)}
+
+    for user_id, user in learners.items():
+        assert (user.courses_count, user.certificates_count) == _expected_learner_counts(
+            fx_permission_info, user_id, visible_filter=None,
+        ), f'wrong per-learner counts for user{user_id}'
+    # user4 is an ORG1/ORG2 instructor, enrolled in and certified on the hidden course
+    assert (learners[4].courses_count, learners[4].certificates_count) == (3, 1)
+
+
+@pytest.mark.django_db
+@override_flag('fx_dashboard.enable_learner_certificates', active=True)
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
+def test_get_learners_queryset_legacy_per_learner_counts(
+    base_data, fx_permission_info,
+):  # pylint: disable=unused-argument
+    """Legacy mode: per-learner counts drop hidden courses."""
+    _set_tenant_full_access(fx_permission_info, [1])
+    CourseOverview.objects.filter(id='course-v1:ORG1+5+5').update(catalog_visibility='none')
+
+    learners = {user.id: user for user in get_learners_queryset(fx_permission_info, include_staff=True)}
+
+    for user_id, user in learners.items():
+        assert (user.courses_count, user.certificates_count) == _expected_learner_counts(
+            fx_permission_info, user_id, visible_filter=True,
+        ), f'wrong per-learner counts for user{user_id}'
+    assert (learners[4].courses_count, learners[4].certificates_count) == (2, 0)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('enrollments_filter', [(-1, -1), (2, -1), (-1, 2), (2, 2), (3, 3), (4, 100), (100, 3)])
+def test_get_learners_queryset_raw_enrollments_filter(
+    base_data, fx_permission_info, enrollments_filter,
+):  # pylint: disable=unused-argument
+    """Raw mode (default): the enrollments filter selects on the raw per-learner courses_count."""
+    all_counts = dict(get_learners_queryset(fx_permission_info).values_list('id', 'courses_count'))
+    low, high = enrollments_filter
+    expected_ids = [
+        user_id for user_id, count in sorted(all_counts.items())
+        if (low < 0 or count >= low) and (high < 0 or count <= high)
+    ]
+
+    assert list(get_learners_queryset(
+        fx_permission_info=fx_permission_info,
+        enrollments_filter=enrollments_filter,
+    ).values_list('id', flat=True)) == expected_ids
+
+
+TENANT1_COURSE_TEAM = 4  # ORG1/ORG2 instructor, enrolled in and certified on the hidden course
+
+
+@pytest.mark.django_db
+@override_flag('fx_dashboard.enable_learner_certificates', active=True)
+def test_get_learner_info_queryset_raw(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Raw mode (default): staff, superusers and course-team members are found; counts include hidden courses."""
+    _set_tenant_full_access(fx_permission_info, [1])
+    CourseOverview.objects.filter(id='course-v1:ORG1+5+5').update(catalog_visibility='none')
+    get_user_model().objects.filter(id=TENANT1_PLAIN).update(is_active=False)
+
+    for user_id in (TENANT1_SUPERUSER, TENANT1_STAFF, TENANT1_ORG_STAFF, TENANT1_COURSE_TEAM):
+        info = get_learner_info_queryset(fx_permission_info, user_id).first()
+        assert (info.courses_count, info.certificates_count) == _expected_learner_counts(
+            fx_permission_info, user_id, visible_filter=None,
+        ), f'wrong counts for user{user_id}'
+    info = get_learner_info_queryset(fx_permission_info, TENANT1_COURSE_TEAM).first()
+    assert (info.courses_count, info.certificates_count) == (3, 1)
+
+    with pytest.raises(FXCodedException):
+        get_learner_info_queryset(fx_permission_info, TENANT1_PLAIN)
+
+
+@pytest.mark.django_db
+@override_flag('fx_dashboard.enable_learner_certificates', active=True)
+@override_flag('fx_dashboard.legacy_filtered_counts', active=True)
+def test_get_learner_info_queryset_legacy(base_data, fx_permission_info):  # pylint: disable=unused-argument
+    """Legacy mode: course-team members only with include_staff; counts drop hidden courses."""
+    _set_tenant_full_access(fx_permission_info, [1])
+    CourseOverview.objects.filter(id='course-v1:ORG1+5+5').update(catalog_visibility='none')
+
+    with pytest.raises(FXCodedException) as exc_info:
+        get_learner_info_queryset(fx_permission_info, TENANT1_COURSE_TEAM)
+    assert exc_info.value.code == FXExceptionCodes.USER_QUERY_NOT_PERMITTED.value
+
+    info = get_learner_info_queryset(fx_permission_info, TENANT1_COURSE_TEAM, include_staff=True).first()
+    assert (info.courses_count, info.certificates_count) == _expected_learner_counts(
+        fx_permission_info, TENANT1_COURSE_TEAM, visible_filter=True,
+    ) == (2, 0)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('legacy, include_staff', [(False, False), (False, True), (True, True)])
+@override_flag('fx_dashboard.enable_learner_certificates', active=True)
+def test_get_learner_info_queryset_counts_equal_list_row(
+    base_data, fx_permission_info, legacy, include_staff,
+):  # pylint: disable=unused-argument
+    """For every listed learner, the single-learner counts equal the learner's row in the list."""
+    _set_tenant_full_access(fx_permission_info, [1])
+    CourseOverview.objects.filter(id='course-v1:ORG1+5+5').update(catalog_visibility='none')
+
+    with override_flag('fx_dashboard.legacy_filtered_counts', active=legacy):
+        rows = get_learners_queryset(fx_permission_info, include_staff=include_staff)
+        assert rows.count() > 0
+        for row in rows:
+            info = get_learner_info_queryset(fx_permission_info, row.id, include_staff=include_staff).first()
+            assert (info.courses_count, info.certificates_count) == (row.courses_count, row.certificates_count), \
+                f'user{row.id}: single-learner counts differ from the list row'
