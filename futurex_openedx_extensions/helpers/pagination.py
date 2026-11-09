@@ -30,6 +30,39 @@ class DefaultPaginator(Paginator):
         return super().count
 
 
+class AnnotateAfterPaginationPaginator(DefaultPaginator):
+    """
+    Paginator that computes the queryset's removable annotations for the rows of the requested page only.
+
+    The page's primary keys are read without the removable annotations, then those rows are fetched with the
+    annotations through `pk IN (...)`. Otherwise MySQL evaluates every annotation subquery for all matching rows
+    before it sorts and applies the LIMIT, which takes minutes on courses with tens of thousands of learners.
+    """
+    def page(self, number: Any) -> Any:
+        """Return a Page object for the given 1-based page number."""
+        object_list = self.object_list
+        if not isinstance(object_list, QuerySet) or not getattr(object_list, 'removable_annotations', None):
+            return super().page(number)
+
+        removable = object_list.removable_annotations
+        if any(str(field).lstrip('-') in removable for field in object_list.query.order_by):
+            return super().page(number)
+
+        number = self.validate_number(number)
+        bottom = (number - 1) * self.per_page
+        top = bottom + self.per_page
+        if top + self.orphans >= self.count:
+            top = self.count
+
+        ids_queryset = object_list._chain()  # pylint: disable=protected-access
+        for key in removable:
+            ids_queryset.query.annotations.pop(key, None)
+        page_ids = list(ids_queryset.values_list('pk', flat=True)[bottom:top])
+
+        rows = {row.pk: row for row in object_list.filter(pk__in=page_ids)}
+        return self._get_page([rows[pk] for pk in page_ids if pk in rows], number, self)
+
+
 class DefaultPagination(PageNumberPagination):
     """Default pagination settings for the API views."""
     page_size: int = 20
@@ -37,6 +70,11 @@ class DefaultPagination(PageNumberPagination):
     max_page_size: int = 100
 
     django_paginator_class = DefaultPaginator
+
+
+class AnnotateAfterPagination(DefaultPagination):
+    """Default pagination that computes the removable annotations for the rows of the requested page only."""
+    django_paginator_class = AnnotateAfterPaginationPaginator
 
 
 class IdWindowPagination(CursorPagination):
