@@ -19,6 +19,7 @@ from futurex_openedx_extensions.dashboard import serializers
 from futurex_openedx_extensions.dashboard.views.learners import LearnersEnrollmentView, LearnerUnenrollView
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles
+from futurex_openedx_extensions.helpers.pagination import AnnotateAfterPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
 from tests.fixture_helpers import get_all_orgs
 from tests.test_dashboard.test_mixins import BaseTestViewMixin, MockPatcherMixin
@@ -263,6 +264,28 @@ class TestLearnersDetailsForCourseView(BaseTestViewMixin):
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 3)
         self.assertGreater(len(response.data['results']), 0)
+
+    def test_pagination_class(self):
+        """Verify that the view computes the per-learner annotations for the page rows only"""
+        view_func, _, _ = resolve(self.url)
+        self.assertEqual(view_func.view_class.pagination_class, AnnotateAfterPagination)
+
+    def test_pages_cover_all_learners_in_id_order(self):
+        """Verify that one-row pages return every learner once, in id order, with the annotated fields"""
+        self.login_user(self.staff_user)
+        user_ids = []
+        for page in range(1, 4):
+            response = self.client.get(self.url, data={'page_size': 1, 'page': page})
+            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+            self.assertEqual(response.data['count'], 3)
+            self.assertEqual(len(response.data['results']), 1)
+            result = response.data['results'][0]
+            self.assertIn('certificate_available', result)
+            self.assertIn('course_score', result)
+            self.assertIn('active_in_course', result)
+            user_ids.append(result['user_id'])
+        self.assertEqual(user_ids, sorted(user_ids))
+        self.assertEqual(len(set(user_ids)), 3)
 
 
 @pytest.mark.usefixtures('base_data')

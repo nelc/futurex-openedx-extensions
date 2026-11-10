@@ -28,7 +28,7 @@ from futurex_openedx_extensions.helpers.constants import FX_VIEW_DEFAULT_AUTH_CL
 from futurex_openedx_extensions.helpers.converters import error_details_to_dictionary, parse_datetime_param
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_mixins import ExportCSVMixin
-from futurex_openedx_extensions.helpers.pagination import DefaultPagination, IdWindowPagination
+from futurex_openedx_extensions.helpers.pagination import AnnotateAfterPagination, DefaultPagination, IdWindowPagination
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantCourseAccess
 from futurex_openedx_extensions.helpers.querysets import get_course_search_queryset
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
@@ -202,7 +202,7 @@ class LearnersDetailsForCourseView(ExportCSVMixin, FXViewRoleInfoMixin, ListAPIV
     authentication_classes = default_auth_classes
     serializer_class = serializers.LearnerDetailsForCourseSerializer
     permission_classes = [FXHasTenantCourseAccess]
-    pagination_class = DefaultPagination
+    pagination_class = AnnotateAfterPagination
     fx_view_name = 'learners_with_details_for_course'
     fx_default_read_only_roles = ['staff', 'instructor', 'data_researcher', 'org_course_creator_group']
     fx_view_description = 'api/fx/learners/v1/learners/<course-id>: Get the list of learners for a course'

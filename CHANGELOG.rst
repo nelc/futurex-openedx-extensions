@@ -14,6 +14,12 @@ Change Log
 Unreleased
 **********
 
+* ``learners/v1/learners/<course_id>/``: the per-learner ``certificate_available``, ``course_score`` and
+  ``active_in_course`` values are computed for the rows of the requested page only. The page's learner ids are read
+  first, then only those rows are annotated, so a course with tens of thousands of learners no longer makes MySQL
+  evaluate the subqueries for every learner before applying the page limit. Rows, order and response are unchanged.
+  Version 0.13.15.
+
 * Raw counts (the default; ``fx_dashboard.legacy_filtered_counts`` off) now apply the same rule on every endpoint, so
   two endpoints that answer the same question give the same number. Version 0.13.14.
 
