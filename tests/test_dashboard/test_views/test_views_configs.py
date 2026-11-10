@@ -606,3 +606,41 @@ class TestSetThemePreviewCookieView(APITestCase):
         self.client.cookies['theme-preview'] = 'yes'
         response = self.client.get(self.url, params)
         assert response.url == expected_redirect, f'Expected redirect to {expected_redirect}'
+
+    @ddt.data(
+        '//evil.example', '/\\evil.example', '\\\\evil.example', 'javascript:alert(1)', 'JaVaScRiPt:alert(1)',
+        'https://evil.example/x', 'http://testserver.evil.example/', 'https://testserver@evil.example/',
+        'https://evil.example\\@testserver/', 'evil.example/path', '%2F%2Fevil.example', 'https%3A%2F%2Fevil.example',
+        ' //evil.example', '\t//evil.example', '/ok\r\nSet-Cookie: a=b', 'data:text/html,<script>1</script>', '',
+        'ftp://testserver/x',
+    )
+    def test_hostile_next_is_refused_loudly_before_anything_is_sent(self, next_url):
+        """A `next` off this site is a 400, whether the cookie is set (redirect) or not (interstitial page)"""
+        for cookie_set in (True, False):
+            self.client.cookies.clear()
+            if cookie_set:
+                self.client.cookies['theme-preview'] = 'yes'
+            response = self.client.get(self.url, {'next': next_url})
+            assert response.status_code == 400, (next_url, cookie_set)
+            assert 'Location' not in response.headers and b'location.href' not in response.content
+
+    @ddt.data(
+        '/', '/courses/x/?a=1#h', 'http://testserver/x', '/%2F%2Fevil.example', '/a/../../b',
+        'https://tenant.example.com/dashboard', 'https://tenant.example.com:8000/x',
+    )
+    def test_same_site_and_tenant_next_is_kept(self, next_url):
+        """A path of this site, this host, or a tenant host is redirected to as given"""
+        self.client.cookies['theme-preview'] = 'yes'
+        tenants = {'tenant_by_site': {'tenant.example.com': 1, 'tenant.example.com:8000': 1}}
+        with patch('futurex_openedx_extensions.dashboard.views.misc.get_all_tenants_info', return_value=tenants):
+            response = self.client.get(self.url, {'next': next_url})
+        assert response.status_code == 302 and response.url == next_url
+
+    def test_next_never_breaks_out_of_the_script_string(self):
+        """A path with quotes and a closing script tag is escaped inside the interstitial's JS string"""
+        payload = '/p"</script><script>alert(1)</script>' + "'"
+        response = self.client.get(self.url, {'next': payload})
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert '</script><script>alert(1)' not in content
+        assert 'window.location.href = "/p\\u0022\\u003C/script\\u003E' in content
