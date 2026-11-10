@@ -77,7 +77,7 @@ Unreleased
   ``next`` is now accepted only as a path of this site (one leading ``/``) or an absolute URL on the request host or
   one of the platform's tenant hosts; anything else (``//host``, backslash forms, ``javascript:``, other hosts,
   control characters, an empty value) answers 400, before both the redirect and the interstitial page, and the value
-  is JavaScript-escaped in the page.
+  is JavaScript-escaped in the page. Version 0.13.15.
 
 0.1.0 – 2024-03-05
 **********************************************
