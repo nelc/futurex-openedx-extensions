@@ -923,6 +923,11 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
     course.enrollment_date = enrollment_date
     course.last_activity = last_activity
     course.related_user_id = 44
+    course.related_username = 'user44'
+    course.certificate_status = 'downloadable'
+    course.certificate_mode = 'honor'
+    course.certificate_grade = '0.85'
+    course.certificate_date = enrollment_date
 
     completion_summary = {
         'complete_count': 9,
@@ -947,13 +952,80 @@ def test_learner_courses_details_serializer(base_data):  # pylint: disable=unuse
     assert data['progress_url'] == \
            f'https://s1.sample.com/learning/course/{course.id}/progress/{course.related_user_id}/'
     assert data['grades_url'] == f'https://s1.sample.com/gradebook/{course.id}/'
-    assert data['progress'] == completion_summary
+    assert data['progress'] == {**completion_summary, 'percent': 0.69}
     assert dict(data['grade']) == {
         'letter_grade': 'Fail',
         'percent': 0.4,
         'is_passing': False,
     }
     assert data['certificate_url'] == 'https://s1.sample.com/courses/course-v1:dummy+key/certificate/'
+    assert data['username'] == 'user44'
+    assert data['certificate_status'] == 'downloadable'
+    assert data['certificate_mode'] == 'honor'
+    assert data['certificate_grade'] == '0.85'
+    assert data['certificate_date'] == dt_to_str(enrollment_date)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('completion_summary, expected_percent', [
+    ({'complete_count': 0, 'incomplete_count': 0, 'locked_count': 0}, None),
+    ({}, None),
+    ({'complete_count': 0, 'incomplete_count': 2, 'locked_count': 1}, 0.0),
+    ({'complete_count': 1, 'incomplete_count': 1, 'locked_count': 1}, 0.33),
+    ({'complete_count': 2, 'incomplete_count': 0, 'locked_count': 1}, 0.67),
+    ({'complete_count': 4, 'incomplete_count': 0, 'locked_count': 0}, 1.0),
+])
+def test_learner_courses_details_serializer_progress_percent(
+    base_data, completion_summary, expected_percent,
+):  # pylint: disable=unused-argument
+    """Verify that progress.percent counts locked units in the total, and is None when the total is zero."""
+    course = CourseOverview.objects.first()
+    course.related_user_id = 44
+    with patch(
+        'futurex_openedx_extensions.dashboard.serializers.get_course_blocks_completion_summary',
+        return_value=completion_summary,
+    ):
+        result = serializers.LearnerCoursesDetailsSerializer(context={'request': Mock()}).get_progress(course)
+
+    assert result == {**completion_summary, 'percent': expected_percent}
+
+
+@pytest.mark.django_db
+def test_learner_courses_details_serializer_no_certificate(base_data):  # pylint: disable=unused-argument
+    """Verify that the certificate fields are None when the learner has no certificate."""
+    course = CourseOverview.objects.first()
+    course.enrollment_date = now()
+    course.last_activity = now()
+    course.related_user_id = 44
+    course.related_username = 'user44'
+    course.certificate_status = None
+    course.certificate_mode = None
+    course.certificate_grade = None
+    course.certificate_date = None
+
+    request = Mock(site=Mock(), scheme='https')
+    with patch(
+        'futurex_openedx_extensions.dashboard.serializers.LearnerCoursesDetailsSerializer.get_certificate_url',
+        return_value=None,
+    ):
+        data = serializers.LearnerCoursesDetailsSerializer(course, context={'request': request}).data
+
+    for field in ('certificate_url', 'certificate_status', 'certificate_mode', 'certificate_grade', 'certificate_date'):
+        assert data[field] is None, f'failed for: {field}'
+
+
+@pytest.mark.django_db
+def test_learner_courses_details_serializer_user_fetched_once(base_data):  # pylint: disable=unused-argument
+    """Verify that the learner is read once per serializer instance, not once per field and row."""
+    courses = list(CourseOverview.objects.all()[:3])
+    for course in courses:
+        course.related_user_id = 44
+
+    serializer = serializers.LearnerCoursesDetailsSerializer(context={'request': Mock()})
+    with patch('futurex_openedx_extensions.dashboard.serializers.get_user_model') as mock_get_user_model:
+        users = [serializer._get_user(course) for course in courses]  # pylint: disable=protected-access
+    assert users == [mock_get_user_model.return_value.objects.get.return_value] * len(courses)
+    mock_get_user_model.return_value.objects.get.assert_called_once_with(id=44)
 
 
 @pytest.mark.django_db

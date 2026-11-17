@@ -127,6 +127,7 @@ class LearnerCoursesView(FXViewRoleInfoMixin, APIView):
         GET /api/fx/learners/v1/learner_courses/<username>/
         """
         include_staff = request.query_params.get('include_staff', '0') == '1'
+        course_ids = request.query_params.get('course_id', '')
 
         try:
             courses = get_learner_courses_info_queryset(
@@ -134,6 +135,7 @@ class LearnerCoursesView(FXViewRoleInfoMixin, APIView):
                 user_key=username,
                 visible_filter=None,
                 include_staff=include_staff,
+                course_ids=[course_id.strip() for course_id in course_ids.split(',')] if course_ids else None,
             )
         except FXCodedException as exc:
             return_status = http_status.HTTP_404_NOT_FOUND if exc.code in (
@@ -145,8 +147,15 @@ class LearnerCoursesView(FXViewRoleInfoMixin, APIView):
                 status=return_status,
             )
 
-        return Response(serializers.LearnerCoursesDetailsSerializer(
-            courses, context={'request': request}, many=True
+        if 'page' not in request.query_params and 'page_size' not in request.query_params:
+            return Response(serializers.LearnerCoursesDetailsSerializer(
+                courses, context={'request': request}, many=True
+            ).data)
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(courses.order_by('id'), request, view=self)
+        return paginator.get_paginated_response(serializers.LearnerCoursesDetailsSerializer(
+            page, context={'request': request}, many=True
         ).data)
 
 

@@ -938,11 +938,36 @@ docs_src = {
         ' `username`. The caller must have access to the learner\'s tenant through a tenant-role, or access to a course'
         ' where the learner is enrolled.\n'
         '\n**Note:** this endpoint will return `404` when inquiring for a staff user; unless `include_staff` is set to'
-        f' `1`.\n{repeated_descriptions["visible_course_definition"]}',
+        ' `1`.\n'
+        '\n**Pagination:** the response is the plain list of courses, unless `page` or `page_size` is sent; then it'
+        ' is the paginated envelope (`count`, `next`, `previous`, `results`). A page past the end answers `404`.\n'
+        '\nEach row carries the learner\'s `username`; `progress.percent` = complete / (complete + incomplete +'
+        ' locked) as a 0 to 1 fraction, or null when the course has no units; `certificate_status`,'
+        ' `certificate_mode` and `certificate_grade` are the raw values of the learner\'s certificate record (null'
+        ' when there is none), and `certificate_date` is the creation date of a downloadable certificate.\n'
+        f'{repeated_descriptions["visible_course_definition"]}',
         'parameters': [
             common_path_parameters['username-learner'],
             common_parameters['tenant_ids'],
             common_parameters['include_staff'],
+            query_parameter(
+                'course_id',
+                str,
+                'One course ID, or a comma separated list, to return only those courses. An invalid course ID answers'
+                ' `400`; a course outside the caller\'s access, or one the learner is not enrolled in, is simply not'
+                ' in the result.',
+            ),
+            query_parameter(
+                'page',
+                int,
+                'Page number. Sending it (or `page_size`) returns the paginated envelope instead of the plain list.',
+            ),
+            query_parameter(
+                'page_size',
+                int,
+                'Rows per page, 20 by default and at most 100. Sending it (or `page`) returns the paginated envelope'
+                ' instead of the plain list.',
+            ),
         ],
         'responses': responses(
             overrides={

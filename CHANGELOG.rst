@@ -14,6 +14,20 @@ Change Log
 Unreleased
 **********
 
+* ``learners/v1/learner_courses/<username>/``: additive changes; without the new parameters the response is the same
+  plain list as before, with new fields on each row. Version 0.13.17.
+
+  * ``page`` / ``page_size`` (opt-in): when either is sent, the response is the paginated envelope (``count``,
+    ``next``, ``previous``, ``results``; 20 rows by default, at most 100, ordered by course ID) and only the rows of
+    the page are serialized, so the live grade is computed for that page only. A page past the end answers 404.
+  * ``course_id``: one course ID or a comma-separated list, filtered in the queryset. An invalid course ID answers
+    400; a valid one outside the caller's access, or not enrolled, is simply absent from the result.
+  * New row fields: ``username``; ``certificate_status``, ``certificate_mode`` and ``certificate_grade`` (the raw
+    values of the learner's certificate record, null when there is none); ``certificate_date`` (creation date of a
+    downloadable certificate); ``progress.percent`` = complete / (complete + incomplete + locked), 0 to 1, rounded to
+    2 decimals, null when the total is 0. The certificate fields are subquery annotations, so they add no query per
+    row, and the learner is fetched once per response instead of three times per row.
+
 * Learner search (``search_text`` on the learners lists, ``learner_search`` on the feed, orders and enrollments): a
   search made of digits only (Arabic or Arabic-Indic) matches the national ID only, through its index: an ID starting
   with the digits when there are 6 or more, otherwise the exact ID. It no longer matches digits inside a username,

@@ -883,9 +883,18 @@ class CourseCreateSerializer(serializers.Serializer):
 
 class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
     """Serializer for learner's courses details."""
+    username = serializers.CharField(source='related_username', help_text='Username of the learner')
     enrollment_date = serializers.DateTimeField(format=DEFAULT_DATETIME_FORMAT)
     last_activity = serializers.DateTimeField(format=DEFAULT_DATETIME_FORMAT)
     certificate_url = serializers.SerializerMethodField()
+    certificate_status = serializers.CharField(
+        allow_null=True, help_text='Raw Open edX certificate status (e.g. downloadable, notpassing); null if none',
+    )
+    certificate_mode = serializers.CharField(allow_null=True, help_text='Certificate mode; null if no certificate')
+    certificate_grade = serializers.CharField(allow_null=True, help_text='Certificate grade; null if no certificate')
+    certificate_date = serializers.DateTimeField(
+        format=DEFAULT_DATETIME_FORMAT, allow_null=True, help_text='Creation date of the downloadable certificate',
+    )
     progress_url = serializers.SerializerMethodField()
     grades_url = serializers.SerializerMethodField()
     progress = serializers.SerializerMethodField()
@@ -894,19 +903,34 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
     class Meta:
         model = CourseOverview
         fields = CourseDetailsBaseSerializer.Meta.fields + [
+            'username',
             'enrollment_date',
             'last_activity',
             'certificate_url',
+            'certificate_status',
+            'certificate_mode',
+            'certificate_grade',
+            'certificate_date',
             'progress_url',
             'grades_url',
             'progress',
             'grade',
         ]
 
+    def __init__(self, *args: Any, **kwargs: Any):
+        """Initialize the serializer."""
+        super().__init__(*args, **kwargs)
+        self._users: dict[int, Any] = {}
+
+    def _get_user(self, obj: CourseOverview) -> Any:
+        """Return the learner of the row, fetched once per serializer instance."""
+        if obj.related_user_id not in self._users:
+            self._users[obj.related_user_id] = get_user_model().objects.get(id=obj.related_user_id)
+        return self._users[obj.related_user_id]
+
     def get_certificate_url(self, obj: CourseOverview) -> Any:
         """Return the certificate URL."""
-        user = get_user_model().objects.get(id=obj.related_user_id)
-        return get_certificate_url(self.context.get('request'), user, obj.id)
+        return get_certificate_url(self.context.get('request'), self._get_user(obj), obj.id)
 
     def get_progress_url(self, obj: CourseOverview) -> Any:
         """Return the certificate URL."""
@@ -924,16 +948,17 @@ class LearnerCoursesDetailsSerializer(CourseDetailsBaseSerializer):
             self.context.get('request')
         )
 
-    def get_progress(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
-        """Return the certificate URL."""
-        user = get_user_model().objects.get(id=obj.related_user_id)
-        return get_course_blocks_completion_summary(obj.id, user)
+    def get_progress(self, obj: CourseOverview) -> Any:
+        """Return the completion summary, with percent = complete / (complete + incomplete + locked)."""
+        progress = get_course_blocks_completion_summary(obj.id, self._get_user(obj))
+        total = sum(progress.get(key, 0) for key in ('complete_count', 'incomplete_count', 'locked_count'))
+        return {**progress, 'percent': round(progress.get('complete_count', 0) / total, 2) if total else None}
 
-    def get_grade(self, obj: CourseOverview) -> Any:  # pylint: disable=no-self-use
+    def get_grade(self, obj: CourseOverview) -> Any:
         """Return the grade summary."""
         collected_block_structure = get_block_structure_manager(obj.id).get_collected()
         course_grade = CourseGradeFactory().read(
-            get_user_model().objects.get(id=obj.related_user_id),
+            self._get_user(obj),
             collected_block_structure=collected_block_structure
         )
 

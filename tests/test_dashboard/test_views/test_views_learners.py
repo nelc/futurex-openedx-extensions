@@ -190,6 +190,9 @@ class TestLearnerCoursesDetailsView(
             course.enrollment_date = now() - timedelta(days=10)
             course.last_activity = now() - timedelta(days=2)
             course.related_user_id = user.id
+            course.related_username = user.username
+            course.certificate_status = course.certificate_mode = course.certificate_grade = None
+            course.certificate_date = None
             course.save()
 
         self.login_user(self.staff_user)
@@ -202,6 +205,7 @@ class TestLearnerCoursesDetailsView(
                == get_all_orgs()
         assert mock_get_info.call_args_list[0][1]['user_key'] == 'user10'
         assert mock_get_info.call_args_list[0][1]['visible_filter'] is None
+        assert mock_get_info.call_args_list[0][1]['course_ids'] is None
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         data = json.loads(response.content)
         self.assertEqual(len(data), 2)
@@ -225,6 +229,95 @@ class TestLearnerCoursesDetailsView(
             context={'request': request},
             many=True,
         )
+
+    def test_course_id_passed_to_queryset(self):
+        """Verify that course_id is split on commas and passed as course_ids"""
+        self.login_user(self.staff_user)
+        patch_path = 'futurex_openedx_extensions.dashboard.views.learners.get_learner_courses_info_queryset'
+        for query, expected in (
+            ({'course_id': 'course-v1:ORG2+4+4'}, ['course-v1:ORG2+4+4']),
+            ({'course_id': 'course-v1:ORG2+4+4, course-v1:ORG2+5+5'}, ['course-v1:ORG2+4+4', 'course-v1:ORG2+5+5']),
+            ({'course_id': ''}, None),
+        ):
+            with patch(patch_path) as mock_get_info:
+                mock_get_info.return_value = CourseOverview.objects.none()
+                response = self.client.get(self.url, query)
+            self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+            assert mock_get_info.call_args_list[0][1]['course_ids'] == expected, f'failed for: {query}'
+
+    def _get_learner21(self, query=None):
+        """Helper to get the courses of user21 (enrolled in ORG1+5+5, ORG2+4+4 and ORG2+5+5) as staff"""
+        self.url_args = ['user21']
+        self.login_user(self.staff_user)
+        return self.client.get(self.url, query or {})
+
+    def test_course_id_filter(self):
+        """Verify the course_id filter: single, list, and a valid course outside the caller's access"""
+        response = self._get_learner21({'course_id': 'course-v1:ORG2+4+4'})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert [row['id'] for row in response.data] == ['course-v1:ORG2+4+4']
+        assert response.data[0]['username'] == 'user21'
+
+        response = self._get_learner21({'course_id': 'course-v1:ORG2+4+4,course-v1:ORG1+5+5'})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert sorted(row['id'] for row in response.data) == ['course-v1:ORG1+5+5', 'course-v1:ORG2+4+4']
+
+        response = self._get_learner21({'course_id': 'course-v1:ORG8+2+2'})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert response.data == []
+
+    def test_course_id_invalid(self):
+        """Verify that an invalid course_id answers 400"""
+        response = self._get_learner21({'course_id': 'course-v1:ORG2+4+4,not-a-course'})
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data, {'reason': 'Invalid course ID format: not-a-course', 'details': {}})
+
+    def test_not_paginated_without_page_params(self):
+        """Verify that the plain list is returned when neither page nor page_size is sent"""
+        response = self._get_learner21()
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert isinstance(response.data, list)
+        assert sorted(row['id'] for row in response.data) == [
+            'course-v1:ORG1+5+5', 'course-v1:ORG2+4+4', 'course-v1:ORG2+5+5',
+        ]
+
+    def test_paginated_with_page_size(self):
+        """Verify that page_size returns the paginated envelope, ordered by course ID"""
+        response = self._get_learner21({'page_size': 2})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert response.data['count'] == 3
+        assert response.data['previous'] is None
+        assert 'page=2' in response.data['next']
+        assert [row['id'] for row in response.data['results']] == ['course-v1:ORG1+5+5', 'course-v1:ORG2+4+4']
+        assert response.data['results'][0]['username'] == 'user21'
+
+        response = self._get_learner21({'page_size': 2, 'page': 2})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert response.data['next'] is None
+        assert [row['id'] for row in response.data['results']] == ['course-v1:ORG2+5+5']
+
+    def test_paginated_with_page_only(self):
+        """Verify that page alone returns the paginated envelope with the default page size"""
+        response = self._get_learner21({'page': 1, 'course_id': 'course-v1:ORG2+5+5'})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert response.data['count'] == 1
+        assert response.data['next'] is None
+        assert [row['id'] for row in response.data['results']] == ['course-v1:ORG2+5+5']
+
+    def test_paginated_page_past_end(self):
+        """Verify that a page past the end answers 404"""
+        response = self._get_learner21({'page_size': 2, 'page': 3})
+        self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)
+
+    def test_paginated_serializes_page_only(self):
+        """Verify that only the rows of the requested page are serialized"""
+        with patch.object(
+            serializers.LearnerCoursesDetailsSerializer, 'get_progress', autospec=True, return_value={},
+        ) as mock_get_progress:
+            response = self._get_learner21({'page_size': 1})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        assert len(response.data['results']) == 1
+        assert mock_get_progress.call_count == 1
 
 
 @pytest.mark.usefixtures('base_data')
