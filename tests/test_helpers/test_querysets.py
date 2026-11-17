@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from common.djangoapps.student.models import CourseAccessRole, UserProfile
+from custom_reg_form.models import ExtraInfo
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q, QuerySet
 from lms.djangoapps.certificates.models import GeneratedCertificate
@@ -156,6 +157,44 @@ def test_get_learners_search_queryset_name(base_data):  # pylint: disable=unused
     assert querysets.get_learners_search_queryset(search_text='hn D').count() == 0
     UserProfile.objects.create(user_id=10, name='John Doe')
     assert querysets.get_learners_search_queryset(search_text='hn D').count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('search_text, expected_user_ids, test_case', [
+    ('123456700004', [4], 'full national ID'),
+    ('١٢٣٤٥٦٧٠٠٠٠٤', [4], 'full national ID in Indian numerals'),
+    ('  123456700005 ', [5], 'surrounding spaces are stripped'),
+    ('123456', [4, 5, 6], 'prefix of the minimum length, both numeral forms stored'),
+    ('١٢٣٤٥٦', [4, 5, 6], 'prefix in Indian numerals'),
+    ('123456700006', [6], 'Arabic numerals search finds an ID stored in Indian numerals'),
+    ('3456700004', [], 'digits in the middle of a national ID are not matched'),
+    ('12345', [], 'shorter than the minimum length matches the exact national ID only'),
+    ('1122', [7], 'short exact national ID'),
+    ('4', [], 'digits in a username are not matched'),
+])
+def test_get_learners_search_queryset_national_id(
+    base_data, search_text, expected_user_ids, test_case,
+):  # pylint: disable=unused-argument
+    """Verify that a digits-only search matches national IDs only, by prefix or exact match."""
+    ExtraInfo.objects.create(user_id=6, national_id='١٢٣٤٥٦٧٠٠٠٠٦')
+    ExtraInfo.objects.create(user_id=7, national_id='1122')
+    result = querysets.get_learners_search_queryset(search_text=search_text)
+    assert sorted(result.values_list('id', flat=True)) == expected_user_ids, test_case
+
+
+@pytest.mark.parametrize('digits, expected_q', [
+    ('12345', Q(extrainfo__national_id__in=['12345', '١٢٣٤٥'])),
+    (
+        '123456',
+        Q(extrainfo__national_id__istartswith='123456') | Q(extrainfo__national_id__istartswith='١٢٣٤٥٦'),
+    ),
+])
+def test_get_national_id_search_query(digits, expected_q):
+    """
+    Verify the national ID lookups: exact below the minimum length, istartswith (LIKE 'x%') from it. The MySQL
+    backend renders startswith as LIKE BINARY, which the case-insensitive national_id index cannot serve.
+    """
+    assert querysets.get_national_id_search_query(digits) == expected_q
 
 
 @pytest.mark.django_db

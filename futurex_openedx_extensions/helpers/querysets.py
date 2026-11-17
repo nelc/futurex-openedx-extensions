@@ -235,6 +235,30 @@ def get_search_query(search_fields: List[str], numeral_search_fields: List[str],
     return query
 
 
+NATIONAL_ID_PREFIX_MIN_LENGTH = 6
+
+
+def get_national_id_search_query(digits: str) -> Q:
+    """
+    Constructs a Q object matching national IDs for a digits-only search, in a shape the national_id index serves.
+
+    A search of at least NATIONAL_ID_PREFIX_MIN_LENGTH digits matches national IDs starting with it; a shorter one
+    matches the exact national ID only. Both Arabic and Indian numeral forms are matched.
+
+    :param digits: The search term, made of Arabic numerals (0-9) only
+    :type digits: str
+    :return: A Q object for filtering users
+    """
+    forms = [digits, to_indian_numerals(digits)]
+    if len(digits) < NATIONAL_ID_PREFIX_MIN_LENGTH:
+        return Q(extrainfo__national_id__in=forms)
+
+    query = Q()
+    for form in forms:
+        query |= Q(extrainfo__national_id__istartswith=form)
+    return query
+
+
 def get_learners_search_queryset(  # pylint: disable=too-many-arguments
     search_text: str | None = None,
     superuser_filter: bool | None = False,
@@ -271,7 +295,12 @@ def get_learners_search_queryset(  # pylint: disable=too-many-arguments
         queryset = queryset.filter(is_active=active_filter)
 
     search_text = (search_text or '').strip()
-    if search_text:
+    digits = to_arabic_numerals(search_text)
+    if digits.isascii() and digits.isdigit():
+        queryset = queryset.filter(id__in=get_user_model().objects.filter(
+            get_national_id_search_query(digits)
+        ).values('id'))
+    elif search_text:
         queryset = queryset.filter(
             get_search_query([
                 'username',

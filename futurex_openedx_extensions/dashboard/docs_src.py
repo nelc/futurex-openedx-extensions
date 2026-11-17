@@ -115,6 +115,12 @@ def get_optional_parameter(path: str) -> Any:
     )
 
 
+NATIONAL_ID_SEARCH_NOTE = (
+    ' A search made of digits only (Arabic or Arabic-Indic) is matched against the national ID only: an ID starting'
+    ' with it when it has 6 digits or more, otherwise the exact ID.'
+)
+
+
 common_parameters = {
     'course_ids': query_parameter(
         'course_ids',
@@ -138,7 +144,7 @@ common_parameters = {
         'learner_search',
         str,
         'A search text to filter results, matched against the user\'s full name, username, national ID, and '
-        'email address.'
+        'email address.' + NATIONAL_ID_SEARCH_NOTE
     ),
     'course_search': query_parameter(
         'course_search',
@@ -960,7 +966,7 @@ docs_src = {
                 'search_text',
                 str,
                 'a search text to filter the results by. The search text will be matched against the user\'s full name,'
-                ' username, national ID, and email address.',
+                ' username, national ID, and email address.' + NATIONAL_ID_SEARCH_NOTE,
             ),
             common_parameters['include_staff'],
             get_optional_parameter(
@@ -1038,7 +1044,7 @@ docs_src = {
                 str,
                 'Only the learners whose full name, username, national ID or email contains this text (national IDs'
                 ' also match in Arabic-Indic digits). It is a contains match, so check `national_id` on the rows when'
-                ' you need an exact one. More than 1000 matching learners answers 400.',
+                ' you need an exact one. More than 1000 matching learners answers 400.' + NATIONAL_ID_SEARCH_NOTE,
             ),
             query_parameter(
                 'page_size',
@@ -1163,7 +1169,7 @@ docs_src = {
                 'search_text',
                 str,
                 'a search text to filter the results by. The search text will be matched against the user\'s full name,'
-                ' username, national ID, and email address.',
+                ' username, national ID, and email address.' + NATIONAL_ID_SEARCH_NOTE,
             ),
             query_parameter(
                 'min_enrollments_count',
