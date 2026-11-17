@@ -93,6 +93,8 @@ class GeneratedCertificate(models.Model):
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
     course_id = CourseKeyField(max_length=255, blank=True, default=None)
     status = models.CharField(max_length=32, default='unavailable')
+    mode = models.CharField(max_length=32, default='honor')
+    grade = models.CharField(max_length=5, blank=True, default='')
     created_date = models.DateTimeField(auto_now_add=True)
     modified_date = models.DateTimeField(auto_now=True)
 

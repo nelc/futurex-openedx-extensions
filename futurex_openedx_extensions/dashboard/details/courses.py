@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import (
     BooleanField,
     Case,
+    CharField,
     Count,
     DateTimeField,
     Exists,
@@ -34,6 +35,7 @@ from zeitlabs_payments.models import Invoice, InvoiceItem
 from zeitlabs_payments.querysets import get_orders_queryset
 
 from futurex_openedx_extensions.dashboard.toggles import is_heavy_queries_enabled, is_legacy_filtered_counts_enabled
+from futurex_openedx_extensions.helpers.extractors import verify_course_ids
 from futurex_openedx_extensions.helpers.models import CourseStat
 from futurex_openedx_extensions.helpers.querysets import (
     check_staff_exist_queryset,
@@ -203,12 +205,13 @@ def get_courses_queryset(
     return queryset
 
 
-def get_learner_courses_info_queryset(
+def get_learner_courses_info_queryset(  # pylint: disable=too-many-arguments
     fx_permission_info: dict,
     user_key: get_user_model | int | str,
     visible_filter: bool | None = True,
     active_filter: bool | None = None,
     include_staff: bool = False,
+    course_ids: List[str] | None = None,
 ) -> QuerySet:
     """
     Get the learner's courses queryset for the given user ID. This method assumes a valid user ID.
@@ -223,9 +226,14 @@ def get_learner_courses_info_queryset(
     :type active_filter: bool | None
     :param include_staff: flag to include staff users
     :type include_staff: bool
+    :param course_ids: Optional list of course IDs to filter the courses by. None means no filter
+    :type course_ids: List[str] | None
     :return: QuerySet of learners
     :rtype: QuerySet
     """
+    if course_ids:
+        verify_course_ids(course_ids)
+
     user = get_one_user_queryset(
         fx_permission_info=fx_permission_info,
         user_key=user_key,
@@ -237,8 +245,22 @@ def get_learner_courses_info_queryset(
     ).filter(
         courseenrollment__user_id=user.id,
         courseenrollment__is_active=True,
-    ).annotate(
+    )
+    if course_ids:
+        queryset = queryset.filter(id__in=course_ids)
+
+    certificates = GeneratedCertificate.objects.filter(user_id=user.id, course_id=OuterRef('id'))
+    queryset = queryset.annotate(
         related_user_id=Value(user.id, output_field=IntegerField()),
+        related_username=Value(user.username, output_field=CharField()),
+    ).annotate(
+        certificate_status=Subquery(certificates.values('status')[:1]),
+        certificate_mode=Subquery(certificates.values('mode')[:1]),
+        certificate_grade=Subquery(certificates.values('grade')[:1]),
+        certificate_date=Subquery(
+            certificates.filter(status='downloadable').values('created_date')[:1],
+            output_field=DateTimeField(),
+        ),
     ).annotate(
         enrollment_date=Case(
             When(
@@ -272,7 +294,10 @@ def get_learner_courses_info_queryset(
         )
     )
 
-    update_removable_annotations(queryset, removable=['related_user_id', 'enrollment_date', 'last_activity'])
+    update_removable_annotations(queryset, removable=[
+        'related_user_id', 'related_username', 'certificate_status', 'certificate_mode', 'certificate_grade',
+        'certificate_date', 'enrollment_date', 'last_activity',
+    ])
 
     return queryset
 

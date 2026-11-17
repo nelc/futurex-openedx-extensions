@@ -236,6 +236,107 @@ def test_get_learner_courses_info_queryset(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('course_ids, expected_ids', [
+    (None, ['course-v1:ORG2+4+4', 'course-v1:ORG2+5+5']),
+    ([], ['course-v1:ORG2+4+4', 'course-v1:ORG2+5+5']),
+    (['course-v1:ORG2+4+4'], ['course-v1:ORG2+4+4']),
+    (['course-v1:ORG2+4+4', 'course-v1:ORG2+5+5'], ['course-v1:ORG2+4+4', 'course-v1:ORG2+5+5']),
+    (['course-v1:ORG2+5+5', 'course-v1:ORG8+2+2'], ['course-v1:ORG2+5+5']),
+    (['course-v1:ORG8+2+2'], []),
+    (['course-v1:ORG2+1+1'], []),
+    (['course-v1:ORG9+9+9'], []),
+])
+def test_get_learner_courses_info_queryset_course_ids(
+    base_data, fx_permission_info, course_ids, expected_ids,
+):  # pylint: disable=unused-argument
+    """
+    Verify that get_learner_courses_info_queryset filters on course_ids. A valid course ID outside the caller's
+    access (ORG8), not enrolled (ORG2+1+1), or not existing (ORG9) is simply absent.
+    """
+    result = get_learner_courses_info_queryset(fx_permission_info, 23, course_ids=course_ids)
+
+    assert sorted(str(record.id) for record in result) == expected_ids
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('course_ids', [
+    ['invalid'], ['course-v1:ORG2+4+4', 'invalid'], [''],
+])
+def test_get_learner_courses_info_queryset_invalid_course_ids(
+    base_data, fx_permission_info, course_ids,
+):  # pylint: disable=unused-argument
+    """Verify that get_learner_courses_info_queryset raises INVALID_INPUT for an invalid course ID."""
+    with pytest.raises(FXCodedException) as exc_info:
+        get_learner_courses_info_queryset(fx_permission_info, 23, course_ids=course_ids)
+    assert exc_info.value.code == FXExceptionCodes.INVALID_INPUT.value
+    assert 'Invalid course ID format' in str(exc_info.value)
+
+
+@pytest.mark.django_db
+def test_get_learner_courses_info_queryset_username_and_certificates(
+    base_data, fx_permission_info,
+):  # pylint: disable=unused-argument
+    """
+    Verify the username and certificate annotations: raw status, mode and grade of the learner's own certificate,
+    the date only for a downloadable one, and None when there is no certificate row.
+    """
+    user_id = 23
+    GeneratedCertificate.objects.filter(user_id__in=[user_id, 21]).delete()
+    certificates = {
+        'course-v1:ORG2+4+4': GeneratedCertificate.objects.create(
+            user_id=user_id, course_id='course-v1:ORG2+4+4', status='downloadable', mode='verified', grade='0.9',
+        ),
+        'course-v1:ORG2+5+5': GeneratedCertificate.objects.create(
+            user_id=user_id, course_id='course-v1:ORG2+5+5', status='notpassing', mode='honor', grade='0.3',
+        ),
+    }
+    GeneratedCertificate.objects.create(
+        user_id=21, course_id='course-v1:ORG2+5+5', status='downloadable', mode='honor', grade='0.8',
+    )
+
+    result = {str(record.id): record for record in get_learner_courses_info_queryset(fx_permission_info, user_id)}
+
+    assert result['course-v1:ORG2+4+4'].related_username == 'user23'
+    assert result['course-v1:ORG2+4+4'].certificate_status == 'downloadable'
+    assert result['course-v1:ORG2+4+4'].certificate_mode == 'verified'
+    assert result['course-v1:ORG2+4+4'].certificate_grade == '0.9'
+    assert result['course-v1:ORG2+4+4'].certificate_date == certificates['course-v1:ORG2+4+4'].created_date
+    assert result['course-v1:ORG2+5+5'].certificate_status == 'notpassing'
+    assert result['course-v1:ORG2+5+5'].certificate_mode == 'honor'
+    assert result['course-v1:ORG2+5+5'].certificate_grade == '0.3'
+    assert result['course-v1:ORG2+5+5'].certificate_date is None
+
+    certificates['course-v1:ORG2+4+4'].delete()
+    certificates['course-v1:ORG2+5+5'].delete()
+    for record in get_learner_courses_info_queryset(fx_permission_info, user_id):
+        assert record.related_username == 'user23'
+        for field in ('certificate_status', 'certificate_mode', 'certificate_grade', 'certificate_date'):
+            assert getattr(record, field) is None, f'failed for: {record.id} {field}'
+
+
+@pytest.mark.django_db
+def test_get_learner_courses_info_queryset_certificates_no_query_per_row(
+    base_data, fx_permission_info, django_assert_num_queries,
+):  # pylint: disable=unused-argument
+    """Verify that the username and certificate fields are read in the same single query as the rows."""
+    user_id = 21
+    GeneratedCertificate.objects.filter(user_id=user_id).delete()
+    for course_id in ('course-v1:ORG1+5+5', 'course-v1:ORG2+4+4', 'course-v1:ORG2+5+5'):
+        GeneratedCertificate.objects.create(user_id=user_id, course_id=course_id, status='downloadable')
+    queryset = get_learner_courses_info_queryset(fx_permission_info, user_id)
+
+    with django_assert_num_queries(1):
+        rows = [
+            (
+                record.related_username, record.certificate_status, record.certificate_mode,
+                record.certificate_grade, record.certificate_date,
+            ) for record in queryset
+        ]
+    assert len(rows) == 3
+    assert all(row[0] == 'user21' and row[1] == 'downloadable' and row[4] is not None for row in rows)
+
+
+@pytest.mark.django_db
 def test_get_learner_courses_info_queryset_invalid_user(
     base_data, fx_permission_info,
 ):  # pylint: disable=unused-argument
