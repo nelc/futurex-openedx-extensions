@@ -14,6 +14,13 @@ Change Log
 Unreleased
 **********
 
+* Learner search (``search_text`` on the learners lists, ``learner_search`` on the feed, orders and enrollments): a
+  search made of digits only (Arabic or Arabic-Indic) matches the national ID only, through its index: an ID starting
+  with the digits when there are 6 or more, otherwise the exact ID. It no longer matches digits inside a username,
+  email, name or the middle of an ID. Before, every such search scanned all users twice (the page and its count), and
+  staff looking up national IDs one by one kept the dashboard read replica at 100% CPU. Text searches are unchanged.
+  Version 0.13.16.
+
 * ``learners/v1/learners/<course_id>/``: the per-learner ``certificate_available``, ``course_score`` and
   ``active_in_course`` values are computed for the rows of the requested page only. The page's learner ids are read
   first, then only those rows are annotated, so a course with tens of thousands of learners no longer makes MySQL
