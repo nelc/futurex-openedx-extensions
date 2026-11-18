@@ -14,6 +14,9 @@ Change Log
 Unreleased
 **********
 
+* ``download=csv``: the limit of 3 unfinished export tasks now applies per user, per view and per tenant, instead of
+  per user and per view across all tenants. The 429 message says "per tenant". Version 0.13.18.
+
 * ``learners/v1/learner_courses/<username>/``: additive changes; without the new parameters the response is the same
   plain list as before, with new fields on each row. Version 0.13.17.
 
