@@ -95,10 +95,13 @@ class ExportCSVMixin:
         }
 
     def get_existing_incompleted_task_count(self) -> int:
-        """Get incomplete tasks count"""
+        """Get the count of the user's incomplete tasks for this view in the requested tenant"""
         user_exported_tasks = DataExportTask.objects.filter(
             user=self.request.user,  # type: ignore[attr-defined]
-            view_name=self.__class__.fx_view_name  # type: ignore[attr-defined]
+            view_name=self.__class__.fx_view_name,  # type: ignore[attr-defined]
+            tenant_id=self.request.fx_permission_info[  # type: ignore[attr-defined]
+                'view_allowed_tenant_ids_any_access'
+            ][0],
         ).exclude(
             status__in=[DataExportTask.STATUS_COMPLETED, DataExportTask.STATUS_FAILED]
         )
@@ -130,7 +133,12 @@ class ExportCSVMixin:
 
             if self.get_existing_incompleted_task_count() >= TASK_LIMIT:
                 return Response(
-                    {'detail': f'CSV task limit reached. User can only run up to {TASK_LIMIT} tasks simultaneously.'},
+                    {
+                        'detail': (
+                            f'CSV task limit reached. User can only run up to {TASK_LIMIT} '
+                            'tasks simultaneously per tenant.'
+                        )
+                    },
                     status=http_status.HTTP_429_TOO_MANY_REQUESTS
                 )
 
