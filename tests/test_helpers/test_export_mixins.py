@@ -258,3 +258,30 @@ def test_list_with_csv_download_for_tasks_limit(
     )
     response = export_csv_mixin.list(export_csv_mixin.request)
     assert response.status_code == http_status.HTTP_429_TOO_MANY_REQUESTS
+    assert response.data['detail'] == (
+        'CSV task limit reached. User can only run up to 3 tasks simultaneously per tenant.'
+    )
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.export_mixins.ExportCSVMixin.generate_csv_url_response')
+def test_list_with_csv_download_limit_is_per_tenant(
+    mocked_generate_response, base_data, export_csv_mixin,
+):  # pylint: disable=redefined-outer-name, unused-argument
+    """Tasks in one tenant must not use up the user's slots in another tenant."""
+    mocked_generate_response.return_value = {'success': 'ok'}
+    export_csv_mixin.request.query_params = {'download': 'csv'}
+    for _ in range(3):
+        DataExportTask.objects.create(
+            filename='text.csv', view_name='test_export', user_id=30, tenant_id=2,
+            status=DataExportTask.STATUS_IN_QUEUE,
+        )
+
+    assert export_csv_mixin.get_existing_incompleted_task_count() == 0
+    response = export_csv_mixin.list(export_csv_mixin.request)
+    assert response.status_code == http_status.HTTP_200_OK
+
+    export_csv_mixin.request.fx_permission_info['view_allowed_tenant_ids_any_access'] = [2]
+    assert export_csv_mixin.get_existing_incompleted_task_count() == 3
+    response = export_csv_mixin.list(export_csv_mixin.request)
+    assert response.status_code == http_status.HTTP_429_TOO_MANY_REQUESTS
