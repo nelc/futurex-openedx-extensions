@@ -28,6 +28,24 @@ class TestAddConfigAccessCommand:  # pylint: disable=no-self-use
         assert entry.path == 'SITE_NAME'
         assert entry.writable is False
 
+    def test_command_creates_learner_theme_entries(self):
+        """Test that the command seeds the learner theme keys; only learner_theme_allowed is staff_only."""
+        ConfigAccessControl.objects.all().delete()
+
+        call_command('add_config_access')
+
+        expected = {
+            'learner_theme_allowed': ('boolean', 'theme_v2.learner_theme.allowed', True),
+            'learner_theme_enabled': ('boolean', 'theme_v2.learner_theme.enabled', False),
+            'entity_identity': ('dict', 'theme_v2.entity_identity', False),
+        }
+        for key_name, (key_type, path, staff_only) in expected.items():
+            entry = ConfigAccessControl.objects.get(key_name=key_name)
+            assert (entry.key_type, entry.path, entry.writable, entry.staff_only) == (key_type, path, True, staff_only)
+        assert list(ConfigAccessControl.objects.filter(staff_only=True).values_list('key_name', flat=True)) == [
+            'learner_theme_allowed',
+        ]
+
     def test_command_updates_existing_entries(self):
         """Test that the command updates existing entries."""
         ConfigAccessControl.objects.create(

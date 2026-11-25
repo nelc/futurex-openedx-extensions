@@ -100,3 +100,15 @@ def get_openedx_site_theme_model():
             self.id = -1  # pylint: disable=invalid-name
 
     return SiteThemeMock
+
+
+def get_course_outline(course_key):
+    """get_course_outline Mock: an outline with no sections"""
+    if not isinstance(course_key, (CourseLocator, CourseKeyField)):
+        raise TypeError(f'Expects a CourseKeyField but got "{course_key}" of type "{type(course_key)}"')
+
+    class DummyOutline:  # pylint: disable=too-few-public-methods
+        """dummy outline"""
+        sections = []
+
+    return DummyOutline()

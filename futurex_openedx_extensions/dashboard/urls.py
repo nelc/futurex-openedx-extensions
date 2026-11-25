@@ -35,6 +35,13 @@ from futurex_openedx_extensions.dashboard.views.courses import (
     LibraryView,
 )
 from futurex_openedx_extensions.dashboard.views.files import TenantAssetServeView
+from futurex_openedx_extensions.dashboard.views.learner_theme import (
+    CourseLearnerMetaView,
+    LearnerThemeCatalogView,
+    LearnerThemeMyCertificatesView,
+    LearnerThemeMyProgramsView,
+    LearnerThemeShellView,
+)
 from futurex_openedx_extensions.dashboard.views.learners import (
     LearnerCoursesView,
     LearnerInfoView,
@@ -105,6 +112,19 @@ urlpatterns = [
         fr'^api/fx/courses/v1/certificates/{COURSE_ID_REGX}/$',
         CourseCertificatesView.as_view(),
         name='courses-course-certificates',
+    ),
+    re_path(
+        fr'^api/fx/courses/v1/meta/{COURSE_ID_REGX}/$',
+        CourseLearnerMetaView.as_view(),
+        name='courses-course-meta',
+    ),
+    re_path(r'^api/fx/theme/v1/shell/$', LearnerThemeShellView.as_view(), name='learner-theme-shell'),
+    re_path(r'^api/fx/catalog/v1/programs/$', LearnerThemeCatalogView.as_view(), name='learner-theme-catalog'),
+    re_path(r'^api/fx/learner/v1/programs/$', LearnerThemeMyProgramsView.as_view(), name='learner-theme-programs'),
+    re_path(
+        r'^api/fx/learner/v1/certificates/$',
+        LearnerThemeMyCertificatesView.as_view(),
+        name='learner-theme-certificates',
     ),
 
     re_path(r'^api/fx/export/v1/', include(export_router.urls)),

@@ -29,6 +29,7 @@ from futurex_openedx_extensions.helpers.models import (
     ConfigAccessControl,
     ConfigMirror,
     CourseCertificateIssuance,
+    CourseLearnerMeta,
     CourseStat,
     DataExportTask,
     DraftConfig,
@@ -381,7 +382,7 @@ class ConfigAccessControlForm(forms.ModelForm):
 
 class ConfigAccessControlAdmin(admin.ModelAdmin):
     form = ConfigAccessControlForm
-    list_display = ('id', 'key_name', 'path', 'writable',)
+    list_display = ('id', 'key_name', 'path', 'writable', 'staff_only',)
 
 
 class TenantAssetAdmin(SimpleHistoryAdmin):
@@ -446,6 +447,13 @@ class CourseCertificateIssuanceAdmin(SimpleHistoryAdmin):
     ordering = ('-updated_at',)
 
 
+class CourseLearnerMetaAdmin(SimpleHistoryAdmin):
+    """Admin class of CourseLearnerMeta model"""
+    list_display = ('course_key', 'level', 'learning_mode', 'updated_by', 'updated_at')
+    search_fields = ('course_key',)
+    ordering = ('-updated_at',)
+
+
 def register_admins() -> None:
     """Register the admin views."""
     CacheInvalidator._meta.abstract = False  # to be able to register the admin view
@@ -461,6 +469,7 @@ def register_admins() -> None:
     admin.site.register(ConfigMirror, ConfigMirrorAdmin)
     admin.site.register(CourseStat, CourseStatAdmin)
     admin.site.register(CourseCertificateIssuance, CourseCertificateIssuanceAdmin)
+    admin.site.register(CourseLearnerMeta, CourseLearnerMetaAdmin)
 
 
 register_admins()

@@ -39,6 +39,29 @@ class TestConfigEditableInfoView(BaseTestViewMixin):
         }
         self.assertEqual(response.json(), expected_data)
 
+    def test_staff_only_keys(self):
+        """Verify that staff_only keys are editable for system staff only, and read-only for other users"""
+        ConfigAccessControl.objects.create(key_name='enabled', path='theme_v2.learner_theme.enabled', writable=True)
+        ConfigAccessControl.objects.create(
+            key_name='allowed', path='theme_v2.learner_theme.allowed', writable=True, staff_only=True,
+        )
+        ConfigAccessControl.objects.create(key_name='site_domain', path='SITE_NAME', writable=False)
+
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url, data={'tenant_ids': 1})
+        self.assertEqual(response.json(), {
+            'editable_fields': ['enabled', 'allowed'],
+            'read_only_fields': ['site_domain'],
+        })
+
+        self.login_user(3)
+        response = self.client.get(self.url, data={'tenant_ids': 1})
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json(), {
+            'editable_fields': ['enabled'],
+            'read_only_fields': ['allowed', 'site_domain'],
+        })
+
     def test_one_tenant(self):
         """Verify that ConfigEditableInfoView calls verify_one_tenant_id_provided."""
         self.login_user(self.staff_user)
@@ -235,6 +258,41 @@ class TestThemeConfigDraftView(DraftConfigDataMixin, BaseTestViewMixin):
             user=ANY,
         )
         mocked_validate_input.assert_called_once_with('456')
+
+    @patch('futurex_openedx_extensions.dashboard.views.configs.update_draft_tenant_config')
+    @ddt.data(
+        ('learner_theme_allowed', 3, http_status.HTTP_403_FORBIDDEN),
+        ('theme_parent', 3, http_status.HTTP_403_FORBIDDEN),
+        ('learner_theme_enabled', 3, http_status.HTTP_200_OK),
+        ('learner_theme_allowed', 2, http_status.HTTP_200_OK),
+        ('theme_parent', 2, http_status.HTTP_200_OK),
+    )
+    @ddt.unpack
+    def test_draft_config_update_staff_only(self, key, user_id, expected_status, mock_update_draft):
+        """Verify that only system staff can change a staff_only key, or a key whose path contains it"""
+        ConfigAccessControl.objects.create(
+            key_name='learner_theme_allowed', path='theme_v2.learner_theme.allowed', key_type='boolean',
+            writable=True, staff_only=True,
+        )
+        ConfigAccessControl.objects.create(
+            key_name='learner_theme_enabled', path='theme_v2.learner_theme.enabled', key_type='boolean', writable=True,
+        )
+        ConfigAccessControl.objects.create(
+            key_name='theme_parent', path='theme_v2.learner_theme', key_type='dict', writable=True,
+        )
+        self.login_user(user_id)
+        self.url_args = [1]
+
+        response = self.client.put(
+            self.url, data={'key': key, 'new_value': True, 'current_revision_id': '0'}, format='json',
+        )
+
+        self.assertEqual(response.status_code, expected_status, response.data)
+        if expected_status == http_status.HTTP_403_FORBIDDEN:
+            self.assertEqual(response.data, {'reason': f'Config Key: ({key}) can be changed by system staff only.'})
+            mock_update_draft.assert_not_called()
+        else:
+            mock_update_draft.assert_called_once()
 
     @patch('futurex_openedx_extensions.dashboard.views.configs.ThemeConfigDraftView.validate_input')
     @patch('futurex_openedx_extensions.dashboard.views.configs.update_draft_tenant_config')
@@ -461,6 +519,37 @@ class ThemeConfigRetrieveViewTest(DraftConfigDataMixin, BaseTestViewMixin):
             'links': 'facebook.com',
         })
         self.assertEqual(response.json()['revision_ids'], {})
+
+    def test_staff_only_keys_readable(self):
+        """Verify that staff_only keys are readable by every user who can read the tenant config"""
+        ConfigAccessControl.objects.create(key_name='platform_name', path='platform_name', key_type='string')
+        ConfigAccessControl.objects.create(
+            key_name='learner_theme_allowed', path='theme_v2.learner_theme.allowed', key_type='boolean',
+            staff_only=True,
+        )
+        tenant = TenantConfig.objects.get(id=1)
+        tenant.lms_configs['theme_v2']['learner_theme'] = {'allowed': True}
+        tenant.save()
+        params = {'tenant_ids': '1', 'keys': 'platform_name, learner_theme_allowed', 'published_only': '1'}
+
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url, data=params)
+        self.assertEqual(response.json()['values'], {
+            'platform_name': 's1 platform name',
+            'learner_theme_allowed': True,
+        })
+        self.assertEqual(response.json()['not_permitted'], [])
+
+        self.login_user(3)
+        expected_values = {'platform_name': 's1 platform name', 'learner_theme_allowed': True}
+        response = self.client.get(self.url, data=params)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json()['values'], expected_values)
+        self.assertEqual(response.json()['not_permitted'], [])
+
+        response = self.client.get(self.url, data={'tenant_ids': '1', 'published_only': '1'})
+        self.assertEqual(response.json()['values'], expected_values)
+        self.assertEqual(response.json()['not_permitted'], [])
 
     def test_one_tenant(self):
         """Verify that ThemeConfigRetrieveView calls verify_one_tenant_id_provided."""

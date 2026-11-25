@@ -32,6 +32,11 @@ class Command(BaseCommand):
             'path': 'theme_v2.custom_pages',
             'writable': True
         },
+        'entity_identity': {
+            'key_type': 'dict',
+            'path': 'theme_v2.entity_identity',
+            'writable': True
+        },
         'favicon_url': {
             'key_type': 'string',
             'path': 'favicon_path',
@@ -70,6 +75,17 @@ class Command(BaseCommand):
         'header_sections': {
             'key_type': 'list',
             'path': 'theme_v2.header.sections',
+            'writable': True
+        },
+        'learner_theme_allowed': {
+            'key_type': 'boolean',
+            'path': 'theme_v2.learner_theme.allowed',
+            'writable': True,
+            'staff_only': True,
+        },
+        'learner_theme_enabled': {
+            'key_type': 'boolean',
+            'path': 'theme_v2.learner_theme.enabled',
             'writable': True
         },
         'logo_image_url': {
@@ -211,6 +227,7 @@ class Command(BaseCommand):
                         'key_type': fields['key_type'],
                         'path': fields['path'],
                         'writable': fields['writable'],
+                        'staff_only': fields.get('staff_only', False),
                     }
                 )
 

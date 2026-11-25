@@ -105,10 +105,11 @@ def invalidate_cache(cache_name: str = None) -> None:
 
 def invalidate_tenant_readable_lms_configs(tenant_ids: List[int]) -> None:
     """
-    Invalidate the cache for the tenant's readable LMS configs.
+    Invalidate the cache for the tenant's readable LMS configs, and the learner theme shell built from them.
 
     :param tenant_ids: List of the tenant IDs to invalidate the cache for.
     :type tenant_ids: List[int]
     """
     for tenant_id in tenant_ids:
         cache.delete(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}')
+        cache.delete(f'{cs.CACHE_NAME_LEARNER_THEME_SHELL}_{tenant_id}')

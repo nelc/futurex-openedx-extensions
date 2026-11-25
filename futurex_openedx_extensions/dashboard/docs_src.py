@@ -3367,4 +3367,94 @@ docs_src = {
             },
         ),
     },
+
+    'LearnerThemeShellView.get': {
+        'summary': 'Header and footer shell of the learner pages',
+        'description':
+            'Public. Returns the header/footer data of the learner pages of the tenant served on the request\'s site, '
+            'from PUBLISHED config values only (header, footer, platform_settings, logo_image_url, entity_identity). '
+            'Cached per tenant and cleared on every config publish. `active` is true when the learner theme is '
+            'allowed, enabled and live on the tenant. The brand is never empty: `site_name` falls back to the '
+            'platform name and `short_name` to `site_name`, per language. `help_url` is `entity_identity.help_link`, '
+            'else the tenant\'s FAQ page.',
+        'parameters': [],
+        'responses': responses(
+            overrides={404: 'No tenant is served on this site.'},
+            remove=[400, 401, 403],
+        ),
+    },
+    'LearnerThemeCatalogView.get': {
+        'summary': 'Catalogue of the learner theme',
+        'description':
+            'Public. Returns the programs (catalog-visible courses whose enrollment is open or that have not ended) '
+            'and the course categories of the tenant served on the request\'s site. `enrolled` is true for the '
+            'signed-in user\'s own active enrollments.',
+        'parameters': [],
+        'responses': responses(
+            overrides={404: 'No tenant is served on this site.'},
+            remove=[400, 401, 403],
+        ),
+    },
+    'LearnerThemeMyProgramsView.get': {
+        'summary': 'My programs',
+        'description':
+            'Returns the signed-in user\'s own programs (active enrollments) in the tenant served on the request\'s '
+            'site, with progress (course completion), stats and the course to resume. `user` = `{full_name, '
+            'first_name, arabic_name, masked_email}` (never the username or the unmasked email; `arabic_name` is null '
+            'when not available). `resume` = `{title, progress_percent, resume_url}` of the not-completed program '
+            'with the latest activity, or null.',
+        'parameters': [],
+        'responses': responses(
+            overrides={404: 'No tenant is served on this site.'},
+            remove=[400],
+        ),
+    },
+    'LearnerThemeMyCertificatesView.get': {
+        'summary': 'My certificates',
+        'description':
+            'Returns the signed-in user\'s own downloadable certificates in the tenant served on the request\'s site.',
+        'parameters': [],
+        'responses': responses(
+            overrides={404: 'No tenant is served on this site.'},
+            remove=[400],
+        ),
+    },
+    'CourseLearnerMetaView.get': {
+        'summary': 'Get the level and learning mode of a course',
+        'description': 'Returns `{level, learning_mode}` of the course; null values when not set.',
+        'parameters': [
+            path_parameter('course_id', str, 'The course ID.'),
+        ],
+        'responses': responses(
+            overrides={404: 'Course not found or access denied.'},
+            remove=[400],
+        ),
+    },
+    'CourseLearnerMetaView.put': {
+        'summary': 'Set the level and learning mode of a course',
+        'description':
+            'Sets `level` (basic, intermediate, advanced) and `learning_mode` (self_paced, instructor_led, blended) '
+            'of the course. Both fields are required; null clears a value.',
+        'parameters': [
+            path_parameter('course_id', str, 'The course ID.'),
+        ],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'level': openapi.Schema(
+                    type=openapi.TYPE_STRING, enum=['basic', 'intermediate', 'advanced'], x_nullable=True,
+                ),
+                'learning_mode': openapi.Schema(
+                    type=openapi.TYPE_STRING, enum=['self_paced', 'instructor_led', 'blended'], x_nullable=True,
+                ),
+            },
+            required=['level', 'learning_mode'],
+        ),
+        'responses': responses(
+            overrides={
+                400: 'Invalid level or learning mode.',
+                404: 'Course not found or access denied.',
+            },
+        ),
+    },
 }

@@ -31,6 +31,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_all_tenants_info,
     get_draft_tenant_config,
     get_tenant_config,
+    is_config_key_staff_only,
     publish_tenant_config,
     update_draft_tenant_config,
 )
@@ -119,6 +120,10 @@ class ThemeConfigDraftView(FXViewRoleInfoMixin, APIView):
                 raise FXCodedException(
                     code=FXExceptionCodes.INVALID_INPUT, message=f'Config Key: ({data["key"]}) is not writable.'
                 )
+            if not self.fx_permission_info['is_system_staff_user'] and is_config_key_staff_only(key):
+                raise PermissionDenied(detail=json.dumps(
+                    {'reason': f'Config Key: ({key}) can be changed by system staff only.'}
+                ))
 
             if 'reset' not in data and 'new_value' not in data:
                 raise FXCodedException(
