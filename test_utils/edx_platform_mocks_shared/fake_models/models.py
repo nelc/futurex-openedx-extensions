@@ -35,6 +35,9 @@ class CourseOverview(models.Model):
     course_image_url = models.TextField()
     visible_to_staff_only = models.BooleanField(default=False)
     effort = models.TextField(null=True)
+    max_student_enrollments_allowed = models.IntegerField(null=True)
+    has_any_active_web_certificate = models.BooleanField(default=False)
+    lowest_passing_grade = models.DecimalField(max_digits=5, decimal_places=2, null=True)
 
     class Meta:
         app_label = 'fake_models'

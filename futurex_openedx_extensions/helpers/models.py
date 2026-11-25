@@ -594,6 +594,10 @@ class ConfigAccessControl(models.Model):
     )
     path = models.CharField(max_length=500, help_text='Dot-separated path, e.g., theme_v2.footer.linkedin_url')
     writable = models.BooleanField(default=False, help_text='Indicates if the field is writable')
+    staff_only = models.BooleanField(
+        default=False,
+        help_text='Only system staff can write the key through the config APIs; other users read it as read-only',
+    )
 
     class Meta:
         verbose_name = 'Config Access Control'
@@ -1086,5 +1090,64 @@ class CourseCertificateIssuance(models.Model):
         record, _ = cls.objects.update_or_create(
             course_key=course_key,
             defaults={'issuance_enabled': enabled, 'updated_by': user},
+        )
+        return record
+
+
+class CourseLearnerMeta(models.Model):
+    """
+    Per-course learner-facing metadata that Open edX does not model: the course level and the learning mode.
+    A course without a record has no level and no learning mode.
+    """
+    LEVEL_CHOICES = [
+        ('basic', 'Basic'),
+        ('intermediate', 'Intermediate'),
+        ('advanced', 'Advanced'),
+    ]
+    LEARNING_MODE_CHOICES = [
+        ('self_paced', 'Self paced'),
+        ('instructor_led', 'Instructor led'),
+        ('blended', 'Blended'),
+    ]
+
+    course_key = CourseKeyField(max_length=255, unique=True)  # type: ignore
+    level = models.CharField(max_length=32, choices=LEVEL_CHOICES, null=True, blank=True)
+    learning_mode = models.CharField(max_length=32, choices=LEARNING_MODE_CHOICES, null=True, blank=True)
+    updated_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    history = HistoricalRecords()
+
+    class Meta:
+        """Metaclass for the model"""
+        verbose_name = 'Course Learner Meta'
+        verbose_name_plural = 'Course Learner Meta'
+
+    def __str__(self) -> str:
+        return f'{self.course_key}: level={self.level}, learning_mode={self.learning_mode}'
+
+    @classmethod
+    def get_meta(cls, course_key: Any) -> Dict[str, str | None]:
+        """Return the level and learning mode of the course (None for each when the course has no record)."""
+        record = cls.objects.filter(course_key=course_key).values('level', 'learning_mode').first()
+        return {
+            'level': record['level'] if record else None,
+            'learning_mode': record['learning_mode'] if record else None,
+        }
+
+    @classmethod
+    def get_meta_for_courses(cls, course_keys: List[Any]) -> Dict[str, Dict[str, str | None]]:
+        """Return {course_id string: {level, learning_mode}} for the courses that have a record."""
+        return {
+            str(row['course_key']): {'level': row['level'], 'learning_mode': row['learning_mode']}
+            for row in cls.objects.filter(course_key__in=course_keys).values('course_key', 'level', 'learning_mode')
+        }
+
+    @classmethod
+    def set_meta(cls, course_key: Any, level: str | None, learning_mode: str | None, user: Any) -> CourseLearnerMeta:
+        """Create or update the course record."""
+        record, _ = cls.objects.update_or_create(
+            course_key=course_key,
+            defaults={'level': level, 'learning_mode': learning_mode, 'updated_by': user},
         )
         return record

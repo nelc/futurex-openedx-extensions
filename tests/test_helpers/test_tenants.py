@@ -1,5 +1,6 @@
 """Tests for tenants helpers."""
 # pylint: disable=too-many-lines
+import copy
 from collections import OrderedDict
 from unittest.mock import ANY, MagicMock, Mock, patch
 
@@ -757,9 +758,10 @@ def test_publish_tenant_config_merges_lms_configs(base_data):
 
 
 @pytest.mark.django_db
-@patch('futurex_openedx_extensions.helpers.tenants.ConfigMirror.sync_tenant_by_id')
-def test_publish_tenant_config_no_draft(mock_sync, base_data):  # pylint: disable=unused-argument
-    """Verify that publish_tenant_config does nothing if no draft exists except syncing mirrors."""
+@patch('futurex_openedx_extensions.helpers.tenants.apply_learner_theme')
+@patch('futurex_openedx_extensions.helpers.tenants.ConfigMirror.sync_tenant')
+def test_publish_tenant_config_no_draft(mock_sync, mock_apply, base_data):  # pylint: disable=unused-argument
+    """Verify that publish_tenant_config only applies the learner theme switch and syncs mirrors if no draft exists."""
     tenant_id = 1
     assert DraftConfig.objects.count() == 0, 'bad test data, DraftConfig should be empty before the test'
 
@@ -767,7 +769,18 @@ def test_publish_tenant_config_no_draft(mock_sync, base_data):  # pylint: disabl
         tenants.publish_tenant_config(tenant_id=tenant_id)
 
     mock_loads.assert_not_called()
-    mock_sync.assert_called_once_with(tenant_id=tenant_id)
+    mock_apply.assert_called_once_with(ANY, save=False)
+    assert mock_apply.call_args.args[0].id == tenant_id
+    mock_sync.assert_called_once_with(tenant=ANY)
+    assert mock_sync.call_args[1]['tenant'].id == tenant_id
+
+
+@pytest.mark.django_db
+def test_publish_tenant_config_tenant_not_found(base_data):  # pylint: disable=unused-argument
+    """Verify that publish_tenant_config raises TENANT_NOT_FOUND for an unknown tenant."""
+    with pytest.raises(FXCodedException) as exc_info:
+        tenants.publish_tenant_config(tenant_id=9999)
+    assert exc_info.value.code == FXExceptionCodes.TENANT_NOT_FOUND.value
 
 
 @pytest.mark.django_db
@@ -804,6 +817,27 @@ def test_get_config_current_request_none(
     assert expected_warning in caplog.text
 
 
+@pytest.mark.parametrize('cookie, user, expected', [
+    ('yes', Mock(is_authenticated=True), True),
+    ('YeS', Mock(is_authenticated=True), True),
+    ('yes', Mock(is_authenticated=False), False),
+    ('yes', None, False),
+    ('no', Mock(is_authenticated=True), False),
+    (None, Mock(is_authenticated=True), False),
+])
+def test_is_theme_preview_request(cookie, user, expected):
+    """Verify the preview applies only to a signed-in request carrying the cookie (anonymous pages are cached)."""
+    request = Mock(spec=['COOKIES', 'user'] if user else ['COOKIES'], COOKIES={'theme-preview': cookie})
+    if user:
+        request.user = user
+    assert tenants.is_theme_preview_request(request) is expected
+
+
+def test_is_theme_preview_request_no_request():
+    """Verify no request means no preview."""
+    assert tenants.is_theme_preview_request(None) is False
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize('cookie_name, cookie_value, expected_published_only, test_case', [
     ('theme-preview', None, True, 'cookie value is None or missing should not enable preview'),
@@ -822,6 +856,7 @@ def test_get_config_current_request(
         return_value=Mock(site=Mock(domain='s1.sample.com')),
     ) as mocked_get_current_request:
         mocked_get_current_request.return_value.COOKIES = {cookie_name: cookie_value}
+        mocked_get_current_request.return_value.user = Mock(is_authenticated=True)
         with patch('futurex_openedx_extensions.helpers.tenants.get_tenant_config') as mock_get_tenant_config:
             tenants.get_config_current_request(keys=['testing_key'])
 
@@ -832,24 +867,102 @@ def test_get_config_current_request(
     )
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize('user', [Mock(is_authenticated=False), None])
+def test_get_config_current_request_anonymous_cookie_gets_published(user, base_data):  # pylint: disable=W0613
+    """Verify an anonymous request with the preview cookie gets the PUBLISHED config."""
+    request = Mock(site=Mock(domain='s1.sample.com'), COOKIES={'theme-preview': 'yes'})
+    request.user = user
+    with patch('futurex_openedx_extensions.helpers.tenants.get_current_request', return_value=request):
+        with patch('futurex_openedx_extensions.helpers.tenants.get_tenant_config') as mock_get_tenant_config:
+            tenants.get_config_current_request(keys=['testing_key'])
+
+    mock_get_tenant_config.assert_called_once_with(tenant_id=1, keys=['testing_key'], published_only=True)
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize('writable_fields_filter, expected_keys', [
     (None, ['key1_writable', 'key1_read_only', 'key2_writable', 'key2_read_only']),
     (True, ['key1_writable', 'key2_writable']),
     (False, ['key1_read_only', 'key2_read_only']),
 ])
-def test_get_accessible_config_keys(writable_fields_filter, expected_keys):
+def test_get_accessible_config_keys(
+    writable_fields_filter, expected_keys, base_data,
+):  # pylint: disable=unused-argument
     """Verify get_accessible_config_keys returns all keys when writable_fields_filter is None"""
     with patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control') as mock_get_config_access:
         mock_get_config_access.return_value = {
-            'key1_writable': {'writable': True},
-            'key1_read_only': {'writable': False},
-            'key2_writable': {'writable': True},
-            'key2_read_only': {'writable': False},
+            'key1_writable': {'writable': True, 'path': 'a.key1_writable'},
+            'key1_read_only': {'writable': False, 'path': 'a.key1_read_only'},
+            'key2_writable': {'writable': True, 'path': 'a.key2_writable'},
+            'key2_read_only': {'writable': False, 'path': 'a.key2_read_only'},
         }
         result = tenants.get_accessible_config_keys(
             user_id=1, tenant_id=1, writable_fields_filter=writable_fields_filter,
         )
     assert result == expected_keys
+
+
+STAFF_ONLY_ACCESS_CONTROL = {
+    'theme': {'writable': True, 'path': 'theme_v2', 'staff_only': False},
+    'learner_theme': {'writable': True, 'path': 'theme_v2.learner_theme', 'staff_only': False},
+    'allowed': {'writable': True, 'path': 'theme_v2.learner_theme.allowed', 'staff_only': True},
+    'allowed_child': {'writable': True, 'path': 'theme_v2.learner_theme.allowed.note', 'staff_only': False},
+    'enabled': {'writable': True, 'path': 'theme_v2.learner_theme.enabled', 'staff_only': False},
+    'allowed_lookalike': {'writable': True, 'path': 'theme_v2.learner_theme.allowed_x', 'staff_only': False},
+    'footer': {'writable': True, 'path': 'theme_v2.footer'},
+}
+
+
+STAFF_ONLY_PROTECTED_KEYS = ['theme', 'learner_theme', 'allowed', 'allowed_child']
+STAFF_ONLY_FREE_KEYS = ['enabled', 'allowed_lookalike', 'footer']
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('user_id, writable_fields_filter, expected_keys', [
+    (1, None, list(STAFF_ONLY_ACCESS_CONTROL)),
+    (2, True, list(STAFF_ONLY_ACCESS_CONTROL)),
+    (2, False, []),
+    (3, None, list(STAFF_ONLY_ACCESS_CONTROL)),
+    (3, True, STAFF_ONLY_FREE_KEYS),
+    (3, False, STAFF_ONLY_PROTECTED_KEYS),
+    (61, True, STAFF_ONLY_FREE_KEYS),
+    (9999, None, list(STAFF_ONLY_ACCESS_CONTROL)),
+    (9999, False, STAFF_ONLY_PROTECTED_KEYS),
+])
+def test_get_accessible_config_keys_staff_only(
+    user_id, writable_fields_filter, expected_keys, base_data,
+):  # pylint: disable=unused-argument
+    """
+    Verify staff_only keys, and keys whose path overlaps them, are readable by everyone but writable by system staff
+    only: for other users they are listed as read-only
+    """
+    with patch(
+        'futurex_openedx_extensions.helpers.tenants.get_config_access_control',
+        return_value=STAFF_ONLY_ACCESS_CONTROL,
+    ):
+        assert tenants.get_accessible_config_keys(
+            user_id=user_id, tenant_id=1, writable_fields_filter=writable_fields_filter,
+        ) == expected_keys
+
+
+@pytest.mark.parametrize('key, expected_result', [
+    ('allowed', True),
+    ('theme', True),
+    ('learner_theme', True),
+    ('allowed_child', True),
+    ('enabled', False),
+    ('allowed_lookalike', False),
+    ('footer', False),
+    ('unknown', False),
+])
+def test_is_config_key_staff_only(key, expected_result):
+    """Verify is_config_key_staff_only protects the staff_only key and every key whose path overlaps it"""
+    with patch(
+        'futurex_openedx_extensions.helpers.tenants.get_config_access_control',
+        return_value=STAFF_ONLY_ACCESS_CONTROL,
+    ):
+        assert tenants.is_config_key_staff_only(key) is expected_result
 
 
 @patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control')
@@ -1166,3 +1279,193 @@ def test_set_tenant_config_value_key_not_found(mock_access, base_data):  # pylin
 
     assert exc_info.value.code == FXExceptionCodes.CONFIG_KEY_NOT_FOUND.value
     assert str(exc_info.value) == f'Config key ({config_key}) not found for tenant id: 1'
+
+
+LEARNER_URLS = {
+    'LEARNER_HOME_MICROFRONTEND_URL': '/learner/my',
+    'PROFILE_MICROFRONTEND_URL': '/learner/profile/u/',
+    'ACCOUNT_MICROFRONTEND_URL': '/learner/profile',
+}
+
+
+def _learner_switch(allowed, enabled):
+    """Return a theme_v2 config with the learner theme switch"""
+    return {'learner_theme': {'allowed': allowed, 'enabled': enabled}, 'other': 'kept'}
+
+
+def _active_configs(**extra):
+    """Return the lms_configs of a tenant with the learner theme active"""
+    configs = {
+        'theme_v2': _learner_switch(True, True),
+        'THEME_OPTIONS': {'theme': {'name': 'fx-learner', 'parent': 'indigo'}, 'other_option': 1},
+        'MFE_CONFIG': {'FX_LEARNER_THEME': True, 'OTHER': 'x'},
+        **LEARNER_URLS,
+    }
+    configs.update(extra)
+    return configs
+
+
+@pytest.mark.parametrize('theme_name', ['indigo', 'fx-learner'])
+def test_apply_learner_theme_activates(theme_name):
+    """Verify the hook switches the theme on, keeping the other THEME_OPTIONS and MFE_CONFIG keys"""
+    tenant = Mock(id=7, lms_configs={
+        'theme_v2': _learner_switch(True, True),
+        'THEME_OPTIONS': {'theme': {'name': theme_name}, 'other_option': 1},
+        'MFE_CONFIG': {'OTHER': 'x'},
+        'LMS_BASE': 's.sample.com',
+    })
+
+    with patch('futurex_openedx_extensions.helpers.tenants.invalidate_cache') as mock_invalidate:
+        assert tenants.apply_learner_theme(tenant) is True
+
+    assert tenant.lms_configs == _active_configs(LMS_BASE='s.sample.com')
+    tenant.save.assert_called_once_with()
+    mock_invalidate.assert_called_once_with()
+
+
+def test_apply_learner_theme_activates_without_mfe_config():
+    """Verify the hook creates MFE_CONFIG when it is missing"""
+    tenant = Mock(id=7, lms_configs={
+        'theme_v2': _learner_switch(True, True),
+        'THEME_OPTIONS': {'theme': {'name': 'indigo'}},
+        'MFE_CONFIG': 'not a dict',
+    })
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['MFE_CONFIG'] == {'FX_LEARNER_THEME': True}
+    tenant.save.assert_not_called()
+
+
+def test_apply_learner_theme_idempotent():
+    """Verify applying the hook on an already active tenant changes nothing and saves nothing"""
+    tenant = Mock(id=7, lms_configs=_active_configs())
+
+    assert tenants.apply_learner_theme(tenant) is False
+    assert tenant.lms_configs == _active_configs()
+    tenant.save.assert_not_called()
+
+
+@pytest.mark.parametrize('theme_options', [
+    {'theme': {'name': 'bragi'}},
+    {'theme': 'indigo'},
+    {},
+    None,
+])
+def test_apply_learner_theme_refuses_other_themes(theme_options, caplog):
+    """Verify the hook leaves a tenant whose theme is neither indigo nor fx-learner untouched, with a warning"""
+    lms_configs = {'theme_v2': _learner_switch(True, True), 'MFE_CONFIG': {'OTHER': 'x'}}
+    if theme_options is not None:
+        lms_configs['THEME_OPTIONS'] = theme_options
+    tenant = Mock(id=7, lms_configs=copy.deepcopy(lms_configs))
+
+    assert tenants.apply_learner_theme(tenant) is False
+
+    assert tenant.lms_configs == lms_configs
+    tenant.save.assert_not_called()
+    assert 'neither indigo nor fx-learner; theme left untouched' in caplog.text
+
+
+@pytest.mark.parametrize('allowed, enabled', [
+    (True, False), (False, True), (None, True), ('true', True), (True, 1),
+])
+def test_apply_learner_theme_deactivates(allowed, enabled):
+    """Verify the hook switches the theme off when the switch is not fully on"""
+    tenant = Mock(id=7, lms_configs=_active_configs(theme_v2=_learner_switch(allowed, enabled)))
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+
+    assert tenant.lms_configs == {
+        'theme_v2': _learner_switch(allowed, enabled),
+        'THEME_OPTIONS': {'theme': {'name': 'indigo'}, 'other_option': 1},
+        'MFE_CONFIG': {'OTHER': 'x'},
+    }
+
+
+def test_apply_learner_theme_deactivate_keeps_tenant_urls():
+    """Verify switching off keeps MFE URLs the tenant set to its own values"""
+    tenant = Mock(id=7, lms_configs=_active_configs(
+        theme_v2=_learner_switch(False, True),
+        LEARNER_HOME_MICROFRONTEND_URL='https://apps.sample.com/learner-dashboard',
+    ))
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['LEARNER_HOME_MICROFRONTEND_URL'] == 'https://apps.sample.com/learner-dashboard'
+    assert 'PROFILE_MICROFRONTEND_URL' not in tenant.lms_configs
+    assert 'ACCOUNT_MICROFRONTEND_URL' not in tenant.lms_configs
+
+
+@pytest.mark.parametrize('lms_configs', [
+    {'THEME_OPTIONS': {'theme': {'name': 'indigo'}}, 'LMS_BASE': 's.sample.com'},
+    {'THEME_OPTIONS': {'theme': {'name': 'bragi'}}, 'MFE_CONFIG': {'A': 1}},
+    {'theme_v2': _learner_switch(False, False), 'THEME_OPTIONS': {'theme': {'name': 'indigo', 'parent': 'x'}}},
+    {'LMS_BASE': 's.sample.com'},
+    'not a dict',
+])
+def test_apply_learner_theme_no_op_without_the_switch(lms_configs):
+    """Verify a tenant that never had the learner theme is left exactly as it is"""
+    tenant = Mock(id=7, lms_configs=copy.deepcopy(lms_configs))
+
+    assert tenants.apply_learner_theme(tenant) is False
+    assert tenant.lms_configs == lms_configs
+    tenant.save.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_publish_tenant_config_applies_learner_theme_in_one_save(base_data):  # pylint: disable=unused-argument
+    """Verify publishing the switch activates the learner theme in the published config"""
+    tenant = TenantConfig.objects.get(id=1)
+    tenant.lms_configs['THEME_OPTIONS'] = {'theme': {'name': 'indigo'}}
+    tenant.save()
+    for path in ('theme_v2.learner_theme.allowed', 'theme_v2.learner_theme.enabled'):
+        DraftConfig.objects.create(
+            tenant=tenant, config_path=path, config_value=True, created_by_id=1, updated_by_id=1,
+        )
+
+    with patch('futurex_openedx_extensions.helpers.tenants.ConfigMirror.sync_tenant') as mock_sync:
+        tenants.publish_tenant_config(tenant_id=tenant.id)
+
+    synced_tenant = mock_sync.call_args[1]['tenant']
+    assert synced_tenant.lms_configs['THEME_OPTIONS'] == {'theme': {'name': 'fx-learner', 'parent': 'indigo'}}
+    tenant.refresh_from_db()
+    assert tenant.lms_configs['THEME_OPTIONS'] == {'theme': {'name': 'fx-learner', 'parent': 'indigo'}}
+    assert tenant.lms_configs['MFE_CONFIG'] == {'FX_LEARNER_THEME': True}
+    assert tenant.lms_configs['theme_v2']['learner_theme'] == {'allowed': True, 'enabled': True}
+    assert DraftConfig.objects.filter(tenant=tenant).count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('config_key, expected_theme', [
+    ('learner_theme_allowed', {'name': 'fx-learner', 'parent': 'indigo'}),
+    ('other_key', {'name': 'indigo'}),
+])
+@patch('futurex_openedx_extensions.helpers.tenants.invalidate_tenant_readable_lms_configs')
+@patch('futurex_openedx_extensions.helpers.tenants.get_config_access_control')
+def test_set_tenant_config_value_applies_learner_theme(
+    mock_access, mock_invalidate, config_key, expected_theme, base_data,
+):  # pylint: disable=unused-argument
+    """Verify writing learner_theme_allowed directly applies the learner theme switch; other keys do not"""
+    mock_access.return_value = {config_key: {'path': 'theme_v2.learner_theme.allowed'}}
+    tenant = TenantConfig.objects.get(id=1)
+    tenant.lms_configs = {
+        'theme_v2': {'learner_theme': {'enabled': True}},
+        'THEME_OPTIONS': {'theme': {'name': 'indigo'}},
+    }
+    tenant.save()
+
+    tenants.set_tenant_config_value(tenant_id=1, config_key=config_key, value=True)
+
+    tenant.refresh_from_db()
+    assert tenant.lms_configs['THEME_OPTIONS']['theme'] == expected_theme
+    assert mock_invalidate.call_count == (1 if config_key == 'learner_theme_allowed' else 0)
+
+
+@pytest.mark.parametrize('default_theme, expected', [
+    (None, {'name': 'fx-learner', 'parent': 'indigo'}),
+    ('indigo', {'name': 'fx-learner', 'parent': 'indigo'}),
+    ('fx-learner', {'name': 'fx-learner', 'parent': 'indigo'}),
+    ('nelp-edx-theme-bragi', {'name': 'fx-learner', 'parent': 'indigo', 'grandparent': 'nelp-edx-theme-bragi'}),
+])
+def test_get_learner_theme_options(default_theme, expected):
+    """Verify that the platform default theme is kept as the grandparent of the learner theme."""
+    with override_settings(EOX_THEMING_DEFAULT_THEME_NAME=default_theme):
+        assert tenants.get_learner_theme_options() == expected

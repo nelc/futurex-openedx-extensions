@@ -1,6 +1,6 @@
 """Tests for caching helper functions."""
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 from django.core.cache import cache
@@ -234,4 +234,7 @@ def test_invalidate_specific_tenant_cache(mock_delete):
     """Verify specific tenant cache is deleted correctly"""
     tenant_id = 42
     invalidate_tenant_readable_lms_configs([tenant_id])
-    mock_delete.assert_called_once_with(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}')
+    assert mock_delete.call_args_list == [
+        call(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}'),
+        call(f'{cs.CACHE_NAME_LEARNER_THEME_SHELL}_{tenant_id}'),
+    ]

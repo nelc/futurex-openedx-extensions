@@ -11,6 +11,7 @@ CACHE_NAME_LIVE_STATISTICS_PER_TENANT = 'fx_live_statistics_per_tenant'
 CACHE_NAME_CONFIG_ACCESS_CONTROL = 'fx_config_access_control'
 CACHE_NAME_TENANT_READABLE_LMS_CONFIG = 'fx_config_tenant_lms_config'
 CACHE_NAME_COURSES_RATINGS = 'fx_courses_ratings'
+CACHE_NAME_LEARNER_THEME_SHELL = 'fx_learner_theme_shell'
 
 CACHE_NAMES = {
     CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST: {
@@ -142,3 +143,17 @@ ALLOWED_FILE_EXTENSIONS = ['.png', '.jpeg', '.jpg', '.ico', '.svg', '.css']
 
 CSV_EXPORT_UPLOAD_DIR = 'exported_files'
 CONFIG_FILES_UPLOAD_DIR = 'config_files'
+
+LEARNER_THEME_ALLOWED_KEY = 'learner_theme_allowed'
+LEARNER_THEME_ENABLED_KEY = 'learner_theme_enabled'
+LEARNER_THEME_ALLOWED_PATH = 'theme_v2.learner_theme.allowed'
+LEARNER_THEME_ENABLED_PATH = 'theme_v2.learner_theme.enabled'
+LEARNER_THEME_NAME = 'fx-learner'
+LEARNER_THEME_PARENT_NAME = 'indigo'
+LEARNER_THEME_SWITCHABLE_THEMES = [LEARNER_THEME_PARENT_NAME, LEARNER_THEME_NAME]
+LEARNER_THEME_MFE_FLAG = 'FX_LEARNER_THEME'
+LEARNER_THEME_MFE_URLS = {
+    'LEARNER_HOME_MICROFRONTEND_URL': '/learner/my',
+    'PROFILE_MICROFRONTEND_URL': '/learner/profile/u/',
+    'ACCOUNT_MICROFRONTEND_URL': '/learner/profile',
+}

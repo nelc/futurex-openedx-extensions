@@ -10,13 +10,18 @@ from urllib.parse import urlparse
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig
 from crum import get_current_request
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
 from django.db import transaction
 from django.db.models import Count, OuterRef, QuerySet, Subquery
 from eox_tenant.models import Route, TenantConfig
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_cache
+from futurex_openedx_extensions.helpers.caching import (
+    cache_dict,
+    invalidate_cache,
+    invalidate_tenant_readable_lms_configs,
+)
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_extract_all,
@@ -25,6 +30,7 @@ from futurex_openedx_extensions.helpers.extractors import (
     get_first_not_empty_item,
 )
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl, ConfigMirror, DraftConfig, TenantAsset
+from futurex_openedx_extensions.helpers.users import is_system_staff_user
 
 logger = logging.getLogger(__name__)
 
@@ -439,9 +445,43 @@ def get_config_access_control() -> Dict[str, Dict[str, Any]]:
             'key_type': record.key_type,
             'path': record.path,
             'writable': record.writable,
+            'staff_only': record.staff_only,
         }
 
     return result
+
+
+def _paths_overlap(path: str, other_path: str) -> bool:
+    """Return True when one dot-separated path is the other one, or an ancestor or a descendant of it."""
+    return path == other_path or path.startswith(f'{other_path}.') or other_path.startswith(f'{path}.')
+
+
+def get_staff_only_config_keys() -> List[str]:
+    """
+    Get the config keys that only system staff can write: the keys marked staff_only, plus every key whose
+    path overlaps the path of a staff_only key (a parent dict would otherwise carry the protected value).
+
+    :return: List of the protected config keys
+    :rtype: List[str]
+    """
+    config_access_control = get_config_access_control()
+    staff_only_paths = [info['path'] for info in config_access_control.values() if info.get('staff_only')]
+    return [
+        key for key, info in config_access_control.items()
+        if any(_paths_overlap(info['path'], staff_only_path) for staff_only_path in staff_only_paths)
+    ]
+
+
+def is_config_key_staff_only(key: str) -> bool:
+    """
+    Check if the config key can be written by system staff only.
+
+    :param key: The config key name
+    :type key: str
+    :return: True if the key is protected
+    :rtype: bool
+    """
+    return key in get_staff_only_config_keys()
 
 
 def cache_name_tenant_readable_lms_configs(tenant_id: int) -> str:
@@ -598,8 +638,29 @@ def set_tenant_config_value(tenant_id: int, config_key: str, value: Any) -> None
         lms_configs = copy.deepcopy(tenant.lms_configs)
         dot_separated_path_force_set_value(lms_configs, config_path, value)
         tenant.lms_configs = lms_configs
+        learner_theme_key = config_key in (cs.LEARNER_THEME_ALLOWED_KEY, cs.LEARNER_THEME_ENABLED_KEY)
+        if learner_theme_key:
+            apply_learner_theme(tenant, save=False)
         tenant.save()
         invalidate_cache(cache_name_tenant_readable_lms_configs(tenant_id))
+        if learner_theme_key:
+            invalidate_tenant_readable_lms_configs([tenant_id])
+            invalidate_cache()
+
+
+def is_theme_preview_request(request: Any) -> bool:
+    """
+    Whether the request asks for the theme preview: the `theme-preview` cookie is `yes` AND the user is signed in.
+    Preview is a designer feature, so it applies to signed-in users only.
+
+    :param request: The request (may be None)
+    :type request: Any
+    :return: True if the preview applies to this request
+    :rtype: bool
+    """
+    if request is None or str(request.COOKIES.get('theme-preview') or '').lower() != 'yes':
+        return False
+    return bool(getattr(getattr(request, 'user', None), 'is_authenticated', False))
 
 
 def get_config_current_request(keys: List[str]) -> dict | None:
@@ -622,11 +683,10 @@ def get_config_current_request(keys: List[str]) -> dict | None:
         logger.warning('get_config_current_request could not find a tenant for site: %s', request.site.domain)
         return None
 
-    theme_preview = request.COOKIES.get('theme-preview', None) or 'no'
     return get_tenant_config(
         tenant_id=tenant_id,
         keys=keys,
-        published_only=theme_preview.lower() != 'yes',
+        published_only=not is_theme_preview_request(request),
     )
 
 
@@ -750,35 +810,136 @@ def update_draft_tenant_config(  # pylint: disable=too-many-arguments
 
 def publish_tenant_config(tenant_id: int) -> None:
     """
-    Publish draft config for the given tenant
+    Publish draft config for the given tenant.
+
+    The learner theme switch (`apply_learner_theme`) is applied to the same in-memory config before it is saved, so
+    the published draft values and the theme switch they imply land in one save. ConfigMirror.sync_tenant then
+    applies the mirrors and clears the caches.
 
     :param tenant_id: ID of the tenant.
     :raises FXCodedException: If publish fails.
     """
     config_paths = list(DraftConfig.objects.filter(tenant_id=tenant_id).values_list('config_path', flat=True))
-    if not config_paths:
-        ConfigMirror.sync_tenant_by_id(tenant_id=tenant_id)
-        return
 
     with transaction.atomic():
-        tenant = TenantConfig.objects.select_for_update().get(id=tenant_id)
-        lms_configs = copy.deepcopy(tenant.lms_configs)
-        DraftConfig.loads_into(tenant_id=tenant_id, config_paths=config_paths, dest=lms_configs)
-        tenant.lms_configs = lms_configs
-        tenant.save()
-        delete_draft_tenant_config(tenant_id)
+        tenant = TenantConfig.objects.select_for_update().filter(id=tenant_id).first()
+        if not tenant:
+            raise FXCodedException(
+                code=FXExceptionCodes.TENANT_NOT_FOUND,
+                message=f'Tenant with ID {tenant_id} not found.'
+            )
+
+        if config_paths:
+            lms_configs = copy.deepcopy(tenant.lms_configs)
+            DraftConfig.loads_into(tenant_id=tenant_id, config_paths=config_paths, dest=lms_configs)
+            tenant.lms_configs = lms_configs
+            apply_learner_theme(tenant, save=False)
+            tenant.save()
+            delete_draft_tenant_config(tenant_id)
+        else:
+            apply_learner_theme(tenant, save=False)
         ConfigMirror.sync_tenant(tenant=tenant)
 
 
+def get_learner_theme_options() -> Dict[str, str]:
+    """
+    Return the `THEME_OPTIONS.theme` value of an active learner theme: `fx-learner` on top of `indigo`. A tenant on
+    plain `indigo` falls back to the platform default theme (`EOX_THEMING_DEFAULT_THEME_NAME`) for templates indigo
+    does not have; that theme is kept as the grandparent so the fallback chain stays the same.
+
+    :return: The theme options
+    :rtype: Dict[str, str]
+    """
+    options = {'name': cs.LEARNER_THEME_NAME, 'parent': cs.LEARNER_THEME_PARENT_NAME}
+    default_theme = getattr(settings, 'EOX_THEMING_DEFAULT_THEME_NAME', None)
+    if default_theme and default_theme not in cs.LEARNER_THEME_SWITCHABLE_THEMES:
+        options['grandparent'] = default_theme
+    return options
+
+
+def apply_learner_theme(tenant: TenantConfig, save: bool = True) -> bool:
+    """
+    Switch the tenant's learner theme on or off according to its published two-level switch.
+
+    Active = `theme_v2.learner_theme.allowed` AND `theme_v2.learner_theme.enabled` are both true AND the current
+    theme (`THEME_OPTIONS.theme.name`) is `indigo` or `fx-learner`.
+
+    - Active: `THEME_OPTIONS.theme` becomes {"name": "fx-learner", "parent": "indigo"}, the learner MFE URLs are set
+      and `MFE_CONFIG.FX_LEARNER_THEME` is true.
+    - Switched on, but the current theme is neither indigo nor fx-learner: nothing changes and a warning is logged.
+    - Not active: a theme left on fx-learner goes back to {"name": "indigo"}, the learner MFE URL keys are removed
+      only when they still hold the values set here (a tenant's own URL is never touched), and the MFE flag is
+      removed. A tenant that never had the learner theme is left exactly as it is.
+
+    Other keys inside THEME_OPTIONS and MFE_CONFIG are preserved. The function is idempotent.
+
+    :param tenant: The tenant config; `tenant.lms_configs` is replaced when something changes.
+    :type tenant: TenantConfig
+    :param save: Save the tenant and clear the same caches the publish clears when something changed. Pass False
+        when the caller saves the tenant itself.
+    :type save: bool
+    :return: True if the tenant config changed
+    :rtype: bool
+    """
+    lms_configs = tenant.lms_configs if isinstance(tenant.lms_configs, dict) else {}
+    new_configs = copy.deepcopy(lms_configs)
+
+    _, allowed = dot_separated_path_get_value(new_configs, cs.LEARNER_THEME_ALLOWED_PATH)
+    _, enabled = dot_separated_path_get_value(new_configs, cs.LEARNER_THEME_ENABLED_PATH)
+    theme_options = new_configs.get('THEME_OPTIONS')
+    if not isinstance(theme_options, dict):
+        theme_options = {}
+    theme = theme_options.get('theme')
+    current_theme_name = theme.get('name') if isinstance(theme, dict) else None
+    mfe_config = new_configs.get('MFE_CONFIG')
+
+    if allowed is True and enabled is True:
+        if current_theme_name not in cs.LEARNER_THEME_SWITCHABLE_THEMES:
+            logger.warning(
+                'apply_learner_theme: learner theme is switched on for tenant (%s) but its current theme (%s) is '
+                'neither indigo nor fx-learner; theme left untouched.',
+                tenant.id, current_theme_name,
+            )
+            return False
+
+        theme_options['theme'] = get_learner_theme_options()
+        new_configs['THEME_OPTIONS'] = theme_options
+        new_configs.update(cs.LEARNER_THEME_MFE_URLS)
+        if not isinstance(mfe_config, dict):
+            mfe_config = {}
+        mfe_config[cs.LEARNER_THEME_MFE_FLAG] = True
+        new_configs['MFE_CONFIG'] = mfe_config
+
+    else:
+        if current_theme_name == cs.LEARNER_THEME_NAME:
+            theme_options['theme'] = {'name': cs.LEARNER_THEME_PARENT_NAME}
+            new_configs['THEME_OPTIONS'] = theme_options
+        for url_key, url_value in cs.LEARNER_THEME_MFE_URLS.items():
+            if new_configs.get(url_key) == url_value:
+                new_configs.pop(url_key)
+        if isinstance(mfe_config, dict):
+            mfe_config.pop(cs.LEARNER_THEME_MFE_FLAG, None)
+
+    if new_configs == lms_configs:
+        return False
+
+    tenant.lms_configs = new_configs
+    if save:
+        tenant.save()
+        invalidate_tenant_readable_lms_configs([tenant.id])
+        invalidate_cache()
+    return True
+
+
 def get_accessible_config_keys(
-    user_id: int,  # pylint: disable=unused-argument
+    user_id: int,
     tenant_id: int,  # pylint: disable=unused-argument
     writable_fields_filter: bool | None = None,
 ) -> List[str]:
     """
-    TODO: permissions control is not implemented yet. No use for `user_id` and `tenant` parameters for now.
-
-    Get the list of accessible config keys for the given user and tenant.
+    Get the list of accessible config keys for the given user and tenant. Keys protected by `staff_only` are
+    readable by everyone but writable by system staff only: for other users they count as read-only (so the
+    dashboard can show their value, e.g. "not allowed yet"). No use for the `tenant` parameter for now.
 
     :param user_id: The ID of the user.
     :type user_id: int
@@ -789,6 +950,14 @@ def get_accessible_config_keys(
     :return: A list of accessible config keys.
     """
     config_access_control = get_config_access_control()
+
+    user = get_user_model().objects.filter(id=user_id).first()
+    if not user or not is_system_staff_user(user):
+        staff_only_keys = get_staff_only_config_keys()
+        config_access_control = {
+            key: {**value, 'writable': False} if key in staff_only_keys else value
+            for key, value in config_access_control.items()
+        }
 
     if writable_fields_filter is not None:
         config_access_control = {

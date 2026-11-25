@@ -66,7 +66,7 @@ from futurex_openedx_extensions.helpers.extractors import (
     import_from_path,
     verify_course_ids,
 )
-from futurex_openedx_extensions.helpers.models import DataExportTask, TenantAsset
+from futurex_openedx_extensions.helpers.models import CourseLearnerMeta, DataExportTask, TenantAsset
 from futurex_openedx_extensions.helpers.roles import (
     RoleType,
     get_course_access_roles_queryset,
@@ -1607,6 +1607,14 @@ class CourseCategoriesSerializer(ReadOnlySerializer):
 class CourseCertificatesSerializer(ReadOnlySerializer):
     """Serializer for enabling or disabling certificates of a course."""
     enabled = serializers.BooleanField(required=True)
+
+
+class CourseLearnerMetaSerializer(ReadOnlySerializer):
+    """Serializer for setting the level and learning mode of a course."""
+    level = serializers.ChoiceField(choices=CourseLearnerMeta.LEVEL_CHOICES, allow_null=True, required=True)
+    learning_mode = serializers.ChoiceField(
+        choices=CourseLearnerMeta.LEARNING_MODE_CHOICES, allow_null=True, required=True,
+    )
 
 
 class LearnerUnenrollSerializer(FxPermissionInfoSerializerMixin, serializers.Serializer):

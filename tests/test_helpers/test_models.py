@@ -25,6 +25,7 @@ from futurex_openedx_extensions.helpers.models import (
     ClickhouseQuery,
     ConfigMirror,
     CourseCertificateIssuance,
+    CourseLearnerMeta,
     CourseStat,
     DataExportTask,
     DraftConfig,
@@ -1658,3 +1659,23 @@ def test_course_certificate_issuance_set_issuance_enabled():
     assert CourseCertificateIssuance.is_issuance_enabled(course_key) is True
     assert CourseCertificateIssuance.objects.filter(course_key=course_key).count() == 1
     assert record.history.count() == 2
+
+
+@pytest.mark.django_db
+def test_course_learner_meta(base_data):  # pylint: disable=unused-argument
+    """Verify CourseLearnerMeta get/set and the bulk read"""
+    course_key = CourseKey.from_string('course-v1:ORG1+1+1')
+    other_key = CourseKey.from_string('course-v1:ORG1+2+2')
+    user = get_user_model().objects.get(id=1)
+    assert CourseLearnerMeta.get_meta(course_key) == {'level': None, 'learning_mode': None}
+
+    record = CourseLearnerMeta.set_meta(course_key, level='basic', learning_mode='blended', user=user)
+    assert str(record) == 'course-v1:ORG1+1+1: level=basic, learning_mode=blended'
+    assert record.updated_by == user
+    CourseLearnerMeta.set_meta(course_key, level='advanced', learning_mode=None, user=user)
+
+    assert CourseLearnerMeta.objects.count() == 1
+    assert CourseLearnerMeta.get_meta(course_key) == {'level': 'advanced', 'learning_mode': None}
+    assert CourseLearnerMeta.get_meta_for_courses([course_key, other_key]) == {
+        'course-v1:ORG1+1+1': {'level': 'advanced', 'learning_mode': None},
+    }
