@@ -3376,10 +3376,11 @@ docs_src = {
             'Cached per tenant and cleared on every config publish. `active` is true when the learner theme is '
             'allowed, enabled and live on the tenant. The brand is never empty: `site_name` falls back to the '
             'platform name and `short_name` to `site_name`, per language. `help_url` is `entity_identity.help_link`, '
-            'else the tenant\'s FAQ page. `brand_color` is the tenant\'s visual_identity primary colour as a hex '
-            'string, or null. URLs taken from the tenant config (`footer.site_url`, `help_url`, nav and footer link '
-            'urls) are sanitised: only site-relative paths, #anchors, http(s), mailto and tel are returned; an unsafe '
-            'link is omitted and an unsafe `site_url` is null.',
+            'else the tenant\'s FAQ page. `brand_color` is never null: the tenant\'s own visual_identity primary '
+            'colour as a 6-digit hex string, else the design colour `#1B8354` (a stock colour the theme designer '
+            'saved by itself is not the tenant\'s own). URLs taken from the tenant config (`footer.site_url`, '
+            '`help_url`, nav and footer link urls) are sanitised: only site-relative paths, #anchors, http(s), mailto '
+            'and tel are returned; an unsafe link is omitted and an unsafe `site_url` is null.',
         'parameters': [],
         'responses': responses(
             overrides={404: 'No tenant is served on this site.'},
@@ -3407,7 +3408,10 @@ docs_src = {
             'site, with progress (course completion), stats and the course to resume. `user` = `{full_name, '
             'first_name, arabic_name, masked_email}` (never the username or the unmasked email; `arabic_name` is null '
             'when not available). `resume` = `{title, progress_percent, resume_url}` of the not-completed program '
-            'with the latest activity, or null. A signed-in user whose account is not activated yet is accepted.',
+            'with the latest activity, or null. `resume_url` is the absolute URL of the course home in the tenant\'s '
+            'learning MFE (`<LEARNING_MICROFRONTEND_URL>/course/<course_id>/home`), or of '
+            '`/courses/<course_id>/courseware` when that setting is empty. A signed-in user whose account is not '
+            'activated yet is accepted.',
         'parameters': [],
         'responses': responses(
             overrides={404: 'No tenant is served on this site.'},

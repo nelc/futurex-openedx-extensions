@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.student.models import CourseEnrollment
 from completion_aggregator.models import Aggregator
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Q, QuerySet
 from django.utils.timezone import now
@@ -34,6 +35,10 @@ from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_get_value,
     extract_arabic_name_from_user,
     extract_full_name_from_user,
+)
+from futurex_openedx_extensions.helpers.learner_theme_switch import (  # pylint: disable=unused-import
+    get_brand_color,
+    get_effective_brand_color,
 )
 from futurex_openedx_extensions.helpers.models import CourseCertificateIssuance, CourseLearnerMeta
 from futurex_openedx_extensions.helpers.tenants import (  # pylint: disable=unused-import
@@ -61,14 +66,12 @@ EFFORT_HH_MM = re.compile(r'^(\d+):([0-5]\d)$')
 EFFORT_INTEGER = re.compile(r'^\d+$')
 EFFORT_DECIMAL = re.compile(r'^\d+\.\d+$')
 
-# The link targets the learner pages may print in an href, and the colour form the theme accepts
+# The link targets the learner pages may print in an href
 SAFE_URL_SCHEMES = ('http', 'https', 'mailto', 'tel')
 SCHEMELESS_HOST_URL = re.compile(
     r'^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+'
     r'(?::[0-9]{1,5})?(?:[/?#].*)?$'
 )
-HEX_COLOR = re.compile(r'^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$')
-BRAND_COLOR_TYPE = 'primary_color'
 
 # The theme's page names (fx_static_content.html get_all_fx_page_names) and their paths
 FX_PAGE_PATHS = {
@@ -161,27 +164,6 @@ def safe_url(url: Any) -> str | None:
     return url if scheme in SAFE_URL_SCHEMES else None
 
 
-def get_brand_color(visual_identity: Any) -> str | None:
-    """
-    Return the tenant's primary colour (`visual_identity.colors[]` with color_type `primary_color`) as a hex string,
-    or None when it is missing or not a hex colour. Same reading as the theme's head-extra.
-
-    :param visual_identity: The tenant's `theme_v2.visual_identity` value
-    :type visual_identity: Any
-    :return: The hex colour or None
-    :rtype: str | None
-    """
-    colors = visual_identity.get('colors') if isinstance(visual_identity, dict) else None
-    brand_color = None
-    for color in colors if isinstance(colors, list) else []:
-        if not isinstance(color, dict) or color.get('color_type') != BRAND_COLOR_TYPE:
-            continue
-        value = color.get('hex')
-        if isinstance(value, str) and HEX_COLOR.match(value):
-            brand_color = value
-    return brand_color
-
-
 def resolve_link(link: Any, custom_pages: Dict[str, str]) -> str | None:
     """
     Resolve a theme link section ({page, custom_url}) to a URL, the same way the theme's get_fx_link_sections does.
@@ -242,8 +224,9 @@ def get_learner_theme_shell(tenant_id: int) -> Dict[str, Any]:
     cleared together with the tenant's readable config cache.
 
     The brand is never empty: `site_name` falls back to the platform name and `short_name` to `site_name`, per
-    language. `help_url` is the tenant's `entity_identity.help_link`, else its FAQ page. `brand_color` is the
-    tenant's visual_identity primary colour (hex) or None. URLs taken from the tenant config are sanitised
+    language. `help_url` is the tenant's `entity_identity.help_link`, else its FAQ page. `brand_color` is never empty:
+    the tenant's own visual_identity primary colour, else the design colour (`get_effective_brand_color`). URLs
+    taken from the tenant config are sanitised
     (`safe_url`): an unsafe nav/footer link is omitted, an unsafe `site_url` is None.
 
     :param tenant_id: The tenant ID
@@ -277,7 +260,7 @@ def get_learner_theme_shell(tenant_id: int) -> Dict[str, Any]:
     return {
         'active': is_learner_theme_switched_on(lms_configs) and theme_name == cs.LEARNER_THEME_NAME,
         'logo_url': rewrite_legacy_cloudfront_asset_urls(lms_configs.get('logo_image_url') or None),
-        'brand_color': get_brand_color(_config_value(lms_configs, 'theme_v2.visual_identity', {})),
+        'brand_color': get_effective_brand_color(_config_value(lms_configs, 'theme_v2.visual_identity', {})),
         'site_name': site_name,
         'short_name': {lang: name or site_name[lang] for lang, name in _i18n(identity.get('short_name')).items()},
         'parent_org': _i18n(identity.get('parent_org')),
@@ -610,6 +593,7 @@ def get_learner_theme_program(request: Any, course_key: Any) -> Dict[str, Any] |
     Mako helper: the program dict of one course of the request's tenant that has an About page (catalog_visibility
     `about` or `both`, whatever its dates, so the About page of a closed course still renders), or None when the
     course is not in the tenant or is hidden (catalog_visibility `none`).
+    The dict also has `learning_url`: the course home in the learning MFE (see `get_course_home_url`), absolute.
 
     :param request: The request
     :type request: Any
@@ -631,7 +615,9 @@ def get_learner_theme_program(request: Any, course_key: Any) -> Dict[str, Any] |
     ).first()
     if not course:
         return None
-    return build_programs(tenant_id, [course], _authenticated_user(request))[0]
+    program = build_programs(tenant_id, [course], _authenticated_user(request))[0]
+    program['learning_url'] = _absolute(get_course_home_url(program['id']), request)
+    return program
 
 
 def mask_email(email: str) -> str:
@@ -689,9 +675,23 @@ def _absolute(url: str | None, request: Any) -> str | None:
     return url or None
 
 
-def _resume_url(course_id: str) -> str:
-    """Return the courseware URL of the course (the learning MFE opens the last visited unit)."""
-    return f'/courses/{course_id}/courseware'
+def get_course_home_url(course_id: Any) -> str:
+    """
+    Return the course home in the learning MFE of the request's tenant: `<LEARNING_MICROFRONTEND_URL>/course/<id>/home`
+    (eox-tenant puts the tenant's own value on `settings` during a request). When the setting is empty or is neither
+    a site-relative path nor an http(s) URL, the legacy courseware URL is returned (the platform redirects it into
+    the learning MFE).
+
+    :param course_id: The course ID
+    :type course_id: Any
+    :return: The URL (relative when the setting is a relative path)
+    :rtype: str
+    """
+    base = getattr(settings, 'LEARNING_MICROFRONTEND_URL', None)
+    base = base.strip().rstrip('/') if isinstance(base, str) else ''
+    if not base.lower().startswith(('http://', 'https://')) and (not base.startswith('/') or base.startswith('//')):
+        return f'/courses/{course_id}/courseware'
+    return f'{base}/course/{course_id}/home'
 
 
 def get_learner_enrollments(tenant_id: int, user: Any) -> List[Tuple[CourseEnrollment, CourseOverview]]:
@@ -747,6 +747,9 @@ def get_learner_programs(request: Any) -> Dict[str, Any]:  # pylint: disable=too
     {user: {full_name, first_name, arabic_name, masked_email} | None, stats: {in_progress, completed, certificates},
     resume: {title, progress_percent, resume_url} | None, results: [...]}.
 
+    `resume_url` is the course home in the learning MFE (see `get_course_home_url`), absolute on the request's site
+    when the tenant's setting is a relative path.
+
     `completed` = the learner holds a downloadable certificate or the course completion is 100%. `resume` is the
     not-completed program with the latest activity, None when every program is completed (or there is none).
 
@@ -794,7 +797,7 @@ def get_learner_programs(request: Any) -> Dict[str, Any]:  # pylint: disable=too
             'pass_grade_percent': (
                 _percent(float(course.lowest_passing_grade)) if course.lowest_passing_grade is not None else None
             ),
-            'resume_url': _resume_url(course_id),
+            'resume_url': _absolute(get_course_home_url(course_id), request),
             'completed': completed,
             'certificate_url': _absolute(certificate['download_url'], request) if certificate else None,
         }
