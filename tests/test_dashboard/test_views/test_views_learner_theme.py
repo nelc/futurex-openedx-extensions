@@ -6,7 +6,9 @@ import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
+from django.core.cache import cache
 from django.test import override_settings
+from django.urls import reverse
 from eox_tenant.models import TenantConfig
 from opaque_keys.edx.keys import CourseKey
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
@@ -104,6 +106,49 @@ class TestLearnerThemeCatalogView(LearnerThemeViewMixin):
     def test_unknown_site(self, _):
         """Verify a site that is not a tenant gets 404"""
         self.assertEqual(self.get_unknown_site().status_code, http_status.HTTP_404_NOT_FOUND)
+
+    @pytest.mark.usefixtures('cache_testing')
+    def test_cached_per_tenant_with_live_enrolled(self, _):
+        """Verify the cached catalogue stays on its tenant's host and `enrolled` is the caller's own, never cached"""
+        self.login_user(15)
+        enrolled_response = self.get(host='s3.sample.com')
+        self.client.logout()
+        anonymous_response = self.get(host='s3.sample.com')
+        other_tenant_response = self.get(host='s1.sample.com')
+
+        self.assertEqual([item['id'] for item in enrolled_response.data['results']], ['course-v1:ORG4+1+1'])
+        self.assertTrue(enrolled_response.data['results'][0]['enrolled'])
+        self.assertEqual([item['id'] for item in anonymous_response.data['results']], ['course-v1:ORG4+1+1'])
+        self.assertFalse(anonymous_response.data['results'][0]['enrolled'])
+        self.assertNotIn('course-v1:ORG4+1+1', [item['id'] for item in other_tenant_response.data['results']])
+        self.assertEqual(len(other_tenant_response.data['results']), 12)
+        self.assertEqual(
+            [key for key in anonymous_response.data['results'][0] if key != 'enrolled'],
+            list(cache.get('fx_learner_theme_catalog_3')['data']['results'][0]),
+        )
+
+    @pytest.mark.usefixtures('cache_testing')
+    def test_meta_write_clears_the_cached_catalogue(self, _):
+        """Verify a level / learning mode written through courses/v1/meta shows in the catalogue at once"""
+        def _level():
+            return {item['id']: item['level'] for item in self.get().data['results']}['course-v1:ORG1+3+3']
+
+        self.assertIsNone(_level())
+        CourseOverview.objects.filter(id='course-v1:ORG1+3+3').update(display_name='Edited in Studio')
+        self.assertNotIn('Edited in Studio', [item['title'] for item in self.get().data['results']])
+
+        self.login_user(3)
+        response = self.client.put(
+            reverse('fx_dashboard:courses-course-meta', args=['course-v1:ORG1+3+3']),
+            data={'level': 'advanced', 'learning_mode': 'self_paced'},
+            format='json',
+            HTTP_HOST='s1.sample.com',
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.client.logout()
+
+        self.assertEqual(_level(), 'advanced')
+        self.assertIn('Edited in Studio', [item['title'] for item in self.get().data['results']])
 
 
 class TestLearnerThemeMyProgramsView(LearnerThemeViewMixin):

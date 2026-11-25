@@ -27,7 +27,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from openedx.core.djangoapps.content.learning_sequences.api import get_course_outline
 
 from futurex_openedx_extensions.helpers import constants as cs
-from futurex_openedx_extensions.helpers.caching import cache_dict
+from futurex_openedx_extensions.helpers.caching import cache_dict, invalidate_learner_theme_catalog
 from futurex_openedx_extensions.helpers.converters import relative_url_to_absolute_url
 from futurex_openedx_extensions.helpers.course_categories import CourseCategories
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException
@@ -45,6 +45,7 @@ from futurex_openedx_extensions.helpers.tenants import (  # pylint: disable=unus
     apply_learner_theme,
     get_all_tenants_info,
     get_course_org_filter_list,
+    get_tenants_by_org,
 )
 from futurex_openedx_extensions.helpers.upload import rewrite_legacy_cloudfront_asset_urls
 
@@ -467,21 +468,21 @@ def _iso(value: Any) -> str | None:
     return value.isoformat() if value else None
 
 
-def build_programs(  # pylint: disable=too-many-locals
-    tenant_id: int, courses: List[CourseOverview], user: Any, course_categories: Dict[str, List[str]] | None = None,
+def build_tenant_programs(  # pylint: disable=too-many-locals
+    tenant_id: int, courses: List[CourseOverview], course_categories: Dict[str, List[str]] | None = None,
 ) -> List[Dict[str, Any]]:
     """
-    Return the program dicts of the given courses (one query per data source, not per course).
+    Return the program dicts of the given courses WITHOUT anything that depends on the requesting user (no
+    `enrolled`), so the result is the same for every visitor of the tenant and can be cached. One query per data
+    source, not per course (the units count is cached per course).
 
     :param tenant_id: The tenant ID (for the course categories)
     :type tenant_id: int
     :param courses: The courses
     :type courses: List[CourseOverview]
-    :param user: The authenticated user (for `enrolled`), or None
-    :type user: Any
     :param course_categories: Pre-loaded {course_id: [category ids]}; loaded from the tenant when None
     :type course_categories: Dict[str, List[str]] | None
-    :return: Program dicts
+    :return: Program dicts, without `enrolled`
     :rtype: List[Dict[str, Any]]
     """
     if not courses:
@@ -503,11 +504,6 @@ def build_programs(  # pylint: disable=too-many-locals
             course_id__in=limited_ids, is_active=True,
         ).values('course_id').annotate(count=Count('id'))
     } if limited_ids else {}
-    enrolled_ids = {
-        str(course_id) for course_id in CourseEnrollment.objects.filter(
-            user_id=user.id, course_id__in=course_ids, is_active=True,
-        ).values_list('course_id', flat=True)
-    } if user else set()
 
     now_time = now()
     result = []
@@ -528,16 +524,118 @@ def build_programs(  # pylint: disable=too-many-locals
             'category_ids': course_categories.get(course_id, []),
             'status': get_program_status(course, enrollment_counts.get(course_id, 0), now_time),
             'start_date': _iso(course.start),
-            'enrolled': course_id in enrolled_ids,
             'price': price,
             'currency': currency,
         })
     return result
 
 
+def add_enrolled(programs: List[Dict[str, Any]], user: Any) -> List[Dict[str, Any]]:
+    """
+    Return copies of the program dicts with the per-user `enrolled` flag: True for the user's own ACTIVE
+    enrollments. ONE query for an authenticated user whatever the number of programs; no query for an anonymous
+    visitor (user None) or an empty list. The given dicts are not changed, so a cached list stays user-independent.
+
+    :param programs: Program dicts without `enrolled` (see `build_tenant_programs`)
+    :type programs: List[Dict[str, Any]]
+    :param user: The authenticated user, or None
+    :type user: Any
+    :return: Program dicts with `enrolled`
+    :rtype: List[Dict[str, Any]]
+    """
+    enrolled_ids = {
+        str(course_id) for course_id in CourseEnrollment.objects.filter(
+            user_id=user.id,
+            course_id__in=[CourseKey.from_string(program['id']) for program in programs],
+            is_active=True,
+        ).values_list('course_id', flat=True)
+    } if user and programs else set()
+
+    result = []
+    for program in programs:
+        with_enrolled: Dict[str, Any] = {}
+        for key, value in program.items():
+            if key == 'price':  # `enrolled` keeps its place in the dict: right before the price
+                with_enrolled['enrolled'] = program['id'] in enrolled_ids
+            with_enrolled[key] = value
+        result.append(with_enrolled)
+    return result
+
+
+def build_programs(
+    tenant_id: int, courses: List[CourseOverview], user: Any, course_categories: Dict[str, List[str]] | None = None,
+) -> List[Dict[str, Any]]:
+    """
+    Return the program dicts of the given courses, with `enrolled` for the given user (not cached).
+
+    :param tenant_id: The tenant ID (for the course categories)
+    :type tenant_id: int
+    :param courses: The courses
+    :type courses: List[CourseOverview]
+    :param user: The authenticated user (for `enrolled`), or None
+    :type user: Any
+    :param course_categories: Pre-loaded {course_id: [category ids]}; loaded from the tenant when None
+    :type course_categories: Dict[str, List[str]] | None
+    :return: Program dicts
+    :rtype: List[Dict[str, Any]]
+    """
+    return add_enrolled(build_tenant_programs(tenant_id, courses, course_categories=course_categories), user)
+
+
+def cache_name_learner_theme_catalog(tenant_id: int) -> str:
+    """Return the cache name of the tenant's learner theme catalogue."""
+    return f'{cs.CACHE_NAME_LEARNER_THEME_CATALOG}_{tenant_id}'
+
+
+@cache_dict(
+    timeout='FX_CACHE_TIMEOUT_LEARNER_THEME_CATALOG',
+    key_generator_or_name=cache_name_learner_theme_catalog,
+)
+def get_tenant_catalog(tenant_id: int) -> Dict[str, Any]:
+    """
+    Return the tenant-wide catalogue: {results: [program dict WITHOUT `enrolled`], categories: [{id, name}]}.
+    Nothing in it depends on the requesting user, the request's language (names are {ar, en} dicts, course titles
+    are not translated) or the request's host (URLs are site-relative), so it is cached per tenant ID only, for
+    `FX_CACHE_TIMEOUT_LEARNER_THEME_CATALOG` seconds (default 300).
+
+    The cache is cleared when the tenant's config changes (publish, a direct config value write such as the course
+    categories, the config mirror; see `invalidate_tenant_readable_lms_configs` and
+    `invalidate_learner_theme_catalog`) and when a course's level / learning mode is written through
+    `courses/v1/meta`. Everything else is NOT a trigger and may take up to the timeout to appear: course edits made
+    in Studio (title, image, dates, visibility, effort, enrollment limit), course mode prices, certificate issuance
+    switches, and the time-based values themselves (`status`, and a course entering or leaving the list by its
+    dates). That delay is accepted.
+
+    :param tenant_id: The tenant ID
+    :type tenant_id: int
+    :return: The catalogue without per-user data
+    :rtype: Dict[str, Any]
+    """
+    course_categories, categories = get_course_category_ids(tenant_id)
+    return {
+        'results': build_tenant_programs(
+            tenant_id, list(get_tenant_catalog_queryset(tenant_id)), course_categories=course_categories,
+        ),
+        'categories': categories,
+    }
+
+
+def invalidate_course_catalog(course_key: Any) -> None:
+    """
+    Clear the cached catalogue of every tenant the course belongs to (by its org), so a change of the course's
+    learner meta shows at once.
+
+    :param course_key: The course key
+    :type course_key: Any
+    """
+    invalidate_learner_theme_catalog(get_tenants_by_org(course_key.org))
+
+
 def get_catalog(request: Any) -> Dict[str, Any]:
     """
-    Return the catalogue of the request's tenant: {results: [program dict], categories: [{id, name}]}.
+    Return the catalogue of the request's tenant: {results: [program dict], categories: [{id, name}]}. The
+    tenant-wide part comes from the per-tenant cache (`get_tenant_catalog`); `enrolled` is added per request
+    (`add_enrolled`: one query for a signed-in user, none for an anonymous visitor).
 
     :param request: The request
     :type request: Any
@@ -548,21 +646,16 @@ def get_catalog(request: Any) -> Dict[str, Any]:
     if not tenant_id:
         return {'results': [], 'categories': []}
 
-    course_categories, categories = get_course_category_ids(tenant_id)
+    catalog = get_tenant_catalog(tenant_id)
     return {
-        'results': build_programs(
-            tenant_id,
-            list(get_tenant_catalog_queryset(tenant_id)),
-            _authenticated_user(request),
-            course_categories=course_categories,
-        ),
-        'categories': categories,
+        'results': add_enrolled(catalog['results'], _authenticated_user(request)),
+        'categories': catalog['categories'],
     }
 
 
 def get_learner_theme_catalog(request: Any) -> List[Dict[str, Any]]:
     """
-    Mako helper: the program dicts of the request's tenant catalogue.
+    Mako helper: the program dicts of the request's tenant catalogue (the cached catalogue plus `enrolled`).
 
     :param request: The request
     :type request: Any
@@ -575,7 +668,8 @@ def get_learner_theme_catalog(request: Any) -> List[Dict[str, Any]]:
 def get_learner_theme_categories(request: Any) -> List[Dict[str, Any]]:
     """
     Mako helper: the ordered course categories of the request's tenant, [{id, name: {ar, en}}]. The same list the
-    catalogue endpoint returns as `categories`, in the id space of the program dicts' `category_ids`.
+    catalogue endpoint returns as `categories`, in the id space of the program dicts' `category_ids`. Read from the
+    cached catalogue (`get_tenant_catalog`).
 
     :param request: The request
     :type request: Any
@@ -585,14 +679,15 @@ def get_learner_theme_categories(request: Any) -> List[Dict[str, Any]]:
     tenant_id = get_request_tenant_id(request)
     if not tenant_id:
         return []
-    return get_course_category_ids(tenant_id)[1]
+    return get_tenant_catalog(tenant_id)['categories']
 
 
 def get_learner_theme_program(request: Any, course_key: Any) -> Dict[str, Any] | None:
     """
     Mako helper: the program dict of one course of the request's tenant that has an About page (catalog_visibility
     `about` or `both`, whatever its dates, so the About page of a closed course still renders), or None when the
-    course is not in the tenant or is hidden (catalog_visibility `none`).
+    course is not in the tenant or is hidden (catalog_visibility `none`). Not cached: its rule differs from the
+    catalogue's (which lists `both` only, and only by date), so it never reads the cached catalogue.
     The dict also has `learning_url`: the course home in the learning MFE (see `get_course_home_url`), absolute.
 
     :param request: The request
