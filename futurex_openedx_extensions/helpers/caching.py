@@ -103,9 +103,21 @@ def invalidate_cache(cache_name: str = None) -> None:
         cache.delete(cache_name)
 
 
+def invalidate_learner_theme_catalog(tenant_ids: List[int]) -> None:
+    """
+    Invalidate the cached learner theme catalogue (programs + categories) of the given tenants.
+
+    :param tenant_ids: List of the tenant IDs to invalidate the cache for.
+    :type tenant_ids: List[int]
+    """
+    for tenant_id in tenant_ids:
+        cache.delete(f'{cs.CACHE_NAME_LEARNER_THEME_CATALOG}_{tenant_id}')
+
+
 def invalidate_tenant_readable_lms_configs(tenant_ids: List[int]) -> None:
     """
-    Invalidate the cache for the tenant's readable LMS configs, and the learner theme shell built from them.
+    Invalidate the cache for the tenant's readable LMS configs, and the learner theme shell and catalogue built
+    from them.
 
     :param tenant_ids: List of the tenant IDs to invalidate the cache for.
     :type tenant_ids: List[int]
@@ -113,3 +125,4 @@ def invalidate_tenant_readable_lms_configs(tenant_ids: List[int]) -> None:
     for tenant_id in tenant_ids:
         cache.delete(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}')
         cache.delete(f'{cs.CACHE_NAME_LEARNER_THEME_SHELL}_{tenant_id}')
+    invalidate_learner_theme_catalog(tenant_ids)

@@ -22,6 +22,7 @@ from futurex_openedx_extensions.helpers.learner_theme import (
     get_learner_programs,
     get_learner_theme_shell,
     get_request_tenant_id,
+    invalidate_course_catalog,
 )
 from futurex_openedx_extensions.helpers.models import CourseLearnerMeta
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantAllCoursesAccess
@@ -59,7 +60,7 @@ class LearnerThemeShellView(APIView):
 
 @docs('LearnerThemeCatalogView.get')
 class LearnerThemeCatalogView(APIView):
-    """Public catalogue (programs + categories) of the request's tenant"""
+    """Public catalogue (programs + categories) of the request's tenant, cached per tenant (see get_tenant_catalog)"""
     authentication_classes = default_auth_classes
     permission_classes = [AllowAny]
 
@@ -147,4 +148,5 @@ class CourseLearnerMetaView(FXViewRoleInfoMixin, APIView):
             learning_mode=serializer.validated_data['learning_mode'],
             user=request.user,
         )
+        invalidate_course_catalog(course_key)
         return Response(CourseLearnerMeta.get_meta(course_key))

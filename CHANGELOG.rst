@@ -14,6 +14,17 @@ Change Log
 Unreleased
 **********
 
+* Per-tenant learner theme. New config keys ``learner_theme_allowed`` (``staff_only``: readable by tenant staff,
+  writable by system staff only), ``learner_theme_enabled`` and ``entity_identity``. When both switches are on,
+  publishing sets the tenant's theme to ``fx-learner`` (parent ``indigo``), the learner MFE URLs,
+  ``ENABLE_LEARNER_HOME_MFE``, ``MFE_CONFIG.FX_LEARNER_THEME`` and ``THEME_OPTIONS.interactive_color``; the tenant's
+  own previous values are kept in ``FX_LEARNER_THEME_SAVED`` and restored when the theme is switched off. New
+  endpoints: ``theme/v1/shell/`` and ``catalog/v1/programs/`` (public, tenant from host), ``learner/v1/programs/``
+  and ``learner/v1/certificates/`` (own data), ``courses/v1/meta/<course_id>/`` (level and learning mode). The public
+  catalogue is cached per tenant (``FX_CACHE_TIMEOUT_LEARNER_THEME_CATALOG``, default 300 seconds). Theme
+  preview is honoured for signed-in requests only. Migrations ``0014`` and ``0015``; run ``add_config_access`` after
+  deploying. Version 0.13.19.
+
 * ``download=csv``: the limit of 3 unfinished export tasks now applies per user, per view and per tenant, instead of
   per user and per view across all tenants. The 429 message says "per tenant". Version 0.13.18.
 

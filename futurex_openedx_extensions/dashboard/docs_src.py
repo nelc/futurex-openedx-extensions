@@ -3394,7 +3394,9 @@ docs_src = {
             'enrollment is open or that have not ended) and the course categories of the tenant served on the '
             'request\'s site. A program\'s `category_ids` are ids of `categories`. `price` is the lowest price among '
             'the course\'s paid modes with its `currency`; both are null for a free course. `enrolled` is true for '
-            'the signed-in user\'s own active enrollments.',
+            'the signed-in user\'s own active enrollments. The tenant\'s catalogue is cached for a short time '
+            '(`FX_CACHE_TIMEOUT_LEARNER_THEME_CATALOG`, 300 seconds by default): a course edit made in Studio may '
+            'take that long to appear; `enrolled` is always live.',
         'parameters': [],
         'responses': responses(
             overrides={404: 'No tenant is served on this site.'},

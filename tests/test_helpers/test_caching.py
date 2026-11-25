@@ -237,4 +237,5 @@ def test_invalidate_specific_tenant_cache(mock_delete):
     assert mock_delete.call_args_list == [
         call(f'{cs.CACHE_NAME_TENANT_READABLE_LMS_CONFIG}_{tenant_id}'),
         call(f'{cs.CACHE_NAME_LEARNER_THEME_SHELL}_{tenant_id}'),
+        call(f'{cs.CACHE_NAME_LEARNER_THEME_CATALOG}_{tenant_id}'),
     ]

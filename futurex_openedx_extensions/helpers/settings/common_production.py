@@ -32,6 +32,13 @@ def plugin_settings(settings: Any) -> None:
         60 * 60 * 24,  # 1 day
     )
 
+    # Cache timeout for the learner theme catalogue of a tenant (the public /courses data)
+    settings.FX_CACHE_TIMEOUT_LEARNER_THEME_CATALOG = getattr(
+        settings,
+        'FX_CACHE_TIMEOUT_LEARNER_THEME_CATALOG',
+        60 * 5,  # 5 minutes
+    )
+
     # Exported CSV files directive name
     settings.FX_DASHBOARD_STORAGE_DIR = getattr(
         settings,

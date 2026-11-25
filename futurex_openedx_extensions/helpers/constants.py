@@ -12,6 +12,7 @@ CACHE_NAME_CONFIG_ACCESS_CONTROL = 'fx_config_access_control'
 CACHE_NAME_TENANT_READABLE_LMS_CONFIG = 'fx_config_tenant_lms_config'
 CACHE_NAME_COURSES_RATINGS = 'fx_courses_ratings'
 CACHE_NAME_LEARNER_THEME_SHELL = 'fx_learner_theme_shell'
+CACHE_NAME_LEARNER_THEME_CATALOG = 'fx_learner_theme_catalog'
 
 CACHE_NAMES = {
     CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST: {

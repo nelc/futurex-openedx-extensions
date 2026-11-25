@@ -20,6 +20,7 @@ from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import (
     cache_dict,
     invalidate_cache,
+    invalidate_learner_theme_catalog,
     invalidate_tenant_readable_lms_configs,
 )
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
@@ -648,6 +649,7 @@ def set_tenant_config_value(tenant_id: int, config_key: str, value: Any) -> None
             apply_learner_theme(tenant, save=False)
         tenant.save()
         invalidate_cache(cache_name_tenant_readable_lms_configs(tenant_id))
+        invalidate_learner_theme_catalog([tenant_id])
         if learner_theme_key:
             invalidate_tenant_readable_lms_configs([tenant_id])
             invalidate_cache()
