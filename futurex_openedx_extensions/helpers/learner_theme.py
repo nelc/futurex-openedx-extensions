@@ -65,7 +65,7 @@ EFFORT_DECIMAL = re.compile(r'^\d+\.\d+$')
 SAFE_URL_SCHEMES = ('http', 'https', 'mailto', 'tel')
 SCHEMELESS_HOST_URL = re.compile(
     r'^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+'
-    r'(?::\d{1,5})?(?:[/?#].*)?$'
+    r'(?::[0-9]{1,5})?(?:[/?#].*)?$'
 )
 HEX_COLOR = re.compile(r'^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$')
 BRAND_COLOR_TYPE = 'primary_color'
@@ -153,7 +153,7 @@ def safe_url(url: Any) -> str | None:
     if url.startswith(('/', '#')):
         return url
     if SCHEMELESS_HOST_URL.match(url):
-        return f'https://{url}'
+        return None if any(char.isspace() for char in url) else f'https://{url}'
     try:
         scheme = urlparse(url).scheme.lower()
     except ValueError:
