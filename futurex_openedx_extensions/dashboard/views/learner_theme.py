@@ -3,7 +3,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from edx_rest_framework_extensions.auth.jwt.authentication import JwtAuthentication
+from edx_rest_framework_extensions.auth.session.authentication import SessionAuthenticationAllowInactiveUser
 from opaque_keys.edx.keys import CourseKey
+from openedx.core.lib.api.authentication import BearerAuthentication
 from rest_framework import status as http_status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -26,6 +29,9 @@ from futurex_openedx_extensions.helpers.querysets import get_course_search_query
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin
 
 default_auth_classes = FX_VIEW_DEFAULT_AUTH_CLASSES.copy()
+# A learner's own pages: like the stock learner home API, a signed-in user whose account is not activated yet is
+# accepted (rest_framework's SessionAuthentication rejects them).
+learner_auth_classes = [JwtAuthentication, SessionAuthenticationAllowInactiveUser, BearerAuthentication]
 
 
 def tenant_not_found_response() -> Response:
@@ -67,7 +73,7 @@ class LearnerThemeCatalogView(APIView):
 @docs('LearnerThemeMyProgramsView.get')
 class LearnerThemeMyProgramsView(APIView):
     """The request user's own programs in the request's tenant"""
-    authentication_classes = default_auth_classes
+    authentication_classes = learner_auth_classes
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:  # pylint: disable=no-self-use
@@ -80,7 +86,7 @@ class LearnerThemeMyProgramsView(APIView):
 @docs('LearnerThemeMyCertificatesView.get')
 class LearnerThemeMyCertificatesView(APIView):
     """The request user's own certificates in the request's tenant"""
-    authentication_classes = default_auth_classes
+    authentication_classes = learner_auth_classes
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Any, *args: Any, **kwargs: Any) -> Response:  # pylint: disable=no-self-use

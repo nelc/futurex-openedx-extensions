@@ -31,7 +31,7 @@ TENANT1_COURSES = {
 
 PROGRAM_KEYS = {
     'id', 'title', 'image_url', 'about_url', 'effort_hours', 'units', 'level', 'learning_mode', 'has_certificate',
-    'category_ids', 'status', 'start_date', 'enrolled', 'price',
+    'category_ids', 'status', 'start_date', 'enrolled', 'price', 'currency',
 }
 
 
@@ -65,6 +65,8 @@ def test_get_request_tenant_id(request_obj, expected, base_data):  # pylint: dis
     ({'page': 'about-us'}, '/about'),
     ({'page': 'external_link', 'custom_url': 'https://x.sa'}, 'https://x.sa'),
     ({'page': 'external_link'}, None),
+    ({'page': 'external_link', 'custom_url': 'javascript:alert(1)'}, None),
+    ({'page': 'external_link', 'custom_url': '//evil.sa'}, None),
     ({'page': 'custom-page-1'}, '/p/my-page'),
     ({'page': 'custom_page_1'}, '/p/my-page'),
     ({'page': 'nothing'}, None),
@@ -77,12 +79,63 @@ def test_resolve_link(link, expected):
     assert lt.resolve_link(link, {'custom_page_1': 'my-page'}) == expected
 
 
+@pytest.mark.parametrize('url, expected', [
+    ('/courses', '/courses'),
+    ('  /courses  ', '/courses'),
+    ('#top', '#top'),
+    ('http://x.sa/a?b=1', 'http://x.sa/a?b=1'),
+    ('HTTPS://x.sa', 'HTTPS://x.sa'),
+    ('mailto:help@x.sa', 'mailto:help@x.sa'),
+    ('tel:+966500000000', 'tel:+966500000000'),
+    ('javascript:alert(1)', None),
+    (' JavaScript:alert(1)', None),
+    ('java\tscript:alert(1)', None),
+    ('data:text/html;base64,AAAA', None),
+    ('vbscript:x', None),
+    ('//evil.sa', None),
+    ('/\\evil.sa', None),
+    ('x.sa/page', None),
+    ('http://[bad', None),
+    ('', None),
+    ('   ', None),
+    (None, None),
+    (5, None),
+    ({'page': 'home'}, None),
+])
+def test_safe_url(url, expected):
+    """Verify only site-relative paths, anchors, http(s), mailto and tel survive"""
+    assert lt.safe_url(url) == expected
+
+
+@pytest.mark.parametrize('visual_identity, expected', [
+    ({'colors': [{'color_type': 'primary_color', 'hex': '#0a7d4f'}]}, '#0a7d4f'),
+    ({'colors': [{'color_type': 'primary_color', 'hex': '#FFF'}]}, '#FFF'),
+    ({'colors': [
+        {'color_type': 'heading_color', 'hex': '#111111'}, 'bad', None,
+        {'color_type': 'primary_color', 'hex': '#222222'},
+        {'color_type': 'primary_color', 'hex': 'red;} body{display:none'},
+    ]}, '#222222'),
+    ({'colors': [{'color_type': 'primary_color', 'hex': 'red'}]}, None),
+    ({'colors': [{'color_type': 'primary_color', 'hex': 123456}]}, None),
+    ({'colors': [{'color_type': 'primary_color'}]}, None),
+    ({'colors': [{'color_type': 'button_color', 'hex': '#333333'}]}, None),
+    ({'colors': 'not a list'}, None),
+    ({}, None),
+    (None, None),
+    ('not a dict', None),
+])
+def test_get_brand_color(visual_identity, expected):
+    """Verify the brand colour is the tenant's valid primary colour, read like the theme's head-extra"""
+    assert lt.get_brand_color(visual_identity) == expected
+
+
 FULL_THEME_CONFIG = {
     'PLATFORM_NAME': 'Platform',
     'logo_image_url': 'https://cdn.sample.com/logo.png',
     'THEME_OPTIONS': {'theme': {'name': 'fx-learner', 'parent': 'indigo'}},
     'theme_v2': {
         'learner_theme': {'allowed': True, 'enabled': True},
+        'visual_identity': {'colors': [{'color_type': 'primary_color', 'hex': '#0a7d4f'}]},
         'custom_pages': [{'key': 'custom_page_1', 'url_slug': 'guide'}, {'key': 'broken'}, 'bad'],
         'platform_settings': {
             'site_name': {'ar': 'منصة', 'en': ''},
@@ -117,6 +170,7 @@ def test_get_learner_theme_shell_full(base_data):  # pylint: disable=unused-argu
     assert lt.get_learner_theme_shell(1) == {
         'active': True,
         'logo_url': 'https://cdn.sample.com/logo.png',
+        'brand_color': '#0a7d4f',
         'site_name': {'ar': 'منصة', 'en': 'Platform'},
         'short_name': {'ar': 'هيئة', 'en': 'Authority'},
         'parent_org': {'ar': 'وزارة', 'en': ''},
@@ -171,6 +225,7 @@ def test_get_learner_theme_shell_defaults(base_data):  # pylint: disable=unused-
 
     assert shell['active'] is False
     assert shell['logo_url'] is None
+    assert shell['brand_color'] is None
     assert shell['site_name'] == {'ar': '', 'en': ''}
     assert shell['nav'] == []
     assert shell['footer'] == {
@@ -181,6 +236,25 @@ def test_get_learner_theme_shell_defaults(base_data):  # pylint: disable=unused-
     assert shell['help_url'] == '/faq'
     assert (shell['languages'], shell['default_language']) == (['en'], 'en')
     assert lt.is_learner_theme_active(2) is False
+
+
+@pytest.mark.django_db
+def test_get_learner_theme_shell_unsafe_urls(base_data):  # pylint: disable=unused-argument
+    """Verify URLs from the tenant config that are not safe link targets never reach the shell"""
+    config = copy.deepcopy(FULL_THEME_CONFIG)
+    unsafe = {'page': 'external_link', 'custom_url': 'javascript:alert(document.cookie)', 'link_title': {'en': 'X'}}
+    config['theme_v2']['entity_identity'].update({'site_url': 'javascript:alert(1)', 'help_link': unsafe})
+    config['theme_v2']['header']['sections'] = [unsafe, {'page': 'courses', 'link_title': {'en': 'Programs'}}]
+    config['theme_v2']['footer']['sections'] = [unsafe, {**unsafe, 'custom_url': 'mailto:help@x.sa'}]
+    _set_lms_configs(1, **config)
+
+    shell = lt.get_learner_theme_shell(1)
+
+    assert shell['footer']['site_url'] is None
+    assert shell['help_url'] == '/faq'
+    assert [link['url'] for link in shell['nav']] == ['/courses']
+    assert [link['url'] for link in shell['footer']['links']] == ['mailto:help@x.sa']
+    assert 'javascript' not in str(shell)
 
 
 @pytest.mark.django_db
@@ -211,7 +285,10 @@ def test_get_learner_theme_shell_bad_default_language(base_data):  # pylint: dis
 
 @pytest.mark.django_db
 def test_get_tenant_catalog_queryset(base_data):  # pylint: disable=unused-argument
-    """Verify the catalogue rule: visible, and enrollment open OR not ended; other tenants' courses never show"""
+    """
+    Verify the catalogue rule: listed in the catalogue (visibility `both`; `about` and `none` are not listed), and
+    enrollment open OR not ended; other tenants' courses never show
+    """
     past = timezone.now() - datetime.timedelta(days=2)
     future = timezone.now() + datetime.timedelta(days=2)
     CourseOverview.objects.filter(id='course-v1:ORG1+2+2').update(enrollment_end=past, end=past)
@@ -219,10 +296,13 @@ def test_get_tenant_catalog_queryset(base_data):  # pylint: disable=unused-argum
     CourseOverview.objects.filter(id='course-v1:ORG1+4+4').update(catalog_visibility='none')
     CourseOverview.objects.filter(id='course-v1:ORG1+5+5').update(visible_to_staff_only=True)
     CourseOverview.objects.filter(id='course-v1:ORG2+1+1').update(enrollment_start=future)
+    CourseOverview.objects.filter(id='course-v1:ORG2+2+2').update(catalog_visibility='about')
 
     result = {str(course.id) for course in lt.get_tenant_catalog_queryset(1)}
 
-    assert result == TENANT1_COURSES - {'course-v1:ORG1+2+2', 'course-v1:ORG1+4+4', 'course-v1:ORG1+5+5'}
+    assert result == TENANT1_COURSES - {
+        'course-v1:ORG1+2+2', 'course-v1:ORG1+4+4', 'course-v1:ORG1+5+5', 'course-v1:ORG2+2+2',
+    }
     assert {str(course.id) for course in lt.get_tenant_courses_queryset(1)} == TENANT1_COURSES
 
 
@@ -379,6 +459,7 @@ def test_build_programs(_, base_data):  # pylint: disable=unused-argument
         'start_date': start.isoformat(),
         'enrolled': True,
         'price': 250,
+        'currency': 'USD',
     }
     assert programs['course-v1:ORG1+2+2'] == {
         'id': 'course-v1:ORG1+2+2',
@@ -394,9 +475,49 @@ def test_build_programs(_, base_data):  # pylint: disable=unused-argument
         'status': 'open',
         'start_date': programs['course-v1:ORG1+2+2']['start_date'],
         'enrolled': True,
-        'price': None,
+        'price': 100,
+        'currency': 'USD',
     }
     assert set(programs['course-v1:ORG1+2+2']) == PROGRAM_KEYS
+
+
+@pytest.mark.django_db
+def test_get_course_prices(base_data):  # pylint: disable=unused-argument
+    """Verify the price is the lowest among the course's paid, not expired modes, with that mode's currency"""
+    paid = CourseKey.from_string('course-v1:ORG1+5+5')
+    free = CourseKey.from_string('course-v1:ORG1+2+2')
+    expired_only = CourseKey.from_string('course-v1:ORG1+3+3')
+    no_currency = CourseKey.from_string('course-v1:ORG1+4+4')
+    past = timezone.now() - DAY
+
+    def _mode(course_id, slug, price, currency='sar', expiration=None):
+        CourseMode.objects.create(
+            course_id=course_id, mode_slug=slug, mode_display_name=slug, min_price=price, currency=currency,
+            expiration_datetime=expiration,
+        )
+
+    _mode(paid, 'no-id-professional', 300)
+    _mode(paid, 'verified', 120, currency='usd', expiration=timezone.now() + DAY)
+    _mode(paid, 'professional', 50, expiration=past)
+    _mode(paid, 'audit', 0)
+    _mode(free, 'audit', 0)
+    _mode(free, 'honor', 0)
+    _mode(expired_only, 'verified', 80, expiration=past)
+    _mode(no_currency, 'verified', 70, currency='')
+
+    assert lt.get_course_prices([paid, free, expired_only, no_currency]) == {
+        'course-v1:ORG1+5+5': (120, 'USD'),
+        'course-v1:ORG1+4+4': (70, None),
+    }
+    assert not lt.get_course_prices([])
+
+    with patch('futurex_openedx_extensions.helpers.learner_theme.get_course_units_count', return_value=0):
+        programs = {program['id']: program for program in lt.build_programs(
+            1, list(CourseOverview.objects.filter(id__in=[paid, free, expired_only])), None, course_categories={},
+        )}
+    assert (programs[str(paid)]['price'], programs[str(paid)]['currency']) == (120, 'USD')
+    assert (programs[str(free)]['price'], programs[str(free)]['currency']) == (None, None)
+    assert (programs[str(expired_only)]['price'], programs[str(expired_only)]['currency']) == (None, None)
 
 
 @pytest.mark.django_db
@@ -433,11 +554,63 @@ def test_get_catalog(_, base_data):  # pylint: disable=unused-argument
 
 @pytest.mark.django_db
 @patch('futurex_openedx_extensions.helpers.learner_theme.get_course_units_count', return_value=0)
-def test_get_learner_theme_program(_, base_data):  # pylint: disable=unused-argument
-    """Verify one program of the request's tenant; other tenants' and invalid courses give None"""
+def test_get_catalog_hides_about_only_courses(_, base_data):  # pylint: disable=unused-argument
+    """Verify a course reachable by its About link only (visibility `about`) is not listed, for Mako and the API"""
+    CourseOverview.objects.filter(id='course-v1:ORG1+3+3').update(catalog_visibility='about')
     CourseOverview.objects.filter(id='course-v1:ORG1+4+4').update(catalog_visibility='none')
+    expected = TENANT1_COURSES - {'course-v1:ORG1+3+3', 'course-v1:ORG1+4+4'}
+
+    assert {program['id'] for program in lt.get_catalog(_request())['results']} == expected
+    assert {program['id'] for program in lt.get_learner_theme_catalog(_request())} == expected
+
+
+@pytest.mark.django_db
+def test_get_learner_theme_categories(base_data):  # pylint: disable=unused-argument
+    """Verify the Mako categories are the catalogue endpoint's `categories`, in the programs' category id space"""
+    course_id = 'course-v1:ORG1+2+2'
+    categories_config = {
+        'categories': {
+            'category_1': {'label': {'ar': 'أ', 'en': 'A'}, 'courses': [course_id]},
+            'category_2': {'label': {'en': 'B'}, 'courses': []},
+        },
+        'sorting': ['category_2', 'category_1'],
+    }
+    with patch(
+        'futurex_openedx_extensions.helpers.course_categories.get_tenant_config_value',
+        return_value=categories_config,
+    ), patch('futurex_openedx_extensions.helpers.learner_theme.get_course_units_count', return_value=0):
+        categories = lt.get_learner_theme_categories(_request())
+        catalog = lt.get_catalog(_request())
+        program = lt.get_learner_theme_program(_request(), course_id)
+
+    assert categories == [
+        {'id': 'category_2', 'name': {'ar': '', 'en': 'B'}},
+        {'id': 'category_1', 'name': {'ar': 'أ', 'en': 'A'}},
+    ]
+    assert categories == catalog['categories']
+    assert program['category_ids'] == ['category_1']
+    assert {
+        category_id for item in catalog['results'] for category_id in item['category_ids']
+    } <= {category['id'] for category in categories}
+    assert not lt.get_learner_theme_categories(_request(domain='unknown.sample.com'))
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.learner_theme.get_course_units_count', return_value=0)
+def test_get_learner_theme_program(_, base_data):  # pylint: disable=unused-argument
+    """
+    Verify one program of the request's tenant: `about` and `both` courses are served whatever their dates, hidden
+    (`none`), other tenants' and invalid courses give None
+    """
+    past = timezone.now() - DAY
+    CourseOverview.objects.filter(id='course-v1:ORG1+4+4').update(
+        catalog_visibility='about', enrollment_end=past, end=past,
+    )
+    CourseOverview.objects.filter(id='course-v1:ORG1+3+3').update(catalog_visibility='none')
 
     program = lt.get_learner_theme_program(_request(), 'course-v1:ORG1+4+4')
+    assert lt.get_learner_theme_program(_request(), 'course-v1:ORG1+5+5')['id'] == 'course-v1:ORG1+5+5'
+    assert lt.get_learner_theme_program(_request(), 'course-v1:ORG1+3+3') is None
     assert program['id'] == 'course-v1:ORG1+4+4'
     assert lt.get_learner_theme_program(_request(), CourseKey.from_string('course-v1:ORG1+4+4'))['id'] == program['id']
     assert lt.get_learner_theme_program(_request(), 'course-v1:ORG4+1+1') is None

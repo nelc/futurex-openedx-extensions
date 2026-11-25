@@ -3376,7 +3376,10 @@ docs_src = {
             'Cached per tenant and cleared on every config publish. `active` is true when the learner theme is '
             'allowed, enabled and live on the tenant. The brand is never empty: `site_name` falls back to the '
             'platform name and `short_name` to `site_name`, per language. `help_url` is `entity_identity.help_link`, '
-            'else the tenant\'s FAQ page.',
+            'else the tenant\'s FAQ page. `brand_color` is the tenant\'s visual_identity primary colour as a hex '
+            'string, or null. URLs taken from the tenant config (`footer.site_url`, `help_url`, nav and footer link '
+            'urls) are sanitised: only site-relative paths, #anchors, http(s), mailto and tel are returned; an unsafe '
+            'link is omitted and an unsafe `site_url` is null.',
         'parameters': [],
         'responses': responses(
             overrides={404: 'No tenant is served on this site.'},
@@ -3386,9 +3389,11 @@ docs_src = {
     'LearnerThemeCatalogView.get': {
         'summary': 'Catalogue of the learner theme',
         'description':
-            'Public. Returns the programs (catalog-visible courses whose enrollment is open or that have not ended) '
-            'and the course categories of the tenant served on the request\'s site. `enrolled` is true for the '
-            'signed-in user\'s own active enrollments.',
+            'Public. Returns the programs (courses listed in the catalogue, i.e. catalog visibility `both`, whose '
+            'enrollment is open or that have not ended) and the course categories of the tenant served on the '
+            'request\'s site. A program\'s `category_ids` are ids of `categories`. `price` is the lowest price among '
+            'the course\'s paid modes with its `currency`; both are null for a free course. `enrolled` is true for '
+            'the signed-in user\'s own active enrollments.',
         'parameters': [],
         'responses': responses(
             overrides={404: 'No tenant is served on this site.'},
@@ -3402,7 +3407,7 @@ docs_src = {
             'site, with progress (course completion), stats and the course to resume. `user` = `{full_name, '
             'first_name, arabic_name, masked_email}` (never the username or the unmasked email; `arabic_name` is null '
             'when not available). `resume` = `{title, progress_percent, resume_url}` of the not-completed program '
-            'with the latest activity, or null.',
+            'with the latest activity, or null. A signed-in user whose account is not activated yet is accepted.',
         'parameters': [],
         'responses': responses(
             overrides={404: 'No tenant is served on this site.'},
@@ -3412,7 +3417,8 @@ docs_src = {
     'LearnerThemeMyCertificatesView.get': {
         'summary': 'My certificates',
         'description':
-            'Returns the signed-in user\'s own downloadable certificates in the tenant served on the request\'s site.',
+            'Returns the signed-in user\'s own downloadable certificates in the tenant served on the request\'s site. '
+            'A signed-in user whose account is not activated yet is accepted.',
         'parameters': [],
         'responses': responses(
             overrides={404: 'No tenant is served on this site.'},

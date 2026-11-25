@@ -10,6 +10,7 @@ import logging
 import re
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Tuple
+from urllib.parse import urlparse
 
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.student.models import CourseEnrollment
@@ -28,7 +29,6 @@ from futurex_openedx_extensions.helpers import constants as cs
 from futurex_openedx_extensions.helpers.caching import cache_dict
 from futurex_openedx_extensions.helpers.converters import relative_url_to_absolute_url
 from futurex_openedx_extensions.helpers.course_categories import CourseCategories
-from futurex_openedx_extensions.helpers.course_price import PAID_MODE_SLUG
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException
 from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_get_value,
@@ -52,10 +52,19 @@ PROGRAM_STATUS_CLOSED = 'closed'
 
 UNITS_CACHE_TIMEOUT = 3600
 
+# catalog_visibility: `both` = listed in the catalogue + About page, `about` = About page by link only, `none` = hidden
+CATALOG_VISIBILITY_LISTED = 'both'
+CATALOG_VISIBILITY_ABOUT_PAGE = ['about', 'both']
+
 # Same accepted forms as eox_nelp.effort (HH:MM, a whole number, a decimal); used when eox-nelp is not installed
 EFFORT_HH_MM = re.compile(r'^(\d+):([0-5]\d)$')
 EFFORT_INTEGER = re.compile(r'^\d+$')
 EFFORT_DECIMAL = re.compile(r'^\d+\.\d+$')
+
+# The link targets the learner pages may print in an href, and the colour form the theme accepts
+SAFE_URL_SCHEMES = ('http', 'https', 'mailto', 'tel')
+HEX_COLOR = re.compile(r'^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$')
+BRAND_COLOR_TYPE = 'primary_color'
 
 # The theme's page names (fx_static_content.html get_all_fx_page_names) and their paths
 FX_PAGE_PATHS = {
@@ -120,9 +129,56 @@ def _config_value(lms_configs: Dict[str, Any], path: str, default: Any) -> Any:
     return value if isinstance(value, type(default)) else default
 
 
+def safe_url(url: Any) -> str | None:
+    """
+    Return the URL when it is a link target the learner pages may print in an href: a site-relative path, an
+    #anchor, http(s), mailto or tel. Anything else (javascript:, data:, protocol-relative, control characters, not a
+    string) gives None. Same rule as the fx-learner theme's `safe_url`.
+
+    :param url: The URL from the tenant config
+    :type url: Any
+    :return: The URL, or None when it is not safe
+    :rtype: str | None
+    """
+    if not isinstance(url, str):
+        return None
+    url = url.strip()
+    if not url or any(ord(char) < 32 or ord(char) == 127 for char in url) or url.startswith(('//', '/\\')):
+        return None
+    if url.startswith(('/', '#')):
+        return url
+    try:
+        scheme = urlparse(url).scheme.lower()
+    except ValueError:
+        return None
+    return url if scheme in SAFE_URL_SCHEMES else None
+
+
+def get_brand_color(visual_identity: Any) -> str | None:
+    """
+    Return the tenant's primary colour (`visual_identity.colors[]` with color_type `primary_color`) as a hex string,
+    or None when it is missing or not a hex colour. Same reading as the theme's head-extra.
+
+    :param visual_identity: The tenant's `theme_v2.visual_identity` value
+    :type visual_identity: Any
+    :return: The hex colour or None
+    :rtype: str | None
+    """
+    colors = visual_identity.get('colors') if isinstance(visual_identity, dict) else None
+    brand_color = None
+    for color in colors if isinstance(colors, list) else []:
+        if not isinstance(color, dict) or color.get('color_type') != BRAND_COLOR_TYPE:
+            continue
+        value = color.get('hex')
+        if isinstance(value, str) and HEX_COLOR.match(value):
+            brand_color = value
+    return brand_color
+
+
 def resolve_link(link: Any, custom_pages: Dict[str, str]) -> str | None:
     """
     Resolve a theme link section ({page, custom_url}) to a URL, the same way the theme's get_fx_link_sections does.
+    An external link that is not a safe link target (see `safe_url`) is invalid.
 
     :param link: The link section
     :type link: Any
@@ -136,8 +192,8 @@ def resolve_link(link: Any, custom_pages: Dict[str, str]) -> str | None:
     page = link.get('page') or ''
     if page in FX_PAGE_PATHS:
         return f'/{FX_PAGE_PATHS[page]}'
-    if page == 'external_link' and link.get('custom_url'):
-        return link['custom_url']
+    if page == 'external_link':
+        return safe_url(link.get('custom_url'))
     if page.replace('-', '_') in custom_pages:
         return f'/p/{custom_pages[page.replace("-", "_")]}'
     return None
@@ -179,7 +235,9 @@ def get_learner_theme_shell(tenant_id: int) -> Dict[str, Any]:
     cleared together with the tenant's readable config cache.
 
     The brand is never empty: `site_name` falls back to the platform name and `short_name` to `site_name`, per
-    language. `help_url` is the tenant's `entity_identity.help_link`, else its FAQ page.
+    language. `help_url` is the tenant's `entity_identity.help_link`, else its FAQ page. `brand_color` is the
+    tenant's visual_identity primary colour (hex) or None. URLs taken from the tenant config are sanitised
+    (`safe_url`): an unsafe nav/footer link is omitted, an unsafe `site_url` is None.
 
     :param tenant_id: The tenant ID
     :type tenant_id: int
@@ -212,6 +270,7 @@ def get_learner_theme_shell(tenant_id: int) -> Dict[str, Any]:
     return {
         'active': is_learner_theme_switched_on(lms_configs) and theme_name == cs.LEARNER_THEME_NAME,
         'logo_url': rewrite_legacy_cloudfront_asset_urls(lms_configs.get('logo_image_url') or None),
+        'brand_color': get_brand_color(_config_value(lms_configs, 'theme_v2.visual_identity', {})),
         'site_name': site_name,
         'short_name': {lang: name or site_name[lang] for lang, name in _i18n(identity.get('short_name')).items()},
         'parent_org': _i18n(identity.get('parent_org')),
@@ -225,7 +284,7 @@ def get_learner_theme_shell(tenant_id: int) -> Dict[str, Any]:
             ],
             'copyright': _i18n(footer.get('copyrights_text')),
             'site_label': _i18n(identity.get('site_label')),
-            'site_url': identity.get('site_url') or None,
+            'site_url': safe_url(identity.get('site_url')),
         },
         'help_url': resolve_link(identity.get('help_link'), custom_pages) or f'/{FX_PAGE_PATHS["faq"]}',
         'languages': languages,
@@ -262,9 +321,10 @@ def get_tenant_courses_queryset(tenant_id: int) -> QuerySet:
 
 def get_tenant_catalog_queryset(tenant_id: int) -> QuerySet:
     """
-    Return the tenant's catalogue: catalog-visible courses (about/both, not staff-only) whose enrollment is open OR
-    that have not ended. This is the theme's /courses rule (decision dc17-open-or-not-ended); the home page rule
-    (open AND not ended) is the subset with status `open`, `full` or `upcoming` that has not ended.
+    Return the tenant's catalogue: courses listed in the catalogue (catalog_visibility `both`, not staff-only)
+    whose enrollment is open OR that have not ended. A course with catalog_visibility `about` is reachable by its
+    About link only and is never listed. This is the theme's /courses rule (decision dc17-open-or-not-ended); the
+    home page rule (open AND not ended) is the subset with status `open`, `full` or `upcoming` that has not ended.
 
     :param tenant_id: The tenant ID
     :type tenant_id: int
@@ -278,7 +338,7 @@ def get_tenant_catalog_queryset(tenant_id: int) -> QuerySet:
     )
     not_ended = Q(end__isnull=True) | Q(end__gt=now_time)
     return get_tenant_courses_queryset(tenant_id).filter(
-        catalog_visibility__in=['about', 'both'],
+        catalog_visibility=CATALOG_VISIBILITY_LISTED,
         visible_to_staff_only=False,
     ).filter(enrollment_open | not_ended).order_by('-start', 'id')
 
@@ -392,6 +452,26 @@ def get_course_category_ids(tenant_id: int) -> Tuple[Dict[str, List[str]], List[
     return course_categories, categories
 
 
+def get_course_prices(course_ids: List[Any]) -> Dict[str, Tuple[int, str | None]]:
+    """
+    Return the price of each paid course: the lowest price among its paid modes (any mode with a price above zero
+    that has not expired) and the currency of that mode (upper case), as {course_id: (price, currency)}. A course
+    with no paid mode is not in the result.
+
+    :param course_ids: The course keys
+    :type course_ids: List[Any]
+    :return: {course_id: (price, currency)}
+    :rtype: Dict[str, Tuple[int, str | None]]
+    """
+    paid_modes = CourseMode.objects.filter(course_id__in=course_ids, min_price__gt=0).filter(
+        Q(expiration_datetime__isnull=True) | Q(expiration_datetime__gt=now()),
+    ).order_by('min_price', 'id').values_list('course_id', 'min_price', 'currency')
+    result: Dict[str, Tuple[int, str | None]] = {}
+    for course_id, price, currency in paid_modes:
+        result.setdefault(str(course_id), (price, (currency or '').upper() or None))
+    return result
+
+
 def _iso(value: Any) -> str | None:
     """Return the datetime as ISO text, or None."""
     return value.isoformat() if value else None
@@ -426,11 +506,7 @@ def build_programs(  # pylint: disable=too-many-locals
             course_key__in=course_ids, issuance_enabled=False,
         ).values_list('course_key', flat=True)
     }
-    prices = {
-        str(course_id): price for course_id, price in CourseMode.objects.filter(
-            course_id__in=course_ids, mode_slug=PAID_MODE_SLUG, min_price__gt=0,
-        ).values_list('course_id', 'min_price')
-    }
+    prices = get_course_prices(course_ids)
     limited_ids = [course.id for course in courses if course.max_student_enrollments_allowed]
     enrollment_counts = {
         str(row['course_id']): row['count'] for row in CourseEnrollment.objects.filter(
@@ -448,6 +524,7 @@ def build_programs(  # pylint: disable=too-many-locals
     for course in courses:
         course_id = str(course.id)
         course_meta = meta.get(course_id, {})
+        price, currency = prices.get(course_id, (None, None))
         result.append({
             'id': course_id,
             'title': course.display_name,
@@ -462,7 +539,8 @@ def build_programs(  # pylint: disable=too-many-locals
             'status': get_program_status(course, enrollment_counts.get(course_id, 0), now_time),
             'start_date': _iso(course.start),
             'enrolled': course_id in enrolled_ids,
-            'price': prices.get(course_id),
+            'price': price,
+            'currency': currency,
         })
     return result
 
@@ -504,10 +582,27 @@ def get_learner_theme_catalog(request: Any) -> List[Dict[str, Any]]:
     return get_catalog(request)['results']
 
 
+def get_learner_theme_categories(request: Any) -> List[Dict[str, Any]]:
+    """
+    Mako helper: the ordered course categories of the request's tenant, [{id, name: {ar, en}}]. The same list the
+    catalogue endpoint returns as `categories`, in the id space of the program dicts' `category_ids`.
+
+    :param request: The request
+    :type request: Any
+    :return: The categories
+    :rtype: List[Dict[str, Any]]
+    """
+    tenant_id = get_request_tenant_id(request)
+    if not tenant_id:
+        return []
+    return get_course_category_ids(tenant_id)[1]
+
+
 def get_learner_theme_program(request: Any, course_key: Any) -> Dict[str, Any] | None:
     """
-    Mako helper: the program dict of one course of the request's tenant (any visibility, so an about page of a
-    closed course still renders), or None when the course is not in the tenant.
+    Mako helper: the program dict of one course of the request's tenant that has an About page (catalog_visibility
+    `about` or `both`, whatever its dates, so the About page of a closed course still renders), or None when the
+    course is not in the tenant or is hidden (catalog_visibility `none`).
 
     :param request: The request
     :type request: Any
@@ -524,7 +619,9 @@ def get_learner_theme_program(request: Any, course_key: Any) -> Dict[str, Any] |
     except InvalidKeyError:
         return None
 
-    course = get_tenant_courses_queryset(tenant_id).filter(id=course_key).first()
+    course = get_tenant_courses_queryset(tenant_id).filter(
+        id=course_key, catalog_visibility__in=CATALOG_VISIBILITY_ABOUT_PAGE,
+    ).first()
     if not course:
         return None
     return build_programs(tenant_id, [course], _authenticated_user(request))[0]
