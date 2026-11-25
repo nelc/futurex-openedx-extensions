@@ -864,12 +864,14 @@ def apply_learner_theme(tenant: TenantConfig, save: bool = True) -> bool:
     Active = `theme_v2.learner_theme.allowed` AND `theme_v2.learner_theme.enabled` are both true AND the current
     theme (`THEME_OPTIONS.theme.name`) is `indigo` or `fx-learner`.
 
-    - Active: `THEME_OPTIONS.theme` becomes {"name": "fx-learner", "parent": "indigo"}, the learner MFE URLs are set
-      and `MFE_CONFIG.FX_LEARNER_THEME` is true.
+    - Active: `THEME_OPTIONS.theme` becomes {"name": "fx-learner", "parent": "indigo"}, the learner MFE URLs are set,
+      `ENABLE_LEARNER_HOME_MFE` is true (the platform's `/dashboard` redirects to the learner home only when it is)
+      and `MFE_CONFIG.FX_LEARNER_THEME` is true. The first time, the tenant's own `ENABLE_LEARNER_HOME_MFE` is
+      recorded in `FX_LEARNER_THEME_SAVED`: {} when it had none, {"ENABLE_LEARNER_HOME_MFE": <value>} otherwise.
     - Switched on, but the current theme is neither indigo nor fx-learner: nothing changes and a warning is logged.
-    - Not active: a theme left on fx-learner goes back to {"name": "indigo"}, the learner MFE URL keys are removed
-      only when they still hold the values set here (a tenant's own URL is never touched), and the MFE flag is
-      removed. A tenant that never had the learner theme is left exactly as it is.
+    - Not active: fx-learner goes back to {"name": "indigo"}, the MFE flag and `FX_LEARNER_THEME_SAVED` are removed,
+      the URL keys are removed only when they still hold the values set here, and `ENABLE_LEARNER_HOME_MFE` goes
+      back to the recorded tenant value (removed when none) only when a record exists and the key is still true.
 
     Other keys inside THEME_OPTIONS and MFE_CONFIG are preserved. The function is idempotent.
 
@@ -905,6 +907,10 @@ def apply_learner_theme(tenant: TenantConfig, save: bool = True) -> bool:
         theme_options['theme'] = get_learner_theme_options()
         new_configs['THEME_OPTIONS'] = theme_options
         new_configs.update(cs.LEARNER_THEME_MFE_URLS)
+        saved = new_configs.get(cs.LEARNER_THEME_SAVED_KEY)
+        own = {key: new_configs[key] for key in [cs.LEARNER_THEME_LEARNER_HOME_FLAG] if key in new_configs}
+        new_configs[cs.LEARNER_THEME_SAVED_KEY] = saved if isinstance(saved, dict) else own
+        new_configs[cs.LEARNER_THEME_LEARNER_HOME_FLAG] = True
         if not isinstance(mfe_config, dict):
             mfe_config = {}
         mfe_config[cs.LEARNER_THEME_MFE_FLAG] = True
@@ -914,6 +920,10 @@ def apply_learner_theme(tenant: TenantConfig, save: bool = True) -> bool:
         if current_theme_name == cs.LEARNER_THEME_NAME:
             theme_options['theme'] = {'name': cs.LEARNER_THEME_PARENT_NAME}
             new_configs['THEME_OPTIONS'] = theme_options
+        saved = new_configs.pop(cs.LEARNER_THEME_SAVED_KEY, None)
+        if isinstance(saved, dict) and new_configs.get(cs.LEARNER_THEME_LEARNER_HOME_FLAG) is True:
+            new_configs.pop(cs.LEARNER_THEME_LEARNER_HOME_FLAG)
+            new_configs.update(saved)
         for url_key, url_value in cs.LEARNER_THEME_MFE_URLS.items():
             if new_configs.get(url_key) == url_value:
                 new_configs.pop(url_key)

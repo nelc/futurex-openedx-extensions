@@ -1299,6 +1299,8 @@ def _active_configs(**extra):
         'theme_v2': _learner_switch(True, True),
         'THEME_OPTIONS': {'theme': {'name': 'fx-learner', 'parent': 'indigo'}, 'other_option': 1},
         'MFE_CONFIG': {'FX_LEARNER_THEME': True, 'OTHER': 'x'},
+        'ENABLE_LEARNER_HOME_MFE': True,
+        'FX_LEARNER_THEME_SAVED': {},
         **LEARNER_URLS,
     }
     configs.update(extra)
@@ -1343,6 +1345,59 @@ def test_apply_learner_theme_idempotent():
     assert tenants.apply_learner_theme(tenant) is False
     assert tenant.lms_configs == _active_configs()
     tenant.save.assert_not_called()
+
+
+def test_apply_learner_theme_adds_learner_home_flag_to_an_already_active_tenant():
+    """Verify a tenant activated before the hook set ENABLE_LEARNER_HOME_MFE gets the key on the next apply"""
+    lms_configs = _active_configs()
+    lms_configs.pop('ENABLE_LEARNER_HOME_MFE')
+    lms_configs.pop('FX_LEARNER_THEME_SAVED')
+    tenant = Mock(id=7, lms_configs=lms_configs)
+
+    with patch('futurex_openedx_extensions.helpers.tenants.invalidate_cache'):
+        assert tenants.apply_learner_theme(tenant) is True
+
+    assert tenant.lms_configs == _active_configs()
+    tenant.save.assert_called_once_with()
+    assert tenants.apply_learner_theme(tenant) is False
+
+
+@pytest.mark.parametrize('own_value', [True, False])
+def test_apply_learner_theme_records_own_flag_of_an_already_active_tenant(own_value):
+    """Verify a tenant activated before the hook set the key, with its own value, has that value recorded"""
+    lms_configs = _active_configs(ENABLE_LEARNER_HOME_MFE=own_value)
+    lms_configs.pop('FX_LEARNER_THEME_SAVED')
+    tenant = Mock(id=7, lms_configs=lms_configs)
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+
+    assert tenant.lms_configs == _active_configs(FX_LEARNER_THEME_SAVED={'ENABLE_LEARNER_HOME_MFE': own_value})
+    assert tenants.apply_learner_theme(tenant, save=False) is False
+
+
+@pytest.mark.parametrize('own_flag', [{}, {'ENABLE_LEARNER_HOME_MFE': True}, {'ENABLE_LEARNER_HOME_MFE': False}])
+def test_apply_learner_theme_on_then_off_restores_learner_home_flag(own_flag):
+    """Verify on (twice) then off leaves ENABLE_LEARNER_HOME_MFE exactly as the tenant had it before the theme"""
+    original = {'THEME_OPTIONS': {'theme': {'name': 'indigo'}}, 'X': 1, **own_flag}
+    tenant = Mock(id=7, lms_configs={**copy.deepcopy(original), 'theme_v2': _learner_switch(True, True)})
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['ENABLE_LEARNER_HOME_MFE'] is True
+    assert tenant.lms_configs['FX_LEARNER_THEME_SAVED'] == own_flag
+    assert tenants.apply_learner_theme(tenant, save=False) is False
+
+    tenant.lms_configs['theme_v2'] = _learner_switch(True, False)
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs == {**original, 'theme_v2': _learner_switch(True, False), 'MFE_CONFIG': {}}
+    assert tenants.apply_learner_theme(tenant, save=False) is False
+
+
+def test_apply_learner_theme_activation_replaces_invalid_saved_record():
+    """Verify activation rewrites an FX_LEARNER_THEME_SAVED that is not a dict"""
+    tenant = Mock(id=7, lms_configs=_active_configs(FX_LEARNER_THEME_SAVED='broken'))
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs == _active_configs(FX_LEARNER_THEME_SAVED={'ENABLE_LEARNER_HOME_MFE': True})
 
 
 @pytest.mark.parametrize('theme_options', [
@@ -1392,6 +1447,47 @@ def test_apply_learner_theme_deactivate_keeps_tenant_urls():
     assert tenant.lms_configs['LEARNER_HOME_MICROFRONTEND_URL'] == 'https://apps.sample.com/learner-dashboard'
     assert 'PROFILE_MICROFRONTEND_URL' not in tenant.lms_configs
     assert 'ACCOUNT_MICROFRONTEND_URL' not in tenant.lms_configs
+    assert 'ENABLE_LEARNER_HOME_MFE' not in tenant.lms_configs
+    assert 'FX_LEARNER_THEME_SAVED' not in tenant.lms_configs
+
+
+@pytest.mark.parametrize('flag_value', [False, 1, 'true'])
+def test_apply_learner_theme_deactivate_keeps_changed_learner_home_flag(flag_value):
+    """Verify switching off keeps an ENABLE_LEARNER_HOME_MFE that no longer holds the value the hook set"""
+    tenant = Mock(id=7, lms_configs=_active_configs(
+        theme_v2=_learner_switch(False, True), ENABLE_LEARNER_HOME_MFE=flag_value,
+        FX_LEARNER_THEME_SAVED={'ENABLE_LEARNER_HOME_MFE': True},
+    ))
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['ENABLE_LEARNER_HOME_MFE'] == flag_value
+    assert 'LEARNER_HOME_MICROFRONTEND_URL' not in tenant.lms_configs
+    assert 'FX_LEARNER_THEME_SAVED' not in tenant.lms_configs
+
+
+@pytest.mark.parametrize('saved', [None, 'broken'])
+def test_apply_learner_theme_deactivate_keeps_flag_the_hook_did_not_take_over(saved):
+    """Verify switching off keeps a true ENABLE_LEARNER_HOME_MFE when there is no record that the hook set it"""
+    lms_configs = _active_configs(theme_v2=_learner_switch(False, True), FX_LEARNER_THEME_SAVED=saved)
+    if saved is None:
+        lms_configs.pop('FX_LEARNER_THEME_SAVED')
+    tenant = Mock(id=7, lms_configs=lms_configs)
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['ENABLE_LEARNER_HOME_MFE'] is True
+    assert 'FX_LEARNER_THEME_SAVED' not in tenant.lms_configs
+
+
+def test_apply_learner_theme_never_active_tenant_keeps_flag_with_hook_like_url():
+    """Verify a tenant that never had the theme keeps its own flag even when its learner home URL equals ours"""
+    tenant = Mock(id=7, lms_configs={
+        'ENABLE_LEARNER_HOME_MFE': True,
+        'LEARNER_HOME_MICROFRONTEND_URL': '/learner/my',
+        'THEME_OPTIONS': {'theme': {'name': 'bragi'}},
+    })
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs == {'ENABLE_LEARNER_HOME_MFE': True, 'THEME_OPTIONS': {'theme': {'name': 'bragi'}}}
 
 
 @pytest.mark.parametrize('lms_configs', [
@@ -1399,6 +1495,9 @@ def test_apply_learner_theme_deactivate_keeps_tenant_urls():
     {'THEME_OPTIONS': {'theme': {'name': 'bragi'}}, 'MFE_CONFIG': {'A': 1}},
     {'theme_v2': _learner_switch(False, False), 'THEME_OPTIONS': {'theme': {'name': 'indigo', 'parent': 'x'}}},
     {'LMS_BASE': 's.sample.com'},
+    {'ENABLE_LEARNER_HOME_MFE': True, 'THEME_OPTIONS': {'theme': {'name': 'indigo'}}},
+    {'ENABLE_LEARNER_HOME_MFE': True, 'LEARNER_HOME_MICROFRONTEND_URL': 'https://apps.sample.com/learner-dashboard'},
+    {'theme_v2': _learner_switch(True, False), 'ENABLE_LEARNER_HOME_MFE': False},
     'not a dict',
 ])
 def test_apply_learner_theme_no_op_without_the_switch(lms_configs):
@@ -1429,6 +1528,8 @@ def test_publish_tenant_config_applies_learner_theme_in_one_save(base_data):  # 
     tenant.refresh_from_db()
     assert tenant.lms_configs['THEME_OPTIONS'] == {'theme': {'name': 'fx-learner', 'parent': 'indigo'}}
     assert tenant.lms_configs['MFE_CONFIG'] == {'FX_LEARNER_THEME': True}
+    assert tenant.lms_configs['ENABLE_LEARNER_HOME_MFE'] is True
+    assert tenant.lms_configs['FX_LEARNER_THEME_SAVED'] == {}
     assert tenant.lms_configs['theme_v2']['learner_theme'] == {'allowed': True, 'enabled': True}
     assert DraftConfig.objects.filter(tenant=tenant).count() == 0
 
