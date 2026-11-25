@@ -63,6 +63,10 @@ EFFORT_DECIMAL = re.compile(r'^\d+\.\d+$')
 
 # The link targets the learner pages may print in an href, and the colour form the theme accepts
 SAFE_URL_SCHEMES = ('http', 'https', 'mailto', 'tel')
+SCHEMELESS_HOST_URL = re.compile(
+    r'^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+'
+    r'(?::\d{1,5})?(?:[/?#].*)?$'
+)
 HEX_COLOR = re.compile(r'^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$')
 BRAND_COLOR_TYPE = 'primary_color'
 
@@ -132,8 +136,9 @@ def _config_value(lms_configs: Dict[str, Any], path: str, default: Any) -> Any:
 def safe_url(url: Any) -> str | None:
     """
     Return the URL when it is a link target the learner pages may print in an href: a site-relative path, an
-    #anchor, http(s), mailto or tel. Anything else (javascript:, data:, protocol-relative, control characters, not a
-    string) gives None. Same rule as the fx-learner theme's `safe_url`.
+    #anchor, http(s), mailto or tel. A value without a scheme that looks like a host (`www.example.sa/page`) gets
+    `https://` in front. Anything else (javascript:, data:, protocol-relative, control characters, not a string)
+    gives None. Same rule as the fx-learner theme's `safe_url`.
 
     :param url: The URL from the tenant config
     :type url: Any
@@ -147,6 +152,8 @@ def safe_url(url: Any) -> str | None:
         return None
     if url.startswith(('/', '#')):
         return url
+    if SCHEMELESS_HOST_URL.match(url):
+        return f'https://{url}'
     try:
         scheme = urlparse(url).scheme.lower()
     except ValueError:
