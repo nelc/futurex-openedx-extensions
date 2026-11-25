@@ -29,6 +29,11 @@ from futurex_openedx_extensions.helpers.extractors import (
     dot_separated_path_get_value,
     get_first_not_empty_item,
 )
+from futurex_openedx_extensions.helpers.learner_theme_switch import (
+    get_learner_theme_options,
+    restore_interactive_color,
+    take_over_interactive_color,
+)
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl, ConfigMirror, DraftConfig, TenantAsset
 from futurex_openedx_extensions.helpers.users import is_system_staff_user
 
@@ -841,22 +846,6 @@ def publish_tenant_config(tenant_id: int) -> None:
         ConfigMirror.sync_tenant(tenant=tenant)
 
 
-def get_learner_theme_options() -> Dict[str, str]:
-    """
-    Return the `THEME_OPTIONS.theme` value of an active learner theme: `fx-learner` on top of `indigo`. A tenant on
-    plain `indigo` falls back to the platform default theme (`EOX_THEMING_DEFAULT_THEME_NAME`) for templates indigo
-    does not have; that theme is kept as the grandparent so the fallback chain stays the same.
-
-    :return: The theme options
-    :rtype: Dict[str, str]
-    """
-    options = {'name': cs.LEARNER_THEME_NAME, 'parent': cs.LEARNER_THEME_PARENT_NAME}
-    default_theme = getattr(settings, 'EOX_THEMING_DEFAULT_THEME_NAME', None)
-    if default_theme and default_theme not in cs.LEARNER_THEME_SWITCHABLE_THEMES:
-        options['grandparent'] = default_theme
-    return options
-
-
 def apply_learner_theme(tenant: TenantConfig, save: bool = True) -> bool:
     """
     Switch the tenant's learner theme on or off according to its published two-level switch.
@@ -865,13 +854,16 @@ def apply_learner_theme(tenant: TenantConfig, save: bool = True) -> bool:
     theme (`THEME_OPTIONS.theme.name`) is `indigo` or `fx-learner`.
 
     - Active: `THEME_OPTIONS.theme` becomes {"name": "fx-learner", "parent": "indigo"}, the learner MFE URLs are set,
-      `ENABLE_LEARNER_HOME_MFE` is true (the platform's `/dashboard` redirects to the learner home only when it is)
-      and `MFE_CONFIG.FX_LEARNER_THEME` is true. The first time, the tenant's own `ENABLE_LEARNER_HOME_MFE` is
-      recorded in `FX_LEARNER_THEME_SAVED`: {} when it had none, {"ENABLE_LEARNER_HOME_MFE": <value>} otherwise.
+      `ENABLE_LEARNER_HOME_MFE` is true (the platform's `/dashboard` redirects to the learner home only when it is),
+      `MFE_CONFIG.FX_LEARNER_THEME` is true and `THEME_OPTIONS.interactive_color` (the colour every MFE gets) is the
+      learner pages' brand colour (`get_effective_brand_color`). The tenant's own values are recorded once in
+      `FX_LEARNER_THEME_SAVED`: `ENABLE_LEARNER_HOME_MFE` when it had one, and "THEME_OPTIONS.interactive_color"
+      (null when it had none).
     - Switched on, but the current theme is neither indigo nor fx-learner: nothing changes and a warning is logged.
     - Not active: fx-learner goes back to {"name": "indigo"}, the MFE flag and `FX_LEARNER_THEME_SAVED` are removed,
-      the URL keys are removed only when they still hold the values set here, and `ENABLE_LEARNER_HOME_MFE` goes
-      back to the recorded tenant value (removed when none) only when a record exists and the key is still true.
+      the URL keys are removed only when they still hold the values set here, `ENABLE_LEARNER_HOME_MFE` goes back
+      to the recorded tenant value (removed when none) only when a record exists and the key is still true, and
+      `THEME_OPTIONS.interactive_color` goes back to the recorded tenant value (removed when none) when recorded.
 
     Other keys inside THEME_OPTIONS and MFE_CONFIG are preserved. The function is idempotent.
 
@@ -909,7 +901,10 @@ def apply_learner_theme(tenant: TenantConfig, save: bool = True) -> bool:
         new_configs.update(cs.LEARNER_THEME_MFE_URLS)
         saved = new_configs.get(cs.LEARNER_THEME_SAVED_KEY)
         own = {key: new_configs[key] for key in [cs.LEARNER_THEME_LEARNER_HOME_FLAG] if key in new_configs}
-        new_configs[cs.LEARNER_THEME_SAVED_KEY] = saved if isinstance(saved, dict) else own
+        saved = saved if isinstance(saved, dict) else own
+        _, visual_identity = dot_separated_path_get_value(new_configs, 'theme_v2.visual_identity')
+        take_over_interactive_color(theme_options, saved, visual_identity)
+        new_configs[cs.LEARNER_THEME_SAVED_KEY] = saved
         new_configs[cs.LEARNER_THEME_LEARNER_HOME_FLAG] = True
         if not isinstance(mfe_config, dict):
             mfe_config = {}
@@ -921,6 +916,7 @@ def apply_learner_theme(tenant: TenantConfig, save: bool = True) -> bool:
             theme_options['theme'] = {'name': cs.LEARNER_THEME_PARENT_NAME}
             new_configs['THEME_OPTIONS'] = theme_options
         saved = new_configs.pop(cs.LEARNER_THEME_SAVED_KEY, None)
+        restore_interactive_color(new_configs, theme_options, saved)
         if isinstance(saved, dict) and new_configs.get(cs.LEARNER_THEME_LEARNER_HOME_FLAG) is True:
             new_configs.pop(cs.LEARNER_THEME_LEARNER_HOME_FLAG)
             new_configs.update(saved)

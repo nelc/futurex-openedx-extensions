@@ -13,6 +13,7 @@ from completion_aggregator.models import Aggregator
 from custom_reg_form.models import ExtraInfo
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.test import override_settings
 from django.utils import timezone
 from eox_tenant.models import TenantConfig
 from opaque_keys.edx.keys import CourseKey
@@ -149,6 +150,26 @@ def test_get_brand_color(visual_identity, expected):
     assert lt.get_brand_color(visual_identity) == expected
 
 
+@pytest.mark.parametrize('visual_identity, expected', [
+    ({'colors': [{'color_type': 'primary_color', 'hex': '#0a7d4f'}]}, '#0a7d4f'),
+    ({'colors': [{'color_type': 'primary_color', 'hex': '#0A7D4F'}]}, '#0A7D4F'),
+    ({'colors': [{'color_type': 'primary_color', 'hex': '#Fa0'}]}, '#FFaa00'),
+    ({'colors': [{'color_type': 'primary_color', 'hex': '#4600C7'}]}, '#1B8354'),
+    ({'colors': [{'color_type': 'primary_color', 'hex': '#4600c7'}]}, '#1B8354'),
+    ({'colors': [{'color_type': 'primary_color', 'hex': '#4600C8'}]}, '#4600C8'),
+    ({'colors': [{'color_type': 'primary_color', 'hex': 'red'}]}, '#1B8354'),
+    ({'colors': [{'color_type': 'button_color', 'hex': '#3b85ff'}]}, '#1B8354'),
+    ({}, '#1B8354'),
+    (None, '#1B8354'),
+])
+def test_get_effective_brand_color(visual_identity, expected):
+    """
+    Verify the learner pages' colour: the tenant's own primary colour as 6-digit hex, else the design colour; a
+    stock default of the theme designer is not the tenant's own
+    """
+    assert lt.get_effective_brand_color(visual_identity) == expected
+
+
 FULL_THEME_CONFIG = {
     'PLATFORM_NAME': 'Platform',
     'logo_image_url': 'https://cdn.sample.com/logo.png',
@@ -245,7 +266,7 @@ def test_get_learner_theme_shell_defaults(base_data):  # pylint: disable=unused-
 
     assert shell['active'] is False
     assert shell['logo_url'] is None
-    assert shell['brand_color'] is None
+    assert shell['brand_color'] == '#1B8354'
     assert shell['site_name'] == {'ar': '', 'en': ''}
     assert shell['nav'] == []
     assert shell['footer'] == {
@@ -628,7 +649,13 @@ def test_get_learner_theme_program(_, base_data):  # pylint: disable=unused-argu
     )
     CourseOverview.objects.filter(id='course-v1:ORG1+3+3').update(catalog_visibility='none')
 
-    program = lt.get_learner_theme_program(_request(), 'course-v1:ORG1+4+4')
+    with override_settings(LEARNING_MICROFRONTEND_URL='https://apps.sample.com/learning/'):
+        program = lt.get_learner_theme_program(_request(), 'course-v1:ORG1+4+4')
+    assert set(program) == PROGRAM_KEYS | {'learning_url'}
+    assert program['learning_url'] == 'https://apps.sample.com/learning/course/course-v1:ORG1+4+4/home'
+    assert lt.get_learner_theme_program(_request(), 'course-v1:ORG1+4+4')['learning_url'] == (
+        'https://s1.sample.com/courses/course-v1:ORG1+4+4/courseware'
+    )
     assert lt.get_learner_theme_program(_request(), 'course-v1:ORG1+5+5')['id'] == 'course-v1:ORG1+5+5'
     assert lt.get_learner_theme_program(_request(), 'course-v1:ORG1+3+3') is None
     assert program['id'] == 'course-v1:ORG1+4+4'
@@ -691,7 +718,37 @@ def test_get_learner_certificates_data(base_data):  # pylint: disable=unused-arg
     mock_api.assert_not_called()
 
 
+@pytest.mark.parametrize('setting, expected', [
+    ('https://apps.sample.com/learning', 'https://apps.sample.com/learning/course/course-v1:O+1+1/home'),
+    ('HTTP://apps.sample.com/learning/', 'HTTP://apps.sample.com/learning/course/course-v1:O+1+1/home'),
+    ('/learning', '/learning/course/course-v1:O+1+1/home'),
+    (' /learning// ', '/learning/course/course-v1:O+1+1/home'),
+    (None, '/courses/course-v1:O+1+1/courseware'),
+    ('', '/courses/course-v1:O+1+1/courseware'),
+    ('/', '/courses/course-v1:O+1+1/courseware'),
+    ('None', '/courses/course-v1:O+1+1/courseware'),
+    ('//evil.sample.com/learning', '/courses/course-v1:O+1+1/courseware'),
+    ('javascript:alert(1)', '/courses/course-v1:O+1+1/courseware'),
+    ('apps.sample.com/learning', '/courses/course-v1:O+1+1/courseware'),
+    (123, '/courses/course-v1:O+1+1/courseware'),
+])
+def test_get_course_home_url(setting, expected):
+    """
+    Verify the course home is built from the learning MFE setting (absolute or site-relative), and that an empty or
+    unusable setting gives the legacy courseware URL
+    """
+    with override_settings(LEARNING_MICROFRONTEND_URL=setting):
+        assert lt.get_course_home_url(CourseKey.from_string('course-v1:O+1+1')) == expected
+
+
+def test_get_course_home_url_setting_not_defined(settings):
+    """Verify the legacy courseware URL when the platform does not define the learning MFE setting"""
+    del settings.LEARNING_MICROFRONTEND_URL
+    assert lt.get_course_home_url('course-v1:O+1+1') == '/courses/course-v1:O+1+1/courseware'
+
+
 @pytest.mark.django_db
+@override_settings(LEARNING_MICROFRONTEND_URL='/learning')
 def test_get_learner_programs(base_data):  # pylint: disable=unused-argument
     """Verify the learner's own programs in the request's tenant, with stats and the course to resume"""
     user = get_user_model().objects.get(id=15)
@@ -716,7 +773,7 @@ def test_get_learner_programs(base_data):  # pylint: disable=unused-argument
     assert result['resume'] == {
         'title': 'Course 7 of ORG2',
         'progress_percent': 43,
-        'resume_url': '/courses/course-v1:ORG2+7+7/courseware',
+        'resume_url': 'https://s1.sample.com/learning/course/course-v1:ORG2+7+7/home',
     }
     assert sorted(result['results'], key=lambda item: item['course_id']) == [
         {
@@ -726,7 +783,7 @@ def test_get_learner_programs(base_data):  # pylint: disable=unused-argument
             'progress_percent': 0,
             'next_step': None,
             'pass_grade_percent': None,
-            'resume_url': '/courses/course-v1:ORG1+5+5/courseware',
+            'resume_url': 'https://s1.sample.com/learning/course/course-v1:ORG1+5+5/home',
             'completed': True,
             'certificate_url': 'https://s1.sample.com/certificates/abc',
         },
@@ -737,7 +794,7 @@ def test_get_learner_programs(base_data):  # pylint: disable=unused-argument
             'progress_percent': 43,
             'next_step': None,
             'pass_grade_percent': 60,
-            'resume_url': '/courses/course-v1:ORG2+7+7/courseware',
+            'resume_url': 'https://s1.sample.com/learning/course/course-v1:ORG2+7+7/home',
             'completed': False,
             'certificate_url': None,
         },
@@ -757,6 +814,7 @@ def test_get_learner_programs_resume_most_recent(base_data):  # pylint: disable=
         result = lt.get_learner_programs(_request(user=user))
 
     assert result['resume']['title'] == 'Course 4 of ORG2'
+    assert result['resume']['resume_url'] == 'https://s1.sample.com/courses/course-v1:ORG2+4+4/courseware'
     assert [item['course_id'] for item in result['results'] if item['completed']] == ['course-v1:ORG1+4+4']
 
 

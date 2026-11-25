@@ -1293,18 +1293,28 @@ def _learner_switch(allowed, enabled):
     return {'learner_theme': {'allowed': allowed, 'enabled': enabled}, 'other': 'kept'}
 
 
+SAVED_COLOR = 'THEME_OPTIONS.interactive_color'
+
+
 def _active_configs(**extra):
     """Return the lms_configs of a tenant with the learner theme active"""
     configs = {
         'theme_v2': _learner_switch(True, True),
-        'THEME_OPTIONS': {'theme': {'name': 'fx-learner', 'parent': 'indigo'}, 'other_option': 1},
+        'THEME_OPTIONS': {
+            'theme': {'name': 'fx-learner', 'parent': 'indigo'}, 'other_option': 1, 'interactive_color': '#1B8354',
+        },
         'MFE_CONFIG': {'FX_LEARNER_THEME': True, 'OTHER': 'x'},
         'ENABLE_LEARNER_HOME_MFE': True,
-        'FX_LEARNER_THEME_SAVED': {},
+        'FX_LEARNER_THEME_SAVED': {SAVED_COLOR: None},
         **LEARNER_URLS,
     }
     configs.update(extra)
     return configs
+
+
+def _visual_identity(primary_color):
+    """Return a theme_v2.visual_identity with the given primary colour"""
+    return {'colors': [{'color_type': 'primary_color', 'hex': primary_color}]}
 
 
 @pytest.mark.parametrize('theme_name', ['indigo', 'fx-learner'])
@@ -1335,6 +1345,7 @@ def test_apply_learner_theme_activates_without_mfe_config():
 
     assert tenants.apply_learner_theme(tenant, save=False) is True
     assert tenant.lms_configs['MFE_CONFIG'] == {'FX_LEARNER_THEME': True}
+    assert tenant.lms_configs['THEME_OPTIONS']['interactive_color'] == '#1B8354'
     tenant.save.assert_not_called()
 
 
@@ -1352,6 +1363,7 @@ def test_apply_learner_theme_adds_learner_home_flag_to_an_already_active_tenant(
     lms_configs = _active_configs()
     lms_configs.pop('ENABLE_LEARNER_HOME_MFE')
     lms_configs.pop('FX_LEARNER_THEME_SAVED')
+    lms_configs['THEME_OPTIONS'].pop('interactive_color')
     tenant = Mock(id=7, lms_configs=lms_configs)
 
     with patch('futurex_openedx_extensions.helpers.tenants.invalidate_cache'):
@@ -1371,7 +1383,9 @@ def test_apply_learner_theme_records_own_flag_of_an_already_active_tenant(own_va
 
     assert tenants.apply_learner_theme(tenant, save=False) is True
 
-    assert tenant.lms_configs == _active_configs(FX_LEARNER_THEME_SAVED={'ENABLE_LEARNER_HOME_MFE': own_value})
+    assert tenant.lms_configs == _active_configs(
+        FX_LEARNER_THEME_SAVED={'ENABLE_LEARNER_HOME_MFE': own_value, SAVED_COLOR: '#1B8354'},
+    )
     assert tenants.apply_learner_theme(tenant, save=False) is False
 
 
@@ -1383,7 +1397,7 @@ def test_apply_learner_theme_on_then_off_restores_learner_home_flag(own_flag):
 
     assert tenants.apply_learner_theme(tenant, save=False) is True
     assert tenant.lms_configs['ENABLE_LEARNER_HOME_MFE'] is True
-    assert tenant.lms_configs['FX_LEARNER_THEME_SAVED'] == own_flag
+    assert tenant.lms_configs['FX_LEARNER_THEME_SAVED'] == {**own_flag, SAVED_COLOR: None}
     assert tenants.apply_learner_theme(tenant, save=False) is False
 
     tenant.lms_configs['theme_v2'] = _learner_switch(True, False)
@@ -1397,7 +1411,107 @@ def test_apply_learner_theme_activation_replaces_invalid_saved_record():
     tenant = Mock(id=7, lms_configs=_active_configs(FX_LEARNER_THEME_SAVED='broken'))
 
     assert tenants.apply_learner_theme(tenant, save=False) is True
-    assert tenant.lms_configs == _active_configs(FX_LEARNER_THEME_SAVED={'ENABLE_LEARNER_HOME_MFE': True})
+    assert tenant.lms_configs == _active_configs(
+        FX_LEARNER_THEME_SAVED={'ENABLE_LEARNER_HOME_MFE': True, SAVED_COLOR: '#1B8354'},
+    )
+
+
+@pytest.mark.parametrize('own_options, primary_color, expected_color', [
+    ({}, None, '#1B8354'),
+    ({'interactive_color': '#3b85ff'}, None, '#1B8354'),
+    ({'interactive_color': '#3b85ff'}, '#4600C7', '#1B8354'),
+    ({'interactive_color': '#3b85ff'}, '#a1b', '#aa11bb'),
+    ({}, '#0A7D4F', '#0A7D4F'),
+    ({'interactive_color': None}, '#0A7D4F', '#0A7D4F'),
+])
+def test_apply_learner_theme_interactive_color_on_then_off(own_options, primary_color, expected_color):
+    """
+    Verify the hook sets the colour the MFEs get (THEME_OPTIONS.interactive_color) to the learner pages' brand
+    colour while the theme is on, and that switching off leaves the tenant's own value exactly as it was
+    """
+    original = {'THEME_OPTIONS': {'theme': {'name': 'indigo'}, **own_options}, 'theme_v2': {}}
+    if primary_color:
+        original['theme_v2']['visual_identity'] = _visual_identity(primary_color)
+    lms_configs = copy.deepcopy(original)
+    lms_configs['theme_v2'].update(_learner_switch(True, True))
+    tenant = Mock(id=7, lms_configs=lms_configs)
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['THEME_OPTIONS']['interactive_color'] == expected_color
+    assert tenant.lms_configs['FX_LEARNER_THEME_SAVED'] == {SAVED_COLOR: own_options.get('interactive_color')}
+    assert tenants.apply_learner_theme(tenant, save=False) is False
+
+    tenant.lms_configs['theme_v2'].update(_learner_switch(True, False))
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    if own_options == {'interactive_color': None}:
+        original['THEME_OPTIONS'].pop('interactive_color')
+    original['theme_v2'].update(_learner_switch(True, False))
+    assert tenant.lms_configs == {**original, 'MFE_CONFIG': {}}
+    assert tenants.apply_learner_theme(tenant, save=False) is False
+
+
+def test_apply_learner_theme_interactive_color_follows_published_primary_color():
+    """Verify a primary colour published while the theme is on reaches the MFEs, without touching the record"""
+    lms_configs = _active_configs(FX_LEARNER_THEME_SAVED={SAVED_COLOR: '#3b85ff'})
+    lms_configs['theme_v2']['visual_identity'] = _visual_identity('#0A7D4F')
+    tenant = Mock(id=7, lms_configs=lms_configs)
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['THEME_OPTIONS']['interactive_color'] == '#0A7D4F'
+    assert tenant.lms_configs['FX_LEARNER_THEME_SAVED'] == {SAVED_COLOR: '#3b85ff'}
+
+    tenant.lms_configs['theme_v2']['visual_identity'] = _visual_identity('#4600C7')
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['THEME_OPTIONS']['interactive_color'] == '#1B8354'
+    assert tenant.lms_configs['FX_LEARNER_THEME_SAVED'] == {SAVED_COLOR: '#3b85ff'}
+
+
+@pytest.mark.parametrize('own_options', [{}, {'interactive_color': '#3b85ff'}])
+def test_apply_learner_theme_records_own_interactive_color_of_an_already_active_tenant(own_options):
+    """Verify a tenant activated before the hook set the colour has its own colour recorded on the next apply"""
+    lms_configs = _active_configs(FX_LEARNER_THEME_SAVED={'ENABLE_LEARNER_HOME_MFE': False})
+    lms_configs['THEME_OPTIONS'].pop('interactive_color')
+    lms_configs['THEME_OPTIONS'].update(own_options)
+    tenant = Mock(id=7, lms_configs=lms_configs)
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs == _active_configs(FX_LEARNER_THEME_SAVED={
+        'ENABLE_LEARNER_HOME_MFE': False, SAVED_COLOR: own_options.get('interactive_color'),
+    })
+    assert tenants.apply_learner_theme(tenant, save=False) is False
+
+    tenant.lms_configs['theme_v2'] = _learner_switch(True, False)
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['THEME_OPTIONS'] == {'theme': {'name': 'indigo'}, 'other_option': 1, **own_options}
+    assert tenant.lms_configs['ENABLE_LEARNER_HOME_MFE'] is False
+
+
+def test_apply_learner_theme_deactivate_keeps_interactive_color_without_a_record():
+    """Verify switching off leaves the colour alone when the hook has no record of taking it over"""
+    tenant = Mock(id=7, lms_configs=_active_configs(
+        theme_v2=_learner_switch(True, False), FX_LEARNER_THEME_SAVED={},
+    ))
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs['THEME_OPTIONS'] == {
+        'theme': {'name': 'indigo'}, 'other_option': 1, 'interactive_color': '#1B8354',
+    }
+
+
+@pytest.mark.parametrize('theme_options, saved_color, expected', [
+    ('broken', '#3b85ff', {'interactive_color': '#3b85ff'}),
+    ('broken', None, 'broken'),
+])
+def test_apply_learner_theme_deactivate_restores_color_into_broken_theme_options(theme_options, saved_color, expected):
+    """Verify switching off restores a recorded colour even when THEME_OPTIONS is no longer a dict"""
+    tenant = Mock(id=7, lms_configs={
+        'theme_v2': _learner_switch(True, False),
+        'THEME_OPTIONS': theme_options,
+        'FX_LEARNER_THEME_SAVED': {SAVED_COLOR: saved_color},
+    })
+
+    assert tenants.apply_learner_theme(tenant, save=False) is True
+    assert tenant.lms_configs == {'theme_v2': _learner_switch(True, False), 'THEME_OPTIONS': expected}
 
 
 @pytest.mark.parametrize('theme_options', [
@@ -1515,21 +1629,26 @@ def test_publish_tenant_config_applies_learner_theme_in_one_save(base_data):  # 
     tenant = TenantConfig.objects.get(id=1)
     tenant.lms_configs['THEME_OPTIONS'] = {'theme': {'name': 'indigo'}}
     tenant.save()
-    for path in ('theme_v2.learner_theme.allowed', 'theme_v2.learner_theme.enabled'):
+    for path, value in (
+        ('theme_v2.learner_theme.allowed', True),
+        ('theme_v2.learner_theme.enabled', True),
+        ('theme_v2.visual_identity', _visual_identity('#0A7D4F')),
+    ):
         DraftConfig.objects.create(
-            tenant=tenant, config_path=path, config_value=True, created_by_id=1, updated_by_id=1,
+            tenant=tenant, config_path=path, config_value=value, created_by_id=1, updated_by_id=1,
         )
 
     with patch('futurex_openedx_extensions.helpers.tenants.ConfigMirror.sync_tenant') as mock_sync:
         tenants.publish_tenant_config(tenant_id=tenant.id)
 
     synced_tenant = mock_sync.call_args[1]['tenant']
-    assert synced_tenant.lms_configs['THEME_OPTIONS'] == {'theme': {'name': 'fx-learner', 'parent': 'indigo'}}
+    expected_theme_options = {'theme': {'name': 'fx-learner', 'parent': 'indigo'}, 'interactive_color': '#0A7D4F'}
+    assert synced_tenant.lms_configs['THEME_OPTIONS'] == expected_theme_options
     tenant.refresh_from_db()
-    assert tenant.lms_configs['THEME_OPTIONS'] == {'theme': {'name': 'fx-learner', 'parent': 'indigo'}}
+    assert tenant.lms_configs['THEME_OPTIONS'] == expected_theme_options
     assert tenant.lms_configs['MFE_CONFIG'] == {'FX_LEARNER_THEME': True}
     assert tenant.lms_configs['ENABLE_LEARNER_HOME_MFE'] is True
-    assert tenant.lms_configs['FX_LEARNER_THEME_SAVED'] == {}
+    assert tenant.lms_configs['FX_LEARNER_THEME_SAVED'] == {SAVED_COLOR: None}
     assert tenant.lms_configs['theme_v2']['learner_theme'] == {'allowed': True, 'enabled': True}
     assert DraftConfig.objects.filter(tenant=tenant).count() == 0
 
