@@ -486,13 +486,24 @@ class CourseMode(models.Model):
     mode_display_name = models.CharField(max_length=255)
     min_price = models.IntegerField(default=0)
     currency = models.CharField(default='usd', max_length=8)
-    expiration_datetime = models.DateTimeField(default=None, null=True, blank=True)
+    # same as the platform: the field is `_expiration_datetime`, `expiration_datetime` is only a property
+    _expiration_datetime = models.DateTimeField(default=None, null=True, blank=True, db_column='expiration_datetime')
     sku = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         app_label = 'fake_models'
         db_table = 'course_modes_coursemode'
         unique_together = ('course', 'mode_slug', 'currency')
+
+    @property
+    def expiration_datetime(self):
+        """Return _expiration_datetime."""
+        return self._expiration_datetime
+
+    @expiration_datetime.setter
+    def expiration_datetime(self, new_datetime):
+        """Save the datetime to _expiration_datetime."""
+        self._expiration_datetime = new_datetime
 
     @classmethod
     def modes_for_course(

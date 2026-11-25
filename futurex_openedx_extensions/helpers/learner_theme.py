@@ -464,7 +464,7 @@ def get_course_prices(course_ids: List[Any]) -> Dict[str, Tuple[int, str | None]
     :rtype: Dict[str, Tuple[int, str | None]]
     """
     paid_modes = CourseMode.objects.filter(course_id__in=course_ids, min_price__gt=0).filter(
-        Q(expiration_datetime__isnull=True) | Q(expiration_datetime__gt=now()),
+        Q(_expiration_datetime__isnull=True) | Q(_expiration_datetime__gt=now()),
     ).order_by('min_price', 'id').values_list('course_id', 'min_price', 'currency')
     result: Dict[str, Tuple[int, str | None]] = {}
     for course_id, price, currency in paid_modes:
