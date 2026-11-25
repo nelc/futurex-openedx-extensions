@@ -94,7 +94,27 @@ def test_resolve_link(link, expected):
     ('vbscript:x', None),
     ('//evil.sa', None),
     ('/\\evil.sa', None),
-    ('x.sa/page', None),
+    ('x.sa/page', 'https://x.sa/page'),
+    ('www.example.sa', 'https://www.example.sa'),
+    ('  www.example.sa  ', 'https://www.example.sa'),
+    ('example.com/path?a=1', 'https://example.com/path?a=1'),
+    ('x.com/name', 'https://x.com/name'),
+    ('sub.domain.org:8443/x', 'https://sub.domain.org:8443/x'),
+    ('JaVaScRiPt:x', None),
+    ('data:text/html,x', None),
+    ('//evil.com', None),
+    ('/\\evil.com', None),
+    ('www.exa mple.sa', None),
+    ('www.example.sa\n/x', None),
+    ('www.example.sa\x00', None),
+    ('javascript:alert(1).com', None),
+    ('user@example.com', None),
+    ('faq', None),
+    ('example.com:alert(1)', None),
+    ('localhost:8000', None),
+    ('example.com/a b', None),
+    ('example.com/a\u00a0b', None),
+    ('a.b:\u0668\u0660', None),
     ('http://[bad', None),
     ('', None),
     ('   ', None),
@@ -103,7 +123,7 @@ def test_resolve_link(link, expected):
     ({'page': 'home'}, None),
 ])
 def test_safe_url(url, expected):
-    """Verify only site-relative paths, anchors, http(s), mailto and tel survive"""
+    """Verify only site-relative paths, anchors, http(s), mailto and tel survive, and a bare host gets https://"""
     assert lt.safe_url(url) == expected
 
 
