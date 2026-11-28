@@ -14,6 +14,15 @@ Change Log
 Unreleased
 **********
 
+* Tenant registration fields. New endpoint ``config/v1/registration_fields/<tenant_id>/`` reads and writes a
+  tenant's custom registration fields (name, ar/en label, required/optional/hidden, dropdown options) as one
+  validated set; writes are for system staff only. Learner responses (learners list, learner info, learners of a
+  course, enrollments) and their CSV export gain ``custom_fields`` with the fields of the tenants in the caller's
+  scope.
+* Role-assigned e-mail. When the roles API creates role records for a user, one tenant-branded e-mail is queued per
+  user and tenant (edx-ace message ``RoleAssigned``); already-held roles and removals send nothing. Tenant setting
+  ``ROLE_ASSIGNED_EMAIL_ENABLED`` turns it off when exactly ``false``. No migration. Version 0.13.20.
+
 * Per-tenant learner theme. New config keys ``learner_theme_allowed`` (``staff_only``: readable by tenant staff,
   writable by system staff only), ``learner_theme_enabled`` and ``entity_identity``. When both switches are on,
   publishing sets the tenant's theme to ``fx-learner`` (parent ``indigo``), the learner MFE URLs,
