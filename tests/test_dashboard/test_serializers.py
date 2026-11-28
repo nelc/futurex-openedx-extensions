@@ -13,10 +13,13 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.db.models import Value
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django.utils.timezone import get_current_timezone, now, timedelta
+from eox_tenant.models import TenantConfig
 from lms.djangoapps.grades.models import PersistentSubsectionGrade
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
@@ -281,6 +284,104 @@ def test_learner_details_serializer(base_data):  # pylint: disable=unused-argume
     assert len(data) == 1
     assert data[0]['enrolled_courses_count'] == 6
     assert data[0]['certificates_count'] == 2
+
+
+def _custom_fields_context(tenant_ids, tags=None):
+    """Helper to build a serializer context with the tenants in scope"""
+    return {
+        'request': Mock(
+            fx_permission_info={'view_allowed_tenant_ids_any_access': tenant_ids},
+            method='GET',
+            query_params={'optional_field_tags': ','.join(tags or [])},
+        ),
+    }
+
+
+@pytest.fixture
+def custom_fields_data(base_data):  # pylint: disable=unused-argument
+    """Tenants 1 and 7 with custom fields, and profile meta for users 10 and 11"""
+    for tenant_id, names in [(1, ['region', 'employer']), (7, ['region', 'level'])]:
+        tenant = TenantConfig.objects.get(id=tenant_id)
+        tenant.lms_configs['extended_profile_fields'] = names
+        tenant.save()
+    UserProfile.objects.create(user_id=10, meta='{"region": "riyadh", "secret": "x", "level": "a"}')
+    UserProfile.objects.create(user_id=11, meta='not json')
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('tenant_ids, expected', [
+    ([1], {10: {'region': 'riyadh', 'employer': None}, 11: {'region': None, 'employer': None}}),
+    ([1, 7], {
+        10: {'employer': None, 'level': 'a', 'region': 'riyadh'},
+        11: {'employer': None, 'level': None, 'region': None},
+    }),
+    ([2], {10: {}, 11: {}}),
+])
+def test_learner_basic_details_serializer_custom_fields(
+    custom_fields_data, tenant_ids, expected,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that only the field names of the tenants in scope are returned, never other meta keys"""
+    data = serializers.LearnerBasicDetailsSerializer(
+        get_dummy_queryset([10, 11]), many=True, context=_custom_fields_context(tenant_ids),
+    ).data
+    assert {item['user_id']: item['custom_fields'] for item in data} == expected
+
+
+@pytest.mark.django_db
+def test_learner_basic_details_serializer_custom_fields_no_scope(
+    custom_fields_data,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify an empty dict without a request, without permission info, and for a user without a profile"""
+    assert serializers.LearnerBasicDetailsSerializer(get_dummy_queryset([10]).first()).data['custom_fields'] == {}
+    data = serializers.LearnerBasicDetailsSerializer(
+        get_dummy_queryset([10]), many=True, context={'request': Mock(fx_permission_info=None)},
+    ).data
+    assert data[0]['custom_fields'] == {}
+    data = serializers.LearnerBasicDetailsSerializer(
+        get_dummy_queryset([12]), many=True, context=_custom_fields_context([1]),
+    ).data
+    assert data[0]['custom_fields'] == {'region': None, 'employer': None}
+
+
+@pytest.mark.django_db
+def test_learner_basic_details_serializer_custom_fields_meta_not_dict(
+    custom_fields_data,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that a meta holding a JSON value other than an object is read as empty"""
+    UserProfile.objects.filter(user_id=10).update(meta='["region"]')
+    data = serializers.LearnerBasicDetailsSerializer(
+        get_dummy_queryset([10]), many=True, context=_custom_fields_context([1]),
+    ).data
+    assert data[0]['custom_fields'] == {'region': None, 'employer': None}
+
+
+@pytest.mark.django_db
+def test_learner_basic_details_serializer_custom_fields_csv_export(
+    custom_fields_data,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that the csv_export tag turns custom_fields into one column per field"""
+    data = serializers.LearnerDetailsSerializer(
+        get_dummy_queryset([10]), many=True, context=_custom_fields_context([1], tags=['csv_export']),
+    ).data
+    assert 'custom_fields' not in data[0]
+    assert data[0]['custom_field - region'] == 'riyadh'
+    assert data[0]['custom_field - employer'] is None
+
+
+@pytest.mark.django_db
+def test_learner_basic_details_serializer_custom_fields_query_count(
+    custom_fields_data,
+):  # pylint: disable=unused-argument, redefined-outer-name
+    """Verify that custom_fields adds no query per row"""
+    def _count_queries(user_ids):
+        queryset = get_dummy_queryset(user_ids)
+        with CaptureQueriesContext(connection) as queries:
+            _ = serializers.LearnerBasicDetailsSerializer(
+                queryset, many=True, context=_custom_fields_context([1]),
+            ).data
+        return len(queries)
+
+    assert _count_queries([10]) == _count_queries([10, 11, 12, 13])
 
 
 @pytest.mark.django_db

@@ -733,3 +733,97 @@ class TestSetThemePreviewCookieView(APITestCase):
         content = response.content.decode()
         assert '</script><script>alert(1)' not in content
         assert 'window.location.href = "/p\\u0022\\u003C/script\\u003E' in content
+
+
+@pytest.mark.usefixtures('base_data')
+class TestRegistrationFieldsView(BaseTestViewMixin):
+    """Tests for RegistrationFieldsView"""
+    VIEW_NAME = 'fx_dashboard:registration-fields'
+    FIELDS = [{
+        'name': 'region', 'label': {'ar': 'المنطقة', 'en': 'Region'}, 'required': True, 'hidden': False,
+        'options': ['Riyadh', 'Makkah'],
+    }]
+
+    def setUp(self):
+        """Setup"""
+        super().setUp()
+        self.url_args = [1]
+        tenant = TenantConfig.objects.get(id=1)
+        tenant.lms_configs['REGISTRATION_EXTRA_FIELDS'] = {'national_id': 'hidden'}
+        tenant.save()
+
+    def test_get_empty(self):
+        """Verify a tenant without custom fields"""
+        self.login_user(self.staff_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json(), {'tenant_id': 1, 'fields': []})
+
+    def test_put_then_get(self):
+        """Verify that system staff can write the fields and read them back, with stock entries kept"""
+        self.login_user(self.staff_user)
+        response = self.client.put(self.url, data={'fields': self.FIELDS}, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK, response.data)
+        self.assertEqual(response.json(), {'tenant_id': 1, 'fields': self.FIELDS})
+        self.assertEqual(
+            TenantConfig.objects.get(id=1).lms_configs['REGISTRATION_EXTRA_FIELDS'],
+            {'national_id': 'hidden', 'region': 'required'},
+        )
+
+        self.login_user(3)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(response.json(), {'tenant_id': 1, 'fields': self.FIELDS})
+
+    def test_put_tenant_admin_forbidden(self):
+        """Verify that a tenant admin can read but not write"""
+        self.login_user(3)
+        response = self.client.put(self.url, data={'fields': self.FIELDS}, format='json')
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['reason'], 'Registration fields can be changed by system staff only.')
+        self.assertNotIn('extended_profile_fields', TenantConfig.objects.get(id=1).lms_configs)
+
+    def test_no_tenant_access(self):
+        """Verify that a user without access to the tenant is refused"""
+        self.login_user(10)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['reason'], 'User does not have access to the tenant (1)')
+
+    def test_partial_access_forbidden(self):
+        """Verify that a user with access to some courses of the tenant only is refused"""
+        self.login_user(9)
+        for response in [
+            self.client.get(self.url),
+            self.client.put(self.url, data={'fields': self.FIELDS}, format='json'),
+        ]:
+            self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+            self.assertEqual(response.data['reason'], 'User does not have required access for tenant (1)')
+
+    def test_put_invalid(self):
+        """Verify that an invalid payload is refused with the reason and nothing is written"""
+        self.login_user(self.staff_user)
+        response = self.client.put(
+            self.url, data={'fields': [{**self.FIELDS[0], 'name': 'national_id'}]}, format='json',
+        )
+        self.assertEqual(response.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data['reason'],
+            f'({FXExceptionCodes.INVALID_INPUT.value}) fields[0].name (national_id) is a stock registration field '
+            'and cannot be a custom field.',
+        )
+        self.assertNotIn('extended_profile_fields', TenantConfig.objects.get(id=1).lms_configs)
+
+    def test_tenant_not_found(self):
+        """Verify 404 when the tenant disappears after the access check"""
+        self.login_user(self.staff_user)
+        not_found = FXCodedException(code=FXExceptionCodes.TENANT_NOT_FOUND, message='Unable to find tenant')
+        with patch('futurex_openedx_extensions.dashboard.views.configs.get_tenant_lms_configs') as mock_get:
+            mock_get.side_effect = not_found
+            self.assertEqual(self.client.get(self.url).status_code, http_status.HTTP_404_NOT_FOUND)
+        with patch(
+            'futurex_openedx_extensions.dashboard.views.configs.update_tenant_registration_fields'
+        ) as mock_update:
+            mock_update.side_effect = not_found
+            response = self.client.put(self.url, data={'fields': []}, format='json')
+            self.assertEqual(response.status_code, http_status.HTTP_404_NOT_FOUND)

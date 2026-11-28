@@ -13,6 +13,7 @@ CACHE_NAME_TENANT_READABLE_LMS_CONFIG = 'fx_config_tenant_lms_config'
 CACHE_NAME_COURSES_RATINGS = 'fx_courses_ratings'
 CACHE_NAME_LEARNER_THEME_SHELL = 'fx_learner_theme_shell'
 CACHE_NAME_LEARNER_THEME_CATALOG = 'fx_learner_theme_catalog'
+CACHE_NAME_ALL_EXTENDED_PROFILE_FIELDS = 'fx_extended_profile_fields'
 
 CACHE_NAMES = {
     CACHE_NAME_ALL_COURSE_ORG_FILTER_LIST: {
@@ -30,7 +31,11 @@ CACHE_NAMES = {
     CACHE_NAME_ORG_TO_TENANT_MAP: {
         'short_description': 'Organization to Tenant Mapping',
         'long_description': 'Mapping of organization to tenant',
-    }
+    },
+    CACHE_NAME_ALL_EXTENDED_PROFILE_FIELDS: {
+        'short_description': 'Custom Registration Fields',
+        'long_description': 'Names of the custom registration fields (extended_profile_fields) of all tenants',
+    },
 }
 
 CLICKHOUSE_FX_BUILTIN_ORG_IN_TENANTS = '__orgs_of_tenants__'
@@ -165,3 +170,20 @@ LEARNER_THEME_SAVED_INTERACTIVE_COLOR_KEY = 'THEME_OPTIONS.interactive_color'
 LEARNER_THEME_DEFAULT_BRAND_COLOR = '#1B8354'
 # Primary colours the dashboard's theme designer saves by itself (lower case): not a tenant choice
 LEARNER_THEME_STOCK_PRIMARY_COLORS = ['#4600c7']
+
+# Per-tenant custom registration fields: the four lms_configs keys read by the registration form
+REG_FIELDS_NAMES_KEY = 'extended_profile_fields'
+REG_FIELDS_VISIBILITY_KEY = 'REGISTRATION_EXTRA_FIELDS'
+REG_FIELDS_OPTIONS_KEY = 'EXTRA_FIELD_OPTIONS'
+REG_FIELDS_TRANSLATIONS_KEY = 'extended_profile_fields_translations'
+REG_FIELDS_LANGUAGES = ['ar', 'en']
+REG_FIELDS_NAME_PATTERN = r'^[a-z][a-z0-9_]{1,63}$'
+REG_FIELDS_MAX_FIELDS = 20
+REG_FIELDS_MAX_OPTIONS = 300
+# Stock registration fields and custom_reg_form.ExtraInfo fields: never usable as a custom field name
+REG_FIELDS_RESERVED_NAMES = [
+    'allow_newsletter_emails', 'arabic_first_name', 'arabic_last_name', 'arabic_name', 'city', 'confirm_email',
+    'country', 'email', 'first_name', 'gender', 'goals', 'honor_code', 'is_phone_validated', 'last_name',
+    'level_of_education', 'mailing_address', 'name', 'national_id', 'occupation', 'password', 'phone_number',
+    'sector', 'specific_sector', 'terms_of_service', 'username', 'year_of_birth',
+]

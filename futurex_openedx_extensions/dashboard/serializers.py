@@ -77,6 +77,7 @@ from futurex_openedx_extensions.helpers.tenants import (
     get_org_to_tenant_map,
     get_sso_sites,
     get_tenants_by_org,
+    get_tenants_extended_profile_fields,
     set_request_domain_by_org,
 )
 from futurex_openedx_extensions.helpers.upload import rewrite_legacy_cloudfront_asset_urls
@@ -138,6 +139,9 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
         help_text='Date when the user was registered in the platform regardless of which tenant',
     )
     last_login = serializers.SerializerMethodField(help_text='Date when the user last logged in')
+    custom_fields = serializers.SerializerMethodField(
+        help_text='Values of the custom registration fields of the tenants in scope (name: value, null when unset)',
+    )
 
     class Meta:
         model = get_user_model()
@@ -154,6 +158,7 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
             'gender_display',
             'date_joined',
             'last_login',
+            'custom_fields',
         ]
 
     def _get_user(self, obj: Any = None) -> get_user_model | None:  # pylint: disable=no-self-use
@@ -226,6 +231,48 @@ class LearnerBasicDetailsSerializer(ModelSerializerOptionalFields):
     def get_year_of_birth(self, obj: get_user_model) -> Any:
         """Return year of birth."""
         return self._get_profile_field(obj, 'year_of_birth')
+
+    def _get_custom_field_names(self) -> List[str]:
+        """
+        Get the custom registration field names of the tenants in the request's scope, computed once per serializer.
+        """
+        names = getattr(self, '_custom_field_names', None)
+        if names is None:
+            request = self.context.get('request') if self.context else None
+            fx_permission_info = getattr(request, 'fx_permission_info', None)
+            tenant_ids = fx_permission_info.get(
+                'view_allowed_tenant_ids_any_access', [],
+            ) if isinstance(fx_permission_info, dict) else []
+            names = get_tenants_extended_profile_fields(tenant_ids)
+            self._custom_field_names = names  # pylint: disable=attribute-defined-outside-init
+        return names
+
+    def get_custom_fields(self, obj: get_user_model) -> Dict[str, Any]:
+        """Return the values of the custom registration fields, stored by Open edX in the profile meta."""
+        names = self._get_custom_field_names()
+        if not names:
+            return {}
+
+        profile = getattr(self._get_user(obj), 'profile', None)
+        meta: Any = {}
+        if profile:
+            try:
+                meta = profile.get_meta()
+            except ValueError:
+                meta = {}
+        if not isinstance(meta, dict):
+            meta = {}
+        return {name: meta.get(name) for name in names}
+
+    def to_representation(self, instance: Any) -> Any:
+        """Return the representation; with the `csv_export` tag, custom_fields becomes one column per field."""
+        representation = super().to_representation(instance)
+        if 'csv_export' in (self.context.get('requested_optional_field_tags') or []) and isinstance(
+            representation.get('custom_fields'), dict,
+        ):
+            for name, value in representation.pop('custom_fields').items():
+                representation[f'custom_field - {name}'] = value
+        return representation
 
 
 class CourseScoreAndCertificateSerializer(ModelSerializerOptionalFields):
