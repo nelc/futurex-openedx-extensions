@@ -1689,3 +1689,47 @@ def test_get_learner_theme_options(default_theme, expected):
     """Verify that the platform default theme is kept as the grandparent of the learner theme."""
     with override_settings(EOX_THEMING_DEFAULT_THEME_NAME=default_theme):
         assert tenants.get_learner_theme_options() == expected
+
+
+def _set_extended_profile_fields(tenant_id, value):
+    """Helper to set extended_profile_fields of a tenant"""
+    tenant = TenantConfig.objects.get(id=tenant_id)
+    tenant.lms_configs['extended_profile_fields'] = value
+    tenant.save()
+
+
+@pytest.mark.django_db
+def test_get_all_extended_profile_fields(base_data):  # pylint: disable=unused-argument
+    """Verify that only valid tenants with custom fields are returned, with non-string names dropped"""
+    _set_extended_profile_fields(1, ['region', 5, '', 'employer'])
+    _set_extended_profile_fields(2, 'not a list')
+    _set_extended_profile_fields(3, [])
+    _set_extended_profile_fields(4, ['excluded_tenant'])
+    _set_extended_profile_fields(7, ['region'])
+
+    assert tenants.get_all_extended_profile_fields() == {1: ['region', 'employer'], 7: ['region']}
+
+
+@pytest.mark.django_db
+def test_get_all_extended_profile_fields_is_being_cached(base_data, cache_testing):  # pylint: disable=unused-argument
+    """Verify that get_all_extended_profile_fields is being cached."""
+    _set_extended_profile_fields(1, ['region'])
+    assert cache.get(cs.CACHE_NAME_ALL_EXTENDED_PROFILE_FIELDS) is None
+    result = tenants.get_all_extended_profile_fields()
+    assert cache.get(cs.CACHE_NAME_ALL_EXTENDED_PROFILE_FIELDS)['data'] == result
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('tenant_ids, expected', [
+    ([1, 7], ['employer', 'region']),
+    ([7], ['region']),
+    ([2, 3], []),
+    ([], []),
+    (None, []),
+])
+def test_get_tenants_extended_profile_fields(base_data, tenant_ids, expected):  # pylint: disable=unused-argument
+    """Verify that the union of the tenants' custom field names is returned sorted"""
+    _set_extended_profile_fields(1, ['region', 'employer'])
+    _set_extended_profile_fields(7, ['region'])
+
+    assert tenants.get_tenants_extended_profile_fields(tenant_ids) == expected
