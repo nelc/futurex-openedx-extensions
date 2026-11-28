@@ -39,6 +39,7 @@ from futurex_openedx_extensions.helpers.extractors import (
 )
 from futurex_openedx_extensions.helpers.models import ViewAllowedRoles, ViewUserMapping
 from futurex_openedx_extensions.helpers.querysets import check_staff_exist_queryset, get_search_query
+from futurex_openedx_extensions.helpers.tasks import send_role_assigned_email_task
 from futurex_openedx_extensions.helpers.tenants import (
     get_all_tenant_ids,
     get_course_org_filter_list,
@@ -1108,6 +1109,7 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
     course_ids: list[str] | None,
     orgs_of_courses: Dict[str, str],
     dry_run: bool,
+    assigned_user_ids: List[int],
 ) -> str:
     """
     Add the course access roles for the given user. This is a helper function for add_course_access_roles that
@@ -1127,6 +1129,8 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
     :type orgs_of_courses: Dict[str, str]
     :param dry_run: True for dry run, False otherwise
     :type dry_run: bool
+    :param assigned_user_ids: The user ID is appended to it when new role records were created
+    :type assigned_user_ids: list
     :return: The status of the operation (added, updated, or not_updated)
     """
     new_entry = not get_course_access_roles_queryset(
@@ -1219,11 +1223,41 @@ def _add_course_access_roles_one_user(  # pylint: disable=too-many-arguments
             ) from exc
 
         cache_refresh_course_access_roles(user.id)
+        assigned_user_ids.append(user.id)
 
     return 'added' if new_entry else 'updated'
 
 
-def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-branches
+def _enqueue_role_assigned_emails(user_ids: List[int], tenant_ids: List[int], assignments: List[dict]) -> None:
+    """
+    Queue one role-assigned e-mail per user and tenant once the roles are committed. Never raises: a failure to
+    queue the e-mail must not fail the roles API call.
+
+    :param user_ids: The users who were given new role records
+    :type user_ids: list
+    :param tenant_ids: The tenant IDs of the call (each e-mail is branded for one tenant)
+    :type tenant_ids: list
+    :param assignments: The roles given, as [{'role': str, 'tenant_wide': bool, 'course_ids': [str]}]
+    :type assignments: list
+    """
+    def _enqueue() -> None:
+        for tenant_id in tenant_ids:
+            for user_id in user_ids:
+                try:
+                    send_role_assigned_email_task.delay(user_id, tenant_id, assignments)
+                except Exception as exc:
+                    logger.error(
+                        'role_assigned_email_enqueue_failed user_id=%s tenant_id=%s error=%s',
+                        user_id, tenant_id, type(exc).__name__,
+                    )
+
+    try:
+        transaction.on_commit(_enqueue)
+    except Exception as exc:
+        logger.error('role_assigned_email_enqueue_failed user_ids=%s error=%s', user_ids, type(exc).__name__)
+
+
+def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals
     caller: get_user_model,
     tenant_ids: list[int],
     user_keys: list[get_user_model | str | int],
@@ -1231,6 +1265,7 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     tenant_wide: bool,
     course_ids: list[str] | None,
     dry_run: bool = False,
+    notify: bool = True,
 ) -> dict:
     """
     Add the course access roles for the given tenant IDs and user.
@@ -1252,6 +1287,9 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
     :type course_ids: list
     :param dry_run: True for dry run, False otherwise
     :type dry_run: bool
+    :param notify: True to e-mail every user who got new role records (one e-mail per user and tenant, sent after
+        commit), False when the caller sends it itself
+    :type notify: bool
     :return: Operation details
     :type: dict
     """
@@ -1306,6 +1344,7 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
         'updated': [],
         'not_updated': [],
     }
+    assigned_user_ids: List[int] = []
     for user_key in user_keys:
         user_info = get_user_by_key(user_key, fail_if_inactive=True)
         if not user_info['user']:
@@ -1323,7 +1362,8 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
 
         try:
             status = _add_course_access_roles_one_user(
-                caller, user_info['user'], role, orgs, course_ids, orgs_of_courses['courses'], dry_run
+                caller, user_info['user'], role, orgs, course_ids, orgs_of_courses['courses'], dry_run,
+                assigned_user_ids,
             )
         except Exception as exc:
             result['failed'].append({
@@ -1337,6 +1377,11 @@ def add_course_access_roles(  # pylint: disable=too-many-arguments, too-many-bra
             })
         else:
             result[status].append(user_key)
+
+    if notify and assigned_user_ids:
+        _enqueue_role_assigned_emails(
+            assigned_user_ids, tenant_ids, [{'role': role, 'tenant_wide': tenant_wide, 'course_ids': course_ids}],
+        )
 
     return result
 
@@ -1560,6 +1605,7 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
         user_roles['tenant_roles'] = list(_temp)
 
         if not dry_run:
+            assigned: List[dict] = []
             with transaction.atomic():
                 _verify_can_delete_course_access_roles_partial(caller, [tenant_id], user_roles, user.username)
                 _clean_course_access_roles_partial(caller, user, [tenant_id], keep_roles)
@@ -1573,9 +1619,12 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
                         tenant_wide=True,
                         course_ids=None,
                         dry_run=False,
+                        notify=False,
                     )
                     if result['failed']:
                         break
+                    if user.id in result.get('added', []) + result.get('updated', []):
+                        assigned.append({'role': role, 'tenant_wide': True, 'course_ids': []})
 
                 if not result['failed']:
                     for role, course_ids in cleaned_course_roles.items():
@@ -1587,9 +1636,15 @@ def update_course_access_roles(  # pylint: disable=too-many-branches, too-many-s
                             tenant_wide=False,
                             course_ids=course_ids,
                             dry_run=False,
+                            notify=False,
                         )
                         if result['failed']:
                             break
+                        if user.id in result.get('added', []) + result.get('updated', []):
+                            assigned.append({'role': role, 'tenant_wide': False, 'course_ids': sorted(course_ids)})
+
+            if assigned and not result['failed']:
+                _enqueue_role_assigned_emails([user.id], [tenant_id], assigned)
 
     except ValueError as exc:
         result['failed'].append({

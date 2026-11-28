@@ -1,0 +1,13 @@
+{% load i18n %}{% autoescape off %}{% if full_name %}{% blocktrans %}Hello {{ full_name }},{% endblocktrans %}{% else %}{% trans "Hello," %}{% endif %}
+
+{% trans "You have been assigned a new role" %}
+
+{% blocktrans %}Your access on {{ tenant_name }} now includes:{% endblocktrans %}
+{% for assignment in assignments %}
+- {{ assignment.role_name }}: {% if assignment.all_courses %}{% trans "All courses" %}{% else %}{{ assignment.course_names|join:", " }}{% endif %}{% endfor %}
+
+{% trans "Sign in to start using your new permissions." %}
+{% trans "Sign in" %}: {{ sign_in_url }}
+
+{% trans "If you did not expect this e-mail, contact the administrator of your platform." %}
+{% endautoescape %}

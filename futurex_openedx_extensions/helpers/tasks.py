@@ -5,6 +5,7 @@ import logging
 from celery import shared_task
 from celery_utils.logged_task import LoggedTask
 
+from futurex_openedx_extensions.helpers.emails import deliver_role_assigned_email
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.export_csv import export_data_to_csv, log_export_task
 from futurex_openedx_extensions.helpers.models import DataExportTask
@@ -18,6 +19,22 @@ def sync_course_stats_task() -> None:
     """Celery task to refresh the cached per-course certificate counts (CourseStat)."""
     synced = sync_course_stats(commit=True)
     log.info('sync_course_stats_task: synced certificate counts for %s course(s).', synced)
+
+
+@shared_task(base=LoggedTask)
+def send_role_assigned_email_task(user_id: int, tenant_id: int, assignments: list) -> None:
+    """
+    Celery task to send the role-assigned e-mail (queued by add_course_access_roles after the roles are committed).
+
+    A failure never reaches the roles API: it is logged here by exception class only (SMTP errors carry the
+    recipient address), as the line `role_assigned_email_failed` that an alert can watch.
+    """
+    try:
+        deliver_role_assigned_email(user_id, tenant_id, assignments)
+    except Exception as exc:
+        log.error(
+            'role_assigned_email_failed user_id=%s tenant_id=%s error=%s', user_id, tenant_id, type(exc).__name__,
+        )
 
 
 @shared_task(base=LoggedTask)

@@ -7,7 +7,11 @@ from django.contrib.auth import get_user_model
 
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import DataExportTask
-from futurex_openedx_extensions.helpers.tasks import export_data_to_csv_task, sync_course_stats_task
+from futurex_openedx_extensions.helpers.tasks import (
+    export_data_to_csv_task,
+    send_role_assigned_email_task,
+    sync_course_stats_task,
+)
 
 
 @pytest.mark.django_db
@@ -116,3 +120,21 @@ def test_sync_course_stats_task(mock_sync, caplog):
 
     mock_sync.assert_called_once_with(commit=True)
     assert 'synced certificate counts for 7 course(s)' in caplog.text
+
+
+@patch('futurex_openedx_extensions.helpers.tasks.deliver_role_assigned_email')
+def test_send_role_assigned_email_task(mock_deliver, caplog):
+    """Verify the task delivers the e-mail with its arguments"""
+    assignments = [{'role': 'staff', 'tenant_wide': True, 'course_ids': []}]
+    send_role_assigned_email_task(3, 1, assignments)
+    mock_deliver.assert_called_once_with(3, 1, assignments)
+    assert 'role_assigned_email_failed' not in caplog.text
+
+
+@patch('futurex_openedx_extensions.helpers.tasks.deliver_role_assigned_email')
+def test_send_role_assigned_email_task_failure(mock_deliver, caplog):
+    """Verify a failure is logged by exception class only and never raised"""
+    mock_deliver.side_effect = ConnectionError('smtp said no to user3@example.com')
+    send_role_assigned_email_task(3, 1, [])
+    assert 'role_assigned_email_failed user_id=3 tenant_id=1 error=ConnectionError' in caplog.text
+    assert 'user3@example.com' not in caplog.text

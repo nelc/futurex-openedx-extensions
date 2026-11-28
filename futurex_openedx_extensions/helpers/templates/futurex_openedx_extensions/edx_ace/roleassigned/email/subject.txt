@@ -1,0 +1,1 @@
+{% load i18n %}{% autoescape off %}{% blocktrans %}You have a new role on {{ tenant_name }}{% endblocktrans %}{% endautoescape %}

@@ -2068,6 +2068,7 @@ def test_update_course_access_course_roles_grouping(
                 'course-v1:ORG3+1+1', 'course-v1:ORG3+2+2',
             ],
             'dry_run': False,
+            'notify': False,
         }
     assert result['error_code'] is None
     assert role_staff and role_data_researcher and role_instructor
@@ -2656,3 +2657,184 @@ def test_fx_exception_handler(exception, expected_result, expected_status, useca
         response = mixin.handle_exception(exception)
         assert response.data == expected_result, f'Unexpected response for usecase: {usecase}'
         assert response.status_code == expected_status
+
+
+TASK_DELAY = 'futurex_openedx_extensions.helpers.roles.send_role_assigned_email_task.delay'
+
+
+@pytest.fixture(name='run_on_commit')
+def fixture_run_on_commit(django_capture_on_commit_callbacks):  # pylint: disable=invalid-name
+    """Capture (and optionally run) the after-commit callbacks of the test transaction."""
+    return django_capture_on_commit_callbacks
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+def test_add_course_access_roles_emails_new_role(
+    mock_delay, roles_authorize_caller, base_data, run_on_commit,
+):  # pylint: disable=unused-argument
+    """Verify one e-mail per user is queued after commit for users who got new role records"""
+    with run_on_commit(execute=True) as callbacks:
+        result = add_course_access_roles(None, [1], [66, 67], 'staff', True, [])
+    assert result['added'] == [66, 67]
+    assert len(callbacks) == 1
+    assignments = [{'role': 'staff', 'tenant_wide': True, 'course_ids': []}]
+    assert mock_delay.call_args_list == [((66, 1, assignments),), ((67, 1, assignments),)]
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+def test_add_course_access_roles_emails_course_role_on_existing_user(
+    mock_delay, roles_authorize_caller, base_data, run_on_commit,
+):  # pylint: disable=unused-argument
+    """Verify an 'updated' user who got a new course role is e-mailed with the courses"""
+    with run_on_commit(execute=True):
+        result = add_course_access_roles(None, [1], [3], 'beta_testers', False, ['course-v1:ORG1+3+3'])
+    assert result['updated'] == [3]
+    mock_delay.assert_called_once_with(
+        3, 1, [{'role': 'beta_testers', 'tenant_wide': False, 'course_ids': ['course-v1:ORG1+3+3']}],
+    )
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+def test_add_course_access_roles_no_email_without_new_records(
+    mock_delay, roles_authorize_caller, base_data, run_on_commit,
+):  # pylint: disable=unused-argument
+    """Verify no e-mail for not_updated, cleanup-only, failed, or dry-run results"""
+    with run_on_commit(execute=True):
+        add_course_access_roles(None, [1], [3], 'staff', True, [])  # adds org2 + cleans redundant
+    mock_delay.reset_mock()
+
+    with run_on_commit(execute=True) as callbacks:
+        not_updated = add_course_access_roles(None, [1], [3], 'staff', True, [])
+        failed = add_course_access_roles(None, [1], ['no-such-user'], 'staff', True, [])
+        dry_run = add_course_access_roles(None, [1], [66], 'staff', True, [], dry_run=True)
+        silent = add_course_access_roles(None, [1], [67], 'staff', True, [], notify=False)
+    assert not_updated['not_updated'] == [3]
+    assert failed['failed']
+    assert dry_run['added'] == [66]
+    assert silent['added'] == [67]
+    assert not callbacks
+    mock_delay.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+def test_add_course_access_roles_no_email_cleanup_only(
+    mock_delay, roles_authorize_caller, base_data, run_on_commit,
+):  # pylint: disable=unused-argument
+    """Verify a call that only removes redundant records reports 'updated' but sends nothing"""
+    user = get_user_model().objects.get(id=66)
+    for org in ['org1', 'org2']:
+        CourseAccessRole.objects.create(user=user, org=org, role='staff')
+    CourseAccessRole.objects.create(user=user, org='org1', role='staff', course_id='course-v1:ORG1+3+3')
+
+    with run_on_commit(execute=True) as callbacks:
+        result = add_course_access_roles(None, [1], [66], 'staff', True, [])
+    assert result['updated'] == [66]
+    assert not callbacks
+    mock_delay.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+def test_add_course_access_roles_emails_each_tenant(
+    mock_delay, roles_authorize_caller, base_data, run_on_commit,
+):  # pylint: disable=unused-argument
+    """Verify a multi-tenant call queues one e-mail per tenant (each tenant brands its own)"""
+    with run_on_commit(execute=True):
+        add_course_access_roles(None, [1, 2], [66], 'staff', True, [])
+    assert [call.args[:2] for call in mock_delay.call_args_list] == [(66, 1), (66, 2)]
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+def test_add_course_access_roles_email_enqueue_failure(
+    mock_delay, roles_authorize_caller, base_data, run_on_commit, caplog,
+):  # pylint: disable=unused-argument
+    """Verify a failure to queue the e-mail never fails the roles call"""
+    mock_delay.side_effect = [ConnectionError('broker down'), None]
+    with run_on_commit(execute=True):
+        result = add_course_access_roles(None, [1], [66, 67], 'staff', True, [])
+    assert result['added'] == [66, 67]
+    assert mock_delay.call_count == 2
+    assert 'role_assigned_email_enqueue_failed user_id=66 tenant_id=1 error=ConnectionError' in caplog.text
+
+
+@pytest.mark.django_db
+@patch('futurex_openedx_extensions.helpers.roles.transaction.on_commit')
+def test_add_course_access_roles_email_on_commit_failure(
+    mock_on_commit, roles_authorize_caller, base_data, caplog,
+):  # pylint: disable=unused-argument
+    """Verify a failure to register the after-commit hook never fails the roles call"""
+    mock_on_commit.side_effect = RuntimeError('no transaction')
+    result = add_course_access_roles(None, [1], [66], 'staff', True, [])
+    assert result['added'] == [66]
+    assert 'role_assigned_email_enqueue_failed user_ids=[66] error=RuntimeError' in caplog.text
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+def test_update_course_access_roles_emails_added_roles_once(
+    mock_delay, roles_authorize_caller, base_data, run_on_commit,
+):  # pylint: disable=unused-argument
+    """Verify a PUT that adds roles queues ONE e-mail listing only the roles it added"""
+    with run_on_commit(execute=True) as callbacks:
+        _run_update_roles({
+            'tenant_roles': ['data_researcher'],
+            'course_roles': {'course-v1:ORG3+2+2': ['instructor', 'beta_testers']},
+        })
+    assert len(callbacks) == 1
+    mock_delay.assert_called_once_with(11, 2, [
+        {'role': 'data_researcher', 'tenant_wide': True, 'course_ids': []},
+        {'role': 'beta_testers', 'tenant_wide': False, 'course_ids': ['course-v1:ORG3+2+2']},
+    ])
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+def test_update_course_access_roles_no_email_on_removal(
+    mock_delay, roles_authorize_caller, base_data, run_on_commit,
+):  # pylint: disable=unused-argument
+    """Verify a PUT that only keeps or removes roles sends nothing"""
+    user = get_user_model().objects.get(username='user11')
+    CourseAccessRole.objects.create(user=user, org='org3', role='data_researcher')
+    with run_on_commit(execute=True) as callbacks:
+        _run_update_roles({})
+    assert not CourseAccessRole.objects.filter(user=user, role='data_researcher').exists()
+    assert not callbacks
+    mock_delay.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+@patch('futurex_openedx_extensions.helpers.roles.add_course_access_roles')
+def test_update_course_access_roles_no_email_on_failure(
+    mock_add, mock_delay, roles_authorize_caller, base_data, run_on_commit,
+):  # pylint: disable=unused-argument
+    """Verify a PUT whose add failed sends nothing"""
+    mock_add.return_value = {'failed': [{'reason_code': 1, 'reason_message': 'boom'}], 'added': [11]}
+    with run_on_commit(execute=True) as callbacks:
+        result = _run_update_roles({'tenant_roles': ['data_researcher']}, assert_not_failed=False)
+    assert result['error_message'] == 'boom'
+    assert not callbacks
+    mock_delay.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch(TASK_DELAY)
+@patch('futurex_openedx_extensions.helpers.roles.add_course_access_roles')
+def test_update_course_access_roles_no_email_when_nothing_added(
+    mock_add, mock_delay, roles_authorize_caller, base_data, run_on_commit,
+):  # pylint: disable=unused-argument
+    """Verify a PUT whose adds report no new records sends nothing"""
+    mock_add.return_value = {'failed': [], 'added': [], 'updated': [], 'not_updated': [11]}
+    with run_on_commit(execute=True) as callbacks:
+        _run_update_roles({
+            'tenant_roles': ['data_researcher'],
+            'course_roles': {'course-v1:ORG3+2+2': ['instructor', 'beta_testers']},
+        })
+    assert mock_add.call_count == 2
+    assert not callbacks
+    mock_delay.assert_not_called()
