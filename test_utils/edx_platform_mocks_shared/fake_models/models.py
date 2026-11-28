@@ -1,4 +1,5 @@
 """edx-platform models mocks for testing purposes."""
+import json
 import re
 
 from config_models.models import ConfigurationModel
@@ -126,6 +127,11 @@ class UserProfile(models.Model):
     bio = models.CharField(blank=True, null=True, max_length=3000, db_index=False)
     level_of_education = models.CharField(blank=True, null=True, max_length=6, db_index=True)
     city = models.TextField(blank=True, null=True)
+    meta = models.TextField(blank=True)
+
+    def get_meta(self):
+        """Mock: same as edx-platform, the meta JSON as a dict"""
+        return json.loads(self.meta) if self.meta else {}
 
     @property
     def has_profile_image(self):

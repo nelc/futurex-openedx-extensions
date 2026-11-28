@@ -1,4 +1,5 @@
 """Tenant management helpers"""
+# pylint: disable=too-many-lines
 from __future__ import annotations
 
 import copy
@@ -350,6 +351,46 @@ def get_tenants_by_org(org: str) -> List[int]:
     :rtype: List[int]
     """
     return get_org_to_tenant_map().get(org.lower(), [])
+
+
+@cache_dict(
+    timeout='FX_CACHE_TIMEOUT_TENANTS_INFO',
+    key_generator_or_name=cs.CACHE_NAME_ALL_EXTENDED_PROFILE_FIELDS,
+)
+def get_all_extended_profile_fields() -> Dict[int, List[str]]:
+    """
+    Get the custom registration field names (`extended_profile_fields`) of all tenants. Tenants with no custom
+    fields are left out.
+
+    :return: Dictionary of tenant IDs and their custom registration field names
+    :rtype: Dict[int, List[str]]
+    """
+    result = {}
+    for t_id, config in get_all_tenants().values_list('id', 'lms_configs'):
+        names = config.get('extended_profile_fields')
+        names = [name for name in names if isinstance(name, str) and name] if isinstance(names, list) else []
+        if names:
+            result[t_id] = names
+
+    return result
+
+
+def get_tenants_extended_profile_fields(tenant_ids: List[int]) -> List[str]:
+    """
+    Get the custom registration field names of the given tenants: the sorted union of their
+    `extended_profile_fields`.
+
+    :param tenant_ids: List of tenant IDs
+    :type tenant_ids: List[int]
+    :return: List of the custom registration field names
+    :rtype: List[str]
+    """
+    all_fields = get_all_extended_profile_fields()
+    result: set = set()
+    for tenant_id in tenant_ids or []:
+        result.update(all_fields.get(tenant_id, []))
+
+    return sorted(result)
 
 
 def get_tenants_sites(tenant_ids: List[int]) -> List[str]:

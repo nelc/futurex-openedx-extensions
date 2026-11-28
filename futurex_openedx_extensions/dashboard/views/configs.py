@@ -23,6 +23,11 @@ from futurex_openedx_extensions.helpers.converters import dict_to_hash, error_de
 from futurex_openedx_extensions.helpers.exceptions import FXCodedException, FXExceptionCodes
 from futurex_openedx_extensions.helpers.models import ConfigAccessControl
 from futurex_openedx_extensions.helpers.permissions import FXHasTenantAllCoursesAccess
+from futurex_openedx_extensions.helpers.registration_fields import (
+    get_registration_fields,
+    get_tenant_lms_configs,
+    update_tenant_registration_fields,
+)
 from futurex_openedx_extensions.helpers.roles import FXViewRoleInfoMixin, add_course_access_roles
 from futurex_openedx_extensions.helpers.tenants import (
     create_new_tenant_config,
@@ -364,3 +369,64 @@ class ThemeConfigTenantView(FXViewRoleInfoMixin, APIView):
         result = {'tenant_id': tenant_config.id}
         result.update(get_all_tenants_info()['info'].get(tenant_config.id))
         return JsonResponse(result)
+
+
+@docs('RegistrationFieldsView.get')
+@docs('RegistrationFieldsView.put')
+class RegistrationFieldsView(FXViewRoleInfoMixin, APIView):
+    """View to read and change the custom registration fields of one tenant. Writing is for system staff only."""
+    authentication_classes = default_auth_classes
+    permission_classes = [FXHasTenantAllCoursesAccess]
+    fx_view_name = 'registration_fields'
+    fx_allowed_write_methods = ['PUT']
+    fx_view_description = 'api/fx/config/v1/registration_fields/<tenant_id>: custom registration fields of a tenant'
+    fx_default_read_write_roles = ['staff', 'fx_api_access_global']
+    fx_default_read_only_roles = ['staff', 'fx_api_access_global']
+    fx_tenant_id_url_arg_name: str = 'tenant_id'
+
+    def _verify_full_access(self, tenant_id: int) -> None:
+        """Verify that the caller has full access to the tenant"""
+        if tenant_id not in self.fx_permission_info['view_allowed_tenant_ids_full_access']:
+            raise PermissionDenied(detail=json.dumps(
+                {'reason': f'User does not have required access for tenant ({tenant_id})'}
+            ))
+
+    @staticmethod
+    def _fields_data(tenant_id: int, lms_configs: dict) -> dict:
+        """Return the response data of a tenant"""
+        return {'tenant_id': tenant_id, 'fields': get_registration_fields(lms_configs)}
+
+    @staticmethod
+    def _error_response(exc: FXCodedException) -> Response:
+        """Return the error response of a coded exception"""
+        return Response(
+            error_details_to_dictionary(reason=f'({exc.code}) {str(exc)}'),
+            status=(
+                http_status.HTTP_404_NOT_FOUND if exc.code == FXExceptionCodes.TENANT_NOT_FOUND.value
+                else http_status.HTTP_400_BAD_REQUEST
+            ),
+        )
+
+    def get(self, request: Any, tenant_id: int) -> Response:
+        """GET /api/fx/config/v1/registration_fields/<tenant_id>/"""
+        tenant_id = int(tenant_id)
+        self._verify_full_access(tenant_id)
+        try:
+            lms_configs = get_tenant_lms_configs(tenant_id)
+        except FXCodedException as exc:
+            return self._error_response(exc)
+        return Response(self._fields_data(tenant_id, lms_configs))
+
+    def put(self, request: Any, tenant_id: int) -> Response:
+        """PUT /api/fx/config/v1/registration_fields/<tenant_id>/"""
+        tenant_id = int(tenant_id)
+        self._verify_full_access(tenant_id)
+        if not self.fx_permission_info['is_system_staff_user']:
+            raise PermissionDenied(detail=json.dumps(
+                {'reason': 'Registration fields can be changed by system staff only.'}
+            ))
+        try:
+            lms_configs = update_tenant_registration_fields(tenant_id, request.data, request.user)
+        except FXCodedException as exc:
+            return self._error_response(exc)
+        return Response(self._fields_data(tenant_id, lms_configs))

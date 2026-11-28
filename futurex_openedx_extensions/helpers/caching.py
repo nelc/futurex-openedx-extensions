@@ -99,6 +99,7 @@ def invalidate_cache(cache_name: str = None) -> None:
         cache.delete(cs.CACHE_NAME_ALL_TENANTS_INFO)
         cache.delete(cs.CACHE_NAME_ALL_VIEW_ROLES)
         cache.delete(cs.CACHE_NAME_ORG_TO_TENANT_MAP)
+        cache.delete(cs.CACHE_NAME_ALL_EXTENDED_PROFILE_FIELDS)
     else:
         cache.delete(cache_name)
 

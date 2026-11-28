@@ -22,6 +22,7 @@ from futurex_openedx_extensions.dashboard.views.categories import (
 from futurex_openedx_extensions.dashboard.views.clickhouse import ClickhouseQueryView
 from futurex_openedx_extensions.dashboard.views.configs import (
     ConfigEditableInfoView,
+    RegistrationFieldsView,
     ThemeConfigDraftView,
     ThemeConfigPublishView,
     ThemeConfigRetrieveView,
@@ -181,6 +182,11 @@ urlpatterns = [
     re_path(r'^api/fx/config/v1/publish/$', ThemeConfigPublishView.as_view(), name='theme-config-publish'),
     re_path(r'^api/fx/config/v1/values/$', ThemeConfigRetrieveView.as_view(), name='theme-config-values'),
     re_path(r'^api/fx/config/v1/tenant/$', ThemeConfigTenantView.as_view(), name='theme-config-tenant'),
+    re_path(
+        r'^api/fx/config/v1/registration_fields/(?P<tenant_id>\d+)/$',
+        RegistrationFieldsView.as_view(),
+        name='registration-fields',
+    ),
     re_path(r'^api/fx/file/v1/upload/$', FileUploadView.as_view(), name='file-upload'),
     re_path(
         r'^api/fx/assets/v1/serve/(?P<tenant_id>\d+)/(?P<filename>[^/]+)$',

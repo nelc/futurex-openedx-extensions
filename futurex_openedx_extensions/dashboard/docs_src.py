@@ -245,6 +245,12 @@ repeated_descriptions = {
     ' value set to `about` or `both`; and `visible_to_staff_only` is set to `False`. Courses are visible by default'
     ' when created.',
 
+    'custom_fields': '\n\n`custom_fields` holds the values learners entered in the custom registration fields'
+    ' (`extended_profile_fields`) of the tenants in scope (the `tenant_ids` filter, or all tenants accessible to'
+    ' the caller): one key per field name of those tenants, null when the learner has no value, `{}` when none'
+    ' of them has custom fields. A dropdown value is stored lower-cased by Open edX. With'
+    ' `optional_field_tags=csv_export`, it is returned as one `custom_field - <name>` column per field instead.',
+
     'optional_field_tags': 'Optional fields are not included in the response by default. Caller can request them by'
     ' using the `optional_field_tags` parameter. It accepts a comma-separated list of optional field tags. The'
     ' following are the available tags along with the fields they include:\n'
@@ -979,7 +985,7 @@ docs_src = {
     'LearnersDetailsForCourseView.get': {
         'summary': 'Get the list of learners for a specific course',
         'description': 'Get the list of learners for a specific course using the `course_id`. The caller must have'
-        ' access to the course.',
+        ' access to the course.' + repeated_descriptions['custom_fields'],
         'parameters': [
             path_parameter(
                 'course_id',
@@ -1011,7 +1017,7 @@ docs_src = {
     'LearnersEnrollmentView.get': {
         'summary': 'Get the list of enrollments',
         'description': 'Get the list of enrollments in the tenants, which is the list of all learners having at '
-        ' least one enrollment in any course.',
+        ' least one enrollment in any course.' + repeated_descriptions['custom_fields'],
         'parameters': [
             common_parameters['tenant_ids'],
             common_parameters['user_ids'],
@@ -1164,7 +1170,7 @@ docs_src = {
         ' courses and certificates counts include hidden courses and the courses where the learner has a course-team'
         ' role, so they equal the learner\'s row in `learners/v1/learners/`.\n'
         '\n**Note:** With the `fx_dashboard.legacy_filtered_counts` flag on, a course-team member is found only with'
-        ' `include_staff=1`, and the counts include visible courses only.',
+        ' `include_staff=1`, and the counts include visible courses only.' + repeated_descriptions['custom_fields'],
         'parameters': [
             common_path_parameters['username-learner'],
             common_parameters['tenant_ids'],
@@ -1187,7 +1193,7 @@ docs_src = {
         ' certificates counts include hidden courses and the courses where the learner has a course-team role.\n'
         '\n**Note:** With the `fx_dashboard.legacy_filtered_counts` flag on, platform staff and superusers are not'
         ' listed, course-team members are listed only with `include_staff=1`, and the per-learner counts include'
-        ' visible courses only.',
+        ' visible courses only.' + repeated_descriptions['custom_fields'],
         'parameters': [
             common_parameters['tenant_ids'],
             query_parameter(
@@ -2894,6 +2900,81 @@ docs_src = {
             },
             remove=[404],
         ),
+    },
+
+    'RegistrationFieldsView.get': {
+        'summary': 'Get the custom registration fields of a tenant',
+        'description': (
+            'Get the custom registration fields of one tenant, built from its `extended_profile_fields`, '
+            '`REGISTRATION_EXTRA_FIELDS`, `EXTRA_FIELD_OPTIONS` and `extended_profile_fields_translations`. Only '
+            'the names listed in `extended_profile_fields` are returned, in their stored order. `label` holds the '
+            '`ar` and `en` labels (null when missing). `options` is the dropdown list, or null for a free-text '
+            'field. `hidden` is true when the field is marked `hidden` or has no `REGISTRATION_EXTRA_FIELDS` entry: '
+            'the registration form does not show it. The caller must have full access to the tenant.'
+        ),
+        'parameters': [
+            common_path_parameters['tenant_id'],
+        ],
+        'responses': responses(
+            remove=[400],
+            overrides={
+                200: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    example={
+                        'tenant_id': 350,
+                        'fields': [
+                            {
+                                'name': 'region', 'label': {'ar': 'المنطقة', 'en': 'Region'},
+                                'required': True, 'hidden': False, 'options': ['Riyadh', 'Makkah'],
+                            },
+                            {
+                                'name': 'employer', 'label': {'ar': 'جهة العمل', 'en': 'Employer'},
+                                'required': False, 'hidden': False, 'options': None,
+                            },
+                        ],
+                    },
+                ),
+            },
+        ),
+    },
+
+    'RegistrationFieldsView.put': {
+        'summary': 'Replace the custom registration fields of a tenant',
+        'description': (
+            'Replace the custom registration fields of one tenant. The four keys are written together in one save:'
+            ' the entries of the previous custom fields are replaced, and every other entry (stock fields such as '
+            '`national_id` or `arabic_first_name` in `REGISTRATION_EXTRA_FIELDS`) is kept untouched. An empty '
+            '`fields` list removes all custom fields. The caller must be a system staff.\n\n'
+            'Rules: at most 20 fields; `name` is snake_case (`^[a-z][a-z0-9_]{1,63}$`), unique, and not a stock '
+            'registration or ExtraInfo field (username, email, password, name, first_name, last_name, '
+            'confirm_email, level_of_education, gender, year_of_birth, mailing_address, goals, honor_code, '
+            'terms_of_service, city, country, phone_number, arabic_name, arabic_first_name, arabic_last_name, '
+            'national_id, occupation, sector, specific_sector, allow_newsletter_emails, is_phone_validated); '
+            '`label` has exactly `ar` and `en`, both non-empty strings; `required` is true or false; `hidden` '
+            '(optional, default false) cannot be true with `required`; `options` is null (free text) or a list of '
+            '1 to 300 unique non-empty strings (compared ignoring case, because Open edX stores the chosen value '
+            'lower-cased). Unknown keys are refused; a `tenant_id` key in the body is ignored, so a GET response '
+            'can be sent back as is. The response is the GET response after the change.'
+        ),
+        'parameters': [
+            common_path_parameters['tenant_id'],
+        ],
+        'body': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            example={
+                'fields': [
+                    {
+                        'name': 'region', 'label': {'ar': 'المنطقة', 'en': 'Region'},
+                        'required': True, 'options': ['Riyadh', 'Makkah'],
+                    },
+                    {
+                        'name': 'employer', 'label': {'ar': 'جهة العمل', 'en': 'Employer'},
+                        'required': False, 'options': None,
+                    },
+                ],
+            },
+        ),
+        'responses': responses(),
     },
 
     'TenantInfoView.get': {

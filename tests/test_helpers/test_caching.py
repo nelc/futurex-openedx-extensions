@@ -210,6 +210,7 @@ def test_invalidate_all_caches(mock_cache):  # pylint: disable=redefined-outer-n
         cs.CACHE_NAME_ALL_TENANTS_INFO,
         cs.CACHE_NAME_ALL_VIEW_ROLES,
         cs.CACHE_NAME_ORG_TO_TENANT_MAP,
+        cs.CACHE_NAME_ALL_EXTENDED_PROFILE_FIELDS,
     ]
     invalidate_cache()
     for name in all_cache_names:
